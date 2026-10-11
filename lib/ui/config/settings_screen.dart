@@ -22,6 +22,7 @@ import 'package:legado_md3/ui/backup/backup_screen.dart';
 import 'package:provider/provider.dart';
 import 'package:legado_md3/constant/app_theme.dart';
 import 'package:legado_md3/data/local/app_database.dart';
+import 'package:legado_md3/data/model/read_config.dart';
 import 'package:legado_md3/di/book_provider.dart';
 
 class SettingsScreen extends StatefulWidget {
