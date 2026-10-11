@@ -508,11 +508,11 @@ class _ReadingScreenState extends State<ReadingScreen> with SingleTickerProvider
       onKeyEvent: (node, event) {
         if (!config.volumeKeyPage) return KeyEventResult.ignored;
         if (event is! KeyDownEvent) return KeyEventResult.ignored;
-        if (event.logicalKey == LogicalKeyboardKey.volumeUp) {
+        if (event.logicalKey == LogicalKeyboardKey.audioVolumeUp) {
           config.volumeKeyReverse ? _nextPage() : _prevPage();
           return KeyEventResult.handled;
         }
-        if (event.logicalKey == LogicalKeyboardKey.volumeDown) {
+        if (event.logicalKey == LogicalKeyboardKey.audioVolumeDown) {
           config.volumeKeyReverse ? _prevPage() : _nextPage();
           return KeyEventResult.handled;
         }
