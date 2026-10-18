@@ -1,0 +1,79 @@
+name: Build APK
+on:
+  push:
+    branches: [ main, master ]
+  workflow_dispatch:
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.24.0'
+          channel: 'stable'
+      - name: Install dependencies
+        run: flutter pub get
+      - name: Build Release APK (universal)
+        run: |
+          flutter build apk --release
+          cp build/app/outputs/flutter-apk/app-release.apk /tmp/app-universal-release.apk
+      - name: Build arm64 APK
+        run: |
+          flutter build apk --release --target-platform android-arm64
+          cp build/app/outputs/flutter-apk/app-release.apk /tmp/app-arm64-release.apk
+      - name: Upload APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: legado-md3-apk
+          path: |
+            /tmp/app-universal-release.apk
+            /tmp/app-arm64-release.apk
+          retention-days: 30
+      - name: Generate version tag
+        id: version
+        run: |
+          VERSION=$(grep '^version:' pubspec.yaml | awk '{print $2}' | cut -d'+' -f1)
+          TAG="v${VERSION}-$(date +%Y%m%d-%H%M%S)"
+          echo "tag=$TAG" >> $GITHUB_OUTPUT
+      - name: Delete old prereleases
+        run: |
+          echo "Deleting old prereleases..."
+          gh release list --limit 100 --json tagName,isPrerelease --jq '.[] | select(.isPrerelease) | .tagName' | while read -r tag; do
+            [ -z "$tag" ] && continue
+            echo "Deleting old prerelease: $tag"
+            gh release delete "$tag" --yes --cleanup-tag 2>/dev/null || true
+          done
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Create Prerelease
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ steps.version.outputs.tag }}
+          name: "Legado MD3 ${{ steps.version.outputs.tag }} (预发布)"
+          body: |
+            ## Legado MD3 自动构建
+            
+            - 提交: ${{ github.sha }}
+            - 分支: ${{ github.ref_name }}
+            
+            ### 下载
+            - `app-universal-release.apk` - 通用版（支持所有架构）
+            - `app-arm64-release.apk` - arm64专用版（更小）
+            
+            > 此为自动构建的预发布版本。
+          prerelease: true
+          files: |
+            /tmp/app-universal-release.apk
+            /tmp/app-arm64-release.apk
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
