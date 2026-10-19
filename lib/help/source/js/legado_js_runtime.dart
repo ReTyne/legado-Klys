@@ -10,6 +10,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:legado_md3/common/app_navigator.dart';
 import 'package:legado_md3/data/local/app_database.dart';
+import 'package:legado_md3/data/model/book_source.dart';
 import 'package:legado_md3/data/model/rss_source.dart';
 import 'package:legado_md3/help/http/cookie_manager.dart';
 import 'package:legado_md3/ui/browser/browser_screen.dart';
@@ -121,7 +122,17 @@ class JsRuntimeManager {
     } else {
       rt = MiniLegadoJs();
     }
-    await rt.loadSource(source);
+    // 初始化失败（WebView 超时/异常）时回退迷你求值器，保证书源链路不挂死
+    try {
+      await rt.loadSource(source).timeout(const Duration(seconds: 20));
+    } catch (e) {
+      debugPrint('JS 运行时初始化失败，回退迷你求值器: $e');
+      try {
+        await rt.dispose();
+      } catch (_) {}
+      rt = MiniLegadoJs();
+      await rt.loadSource(source);
+    }
     _runtimes[key] = rt;
     _order.add(key);
     while (_order.length > _max) {
@@ -203,9 +214,12 @@ class WebViewLegadoJs implements LegadoJs {
 
   bool get _persistCookie => source.enabledCookieJar;
 
+  static const Duration _ensureTimeout = Duration(seconds: 15);
+
   Future<void> _ensure() async {
     if (_headless != null) {
-      await _ready.future;
+      // 已创建：等待就绪，同样带超时，避免 onLoadStop 永不到来导致整条链路挂死
+      await _ready.future.timeout(_ensureTimeout);
       return;
     }
     final settings = iw.InAppWebViewSettings(
@@ -239,7 +253,9 @@ class WebViewLegadoJs implements LegadoJs {
       shouldInterceptRequest: (controller, request) => _intercept(request),
     );
     await _headless!.run();
-    await _ready.future;
+    // 关键兜底：WebView 就绪带超时。若无超时，onLoadStop 不触发时
+    // await _ready.future 会永久挂起——这正是"书源调试卡死转圈"的根因。
+    await _ready.future.timeout(_ensureTimeout);
   }
 
   @override
@@ -260,6 +276,30 @@ class WebViewLegadoJs implements LegadoJs {
       globalThis.book = {}; globalThis.chapter = {}; globalThis.rssArticle = {}; globalThis.\$ = globalThis.result;
     ''';
     await c.evaluateJavascript(source: seed);
+    // eventListener：开启后把书源 JS 的 console 输出桥接进引擎调试日志，
+    // 使「调试」页能看到脚本内的 console.log/warn/error（对齐脚本日志排查需求）。
+    if (src is BookSource && (src).eventListener) {
+      try {
+        await c.evaluateJavascript(source: '''
+          (function(){
+            function hook(level, orig){
+              return function(){
+                try {
+                  var s = Array.prototype.map.call(arguments, function(a){ return String(a); }).join(' ');
+                  __state.logs.push(level + s);
+                } catch (e) {}
+                try { orig.apply(console, arguments); } catch (e2) {}
+              };
+            }
+            console.log = hook('', console.log.bind(console));
+            console.warn = hook('[warn] ', console.warn.bind(console));
+            console.error = hook('[err] ', console.error.bind(console));
+          })()
+        ''');
+      } catch (e) {
+        debugPrint('eventListener console 桥接失败: $e');
+      }
+    }
     final lib = (src.jsLib ?? '').trim();
     if (lib.isNotEmpty) {
       try {
@@ -524,8 +564,10 @@ class WebViewLegadoJs implements LegadoJs {
 
     iw.CallAsyncJavaScriptResult? res;
     try {
+      // 90 秒上限：防止书源 JS 死循环/长挂把整条抓取链路拖死
       res = await c.callAsyncJavaScript(
-          functionBody: functionBody, arguments: args);
+              functionBody: functionBody, arguments: args)
+          .timeout(const Duration(seconds: 90));
     } catch (e) {
       return JsEvalResult(error: 'JS 执行异常: $e', variable: req.source.variable);
     }

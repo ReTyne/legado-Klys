@@ -1,9 +1,14 @@
-import 'package:flutter/material.dart';
+/// 阅读设置相关页面聚合（阅读设置/点击区域/工具栏配置）。
+
+
 import 'package:file_picker/file_picker.dart';
-import 'package:legado_md3/ui/book/read/config/click_action_config_screen.dart';
-import 'package:legado_md3/ui/book/read/config/read_tool_config_screen.dart';
-import 'package:provider/provider.dart';
+import 'package:flutter/material.dart';
 import 'package:legado_md3/di/book_provider.dart';
+import 'package:legado_md3/help/config/read_menu_config.dart';
+import 'package:legado_md3/ui/book/read/config/reading_settings_screen.dart';
+import 'package:legado_md3/ui/book/read/config/reading_settings_screen.dart';
+import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 /// 全面阅读设置屏幕
 class ReadingSettingsScreen extends StatefulWidget {
@@ -220,3 +225,209 @@ class _ReadingSettingsScreenState extends State<ReadingSettingsScreen> with Sing
     showDialog(context: context, builder: (context) => AlertDialog(title: const Text('自定义底部'), content: TextField(controller: controller, maxLines: 2), actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('取消')), FilledButton(onPressed: () { context.read<ReadProvider>().updateConfig((c) => c.footerString = controller.text); Navigator.pop(context); }, child: const Text('保存'))]));
   }
 }
+
+/* ===== 由 click_action_config_screen.dart 合并 ===== */
+
+/// 9 区点击动作配置，对齐原版 ClickActionConfigSheet
+/// 屏幕划分为 3x3 九个区域，每个区域可绑定一个动作
+class ClickActionConfigScreen extends StatefulWidget {
+  const ClickActionConfigScreen({super.key});
+
+  @override
+  State<ClickActionConfigScreen> createState() => _ClickActionConfigScreenState();
+}
+
+class _ClickActionConfigScreenState extends State<ClickActionConfigScreen> {
+  // 动作: 0无 1上一章 2下一章 3菜单 4上一页 5下一页
+  static const actions = ['无动作', '上一章', '下一章', '显示菜单', '上一页', '下一页'];
+  static const icons = [Icons.remove, Icons.skip_previous, Icons.skip_next, Icons.menu_book, Icons.chevron_left, Icons.chevron_right];
+  List<int> _grid = List.filled(9, 2);
+
+  @override
+  void initState() { super.initState(); _load(); }
+
+  Future<void> _load() async {
+    final p = await SharedPreferences.getInstance();
+    final raw = p.getString('click_actions');
+    setState(() {
+      if (raw != null) {
+        final parts = raw.split(',').map((e) => int.tryParse(e) ?? 2).toList();
+        if (parts.length == 9) _grid = parts;
+      } else {
+        // 默认: 左列上一章, 右列下一章, 中列菜单
+        _grid = [1, 3, 2, 1, 3, 2, 1, 3, 2];
+      }
+    });
+  }
+
+  Future<void> _save() async {
+    final p = await SharedPreferences.getInstance();
+    await p.setString('click_actions', _grid.join(','));
+  }
+
+  void _editCell(int i) {
+    showDialog(context: context, builder: (c) => SimpleDialog(
+      title: Text('区域 ${i + 1} 动作'),
+      children: List.generate(actions.length, (a) => RadioListTile<int>(
+        value: a, groupValue: _grid[i],
+        title: Text(actions[a]),
+        onChanged: (v) { setState(() => _grid[i] = v ?? 0); _save(); Navigator.pop(c); },
+      )),
+    ));
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('点击区域设置'),
+        actions: [
+          TextButton(onPressed: () { setState(() => _grid = [1, 3, 2, 1, 3, 2, 1, 3, 2]); _save(); }, child: const Text('恢复默认')),
+        ],
+      ),
+      body: Column(children: [
+        const Padding(padding: EdgeInsets.all(16), child: Text('点击下方格子，为屏幕对应区域设置点击动作（从上到下、从左到右对应屏幕 3×3 分区）', style: TextStyle(fontSize: 13, color: Colors.grey))),
+        Expanded(child: Padding(padding: const EdgeInsets.all(16), child: GridView.builder(
+          physics: const NeverScrollableScrollPhysics(),
+          gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 3, mainAxisSpacing: 8, crossAxisSpacing: 8, childAspectRatio: 1),
+          itemCount: 9,
+          itemBuilder: (c, i) => InkWell(
+            onTap: () => _editCell(i),
+            borderRadius: BorderRadius.circular(12),
+            child: Container(
+              decoration: BoxDecoration(border: Border.all(color: Theme.of(context).colorScheme.outlineVariant), borderRadius: BorderRadius.circular(12), color: Theme.of(context).colorScheme.surfaceContainerHighest),
+              child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+                Icon(icons[_grid[i]], size: 28),
+                const SizedBox(height: 6),
+                Text(actions[_grid[i]], style: const TextStyle(fontSize: 12)),
+              ]),
+            ),
+          ),
+        ))),
+        const Padding(padding: EdgeInsets.all(16), child: Text('提示：中间区域通常设为「显示菜单」，左右两侧用于翻页', style: TextStyle(fontSize: 12, color: Colors.grey))),
+      ]),
+    );
+  }
+}
+
+/* ===== 由 read_tool_config_screen.dart 合并 ===== */
+
+/// 阅读界面菜单/按钮配置：控制显示与排序（对齐原版三个 ConfigSheet）
+class ReadToolConfigScreen extends StatefulWidget {
+  const ReadToolConfigScreen({super.key});
+
+  @override
+  State<ReadToolConfigScreen> createState() => _ReadToolConfigScreenState();
+}
+
+class _Group {
+  final String title;
+  final String prefsKey;
+  final Map<String, String> all;
+  final List<String> defaults;
+  List<String> order; // 可见且有序
+  _Group(this.title, this.prefsKey, this.all, this.defaults, this.order);
+}
+
+class _ReadToolConfigScreenState extends State<ReadToolConfigScreen> with SingleTickerProviderStateMixin {
+  late final TabController _tab;
+  final List<_Group> _groups = [];
+  bool _loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _tab = TabController(length: 4, vsync: this);
+    _load();
+  }
+
+  Future<void> _load() async {
+    final tb = await ReadMenuConfig.load(ReadMenuConfig.kToolBar, ReadMenuConfig.defaultToolBar);
+    final mm = await ReadMenuConfig.load(ReadMenuConfig.kMoreMenu, ReadMenuConfig.defaultMoreMenu);
+    final sm = await ReadMenuConfig.load(ReadMenuConfig.kSelectMenu, ReadMenuConfig.defaultSelectMenu);
+    final fb = await ReadMenuConfig.load(ReadMenuConfig.kFloatingBar, ReadMenuConfig.defaultFloatingBar);
+    _groups
+      ..add(_Group('底部工具栏', ReadMenuConfig.kToolBar, ReadMenuConfig.toolBarItems, ReadMenuConfig.defaultToolBar, tb))
+      ..add(_Group('更多菜单', ReadMenuConfig.kMoreMenu, ReadMenuConfig.moreMenuItems, ReadMenuConfig.defaultMoreMenu, mm))
+      ..add(_Group('文本选择菜单', ReadMenuConfig.kSelectMenu, ReadMenuConfig.selectMenuItems, ReadMenuConfig.defaultSelectMenu, sm))
+      ..add(_Group('悬浮快捷栏', ReadMenuConfig.kFloatingBar, ReadMenuConfig.floatingBarItems, ReadMenuConfig.defaultFloatingBar, fb));
+    if (mounted) setState(() => _loading = false);
+  }
+
+  Future<void> _save(_Group g) => ReadMenuConfig.save(g.prefsKey, g.order);
+
+  void _toggle(_Group g, String key, bool on) {
+    setState(() {
+      if (on) {
+        if (!g.order.contains(key)) g.order.add(key);
+      } else {
+        g.order.remove(key);
+      }
+    });
+    _save(g);
+  }
+
+  void _move(_Group g, int i, int dir) {
+    final j = i + dir;
+    if (j < 0 || j >= g.order.length) return;
+    setState(() {
+      final t = g.order[i]; g.order[i] = g.order[j]; g.order[j] = t;
+    });
+    _save(g);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    if (_loading) return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    return Scaffold(
+      appBar: AppBar(
+        title: const Text('阅读菜单配置'),
+        bottom: TabBar(controller: _tab, isScrollable: true, tabs: const [Tab(text: '底部工具栏'), Tab(text: '更多菜单'), Tab(text: '选择菜单'), Tab(text: '悬浮栏')]),
+        actions: [
+          IconButton(tooltip: '恢复默认', icon: const Icon(Icons.restart_alt), onPressed: _resetAll),
+        ],
+      ),
+      body: TabBarView(
+        controller: _tab,
+        children: _groups.map(_buildGroup).toList(),
+      ),
+    );
+  }
+
+  Future<void> _resetAll() async {
+    for (final g in _groups) {
+      g.order = List.of(g.defaults);
+      await _save(g);
+    }
+    if (mounted) setState(() {});
+  }
+
+  Widget _buildGroup(_Group g) {
+    // 已显示项按 order 排在前，其余隐藏项排在后
+    final hidden = g.all.keys.where((k) => !g.order.contains(k)).toList();
+    return ListView(
+      children: [
+        Padding(padding: const EdgeInsets.all(12), child: Text('勾选显示，拖动箭头调整顺序（已显示 ${g.order.length}/${g.all.length}）', style: Theme.of(context).textTheme.bodySmall)),
+        for (var i = 0; i < g.order.length; i++)
+          _tile(g, g.order[i], true, i),
+        if (hidden.isNotEmpty) const Divider(),
+        for (final k in hidden) _tile(g, k, false, -1),
+      ],
+    );
+  }
+
+  Widget _tile(_Group g, String key, bool shown, int index) {
+    return ListTile(
+      dense: true,
+      leading: Checkbox(value: shown, onChanged: (v) => _toggle(g, key, v ?? false)),
+      title: Text(g.all[key] ?? key),
+      trailing: shown
+          ? Row(mainAxisSize: MainAxisSize.min, children: [
+              IconButton(icon: const Icon(Icons.arrow_upward, size: 20), onPressed: index > 0 ? () => _move(g, index, -1) : null),
+              IconButton(icon: const Icon(Icons.arrow_downward, size: 20), onPressed: index < g.order.length - 1 ? () => _move(g, index, 1) : null),
+            ])
+          : null,
+    );
+  }
+}
+

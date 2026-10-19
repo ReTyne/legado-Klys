@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import 'package:legado_md3/data/model/book_group.dart';
+import 'package:legado_md3/data/model/db_models.dart';
 import 'package:legado_md3/data/local/app_database.dart';
 
 class _GroupItem {

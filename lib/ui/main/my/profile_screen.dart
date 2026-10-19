@@ -1,31 +1,34 @@
-import 'package:flutter/material.dart';
+
+
+
 import 'package:dio/dio.dart';
-import 'package:url_launcher/url_launcher.dart';
+import 'package:flutter/material.dart';
+import 'package:legado_md3/help/config/app_config.dart';
+import 'package:legado_md3/help/storage/crash_log_helper.dart';
 import 'package:legado_md3/help/web/web_service.dart';
-import 'package:legado_md3/ui/book/source/source_manage_screen.dart';
+import 'package:legado_md3/ui/ai/ai_chat_screen.dart';
+import 'package:legado_md3/ui/backup/backup_screen.dart';
 import 'package:legado_md3/ui/book/source/opds_screen.dart';
-import 'package:legado_md3/ui/config/replace_rule_screen.dart';
-import 'package:legado_md3/ui/config/txt_toc_rule_screen.dart';
+import 'package:legado_md3/ui/book/source/source_manage_screen.dart';
+import 'package:legado_md3/ui/bookmark/book_marking_screen.dart';
+import 'package:legado_md3/ui/bookmark/bookmark_screen.dart';
+import 'package:legado_md3/ui/cache/cache_manage_screen.dart';
+import 'package:legado_md3/ui/config/cloud_tts_screen.dart';
 import 'package:legado_md3/ui/config/dict_rule_screen.dart';
 import 'package:legado_md3/ui/config/highlight_tag_rule_screen.dart';
+import 'package:legado_md3/ui/config/replace_rule_screen.dart';
 import 'package:legado_md3/ui/config/settings_screen.dart';
-import 'package:legado_md3/ui/bookmark/bookmark_screen.dart';
-import 'package:legado_md3/ui/stats/reading_stats_screen.dart';
-import 'package:legado_md3/ui/cache/cache_manage_screen.dart';
-import 'package:legado_md3/ui/backup/backup_screen.dart';
-import 'package:legado_md3/ui/main/homepage/homepage_manage_screen.dart';
-import 'package:legado_md3/ui/config/theme_manage_screen.dart';
-import 'package:legado_md3/ui/config/cloud_tts_screen.dart';
-import 'package:legado_md3/ui/config/translation_screen.dart';
 import 'package:legado_md3/ui/config/tag_group_rule_screen.dart';
-import 'package:legado_md3/ui/rss/rule_subscription_screen.dart';
+import 'package:legado_md3/ui/config/theme_manage_screen.dart';
+import 'package:legado_md3/ui/config/translation_screen.dart';
+import 'package:legado_md3/ui/config/txt_toc_rule_screen.dart';
 import 'package:legado_md3/ui/file/file_manage_screen.dart';
-import 'package:legado_md3/ui/bookmark/book_marking_screen.dart';
-import 'package:legado_md3/ui/config/lab_config_screen.dart';
+import 'package:legado_md3/ui/main/homepage/homepage_manage_screen.dart';
 import 'package:legado_md3/ui/main/subscribe/subscribe_screen.dart';
-import 'package:legado_md3/help/storage/crash_log_helper.dart';
-import 'package:legado_md3/help/config/app_config.dart';
-import 'package:legado_md3/ui/ai/ai_chat_screen.dart';
+import 'package:legado_md3/ui/rss/rule_subscription_screen.dart';
+import 'package:legado_md3/ui/stats/reading_stats_screen.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:url_launcher/url_launcher.dart';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -234,3 +237,75 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 }
+
+/* ===== 由 lab_config_screen.dart 合并 ===== */
+
+/// 实验室 - 对齐原版LabConfigScreen
+class LabConfigScreen extends StatefulWidget {
+  const LabConfigScreen({super.key});
+
+  @override
+  State<LabConfigScreen> createState() => _LabConfigScreenState();
+}
+
+class _LabConfigScreenState extends State<LabConfigScreen> {
+  bool _labEnabled = false;
+  bool _eink = false;
+  bool _pageEstimateDiag = false;
+  bool _textSelectable = false;
+  bool _accelerateDownload = false;
+  bool _webDavSyncOnOpen = false;
+
+  @override
+  void initState() { super.initState(); _load(); }
+
+  Future<void> _load() async {
+    final p = await SharedPreferences.getInstance();
+    setState(() {
+      _labEnabled = p.getBool('lab_enabled') ?? false;
+      _eink = p.getBool('lab_eink') ?? false;
+      _pageEstimateDiag = p.getBool('lab_pageDiag') ?? false;
+      _textSelectable = p.getBool('lab_selectable') ?? false;
+      _accelerateDownload = p.getBool('lab_accDownload') ?? false;
+      _webDavSyncOnOpen = p.getBool('lab_webdavOpen') ?? false;
+    });
+  }
+
+  Future<void> _set(String k, bool v) async {
+    (await SharedPreferences.getInstance()).setBool(k, v);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('实验室')),
+      body: ListView(children: [
+        SwitchListTile(
+          secondary: const Icon(Icons.science_outlined),
+          title: const Text('启用实验室功能'),
+          subtitle: const Text('开启后可使用实验性功能，可能不稳定', style: TextStyle(fontSize: 11)),
+          value: _labEnabled, onChanged: (v) { setState(() => _labEnabled = v); _set('lab_enabled', v); }),
+        const Divider(),
+        Padding(padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+          child: Text('显示', style: TextStyle(fontWeight: FontWeight.bold, color: Theme.of(context).colorScheme.primary))),
+        SwitchListTile(dense: true, title: const Text('墨水屏(E-ink)显示优化'), subtitle: const Text('去除动画、提高对比度', style: TextStyle(fontSize: 11)),
+          value: _eink, onChanged: _labEnabled ? (v) { setState(() => _eink = v); _set('lab_eink', v); } : null),
+        SwitchListTile(dense: true, title: const Text('正文可自由选择复制'),
+          value: _textSelectable, onChanged: _labEnabled ? (v) { setState(() => _textSelectable = v); _set('lab_selectable', v); } : null),
+        Padding(padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+          child: Text('诊断', style: TextStyle(fontWeight: FontWeight.bold, color: Theme.of(context).colorScheme.primary))),
+        SwitchListTile(dense: true, title: const Text('分页估算诊断'), subtitle: const Text('显示章节分页计算过程', style: TextStyle(fontSize: 11)),
+          value: _pageEstimateDiag, onChanged: _labEnabled ? (v) { setState(() => _pageEstimateDiag = v); _set('lab_pageDiag', v); } : null),
+        Padding(padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+          child: Text('性能', style: TextStyle(fontWeight: FontWeight.bold, color: Theme.of(context).colorScheme.primary))),
+        SwitchListTile(dense: true, title: const Text('加速下载（多连接）'),
+          value: _accelerateDownload, onChanged: _labEnabled ? (v) { setState(() => _accelerateDownload = v); _set('lab_accDownload', v); } : null),
+        SwitchListTile(dense: true, title: const Text('打开应用时自动WebDAV同步'),
+          value: _webDavSyncOnOpen, onChanged: _labEnabled ? (v) { setState(() => _webDavSyncOnOpen = v); _set('lab_webdavOpen', v); } : null),
+        const SizedBox(height: 24),
+        const Center(child: Text('实验性功能可能随时变更或移除', style: TextStyle(fontSize: 11, color: Colors.grey))),
+      ]),
+    );
+  }
+}
+

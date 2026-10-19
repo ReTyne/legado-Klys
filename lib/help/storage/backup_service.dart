@@ -7,7 +7,7 @@ import 'package:legado_md3/data/model/replace_rule.dart';
 import 'package:legado_md3/data/model/bookmark.dart';
 import 'package:legado_md3/data/model/rss_source.dart';
 import 'package:legado_md3/data/model/txt_toc_rule.dart';
-import 'package:legado_md3/data/model/dict_rule.dart';
+import 'package:legado_md3/data/model/db_models.dart';
 import 'package:legado_md3/data/local/app_database.dart';
 
 /// 备份恢复服务

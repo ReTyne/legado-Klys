@@ -41,11 +41,12 @@ class ReadMenuConfig {
     'charset': '选择编码',
     'txttoc': 'TXT目录规则',
     'debug': '调试日志',
+    'sourceaction': '书源操作',
   };
   static const List<String> defaultMoreMenu = [
     'toc', 'search', 'translate', 'autoread', 'changesource', 'copypage', 'summary',
     'contentedit', 'replace', 'detail', 'refreshtoc', 'cache', 'addbookmark', 'bookmarklist',
-    'share', 'reverse', 'resegment', 'delruby', 'delh', 'charset', 'txttoc', 'debug',
+    'share', 'reverse', 'resegment', 'delruby', 'delh', 'charset', 'txttoc', 'debug', 'sourceaction',
   ];
 
   /// 文本选择菜单

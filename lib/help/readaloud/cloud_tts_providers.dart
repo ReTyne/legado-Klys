@@ -2,8 +2,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'package:path_provider/path_provider.dart';
 import 'package:dio/dio.dart';
-import 'package:legado_md3/data/model/cloud_tts_engine.dart';
-
+import 'package:legado_md3/data/model/db_models.dart';
 /// 云TTS提供商基类
 abstract class CloudTtsProvider {
   final CloudTtsEngine engine;

@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:legado_md3/data/model/book.dart';
-import 'package:legado_md3/data/model/book_group.dart';
+import 'package:legado_md3/data/model/db_models.dart';
 import 'package:legado_md3/di/book_provider.dart';
 
 Book _b(String name, {String? group, int? lastChapterIndex, int dur = 0}) =>

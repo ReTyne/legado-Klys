@@ -1,29 +1,31 @@
+
 import 'dart:io';
+
 import 'package:flutter/material.dart';
-import 'package:legado_md3/help/web/web_service.dart';
-import 'package:legado_md3/ui/config/theme_manage_screen.dart';
-import 'package:legado_md3/ui/config/cover_config_screen.dart';
-import 'package:legado_md3/ui/book/manga/manga_config_screen.dart';
-import 'package:legado_md3/ui/config/other_config_screen.dart';
-import 'package:legado_md3/ui/config/download_cache_config_screen.dart';
-import 'package:legado_md3/ui/config/cover_album_screen.dart';
-import 'package:legado_md3/ui/config/translation_screen.dart';
-import 'package:legado_md3/ui/cache/download_manage_screen.dart';
-import 'package:legado_md3/ui/config/replace_rule_screen.dart';
-import 'package:legado_md3/ui/config/txt_toc_rule_screen.dart';
-import 'package:legado_md3/ui/config/dict_rule_screen.dart';
-import 'package:legado_md3/ui/config/highlight_tag_rule_screen.dart';
-import 'package:legado_md3/ui/main/homepage/homepage_manage_screen.dart';
-import 'package:legado_md3/ui/config/import_book_config_screen.dart';
-import 'package:shared_preferences/shared_preferences.dart';
-import 'package:legado_md3/ui/config/cloud_tts_screen.dart';
-import 'package:legado_md3/ui/cache/cache_manage_screen.dart';
-import 'package:legado_md3/ui/backup/backup_screen.dart';
-import 'package:provider/provider.dart';
 import 'package:legado_md3/constant/app_theme.dart';
 import 'package:legado_md3/data/local/app_database.dart';
+import 'package:legado_md3/data/model/book.dart';
 import 'package:legado_md3/data/model/read_config.dart';
 import 'package:legado_md3/di/book_provider.dart';
+import 'package:legado_md3/help/web/web_service.dart';
+import 'package:legado_md3/ui/backup/backup_screen.dart';
+import 'package:legado_md3/ui/book/detail/book_detail_screen.dart';
+import 'package:legado_md3/ui/book/manga/manga_config_screen.dart';
+import 'package:legado_md3/ui/cache/cache_manage_screen.dart';
+import 'package:legado_md3/ui/cache/download_manage_screen.dart';
+import 'package:legado_md3/ui/config/cloud_tts_screen.dart';
+import 'package:legado_md3/ui/config/cover_config_screen.dart';
+import 'package:legado_md3/ui/config/dict_rule_screen.dart';
+import 'package:legado_md3/ui/config/download_cache_config_screen.dart';
+import 'package:legado_md3/ui/config/highlight_tag_rule_screen.dart';
+import 'package:legado_md3/ui/config/other_config_screen.dart';
+import 'package:legado_md3/ui/config/replace_rule_screen.dart';
+import 'package:legado_md3/ui/config/theme_manage_screen.dart';
+import 'package:legado_md3/ui/config/translation_screen.dart';
+import 'package:legado_md3/ui/config/txt_toc_rule_screen.dart';
+import 'package:legado_md3/ui/main/homepage/homepage_manage_screen.dart';
+import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -711,3 +713,162 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 }
+
+/* ===== 由 cover_album_screen.dart 合并 ===== */
+
+/// 封面相册 - 以网格展示书架所有书籍封面
+class CoverAlbumScreen extends StatefulWidget {
+  const CoverAlbumScreen({super.key});
+
+  @override
+  State<CoverAlbumScreen> createState() => _CoverAlbumScreenState();
+}
+
+class _CoverAlbumScreenState extends State<CoverAlbumScreen> {
+  final DatabaseService _db = DatabaseService();
+  List<Book> _books = [];
+  bool _loading = true;
+
+  @override
+  void initState() { super.initState(); _load(); }
+
+  Future<void> _load() async {
+    final books = await _db.getAllBooks();
+    if (mounted) setState(() { _books = books; _loading = false; });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: Text('封面相册 (${_books.length})')),
+      body: _loading
+          ? const Center(child: CircularProgressIndicator())
+          : _books.isEmpty
+              ? const Center(child: Text('书架暂无书籍'))
+              : GridView.builder(
+                  padding: const EdgeInsets.all(8),
+                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: 3, mainAxisSpacing: 8, crossAxisSpacing: 8, childAspectRatio: 0.72),
+                  itemCount: _books.length,
+                  itemBuilder: (context, i) {
+                    final book = _books[i];
+                    return GestureDetector(
+                      onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => BookDetailScreen(book: book))),
+                      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+                        Expanded(child: _cover(book)),
+                        const SizedBox(height: 4),
+                        Text(book.name, maxLines: 1, overflow: TextOverflow.ellipsis, textAlign: TextAlign.center, style: const TextStyle(fontSize: 11)),
+                      ]),
+                    );
+                  },
+                ),
+    );
+  }
+
+  Widget _cover(Book book) {
+    final url = book.customCoverUrl?.isNotEmpty == true ? book.customCoverUrl! : book.coverUrl;
+    if (url != null && url.isNotEmpty && url.startsWith('http')) {
+      return ClipRRect(borderRadius: BorderRadius.circular(6),
+        child: Image.network(url, fit: BoxFit.cover, errorBuilder: (_, __, ___) => _placeholder(book)));
+    }
+    return _placeholder(book);
+  }
+
+  Widget _placeholder(Book book) => ClipRRect(borderRadius: BorderRadius.circular(6),
+    child: Container(
+      decoration: BoxDecoration(gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight,
+        colors: [Theme.of(context).colorScheme.primaryContainer, Theme.of(context).colorScheme.secondaryContainer])),
+      child: Center(child: Padding(padding: const EdgeInsets.all(4), child: Text(book.name, maxLines: 3, overflow: TextOverflow.ellipsis, textAlign: TextAlign.center,
+        style: TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.onPrimaryContainer))))));
+}
+
+/* ===== 由 import_book_config_screen.dart 合并 ===== */
+
+/// 导入书籍配置，对齐原版 importBookConfig/ImportBookConfig
+class ImportBookConfigScreen extends StatefulWidget {
+  const ImportBookConfigScreen({super.key});
+
+  @override
+  State<ImportBookConfigScreen> createState() => _ImportBookConfigScreenState();
+}
+
+class _ImportBookConfigScreenState extends State<ImportBookConfigScreen> {
+  String _path = '';
+  String _fileNameTpl = '';
+  int _sort = 0;
+  static const _sorts = ['默认', '按文件名', '按修改时间', '按大小'];
+
+  @override
+  void initState() { super.initState(); _load(); }
+
+  Future<void> _load() async {
+    final p = await SharedPreferences.getInstance();
+    setState(() {
+      _path = p.getString('import_path') ?? 'Legado/books';
+      _fileNameTpl = p.getString('import_nameTpl') ?? '{name} - {author}';
+      _sort = p.getInt('import_sort') ?? 0;
+    });
+  }
+
+  Future<void> _save() async {
+    final p = await SharedPreferences.getInstance();
+    await p.setString('import_path', _path);
+    await p.setString('import_nameTpl', _fileNameTpl);
+    await p.setInt('import_sort', _sort);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: const Text('导入书籍配置'), actions: [
+        TextButton(onPressed: () { _save(); ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('已保存'))); }, child: const Text('保存')),
+      ]),
+      body: ListView(children: [
+        ListTile(
+          leading: const Icon(Icons.folder_outlined),
+          title: const Text('默认导入路径'),
+          subtitle: Text(_path, style: const TextStyle(fontSize: 12)),
+          trailing: const Icon(Icons.edit, size: 18),
+          onTap: () async {
+            final ctl = TextEditingController(text: _path);
+            final v = await showDialog<String>(context: context, builder: (c) => AlertDialog(
+              title: const Text('导入路径'),
+              content: TextField(controller: ctl, decoration: const InputDecoration(hintText: '相对路径')),
+              actions: [TextButton(onPressed: () => Navigator.pop(c), child: const Text('取消')), FilledButton(onPressed: () => Navigator.pop(c, ctl.text), child: const Text('确定'))],
+            ));
+            if (v != null) setState(() => _path = v);
+          },
+        ),
+        ListTile(
+          leading: const Icon(Icons.drive_file_rename_outline),
+          title: const Text('导入文件名规则'),
+          subtitle: const Text('可用变量：{name} 书名、{author} 作者、{index} 序号', style: TextStyle(fontSize: 11)),
+          trailing: Text(_fileNameTpl, style: const TextStyle(fontSize: 12)),
+          onTap: () async {
+            final ctl = TextEditingController(text: _fileNameTpl);
+            final v = await showDialog<String>(context: context, builder: (c) => AlertDialog(
+              title: const Text('文件名规则'),
+              content: TextField(controller: ctl),
+              actions: [TextButton(onPressed: () => Navigator.pop(c), child: const Text('取消')), FilledButton(onPressed: () => Navigator.pop(c, ctl.text), child: const Text('确定'))],
+            ));
+            if (v != null && v.isNotEmpty) setState(() => _fileNameTpl = v);
+          },
+        ),
+        ListTile(
+          leading: const Icon(Icons.sort),
+          title: const Text('本地导入排序'),
+          trailing: DropdownButton<int>(
+            value: _sort, underline: const SizedBox(),
+            items: List.generate(_sorts.length, (i) => DropdownMenuItem(value: i, child: Text(_sorts[i]))),
+            onChanged: (v) => setState(() => _sort = v ?? 0),
+          ),
+        ),
+        const Padding(padding: EdgeInsets.all(16), child: Text(
+          '说明：远程书籍服务器在「本地导入 → 远程书籍」中配置 WebDAV；导入的 TXT/EPUB 会按文件名规则保存到默认导入路径。',
+          style: TextStyle(fontSize: 12, color: Colors.grey),
+        )),
+      ]),
+    );
+  }
+}
+

@@ -1,39 +1,41 @@
+
 import 'dart:async';
 import 'dart:io';
-import 'package:flutter/material.dart';
-import 'package:shared_preferences/shared_preferences.dart';
-import 'package:legado_md3/data/model/bookmark.dart';
-import 'package:flutter/services.dart';
-import 'package:provider/provider.dart';
+
 import 'package:collection/collection.dart';
-import 'package:share_plus/share_plus.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:legado_md3/data/local/app_database.dart';
 import 'package:legado_md3/data/model/book.dart';
-import 'package:legado_md3/data/model/book_marking.dart';
-import 'package:legado_md3/data/model/dict_rule.dart';
-import 'package:legado_md3/ui/browser/browser_screen.dart';
 import 'package:legado_md3/data/model/book_chapter.dart';
 import 'package:legado_md3/data/model/book_source.dart';
-import 'package:legado_md3/ui/config/txt_toc_rule_screen.dart';
+import 'package:legado_md3/data/model/bookmark.dart';
+import 'package:legado_md3/data/model/db_models.dart';
 import 'package:legado_md3/data/model/read_config.dart';
 import 'package:legado_md3/di/book_provider.dart';
-import 'package:legado_md3/data/local/app_database.dart';
-import 'package:legado_md3/help/source/source_engine.dart';
-import 'package:legado_md3/help/source/content_dict_service.dart';
-import 'package:legado_md3/help/source/highlight_service.dart';
-import 'package:legado_md3/help/source/replace_rule_service.dart';
-import 'package:legado_md3/help/translate/translation_service.dart';
-import 'package:legado_md3/help/readaloud/tts_service.dart';
-import 'package:legado_md3/help/readaloud/reading_record.dart';
-import 'package:legado_md3/help/storage/local_book_parser.dart';
-import 'package:legado_md3/ui/book/read/config/reading_settings_screen.dart';
 import 'package:legado_md3/help/config/read_menu_config.dart';
+import 'package:legado_md3/help/http/cookie_manager.dart';
+import 'package:legado_md3/help/readaloud/reading_record.dart';
+import 'package:legado_md3/help/readaloud/tts_service.dart';
+import 'package:legado_md3/help/source/content_services.dart';
+import 'package:legado_md3/help/source/content_services.dart';
+import 'package:legado_md3/help/source/replace_rule_service.dart';
+import 'package:legado_md3/help/source/source_engine.dart';
+import 'package:legado_md3/help/storage/local_book_parser.dart';
+import 'package:legado_md3/help/translate/translation_service.dart';
 import 'package:legado_md3/ui/book/chapter/chapter_list_screen.dart';
-import 'package:legado_md3/ui/config/replace_rule_screen.dart';
-import 'package:legado_md3/ui/book/search/search_content_screen.dart';
-import 'package:legado_md3/ui/book/read/widgets/download_sheet.dart';
-import 'package:legado_md3/ui/book/read/widgets/change_chapter_source_sheet.dart';
-import 'package:legado_md3/ui/book/read/tts_player_screen.dart';
 import 'package:legado_md3/ui/book/detail/book_detail_screen.dart';
+import 'package:legado_md3/ui/book/read/config/reading_settings_screen.dart';
+import 'package:legado_md3/ui/book/read/tts_player_screen.dart';
+import 'package:legado_md3/ui/book/read/widgets/download_sheet.dart';
+import 'package:legado_md3/ui/book/search/search_content_screen.dart';
+import 'package:legado_md3/ui/book/source/source_login_screen.dart';
+import 'package:legado_md3/ui/browser/browser_screen.dart';
+import 'package:legado_md3/ui/config/replace_rule_screen.dart';
+import 'package:legado_md3/ui/config/txt_toc_rule_screen.dart';
+import 'package:provider/provider.dart';
+import 'package:share_plus/share_plus.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 class ReadingScreen extends StatefulWidget {
   final Book book;
@@ -88,6 +90,66 @@ class _ReadingScreenState extends State<ReadingScreen> with SingleTickerProvider
   int _preDownload = 5;
   // 正在预缓存的章节下标，避免重复请求
   final Set<int> _prefetching = {};
+  // 书源开启 customButton 时缓存的来源书源，用于「书源操作」菜单
+  BookSource? _customButtonSource;
+
+  /// 加载当前书籍来源书源；若其启用 customButton，则在更多菜单暴露「书源操作」
+  Future<void> _loadCustomButtonSource() async {
+    final origin = widget.book.origin;
+    if (origin == null || origin.isEmpty) return;
+    try {
+      final sources = await _db.getAllSources();
+      BookSource? s;
+      for (final e in sources) {
+        if (e.bookSourceUrl == origin) { s = e; break; }
+      }
+      if (mounted) setState(() => _customButtonSource = (s != null && s.customButton) ? s : null);
+    } catch (_) {}
+  }
+
+  /// 书源操作面板（设置变量 / 登录 / 清 Cookie / 打开主页）
+  void _showSourceActions() {
+    final source = _customButtonSource;
+    if (source == null) return;
+    showModalBottomSheet(
+      context: context,
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(leading: const Icon(Icons.edit_note), title: const Text('设置书源变量'),
+              subtitle: Text(source.variableComment?.isNotEmpty == true ? source.variableComment! : 'variableComment 未提示', maxLines: 1, overflow: TextOverflow.ellipsis),
+              onTap: () async {
+                Navigator.pop(ctx);
+                final ctrl = TextEditingController(text: source.variable ?? '');
+                final v = await showDialog<String>(context: context, builder: (d) => AlertDialog(
+                  title: const Text('设置书源变量'),
+                  content: TextField(controller: ctrl, decoration: const InputDecoration(hintText: '变量内容（JSON 或文本）'), maxLines: 4),
+                  actions: [TextButton(onPressed: () => Navigator.pop(d), child: const Text('取消')),
+                    FilledButton(onPressed: () => Navigator.pop(d, ctrl.text), child: const Text('保存'))],
+                ));
+                if (v != null) {
+                  await _db.updateSourceVariable(source.bookSourceUrl, v);
+                  source.variable = v;
+                  if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('书源变量已保存')));
+                }
+              }),
+            ListTile(leading: const Icon(Icons.login), title: const Text('书源登录'),
+              onTap: () { Navigator.pop(ctx); Navigator.push(context, MaterialPageRoute(builder: (_) => SourceLoginScreen(source: source))); }),
+            ListTile(leading: const Icon(Icons.cookie_outlined), title: const Text('清除书源 Cookie'),
+              onTap: () {
+                Navigator.pop(ctx);
+                final host = Uri.tryParse(source.bookSourceUrl)?.host ?? '';
+                if (host.isNotEmpty) CookieManager().removeHost(host);
+                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('已清除该书源 Cookie')));
+              }),
+            ListTile(leading: const Icon(Icons.language), title: const Text('打开书源主页'),
+              onTap: () { Navigator.pop(ctx); Navigator.push(context, MaterialPageRoute(builder: (_) => BrowserScreen(url: source.bookSourceUrl, title: source.bookSourceName))); }),
+          ],
+        ),
+      ),
+    );
+  }
 
   Future<void> _loadDownloadConfig() async {
     final cfg = context.read<ReadProvider>().config;
@@ -163,6 +225,7 @@ class _ReadingScreenState extends State<ReadingScreen> with SingleTickerProvider
   void initState() {
     super.initState();
     _loadClickActions();
+    _loadCustomButtonSource();
     _restoreCharset();
     _loadMenuConfig();
     _loadLabFlags();
@@ -1098,6 +1161,9 @@ class _ReadingScreenState extends State<ReadingScreen> with SingleTickerProvider
       case 'charset': return ListTile(leading: const Icon(Icons.code), title: const Text('选择编码'), onTap: () { close(); _selectCharset(); });
       case 'txttoc': return ListTile(leading: const Icon(Icons.list_alt), title: const Text('TXT目录规则'), onTap: () { close(); Navigator.push(context, MaterialPageRoute(builder: (_) => const TxtTocRuleScreen())); });
       case 'debug': return ListTile(leading: const Icon(Icons.receipt_long), title: const Text('调试日志'), onTap: () { close(); _showDebugLog(); });
+      case 'sourceaction':
+        if (_customButtonSource == null) return null;
+        return ListTile(leading: const Icon(Icons.build_circle_outlined), title: const Text('书源操作'), onTap: () { close(); _showSourceActions(); });
       default: return null;
     }
   }
@@ -1572,3 +1638,63 @@ class _ReadingScreenState extends State<ReadingScreen> with SingleTickerProvider
     )));
   }
 }
+/* ===== 由 change_chapter_source_sheet.dart 合并 ===== */
+
+/// 章节换源 - 对齐原版ChangeChapterSourceSheet
+/// 列出可用书源，选择后用指定源重新加载章节
+class ChangeChapterSourceSheet extends StatefulWidget {
+  final String bookName;
+  final String author;
+  const ChangeChapterSourceSheet({super.key, required this.bookName, required this.author});
+
+  @override
+  State<ChangeChapterSourceSheet> createState() => _ChangeChapterSourceSheetState();
+}
+
+class _ChangeChapterSourceSheetState extends State<ChangeChapterSourceSheet> {
+  final _db = DatabaseService();
+  List<BookSource> _sources = [];
+  bool _loading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _load();
+  }
+
+  Future<void> _load() async {
+    final sources = await _db.getAllSources(enabled: true);
+    setState(() { _sources = sources; _loading = false; });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return DraggableScrollableSheet(
+      initialChildSize: 0.7, minChildSize: 0.4, maxChildSize: 0.95, expand: false,
+      builder: (context, scrollController) => Column(children: [
+        const Padding(padding: EdgeInsets.all(16), child: Text('章节换源', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold))),
+        const Padding(padding: EdgeInsets.symmetric(horizontal: 16), child: Text('选择其他书源加载本章内容', style: TextStyle(fontSize: 12, color: Colors.grey))),
+        const SizedBox(height: 8),
+        Expanded(child: _loading
+          ? const Center(child: CircularProgressIndicator())
+          : _sources.isEmpty
+            ? const Center(child: Text('没有可用书源'))
+            : ListView.builder(
+                controller: scrollController,
+                itemCount: _sources.length,
+                itemBuilder: (context, i) {
+                  final s = _sources[i];
+                  return ListTile(
+                    dense: true,
+                    leading: const Icon(Icons.source_outlined),
+                    title: Text(s.bookSourceName, maxLines: 1, overflow: TextOverflow.ellipsis),
+                    subtitle: Text(s.bookSourceGroup ?? s.bookSourceUrl, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 11)),
+                    onTap: () => Navigator.pop(context, s),
+                  );
+                },
+              )),
+      ]),
+    );
+  }
+}
+

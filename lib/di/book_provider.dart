@@ -2,7 +2,7 @@ import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:legado_md3/data/model/book.dart';
 import 'package:legado_md3/data/model/book_chapter.dart';
-import 'package:legado_md3/data/model/book_group.dart';
+import 'package:legado_md3/data/model/db_models.dart';
 import 'package:legado_md3/data/model/read_config.dart';
 import '../data/local/app_database.dart';
 
