@@ -103,6 +103,64 @@ class LegadoBridgeJs {
     if (k.indexOf(",") >= 0) return __nEToPem(k);
     return k;
   }
+  // book/chapter 对象包装：补齐 legado 原版 BookBean/ChapterBean 的 JS 方法
+  // （大灰狼等书源直接调用 book.getVariable / book.setUseReplaceRule / book.readConfig.useReplaceRule）
+  globalThis.__wrapBook = function (b) {
+    if (!b || typeof b !== "object") return b;
+    if (typeof b.getVariable !== "function") {
+      b.getVariable = function (key) {
+        if (key === undefined || key === null || key === "") return this.variable || "";
+        try {
+          var o = JSON.parse(this.variable || "{}");
+          var v = o[key];
+          return v === undefined ? "" : (typeof v === "string" ? v : JSON.stringify(v));
+        } catch (e) { return ""; }
+      };
+      b.setVariable = function (v) { this.variable = (typeof v === "string") ? v : JSON.stringify(v); return true; };
+      b.setUseReplaceRule = function (v) {
+        this.useReplaceRule = !!v;
+        if (!this.readConfig || typeof this.readConfig !== "object") this.readConfig = {};
+        this.readConfig.useReplaceRule = !!v;
+        return true;
+      };
+      b.getUseReplaceRule = function () {
+        return !!(this.readConfig && this.readConfig.useReplaceRule) || !!this.useReplaceRule;
+      };
+      b.getName = function () { return this.name || ""; };
+      b.getAuthor = function () { return this.author || ""; };
+      b.getBookUrl = function () { return this.bookUrl || ""; };
+      b.getOrigin = function () { return this.origin || ""; };
+      b.getDurChapterIndex = function () { return this.durChapterIndex || 0; };
+      b.getDurChapterPos = function () { return this.durChapterPos || 0; };
+      b.getDurChapterTitle = function () { return this.durChapterTitle || ""; };
+      b.getTotalChapterNum = function () { return this.totalChapterNum || 0; };
+      b.getCoverUrl = function () { return this.customCoverUrl || this.coverUrl || ""; };
+      b.getCustomCoverUrl = function () { return this.customCoverUrl || ""; };
+      b.getIntro = function () { return this.intro || ""; };
+      b.getKind = function () { return this.kind || ""; };
+      b.getLastChapter = function () { return this.lastChapter || ""; };
+      b.getTag = function () { return this.tag || ""; };
+      b.getGroup = function () { return this.group || ""; };
+      b.getVariableComment = function () { return this.variableComment || ""; };
+      if (!b.readConfig || typeof b.readConfig !== "object") b.readConfig = {};
+    }
+    return b;
+  };
+  globalThis.__wrapChapter = function (c) {
+    if (!c || typeof c !== "object") return c;
+    if (typeof c.getChapterUrl !== "function") {
+      c.getChapterUrl = function () { return this.url || ""; };
+      c.getTitle = function () { return this.title || ""; };
+      c.getIndex = function () { return this.index || 0; };
+      c.getBookUrl = function () { return this.bookUrl || ""; };
+      c.getIsVip = function () { return !!this.isVip; };
+      c.getIsPay = function () { return !!this.isPay; };
+      c.getIsVolume = function () { return !!this.isVolume; };
+      c.getResourceUrl = function () { return this.resourceUrl || ""; };
+    }
+    return c;
+  };
+
   globalThis.__pendings = {};
 
   // ---- Rhino（legado 安卓）Java 互操作垫片：V8 无 Java，

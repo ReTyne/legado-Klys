@@ -476,6 +476,8 @@ class BookSourceEngine {
       var v = await _evalJs(source, script,
           key: key, page: page, baseUrl: baseUrl, book: book, isUrlRule: true);
       if (v == null || v.trim().isEmpty) {
+        // 脚本失败/为空：若规则本身由 JS 驱动，绝不能把 <js> 字面量当 URL 请求
+        if (t.contains('<js>') || t.contains('@js:')) return '';
         return _processUrlTemplate(urlTpl, key ?? '', page ?? 1);
       }
       v = v.trim();
@@ -788,6 +790,10 @@ class BookSourceEngine {
     try {
       final url = await _resolveUrlRule(source, source.searchUrl!,
           key: keyword, page: page, baseUrl: source.bookSourceUrl);
+      if (url.trim().isEmpty) {
+        _log('searchUrl 执行失败或为空（检查 JS 依赖的 source/cookie 状态）');
+        return [];
+      }
       _log('搜索关键字: $keyword');
       final content = await _fetch(url, baseUrl: source.bookSourceUrl);
       final books = await _extractBookList(source, content, source.ruleSearch!,

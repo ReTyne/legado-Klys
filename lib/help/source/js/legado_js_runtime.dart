@@ -277,8 +277,9 @@ class WebViewLegadoJs implements LegadoJs {
       globalThis.result = {}; globalThis.key = ''; globalThis.page = 1; globalThis.baseUrl = '';
       globalThis.sourceUrl = ${_js(src.jsUrl)};
       globalThis.sourceName = ${_js(src.jsName)};
-      globalThis.source = {url: ${_js(src.jsUrl)}, name: ${_js(src.jsName)}, httpUrl: ${_js(src.jsHttpUrl)}};
-      globalThis.book = {}; globalThis.chapter = {}; globalThis.rssArticle = {}; globalThis.\$ = globalThis.result;
+      // 注意：不要覆盖 globalThis.source —— bridge 已定义带 getVariable/putLoginInfo
+      // 等完整方法的 source 对象（数据全部从 __state.meta 读取），这里只需更新 meta。
+      globalThis.book = __wrapBook({}); globalThis.chapter = __wrapChapter({}); globalThis.rssArticle = {}; globalThis.\$ = globalThis.result;
     ''';
     await c.evaluateJavascript(source: seed);
     // eventListener：开启后把书源 JS 的 console 输出桥接进引擎调试日志，
@@ -756,8 +757,8 @@ class WebViewLegadoJs implements LegadoJs {
       };
       __state.variableComment = variableCommentArg || '';
       __state.lastUpdateTime = lastUpdateTimeArg || 0;
-      globalThis.book = bookArg;
-      globalThis.chapter = chapterArg;
+      globalThis.book = __wrapBook(bookArg);
+      globalThis.chapter = __wrapChapter(chapterArg);
       globalThis.rssArticle = rssArticleArg;
       __state.variable = variableArg || '';
       __state.loginInfo = loginInfoArg || '';
