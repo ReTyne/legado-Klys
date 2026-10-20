@@ -3,6 +3,7 @@
 
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:legado_md3/help/config/app_config.dart';
 import 'package:legado_md3/help/storage/crash_log_helper.dart';
 import 'package:legado_md3/help/web/web_service.dart';
@@ -39,6 +40,7 @@ class ProfileScreen extends StatefulWidget {
 
 class _ProfileScreenState extends State<ProfileScreen> {
   final WebService _webService = WebService();
+  static const _wakeChannel = MethodChannel('legado/wakelock');
   bool _webServiceRunning = false;
 
   @override
@@ -49,9 +51,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   Future<void> _toggleWebService(bool value) async {
     if (value) {
-      final port = (await SharedPreferences.getInstance()).getInt('oc_webPort') ?? 1122;
+      final prefs = await SharedPreferences.getInstance();
+      final port = prefs.getInt('oc_webPort') ?? 1122;
       await _webService.start(port: port);
       setState(() => _webServiceRunning = true);
+      // Web 服务唤醒锁（oc_webWakeLock）
+      if (prefs.getBool('oc_webWakeLock') ?? false) {
+        try { await _wakeChannel.invokeMethod('enable'); } catch (_) {}
+      }
       if (mounted) {
         final addr = await _webService.address;
         if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Web服务已启动: $addr')));
@@ -59,6 +66,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     } else {
       await _webService.stop();
       setState(() => _webServiceRunning = false);
+      try { await _wakeChannel.invokeMethod('disable'); } catch (_) {}
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Web服务已停止')));
       }

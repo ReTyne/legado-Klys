@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:dio/dio.dart';
+import 'package:url_launcher/url_launcher.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:legado_md3/help/storage/import_book_service.dart';
 import 'package:legado_md3/help/storage/auto_update_service.dart';
 import 'package:provider/provider.dart';
@@ -40,6 +43,7 @@ class _MainScreenState extends State<MainScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       Provider.of<BookProvider>(context, listen: false).loadBooks();
       _checkOpenedFile();
+      _checkAutoUpdateSetting();
       AutoUpdateService.instance.start(onUpdated: (n) {
         if (mounted) {
           Provider.of<BookProvider>(context, listen: false).loadBooks();
@@ -52,6 +56,41 @@ class _MainScreenState extends State<MainScreen> {
         _importOpened(call.arguments as String);
       }
     });
+  }
+
+  /// 启动自动检查应用更新（oc_autoCheckUpdate）
+  Future<void> _checkAutoUpdateSetting() async {
+    try {
+      final p = await SharedPreferences.getInstance();
+      if (p.getBool('oc_autoCheckUpdate') ?? false) {
+        _checkAppUpdate();
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _checkAppUpdate() async {
+    try {
+      final dio = Dio(BaseOptions(connectTimeout: const Duration(seconds: 8), receiveTimeout: const Duration(seconds: 12)));
+      final resp = await dio.get('https://api.github.com/repos/ReTyne/legado-Klys/releases/latest');
+      final tag = (resp.data['tag_name'] ?? '').toString();
+      final htmlUrl = (resp.data['html_url'] ?? 'https://github.com/ReTyne/legado-Klys/releases').toString();
+      final latest = tag.replaceAll(RegExp(r'[^0-9.]'), '').split('.').map((e) => int.tryParse(e) ?? 0).toList();
+      const cur = [3, 30, 0];
+      var hasNew = false;
+      for (var i = 0; i < 3; i++) {
+        final l = i < latest.length ? latest[i] : 0;
+        if (l > cur[i]) { hasNew = true; break; }
+        if (l < cur[i]) break;
+      }
+      if (mounted && hasNew) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('发现新版本 $tag'),
+          action: SnackBarAction(label: '前往', onPressed: () async {
+            try { await launchUrl(Uri.parse(htmlUrl), mode: LaunchMode.externalApplication); } catch (_) {}
+          }),
+        ));
+      }
+    } catch (_) {}
   }
 
   Future<void> _checkOpenedFile() async {

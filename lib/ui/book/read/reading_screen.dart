@@ -1,6 +1,7 @@
 
 import 'dart:async';
 import 'dart:io';
+import 'dart:ui' show FontFeature;
 
 import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
@@ -86,6 +87,8 @@ class _ReadingScreenState extends State<ReadingScreen> with SingleTickerProvider
   bool _pageDiag = false;
   // 实验室开关：加速下载（预缓存时多章节并发拉取）
   bool _accelerateDownload = false;
+  // 文字抗锯齿（oc_antiAlias，Flutter 引擎限制，用禁用字距/连字近似）
+  bool _antiAlias = true;
   // 下载缓存配置：阅读时向后预缓存的章节数（0 表示关闭）
   int _preDownload = 5;
   // 正在预缓存的章节下标，避免重复请求
@@ -209,6 +212,7 @@ class _ReadingScreenState extends State<ReadingScreen> with SingleTickerProvider
         _textSelectable = !labOn || (p.getBool('lab_selectable') ?? true);
         _pageDiag = labOn && (p.getBool('lab_pageDiag') ?? false);
         _accelerateDownload = labOn && (p.getBool('lab_accDownload') ?? false);
+        _antiAlias = p.getBool('oc_antiAlias') ?? true;
       });
     }
   }
@@ -402,13 +406,16 @@ class _ReadingScreenState extends State<ReadingScreen> with SingleTickerProvider
     // 应用「字典规则」内容替换词典（关闭或无规则时原样返回）
     if (_content != null) _content = await ContentDictService.apply(_content!);
 
-    // 应用替换净化规则（确保本地缓存内容也能被净化）
+    // 应用替换净化规则（oc_replaceDefault 控制默认是否应用；确保本地缓存内容也能被净化）
     if (_content != null && _content!.isNotEmpty) {
       try {
-        final replaceRules = await _db.getReplaceRules();
-        if (replaceRules.isNotEmpty) {
-          final svc = ReplaceRuleService();
-          _content = svc.applyRules(_content!, replaceRules);
+        final replaceDefault = (await SharedPreferences.getInstance()).getBool('oc_replaceDefault') ?? true;
+        if (replaceDefault) {
+          final replaceRules = await _db.getReplaceRules();
+          if (replaceRules.isNotEmpty) {
+            final svc = ReplaceRuleService();
+            _content = svc.applyRules(_content!, replaceRules);
+          }
         }
       } catch (_) {}
     }
@@ -763,6 +770,8 @@ class _ReadingScreenState extends State<ReadingScreen> with SingleTickerProvider
               : config.underlineType == 4
                   ? TextDecorationStyle.double
                   : null,
+      // 抗锯齿关闭时的近似：禁用字距/连字，文字更紧凑锐利
+      fontFeatures: _antiAlias ? null : const [FontFeature.disable('kern'), FontFeature.disable('liga')],
     );
     final align = config.textAlign == 1
         ? TextAlign.center

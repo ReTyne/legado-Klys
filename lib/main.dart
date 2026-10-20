@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:legado_md3/constant/app_theme.dart';
 import 'package:legado_md3/di/book_provider.dart';
 import 'package:legado_md3/ui/main/main_screen.dart';
@@ -8,8 +9,12 @@ import 'package:legado_md3/ui/welcome/welcome_screen.dart';
 import 'package:legado_md3/help/storage/crash_log_helper.dart';
 import 'package:legado_md3/help/storage/auto_sync_service.dart';
 import 'package:legado_md3/help/web/web_service.dart';
+import 'package:legado_md3/data/local/app_database.dart';
 import 'package:legado_md3/common/app_navigator.dart';
 import 'package:legado_md3/ui/book/reader_router.dart';
+
+/// 应用语言（oc_language：0 跟随系统 / 1 简体中文 / 2 English）
+Locale? appLocale;
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -22,10 +27,21 @@ void main() async {
   AutoSyncService.syncOnOpen();
   // 漫画界面开关（oc_showMangaUi）
   showMangaUi = prefs.getBool('oc_showMangaUi') ?? true;
+  // 语言设置（oc_language）
+  final lang = prefs.getInt('oc_language') ?? 0;
+  appLocale = lang == 1
+      ? const Locale('zh', 'CN')
+      : lang == 2
+          ? const Locale('en')
+          : null;
   // Web 服务自动启动（oc_webAutoStart）
   if (prefs.getBool('oc_webAutoStart') ?? false) {
     final port = prefs.getInt('oc_webPort') ?? 1122;
     WebService().start(port: port).catchError((_) {});
+  }
+  // 自动清理过期内容（oc_autoClearExpired）
+  if (prefs.getBool('oc_autoClearExpired') ?? false) {
+    DatabaseService().clearExpiredChapterContent().catchError((_) {});
   }
   runApp(const LegadoApp());
 }
@@ -157,6 +173,13 @@ class LegadoApp extends StatelessWidget {
             theme: appTheme.lightTheme,
             darkTheme: appTheme.darkTheme,
             themeMode: appTheme.themeMode,
+            locale: appLocale,
+            supportedLocales: const [Locale('zh', 'CN'), Locale('en')],
+            localizationsDelegates: const [
+              GlobalMaterialLocalizations.delegate,
+              GlobalWidgetsLocalizations.delegate,
+              GlobalCupertinoLocalizations.delegate,
+            ],
             home: const LaunchGate(),
           );
         },

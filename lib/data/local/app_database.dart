@@ -506,6 +506,24 @@ class DatabaseService {
     await db.update('book_chapters', {'content': null});
   }
 
+  /// 清理超过 [days] 天未更新书籍的章节正文缓存（oc_autoClearExpired），返回清理章节数
+  Future<int> clearExpiredChapterContent({int days = 30}) async {
+    final db = await database;
+    final cutoff = DateTime.now().millisecondsSinceEpoch - days * 24 * 3600 * 1000;
+    final books = await db.query('books',
+        columns: ['name', 'author'],
+        where: 'lastCheckTime IS NULL OR lastCheckTime < ?',
+        whereArgs: [cutoff]);
+    var count = 0;
+    for (final b in books) {
+      final name = b['name'] as String;
+      final author = b['author'] as String;
+      count += await db.update('book_chapters', {'content': null},
+          where: 'bookName = ? AND bookAuthor = ?', whereArgs: [name, author]);
+    }
+    return count;
+  }
+
   /// 清空单本书籍的章节正文缓存
   Future<void> clearBookChapterContent(String bookName, String bookAuthor) async {
     final db = await database;
