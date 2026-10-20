@@ -957,9 +957,15 @@ class LegadoBridgeJs {
       } catch (e) { return text; }
     },
 
-    // 下载/分享/打开（打开链接走内置浏览器；下载/分享需原生能力，保留回退）
-    download: function (url) { return ""; },
-    share: function (text) { return true; },
+    // 下载/分享/打开（走 legado:// 内部协议，原生拦截实现）
+    download: function (url) {
+      try { return __doXhr("legado://download?url=" + encodeURIComponent(url), { method: "GET" }); }
+      catch (e) { return ""; }
+    },
+    share: function (text) {
+      try { return __doXhr("legado://share", { method: "POST", body: String(text == null ? "" : text) }); }
+      catch (e) { return false; }
+    },
     openUrl: function (url) { __openBrowser(url, "", false); return true; },
 
     // 编码 / 文本处理
@@ -997,11 +1003,23 @@ class LegadoBridgeJs {
       try { return new TextDecoder(charset || "utf-8").decode(Uint8Array.from(bytes || [])); } catch (e) { return ""; }
     },
 
-    // 脚本导入 / 文件缓存（占位，返回空让书源回退）
-    importScript: function (path) { return ""; },
-    cacheFile: function (urlStr, saveTime) { return ""; },
-    readTxtFile: function (path, charset) { return ""; },
-    deleteFile: function (path) { return true; },
+    // 脚本导入 / 文件缓存（走 legado://file 内部协议，原生文件系统实现）
+    importScript: function (path) {
+      try { return __doXhr("legado://file?op=read&path=" + encodeURIComponent(path), { method: "GET" }); }
+      catch (e) { return ""; }
+    },
+    cacheFile: function (urlStr, saveTime) {
+      try { return __doXhr("legado://file?op=cache&url=" + encodeURIComponent(urlStr), { method: "GET" }); }
+      catch (e) { return ""; }
+    },
+    readTxtFile: function (path, charset) {
+      try { return __doXhr("legado://file?op=read&path=" + encodeURIComponent(path), { method: "GET" }); }
+      catch (e) { return ""; }
+    },
+    deleteFile: function (path) {
+      try { __doXhr("legado://file?op=delete&path=" + encodeURIComponent(path), { method: "GET" }); return true; }
+      catch (e) { return false; }
+    },
 
     // 源信息
     getSource: function () { return source; },

@@ -1,11 +1,14 @@
 import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart' as iw;
+import 'package:path_provider/path_provider.dart';
+import 'package:share_plus/share_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:archive/archive.dart';
 
@@ -361,9 +364,12 @@ class WebViewLegadoJs implements LegadoJs {
     final uri = request.url;
     final url = uri.toString();
 
-    // 内部协议：zip 解压 / TTF 字体反爬（书源 JS 通过同步 XHR 调用）
+    // 内部协议：zip 解压 / TTF 字体反爬 / 下载 / 分享（书源 JS 通过同步 XHR 调用）
     if (url.startsWith('legado://zip')) return await _handleZip(uri);
     if (url.startsWith('legado://ttf')) return await _handleTtf(request);
+    if (url.startsWith('legado://download')) return await _handleDownload(uri);
+    if (url.startsWith('legado://share')) return await _handleShare(request);
+    if (url.startsWith('legado://file')) return await _handleFile(uri);
 
     if (!url.startsWith('http')) return null;
     final method = (request.method ?? 'GET').toUpperCase();
@@ -507,6 +513,82 @@ class WebViewLegadoJs implements LegadoJs {
       );
     } catch (e) {
       return _textResponse('ttf 解析失败: $e', 502);
+    }
+  }
+
+  /// legado://download 协议：下载文件到应用文档目录，返回本地路径（java.download）。
+  Future<iw.WebResourceResponse> _handleDownload(iw.WebUri uri) async {
+    try {
+      final url = uri.queryParameters['url'] ?? '';
+      if (url.isEmpty) return _textResponse('download url 为空', 400);
+      final resp = await _dio.get<List<int>>(url,
+          options: Options(responseType: ResponseType.bytes));
+      final bytes = resp.data ?? const <int>[];
+      final dir = await getApplicationDocumentsDirectory();
+      final dlDir = Directory('${dir.path}/downloads');
+      if (!dlDir.existsSync()) dlDir.createSync(recursive: true);
+      var name = url.split('/').last.split('?').first;
+      if (name.isEmpty) name = 'download_${DateTime.now().millisecondsSinceEpoch}';
+      final file = File('${dlDir.path}/$name');
+      await file.writeAsBytes(bytes);
+      return _textResponse(file.path, 200);
+    } catch (e) {
+      return _textResponse('download 失败: $e', 502);
+    }
+  }
+
+  /// legado://share 协议：分享文本（java.share）。请求体为文本。
+  Future<iw.WebResourceResponse> _handleShare(iw.WebResourceRequest request) async {
+    try {
+      final b64 = (request.headers ?? const <String, String>{})['X-Legado-Body'] ?? '';
+      String text = '';
+      if (b64.isNotEmpty) {
+        text = utf8.decode(base64Decode(b64));
+      }
+      if (text.isEmpty) return _textResponse('false', 200);
+      final ctx = appNavigatorKey.currentState?.context;
+      if (ctx != null) {
+        await Share.share(text);
+        return _textResponse('true', 200);
+      }
+      return _textResponse('false', 200);
+    } catch (e) {
+      return _textResponse('false', 200);
+    }
+  }
+
+  /// legado://file 协议：本地文件读写（java.readTxtFile/importScript/cacheFile/deleteFile）。
+  /// 路径限定在应用文档目录 legado_files 内。
+  Future<iw.WebResourceResponse> _handleFile(iw.WebUri uri) async {
+    try {
+      final op = uri.queryParameters['op'] ?? '';
+      final path = uri.queryParameters['path'] ?? '';
+      final url = uri.queryParameters['url'] ?? '';
+      final dir = await getApplicationDocumentsDirectory();
+      final base = Directory('${dir.path}/legado_files');
+      if (!base.existsSync()) base.createSync(recursive: true);
+      if (op == 'read') {
+        final f = File('${base.path}/$path');
+        if (!f.existsSync()) return _textResponse('', 200);
+        return _textResponse(f.readAsStringSync(), 200);
+      }
+      if (op == 'delete') {
+        final f = File('${base.path}/$path');
+        if (f.existsSync()) f.deleteSync();
+        return _textResponse('true', 200);
+      }
+      if (op == 'cache') {
+        final resp = await _dio.get<List<int>>(url,
+            options: Options(responseType: ResponseType.bytes));
+        var name = url.split('/').last.split('?').first;
+        if (name.isEmpty) name = 'cache_${DateTime.now().millisecondsSinceEpoch}';
+        final f = File('${base.path}/$name');
+        await f.writeAsBytes(resp.data ?? const <int>[]);
+        return _textResponse(f.path, 200);
+      }
+      return _textResponse('unknown op', 400);
+    } catch (e) {
+      return _textResponse('file 操作失败: $e', 502);
     }
   }
 
