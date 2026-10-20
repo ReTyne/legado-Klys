@@ -49,7 +49,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   Future<void> _toggleWebService(bool value) async {
     if (value) {
-      await _webService.start(port: 1122);
+      final port = (await SharedPreferences.getInstance()).getInt('oc_webPort') ?? 1122;
+      await _webService.start(port: port);
       setState(() => _webServiceRunning = true);
       if (mounted) {
         final addr = await _webService.address;

@@ -143,6 +143,12 @@ class _BookshelfScreenState extends State<BookshelfScreen> {
         await provider.loadBooks();
       } catch (_) {}
       if (mounted) await _reloadCfg();
+      // 进入自动刷新（oc_autoRefresh）
+      try {
+        if ((await SharedPreferences.getInstance()).getBool('oc_autoRefresh') ?? false) {
+          _updateAllBooks();
+        }
+      } catch (_) {}
     });
   }
 
@@ -349,6 +355,17 @@ class _BookshelfScreenState extends State<BookshelfScreen> {
         ),
       ),
     );
+  }
+
+  /// 点击书籍：按「默认直接打开阅读」设置分流到阅读页或详情页
+  Future<void> _openBook(Book book) async {
+    bool defaultRead = false;
+    try {
+      defaultRead = (await SharedPreferences.getInstance()).getBool('oc_defaultRead') ?? false;
+    } catch (_) {}
+    if (!mounted) return;
+    Navigator.push(context, MaterialPageRoute(builder: (_) =>
+        defaultRead ? readerForBook(book) : BookDetailScreen(book: book)));
   }
 
   void _showBookMenu(Book book) {
@@ -763,8 +780,7 @@ class _BookshelfScreenState extends State<BookshelfScreen> {
       selected: selected,
       onTap: () => _selectMode
           ? _toggleSelect(book)
-          : Navigator.push(context,
-              MaterialPageRoute(builder: (_) => readerForBook(book))),
+          : _openBook(book),
       onLongPress: () =>
           _selectMode ? _toggleSelect(book) : _showBookMenu(book),
     );
@@ -775,8 +791,7 @@ class _BookshelfScreenState extends State<BookshelfScreen> {
     return GestureDetector(
       onTap: () => _selectMode
           ? _toggleSelect(book)
-          : Navigator.push(context,
-              MaterialPageRoute(builder: (_) => readerForBook(book))),
+          : _openBook(book),
       onLongPress: () =>
           _selectMode ? _toggleSelect(book) : _showBookMenu(book),
       child: Container(
@@ -806,8 +821,7 @@ class _BookshelfScreenState extends State<BookshelfScreen> {
     return GestureDetector(
       onTap: () => _selectMode
           ? _toggleSelect(book)
-          : Navigator.push(context,
-              MaterialPageRoute(builder: (_) => readerForBook(book))),
+          : _openBook(book),
       onLongPress: () =>
           _selectMode ? _toggleSelect(book) : _showBookMenu(book),
       child: Container(

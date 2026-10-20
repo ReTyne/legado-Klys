@@ -7,14 +7,26 @@ import 'package:legado_md3/ui/main/main_screen.dart';
 import 'package:legado_md3/ui/welcome/welcome_screen.dart';
 import 'package:legado_md3/help/storage/crash_log_helper.dart';
 import 'package:legado_md3/help/storage/auto_sync_service.dart';
+import 'package:legado_md3/help/web/web_service.dart';
 import 'package:legado_md3/common/app_navigator.dart';
+import 'package:legado_md3/ui/book/reader_router.dart';
 
-void main() {
+void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  // 安装崩溃日志捕获（框架异常 + 异步异常落盘，供「我的-崩溃日志」查看）
-  CrashLogHelper.instance.install();
+  final prefs = await SharedPreferences.getInstance();
+  // 记录日志开关（oc_recordLog）
+  if (prefs.getBool('oc_recordLog') ?? false) {
+    CrashLogHelper.instance.install();
+  }
   // 实验室：打开应用时自动 WebDAV 同步（开关关闭则立即返回，不影响启动）
   AutoSyncService.syncOnOpen();
+  // 漫画界面开关（oc_showMangaUi）
+  showMangaUi = prefs.getBool('oc_showMangaUi') ?? true;
+  // Web 服务自动启动（oc_webAutoStart）
+  if (prefs.getBool('oc_webAutoStart') ?? false) {
+    final port = prefs.getInt('oc_webPort') ?? 1122;
+    WebService().start(port: port).catchError((_) {});
+  }
   runApp(const LegadoApp());
 }
 
@@ -28,12 +40,19 @@ class LaunchGate extends StatefulWidget {
 
 class _LaunchGateState extends State<LaunchGate> {
   bool? _firstLaunchDone;
+  bool _locked = false;
 
   @override
   void initState() {
     super.initState();
     SharedPreferences.getInstance().then((p) {
-      if (mounted) setState(() => _firstLaunchDone = p.getBool('first_launch_done') ?? false);
+      final pwd = p.getString('oc_password') ?? '';
+      if (mounted) {
+        setState(() {
+          _firstLaunchDone = p.getBool('first_launch_done') ?? false;
+          _locked = pwd.isNotEmpty;
+        });
+      }
     });
   }
 
@@ -42,7 +61,79 @@ class _LaunchGateState extends State<LaunchGate> {
     if (_firstLaunchDone == null) {
       return const Scaffold(body: Center(child: CircularProgressIndicator()));
     }
+    if (_locked) {
+      return LockScreen(onUnlocked: () => setState(() => _locked = false));
+    }
     return _firstLaunchDone! ? const MainScreen() : const WelcomeScreen();
+  }
+}
+
+/// 启动密码锁（本地密码，对应「其他设置-设置本地密码」）。
+class LockScreen extends StatefulWidget {
+  final VoidCallback onUnlocked;
+  const LockScreen({super.key, required this.onUnlocked});
+
+  @override
+  State<LockScreen> createState() => _LockScreenState();
+}
+
+class _LockScreenState extends State<LockScreen> {
+  final _controller = TextEditingController();
+  String? _error;
+
+  @override
+  void dispose() {
+    _controller.dispose();
+    super.dispose();
+  }
+
+  Future<void> _verify() async {
+    final p = await SharedPreferences.getInstance();
+    final pwd = p.getString('oc_password') ?? '';
+    if (_controller.text == pwd) {
+      widget.onUnlocked();
+    } else {
+      setState(() => _error = '密码错误');
+      _controller.clear();
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Scaffold(
+      body: SafeArea(
+        child: Center(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 40),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(Icons.lock_outline, size: 56, color: theme.colorScheme.primary),
+                const SizedBox(height: 16),
+                const Text('阅读 MD3', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+                const SizedBox(height: 32),
+                TextField(
+                  controller: _controller,
+                  obscureText: true,
+                  autofocus: true,
+                  textInputAction: TextInputAction.done,
+                  onSubmitted: (_) => _verify(),
+                  decoration: InputDecoration(
+                    hintText: '输入启动密码',
+                    errorText: _error,
+                    border: const OutlineInputBorder(),
+                    prefixIcon: const Icon(Icons.password),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                FilledButton(onPressed: _verify, child: const Text('解锁')),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
   }
 }
 

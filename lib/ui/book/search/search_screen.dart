@@ -140,7 +140,11 @@ class _SearchScreenState extends State<SearchScreen> {
     );
     await _db.insertBook(newBook);
     await provider.loadBooks();
-    if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('已添加《${book.name}》到书架')));
+    // 加入书架提示（oc_showAddShelfTip）
+    if (mounted) {
+      final showTip = (await SharedPreferences.getInstance()).getBool('oc_showAddShelfTip') ?? true;
+      if (showTip) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('已添加《${book.name}》到书架')));
+    }
   }
 
   void _showSourceFilter() {

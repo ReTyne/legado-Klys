@@ -152,8 +152,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
     await _saveSetting('web_service_enabled', v);
     try {
       if (v) {
-        await _webService.start();
-        if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Web服务已启动 http://$_lanIp:1122')));
+        final port = (await SharedPreferences.getInstance()).getInt('oc_webPort') ?? 1122;
+        await _webService.start(port: port);
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Web服务已启动 http://$_lanIp:$port')));
       } else {
         await _webService.stop();
       }

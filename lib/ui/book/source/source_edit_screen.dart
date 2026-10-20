@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:share_plus/share_plus.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:legado_md3/data/model/book_source.dart';
 import 'package:legado_md3/data/local/app_database.dart';
 import 'package:legado_md3/help/http/cookie_manager.dart';
@@ -909,6 +910,7 @@ class _SourceEditScreenState extends State<SourceEditScreen> with SingleTickerPr
 
   Future<void> _editRawJson(String group, String label) async {
     final current = _origRules[group] ?? {};
+    final maxLine = (await SharedPreferences.getInstance()).getInt('oc_sourceEditMaxLine') ?? 14;
     final ctrl = TextEditingController(
         text: current.isEmpty ? '' : const JsonEncoder.withIndent('  ').convert(current));
     final res = await showDialog<String>(
@@ -919,7 +921,7 @@ class _SourceEditScreenState extends State<SourceEditScreen> with SingleTickerPr
           width: double.maxFinite,
           child: TextField(
             controller: ctrl,
-            maxLines: 14,
+            maxLines: maxLine,
             style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
             decoration: const InputDecoration(border: OutlineInputBorder(), hintText: '{}'),
           ),
