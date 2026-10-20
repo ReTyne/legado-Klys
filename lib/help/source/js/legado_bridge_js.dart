@@ -943,7 +943,19 @@ class LegadoBridgeJs {
     },
 
     // 字体替换（占位）
-    replaceFont: function (text, font) { return text; },
+    replaceFont: function (text, font) {
+      try {
+        var map = (typeof font === "string") ? JSON.parse(font) : font;
+        if (!map) return text;
+        var s = String(text == null ? "" : text);
+        var out = "";
+        for (var i = 0; i < s.length; i++) {
+          var c = s[i];
+          out += (map[c] !== undefined && map[c] !== null) ? map[c] : c;
+        }
+        return out;
+      } catch (e) { return text; }
+    },
 
     // 下载/分享/打开（打开链接走内置浏览器；下载/分享需原生能力，保留回退）
     download: function (url) { return ""; },
@@ -1013,10 +1025,37 @@ class LegadoBridgeJs {
     getVerificationCode: function (imageUrl) { return ""; },
 
     // 字体反爬（占位）
-    queryTTF: function (data, useCache) { return null; },
-    getZipStringContent: function (url, path, charset) { return ""; },
-    unzipFile: function (zipPath) { return ""; },
-    unArchiveFile: function (zipPath) { return ""; },
+    queryTTF: function (data, useCache) {
+      try {
+        var b64 = String(data == null ? "" : data);
+        // data 为 http 链接时先下载字体文件
+        if (/^https?:\/\//i.test(b64)) {
+          var bytes = __doXhr(b64, { method: "GET" }, "arraybuffer");
+          var bin = new Uint8Array(bytes);
+          var binStr = "";
+          for (var i = 0; i < bin.length; i++) binStr += String.fromCharCode(bin[i]);
+          b64 = btoa(binStr);
+        }
+        if (!b64) return null;
+        var resp = __doXhr("legado://ttf", { method: "POST", body: b64 });
+        return JSON.parse(resp);
+      } catch (e) { return null; }
+    },
+    getZipStringContent: function (url, path, charset) {
+      try {
+        return __doXhr("legado://zip?url=" + encodeURIComponent(url) + "&path=" + encodeURIComponent(path || ""), { method: "GET" });
+      } catch (e) { return ""; }
+    },
+    unzipFile: function (zipPath) {
+      try {
+        return __doXhr("legado://zip?url=" + encodeURIComponent(zipPath) + "&path=", { method: "GET" });
+      } catch (e) { return ""; }
+    },
+    unArchiveFile: function (zipPath) {
+      try {
+        return __doXhr("legado://zip?url=" + encodeURIComponent(zipPath) + "&path=", { method: "GET" });
+      } catch (e) { return ""; }
+    },
 
     // 对称加密：返回 encrypt/decrypt 对象（对齐 legado JsExtensions.createSymmetricCrypto）
     createSymmetricCrypto: function (transformation, key) {

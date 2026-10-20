@@ -7,12 +7,14 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart' as iw;
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:archive/archive.dart';
 
 import 'package:legado_md3/common/app_navigator.dart';
 import 'package:legado_md3/data/local/app_database.dart';
 import 'package:legado_md3/data/model/book_source.dart';
 import 'package:legado_md3/data/model/rss_source.dart';
 import 'package:legado_md3/help/http/cookie_manager.dart';
+import 'package:legado_md3/help/source/ttf_parser.dart';
 import 'package:legado_md3/ui/browser/browser_screen.dart';
 import 'legado_bridge_js.dart';
 import 'aes_js_lib.dart';
@@ -358,6 +360,11 @@ class WebViewLegadoJs implements LegadoJs {
   Future<iw.WebResourceResponse?> _intercept(iw.WebResourceRequest request) async {
     final uri = request.url;
     final url = uri.toString();
+
+    // 内部协议：zip 解压 / TTF 字体反爬（书源 JS 通过同步 XHR 调用）
+    if (url.startsWith('legado://zip')) return await _handleZip(uri);
+    if (url.startsWith('legado://ttf')) return await _handleTtf(request);
+
     if (!url.startsWith('http')) return null;
     final method = (request.method ?? 'GET').toUpperCase();
 
@@ -439,6 +446,77 @@ class WebViewLegadoJs implements LegadoJs {
       );
     }
   }
+
+  /// legado://zip 协议：下载 zip 并解压出指定文件内容（书源 java.getZipStringContent/unzipFile）。
+  Future<iw.WebResourceResponse> _handleZip(iw.WebUri uri) async {
+    try {
+      final zipUrl = uri.queryParameters['url'] ?? '';
+      final path = uri.queryParameters['path'] ?? '';
+      if (zipUrl.isEmpty) return _textResponse('zip url 为空', 400);
+      final resp = await _dio.get<List<int>>(zipUrl,
+          options: Options(responseType: ResponseType.bytes));
+      final bytes = resp.data ?? const <int>[];
+      if (bytes.isEmpty) return _textResponse('zip 下载为空', 502);
+      final archive = ZipDecoder().decodeBytes(bytes);
+      for (final f in archive.files) {
+        if (!f.isFile) continue;
+        if (path.isNotEmpty && f.name != path && !f.name.endsWith('/$path')) {
+          continue;
+        }
+        final data = f.content;
+        final String content;
+        if (data is String) {
+          content = data;
+        } else if (data is List<int>) {
+          content = utf8.decode(data);
+        } else {
+          content = utf8.decode(f.content as List<int>);
+        }
+        return iw.WebResourceResponse(
+          statusCode: 200,
+          reasonPhrase: 'OK',
+          contentType: 'text/plain; charset=utf-8',
+          contentEncoding: 'utf-8',
+          data: Uint8List.fromList(utf8.encode(content)),
+        );
+      }
+      return _textResponse('zip 内未找到文件: $path', 404);
+    } catch (e) {
+      return _textResponse('zip 解压失败: $e', 502);
+    }
+  }
+
+  /// legado://ttf 协议：解析字体反爬映射（java.queryTTF）。请求体为 base64 字体数据。
+  Future<iw.WebResourceResponse> _handleTtf(iw.WebResourceRequest request) async {
+    try {
+      final b64 = (request.headers ?? const <String, String>{})['X-Legado-Body'] ?? '';
+      if (b64.isEmpty) return _textResponse('ttf 数据为空', 400);
+      // X-Legado-Body 由 __b64Unicode(bodyStr) 生成，bodyStr 是字体数据的 base64 文本，
+      // 故需两层解码：先还原 bodyStr，再解码出字体字节。
+      final bodyStrBytes = base64Decode(b64);
+      final bodyStr = utf8.decode(bodyStrBytes);
+      final bytes = base64Decode(bodyStr);
+      final map = TtfParser.fromBytes(bytes).buildReplacementMap();
+      final json = jsonEncode(map);
+      return iw.WebResourceResponse(
+        statusCode: 200,
+        reasonPhrase: 'OK',
+        contentType: 'application/json; charset=utf-8',
+        contentEncoding: 'utf-8',
+        data: Uint8List.fromList(utf8.encode(json)),
+      );
+    } catch (e) {
+      return _textResponse('ttf 解析失败: $e', 502);
+    }
+  }
+
+  iw.WebResourceResponse _textResponse(String msg, int code) => iw.WebResourceResponse(
+        statusCode: code,
+        reasonPhrase: 'Error',
+        contentType: 'text/plain; charset=utf-8',
+        contentEncoding: 'utf-8',
+        data: Uint8List.fromList(utf8.encode(msg)),
+      );
 
   Map<String, String> _corsHeaders() => const {
         'Access-Control-Allow-Origin': '*',
