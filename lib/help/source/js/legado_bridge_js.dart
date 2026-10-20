@@ -1036,10 +1036,12 @@ class LegadoBridgeJs {
     },
     ajaxTestAll: function (urlList, timeout) { return this.ajaxAll(urlList); },
 
-    // WebView 渲染（占位，返回空让书源回退到普通请求）
+    // WebView 渲染：需第二个可见/无头 WebView 加载并等待 JS 渲染后取源码，
+    // 嵌套 headless WebView 生命周期风险高，暂回退为普通请求（书源 try/catch 可降级）。
     webView: function (html, url, js, cacheFirst) { return html || ""; },
     webViewGetSource: function (html, url, js, sourceRegex, cacheFirst, delayTime) { return ""; },
     webViewGetOverrideUrl: function (html, url, js, overrideUrlRegex, cacheFirst, delayTime) { return url || ""; },
+    // 验证码识别：纯 OCR 不可靠，需打码平台/人工，保留回退
     getVerificationCode: function (imageUrl) { return ""; },
 
     // 字体反爬（占位）
