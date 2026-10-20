@@ -86,7 +86,7 @@ class AppTheme extends ChangeNotifier {
           fontWeight: FontWeight.w500,
         ),
       ),
-      cardTheme: CardThemeData(
+      cardTheme: CardTheme(
         color: colorScheme.surfaceContainerHighest,
         elevation: 0,
         shape: RoundedRectangleBorder(
@@ -159,7 +159,7 @@ class AppTheme extends ChangeNotifier {
           borderRadius: BorderRadius.circular(12),
         ),
       ),
-      dialogTheme: DialogThemeData(
+      dialogTheme: DialogTheme(
         backgroundColor: colorScheme.surfaceContainerHigh,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(24),
@@ -171,7 +171,7 @@ class AppTheme extends ChangeNotifier {
           borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
         ),
       ),
-      tabBarTheme: TabBarThemeData(
+      tabBarTheme: TabBarTheme(
         labelColor: colorScheme.primary,
         unselectedLabelColor: colorScheme.onSurfaceVariant,
         indicatorColor: colorScheme.primary,
