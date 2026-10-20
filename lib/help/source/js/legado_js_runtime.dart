@@ -617,7 +617,8 @@ class WebViewLegadoJs implements LegadoJs {
       } catch (_) {}
     }
 
-    final h = iw.HeadlessInAppWebView(
+    late final iw.HeadlessInAppWebView h;
+    h = iw.HeadlessInAppWebView(
       initialSettings: iw.InAppWebViewSettings(
         javaScriptEnabled: true,
         domStorageEnabled: true,
