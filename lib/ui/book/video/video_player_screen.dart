@@ -29,8 +29,8 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   bool _playing = false;
   double _rate = 1.0;
   final List<double> _rates = [0.5, 0.75, 1.0, 1.25, 1.5, 2.0];
-  // 弹幕：[时间(秒), 文本]
-  List<({double time, String text})> _danmaku = [];
+  // 弹幕列表
+  List<_DanmakuItem> _danmaku = [];
   Timer? _hideTimer;
 
   @override
@@ -59,7 +59,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
 
   /// 尝试从章节内容解析弹幕（JSON 数组 [{t/time, text/content}]）。
   void _tryParseDanmaku(String? content) {
-    final list = <({double time, String text})>[];
+    final list = <_DanmakuItem>[];
     final c = content?.trim() ?? '';
     if (c.isEmpty || c.startsWith('http') || c.startsWith('<')) {
       setState(() => _danmaku = list);
@@ -70,9 +70,9 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       if (arr is List) {
         for (final e in arr) {
           if (e is Map) {
-            final t = (e['t'] ?? e['time'] ?? e['seconds'])?.toDouble() ?? 0.0;
+            final t = (e['t'] ?? e['time'] ?? e['seconds']).toDouble() ?? 0.0;
             final text = (e['text'] ?? e['content'] ?? e['m'] ?? '').toString();
-            if (text.isNotEmpty) list.add((time: t, text: text));
+            if (text.isNotEmpty) list.add(_DanmakuItem(t, text));
           }
         }
       }
@@ -176,7 +176,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   }
 
   /// 当前播放位置的弹幕
-  List<({double time, String text})> _danmakuAt(Duration pos) {
+  List<_DanmakuItem> _danmakuAt(Duration pos) {
     final sec = pos.inMilliseconds / 1000.0;
     return _danmaku.where((d) => (d.time - sec).abs() < 3.0).toList();
   }
@@ -187,7 +187,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     final c = _controller;
     final pos = c?.value.position ?? Duration.zero;
     final dur = c?.value.duration ?? Duration.zero;
-    final activeDanmaku = c != null && c.value.isInitialized ? _danmakuAt(pos) : const <({double, String})>[];
+    final activeDanmaku = c != null && c.value.isInitialized ? _danmakuAt(pos) : const <_DanmakuItem>[];
 
     return Scaffold(
       backgroundColor: Colors.black,
@@ -227,7 +227,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                       Expanded(child: Slider(
                         value: dur.inMilliseconds > 0 ? pos.inMilliseconds.clamp(0, dur.inMilliseconds).toDouble() : 0,
                         max: dur.inMilliseconds > 0 ? dur.inMilliseconds.toDouble() : 1,
-                        onChanged: (v) => c.seekTo(Duration(milliseconds: v.toInt())),
+                        onChanged: (v) => c?.seekTo(Duration(milliseconds: v.toInt())),
                       )),
                       Text(_fmt(dur), style: const TextStyle(color: Colors.white, fontSize: 12)),
                     ])),
@@ -254,6 +254,13 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     String two(int n) => n.toString().padLeft(2, '0');
     return '${two(d.inMinutes.remainder(60))}:${two(d.inSeconds.remainder(60))}';
   }
+}
+
+/// 单条弹幕数据。
+class _DanmakuItem {
+  final double time;
+  final String text;
+  const _DanmakuItem(this.time, this.text);
 }
 
 /// 单条弹幕（从右向左滚动的动画文本）。
