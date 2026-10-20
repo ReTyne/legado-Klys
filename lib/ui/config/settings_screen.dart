@@ -455,7 +455,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             title: const Text('模拟阅读'),
             subtitle: const Text('自动模拟翻页阅读'),
             value: _simulateReading,
-            onChanged: (v) async { await _prefs?.setBool('simulate_reading', v); setState(() => _simulateReading = v); },
+            onChanged: (v) => setState(() { _simulateReading = v; _updateReadConfig((c) => c.simulatedReading = v); }),
           ),
 
           const Divider(),

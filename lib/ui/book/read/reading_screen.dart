@@ -245,10 +245,32 @@ class _ReadingScreenState extends State<ReadingScreen> with SingleTickerProvider
     _clockTimer = Timer.periodic(const Duration(minutes: 1), (_) {
       if (mounted) setState(() => _currentTime = _formatTime(DateTime.now()));
     });
-    // 屏幕常亮：延迟到第一帧后读取 config
+    // 屏幕常亮 + 沉浸/全屏/方向：延迟到第一帧后读取 config
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      _applyWakeLock(context.read<ReadProvider>().config.keepScreenOn);
+      final cfg = context.read<ReadProvider>().config;
+      _applyWakeLock(cfg.keepScreenOn);
+      _applyScreenMode(cfg);
     });
+  }
+
+  /// 应用沉浸式/全屏/屏幕方向设置
+  void _applyScreenMode(ReadConfig config) {
+    try {
+      if (config.immersiveMode || config.fullScreen) {
+        SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+      } else {
+        SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+      }
+      if (config.screenOrientation == 1) {
+        SystemChrome.setPreferredOrientations(
+            [DeviceOrientation.portraitUp, DeviceOrientation.portraitDown]);
+      } else if (config.screenOrientation == 2) {
+        SystemChrome.setPreferredOrientations(
+            [DeviceOrientation.landscapeLeft, DeviceOrientation.landscapeRight]);
+      } else {
+        SystemChrome.setPreferredOrientations(DeviceOrientation.values);
+      }
+    } catch (_) {}
   }
 
   @override
@@ -263,6 +285,11 @@ class _ReadingScreenState extends State<ReadingScreen> with SingleTickerProvider
     );
     _ttsService.dispose();
     _applyWakeLock(false);
+    // 恢复系统 UI 与屏幕方向
+    try {
+      SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
+      SystemChrome.setPreferredOrientations(DeviceOrientation.values);
+    } catch (_) {}
     super.dispose();
   }
 
@@ -601,12 +628,14 @@ class _ReadingScreenState extends State<ReadingScreen> with SingleTickerProvider
                     final action = _clickActions[row * 3 + col];
                     // 点击中央显示菜单开关关闭时，中央区域不响应菜单动作
                     if (action == 3 && !config.showMenuOnTap) return;
+                    // 点击翻页开关关闭时，点击不翻页（仅菜单动作生效）
+                    final canTurn = config.clickTurnPage;
                     switch (action) {
-                      case 1: _prevChapter(); break;
-                      case 2: _nextChapter(); break;
+                      case 1: if (canTurn) _prevChapter(); break;
+                      case 2: if (canTurn) _nextChapter(); break;
                       case 3: _toggleMenu(); break;
-                      case 4: _prevPage(); break;
-                      case 5: _nextPage(); break;
+                      case 4: if (canTurn) _prevPage(); break;
+                      case 5: if (canTurn) _nextPage(); break;
                       default: break;
                     }
                   },
@@ -632,7 +661,15 @@ class _ReadingScreenState extends State<ReadingScreen> with SingleTickerProvider
                                     ),
                                   ),
                           ),
-                          if (config.pageNumberVisibility || config.timeVisibility)
+                          // 章节内阅读进度条（showProgress）
+                          if (config.showProgress && _pages.length > 1)
+                            LinearProgressIndicator(
+                              value: (_currentPage + 1) / _pages.length,
+                              minHeight: 2,
+                              backgroundColor: Colors.transparent,
+                              valueColor: AlwaysStoppedAnimation<Color>(Color(config.textColor).withOpacity(0.25)),
+                            ),
+                          if (config.pageNumberVisibility || config.timeVisibility || config.batteryVisibility)
                             _buildFooter(config),
                           SizedBox(height: MediaQuery.of(context).padding.bottom),
                         ],
@@ -667,6 +704,11 @@ class _ReadingScreenState extends State<ReadingScreen> with SingleTickerProvider
   }
 
   Widget _buildHeader(ReadConfig config) {
+    // 自定义页眉文本优先（customHeaderEnabled 且 headerString 非空）
+    final customText = config.customHeaderEnabled ? (config.headerString ?? '') : '';
+    final title = customText.isNotEmpty
+        ? customText
+        : (_chapters.isNotEmpty ? _chapters[_currentChapterIndex].title : widget.book.name);
     return Container(
       padding: EdgeInsets.symmetric(
         horizontal: config.paddingLeft.toDouble(),
@@ -675,7 +717,7 @@ class _ReadingScreenState extends State<ReadingScreen> with SingleTickerProvider
       height: config.headerHeight.toDouble(),
       alignment: config.headerAlignCenter ? Alignment.center : Alignment.centerLeft,
       child: Text(
-        _chapters.isNotEmpty ? _chapters[_currentChapterIndex].title : widget.book.name,
+        title,
         style: TextStyle(
           fontSize: config.headerSize.toDouble(),
           color: Color(config.headerColor),
@@ -696,6 +738,31 @@ class _ReadingScreenState extends State<ReadingScreen> with SingleTickerProvider
       wordSpacing: config.wordSpacing,
       fontWeight: config.boldText ? FontWeight.bold : FontWeight.normal,
       fontFamily: config.fontFamily,
+      // 文字阴影（shadowLevel 0-3）
+      shadows: config.shadowLevel > 0
+          ? [
+              Shadow(
+                color: Colors.black.withOpacity(0.06 * config.shadowLevel),
+                blurRadius: config.shadowLevel * 1.5,
+                offset: Offset(0, config.shadowLevel * 0.8),
+              )
+            ]
+          : null,
+      // 下划线（0无 1实线 2虚线 3波浪线 4双线）
+      decoration: switch (config.underlineType) {
+        1 => TextDecoration.underline,
+        2 => TextDecoration.underline,
+        3 => TextDecoration.underline,
+        4 => TextDecoration.underline,
+        _ => null,
+      },
+      decorationStyle: config.underlineType == 2
+          ? TextDecorationStyle.dashed
+          : config.underlineType == 3
+              ? TextDecorationStyle.wavy
+              : config.underlineType == 4
+                  ? TextDecorationStyle.double
+                  : null,
     );
     final align = config.textAlign == 1
         ? TextAlign.center
@@ -726,7 +793,7 @@ class _ReadingScreenState extends State<ReadingScreen> with SingleTickerProvider
           config.paddingRight.toDouble(),
           config.paddingBottom.toDouble(),
         ),
-        child: _textSelectable
+        child: (_textSelectable && config.longPressSelect)
             ? SelectionArea(
                 contextMenuBuilder: (context, state) {
                   Future<String> grab() async {
@@ -760,7 +827,7 @@ class _ReadingScreenState extends State<ReadingScreen> with SingleTickerProvider
             config.paddingRight.toDouble(),
             config.paddingBottom.toDouble(),
           ),
-          child: _textSelectable
+          child: (_textSelectable && config.longPressSelect)
               ? SelectionArea(
                   contextMenuBuilder: (context, state) {
                     // 兼容 Flutter 3.24：先复制选区，再从剪贴板读取选中文字（不依赖 currentTextSelection/currentSelectable）
@@ -784,6 +851,25 @@ class _ReadingScreenState extends State<ReadingScreen> with SingleTickerProvider
   }
 
   Widget _buildFooter(ReadConfig config) {
+    // 自定义页脚文本优先（customFooterEnabled 且 footerString 非空）
+    final customText = config.customFooterEnabled ? (config.footerString ?? '') : '';
+    if (customText.isNotEmpty) {
+      return Container(
+        padding: EdgeInsets.symmetric(horizontal: config.paddingLeft.toDouble(), vertical: 4),
+        height: config.footerHeight.toDouble(),
+        alignment: config.footerAlignCenter ? Alignment.center : Alignment.centerLeft,
+        child: Text(
+          customText,
+          style: TextStyle(
+            fontSize: config.footerSize.toDouble(),
+            color: Color(config.footerColor),
+            fontWeight: config.footerBold ? FontWeight.bold : FontWeight.normal,
+          ),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        ),
+      );
+    }
     return Container(
       padding: EdgeInsets.symmetric(
         horizontal: config.paddingLeft.toDouble(),
@@ -793,7 +879,7 @@ class _ReadingScreenState extends State<ReadingScreen> with SingleTickerProvider
       child: Row(
         mainAxisAlignment: config.footerAlignCenter ? MainAxisAlignment.center : MainAxisAlignment.spaceBetween,
         children: [
-          if (config.timeVisibility)
+          if (config.timeVisibility && config.showTimeBattery)
             Text(
               _currentTime,
               style: TextStyle(
@@ -811,7 +897,7 @@ class _ReadingScreenState extends State<ReadingScreen> with SingleTickerProvider
                 fontWeight: config.footerBold ? FontWeight.bold : FontWeight.normal,
               ),
             ),
-          if (config.batteryVisibility)
+          if (config.batteryVisibility && config.showTimeBattery)
             Icon(Icons.battery_full, size: 14, color: Color(config.footerColor)),
         ],
       ),
