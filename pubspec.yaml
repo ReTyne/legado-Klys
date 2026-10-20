@@ -43,6 +43,7 @@ dependencies:
   audioplayers: ^5.2.1
   mobile_scanner: ^3.5.5
   enough_convert: ^1.4.0
+  video_player: ^2.9.2
 
 dev_dependencies:
   flutter_test:

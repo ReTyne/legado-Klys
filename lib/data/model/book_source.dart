@@ -8,7 +8,7 @@ class BookSource implements JsSource {
   String bookSourceUrl;
   String bookSourceName;
   String? bookSourceGroup;
-  int bookSourceType; // 0=文本, 1=音频, 2=图片, 3=文件
+  int bookSourceType; // 0=文本, 1=音频, 2=图片, 3=视频, 4=文件
   String? bookSourceComment;
   int? lastUpdateTime;
   bool enabled;

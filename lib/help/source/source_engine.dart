@@ -1609,4 +1609,48 @@ class BookSourceEngine {
       return null;
     }
   }
+
+  /// 解析视频内容（视频书源）：从正文规则提取视频 URL（mp4/m3u8/webm 等）。
+  Future<String?> getVideoContent(BookSource source, String contentUrl,
+      {Map<String, dynamic>? bookInfo, Map<String, dynamic>? chapter}) async {
+    _applySourceFlags(source);
+    if (source.ruleContent == null) return null;
+    try {
+      final rule = source.ruleContent!;
+      final raw = await _fetch(contentUrl, baseUrl: source.bookSourceUrl);
+      _pipeline.baseUrl = contentUrl;
+      final seed = bookInfo ?? _bookSeed(bookUrl: chapter?['bookUrl']?.toString());
+      final ch = chapter ?? {'index': 0, 'title': '', 'url': contentUrl};
+
+      final contentRule = (rule['content'] ?? '').toString();
+      if (contentRule.isNotEmpty) {
+        final result = await _evalRuleContent(source, raw, contentRule,
+            baseUrl: contentUrl, book: seed, chapter: ch);
+        if (result != null && result.isNotEmpty) {
+          final urlMatch = RegExp(r'https?://[^\s<>"]+\.(?:mp4|m3u8|webm|flv|ts|mkv|mov|avi)',
+                  caseSensitive: false)
+              .firstMatch(result);
+          if (urlMatch != null) return urlMatch.group(0);
+          // 若结果本身即纯 URL（如 m3u8 无扩展名结尾）
+          final pure = result.trim();
+          if (pure.startsWith('http') && !pure.contains('\n') && !pure.contains('<')) {
+            return pure;
+          }
+        }
+      }
+      final srcRe = rule['sourceRegex']?.toString() ?? '';
+      if (srcRe.isNotEmpty) {
+        try {
+          final m = RegExp(srcRe, dotAll: true).firstMatch(raw);
+          if (m != null) {
+            return (m.groupCount > 0 ? m.group(1) : m.group(0))?.trim();
+          }
+        } catch (_) {}
+      }
+      return null;
+    } catch (e) {
+      _log('视频内容异常: $e');
+      return null;
+    }
+  }
 }

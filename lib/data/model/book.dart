@@ -6,6 +6,7 @@ class Book {
   static const int typeLocal = 1; // 本地书籍
   static const int typeAudio = 2; // 音频书源
   static const int typeImage = 3; // 图片/漫画书源
+  static const int typeVideo = 4; // 视频书源
 
   String name;
   String author;

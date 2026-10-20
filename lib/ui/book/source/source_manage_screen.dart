@@ -878,7 +878,7 @@ class _SourceManageScreenState extends State<SourceManageScreen> {
                       const SizedBox(height: 8),
                       Text('分组: ${source.bookSourceGroup ?? "默认"}'),
                       const SizedBox(height: 8),
-                      Text('类型: ${source.bookSourceType == 0 ? "文本" : source.bookSourceType == 1 ? "音频" : source.bookSourceType == 2 ? "图片" : "文件"}'),
+                      Text('类型: ${source.bookSourceType == 0 ? "文本" : source.bookSourceType == 1 ? "音频" : source.bookSourceType == 2 ? "图片" : source.bookSourceType == 3 ? "视频" : "文件"}'),
                       const SizedBox(height: 8),
                       Text('搜索URL: ${source.searchUrl ?? "无"}'),
                       const SizedBox(height: 8),
