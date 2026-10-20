@@ -6,6 +6,7 @@ import 'package:legado_md3/data/model/book_chapter.dart';
 import 'package:legado_md3/data/model/book_source.dart';
 import 'package:legado_md3/data/local/app_database.dart';
 import 'package:legado_md3/help/source/source_engine.dart';
+import 'package:legado_md3/help/readaloud/lrc_parser.dart';
 
 /// 有声书播放器，对齐原版 AudioPlayScreen
 class AudioPlayerScreen extends StatefulWidget {
@@ -30,6 +31,9 @@ class _AudioPlayerScreenState extends State<AudioPlayerScreen> {
   int _sleepLeft = 0;
   final List<double> _rates = [0.75, 1.0, 1.25, 1.5, 2.0, 3.0];
   StreamSubscription? _posSub, _durSub, _stateSub, _completeSub;
+  // 歌词
+  List<LrcLine> _lyrics = [];
+  int _lyricIndex = -1;
 
   static String _fmt(Duration d) {
     String two(int n) => n.toString().padLeft(2, '0');
@@ -45,7 +49,13 @@ class _AudioPlayerScreenState extends State<AudioPlayerScreen> {
   }
 
   void _bind() {
-    _posSub = _player.onPositionChanged.listen((p) { if (mounted) setState(() => _position = p); });
+    _posSub = _player.onPositionChanged.listen((p) {
+      if (!mounted) return;
+      setState(() {
+        _position = p;
+        if (_lyrics.isNotEmpty) _lyricIndex = LrcParser.indexAt(_lyrics, p);
+      });
+    });
     _durSub = _player.onDurationChanged.listen((d) { if (mounted) setState(() => _duration = d); });
     _stateSub = _player.onPlayerStateChanged.listen((s) {
       if (mounted) setState(() => _isPlaying = s == PlayerState.playing);
@@ -64,6 +74,12 @@ class _AudioPlayerScreenState extends State<AudioPlayerScreen> {
     if (idx < 0 || idx >= _chapters.length) return;
     setState(() => _index = idx);
     final ch = _chapters[idx];
+    // 解析歌词：章节 content 为 LRC 文本时直接解析，否则清空
+    if (LrcParser.looksLikeLrc(ch.content)) {
+      setState(() { _lyrics = LrcParser.parse(ch.content!); _lyricIndex = 0; });
+    } else {
+      setState(() { _lyrics = []; _lyricIndex = -1; });
+    }
     try {
       String? audioUrl;
       // 优先直接 URL
@@ -134,6 +150,25 @@ class _AudioPlayerScreenState extends State<AudioPlayerScreen> {
     ])));
   }
 
+  /// 歌词列表弹层（高亮当前行，点击跳转）
+  void _showLyricList() {
+    if (_lyrics.isEmpty) return;
+    showModalBottomSheet(context: context, isScrollControlled: true, builder: (c) => DraggableScrollableSheet(
+      initialChildSize: 0.7, minChildSize: 0.4, maxChildSize: 0.9, expand: false,
+      builder: (c, ctrl) => Column(children: [
+        const Padding(padding: EdgeInsets.all(16), child: Text('歌词', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold))),
+        Expanded(child: ListView.builder(controller: ctrl, itemCount: _lyrics.length, itemBuilder: (c, i) => ListTile(
+          dense: true,
+          selected: i == _lyricIndex,
+          title: Text(_lyrics[i].text, maxLines: 2, overflow: TextOverflow.ellipsis,
+            style: TextStyle(color: i == _lyricIndex ? Theme.of(context).colorScheme.primary : null, fontWeight: i == _lyricIndex ? FontWeight.w600 : null)),
+          leading: Text(_fmt(_lyrics[i].time), style: const TextStyle(fontSize: 11, color: Colors.grey)),
+          onTap: () { _player.seek(_lyrics[i].time); Navigator.pop(c); },
+        ))),
+      ]),
+    ));
+  }
+
   void _showChapterList() {
     showModalBottomSheet(context: context, isScrollControlled: true, builder: (c) => DraggableScrollableSheet(
       initialChildSize: 0.7, minChildSize: 0.4, maxChildSize: 0.9, expand: false,
@@ -183,6 +218,23 @@ class _AudioPlayerScreenState extends State<AudioPlayerScreen> {
         Text(widget.book.name, style: theme.textTheme.titleLarge, textAlign: TextAlign.center),
         const SizedBox(height: 8),
         Text(current?.title ?? '加载中...', style: theme.textTheme.bodyMedium?.copyWith(color: Colors.grey), textAlign: TextAlign.center),
+        if (_lyrics.isNotEmpty) ...[
+          const SizedBox(height: 16),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 24),
+            child: GestureDetector(
+              onTap: _showLyricList,
+              child: Text(
+                _lyricIndex >= 0 ? _lyrics[_lyricIndex].text : '（前奏）',
+                style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600, height: 1.5, color: theme.colorScheme.primary),
+                textAlign: TextAlign.center,
+                maxLines: 3,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ),
+          Text('点击查看歌词', style: TextStyle(fontSize: 11, color: Colors.grey[500])),
+        ],
         if (_sleepLeft > 0) Padding(padding: const EdgeInsets.only(top: 8),
           child: Text('$_sleepLeft 分钟后停止', style: TextStyle(color: theme.colorScheme.primary, fontSize: 12))),
         const Spacer(),
