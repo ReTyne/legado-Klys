@@ -8,6 +8,7 @@ import 'package:legado_md3/data/model/bookmark.dart';
 import 'package:legado_md3/di/book_provider.dart';
 import 'package:legado_md3/data/local/app_database.dart';
 import 'package:legado_md3/help/source/source_engine.dart';
+import 'package:legado_md3/help/storage/export_book_service.dart';
 import 'package:legado_md3/ui/book/detail/book_detail_screen.dart';
 import 'package:legado_md3/ui/book/reader_router.dart';
 import 'package:legado_md3/ui/book/local_import_screen.dart';
@@ -376,6 +377,17 @@ class _BookshelfScreenState extends State<BookshelfScreen> {
           child: Column(mainAxisSize: MainAxisSize.min, children: [
             ListTile(leading: const Icon(Icons.play_arrow), title: const Text('开始阅读'), onTap: () { Navigator.pop(context); Navigator.push(context, MaterialPageRoute(builder: (_) => readerForBook(book))); }),
             ListTile(leading: const Icon(Icons.info_outline), title: const Text('书籍详情'), onTap: () { Navigator.pop(context); Navigator.push(context, MaterialPageRoute(builder: (_) => BookDetailScreen(book: book))); }),
+            ListTile(leading: const Icon(Icons.ios_share), title: const Text('导出书籍'), onTap: () async {
+              Navigator.pop(context);
+              final chapters = await _db.getChapters(book.name, book.author);
+              if (chapters.isEmpty) { ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('暂无章节可导出'))); return; }
+              try {
+                final path = await ExportBookService.exportToTxt(book, chapters);
+                if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('已导出: $path')));
+              } catch (e) {
+                if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('导出失败: $e')));
+              }
+            }),
             const Divider(),
             ListTile(leading: const Icon(Icons.refresh), title: const Text('更新目录'), onTap: () async {
               Navigator.pop(context);
