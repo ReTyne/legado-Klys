@@ -370,6 +370,7 @@ class WebViewLegadoJs implements LegadoJs {
     if (url.startsWith('legado://download')) return await _handleDownload(uri);
     if (url.startsWith('legado://share')) return await _handleShare(request);
     if (url.startsWith('legado://file')) return await _handleFile(uri);
+    if (url.startsWith('legado://webview')) return await _handleWebView(uri);
 
     if (!url.startsWith('http')) return null;
     final method = (request.method ?? 'GET').toUpperCase();
@@ -590,6 +591,65 @@ class WebViewLegadoJs implements LegadoJs {
     } catch (e) {
       return _textResponse('file 操作失败: $e', 502);
     }
+  }
+
+  /// legado://webview 协议：用第二个无头 WebView 加载网页、等 JS 渲染后取渲染 HTML
+  /// （java.webViewGetSource）。带超时与失败回退，任何异常返回空串让书源降级。
+  Future<iw.WebResourceResponse> _handleWebView(iw.WebUri uri) async {
+    try {
+      final url = uri.queryParameters['url'] ?? '';
+      if (url.isEmpty) return _textResponse('', 400);
+      final html = await _renderWithWebView(url).timeout(const Duration(seconds: 25));
+      return _textResponse(html, 200);
+    } catch (e) {
+      return _textResponse('', 502);
+    }
+  }
+
+  Future<String> _renderWithWebView(String url) async {
+    final completer = Completer<String>();
+    var disposed = false;
+    Future<void> safeDispose(iw.HeadlessInAppWebView h) async {
+      if (disposed) return;
+      disposed = true;
+      try {
+        await h.dispose();
+      } catch (_) {}
+    }
+
+    final h = iw.HeadlessInAppWebView(
+      initialSettings: iw.InAppWebViewSettings(
+        javaScriptEnabled: true,
+        domStorageEnabled: true,
+        useShouldInterceptRequest: false,
+        userAgent:
+            'Mozilla/5.0 (Linux; Android 13; Pixel 6) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36',
+      ),
+      initialUrlRequest: iw.URLRequest(url: iw.WebUri(url)),
+      onLoadStop: (controller, loadedUrl) async {
+        try {
+          // 额外等待 JS 渲染
+          await Future<void>.delayed(const Duration(seconds: 3));
+          final res =
+              await controller.evaluateJavascript(source: 'document.documentElement.outerHTML');
+          final html = res?.toString() ?? '';
+          if (!completer.isCompleted) completer.complete(html);
+        } catch (e) {
+          if (!completer.isCompleted) completer.complete('');
+        } finally {
+          await safeDispose(h);
+        }
+      },
+      onReceivedError: (controller, request, error) async {
+        if (!completer.isCompleted) completer.complete('');
+        await safeDispose(h);
+      },
+    );
+    await h.run();
+    return completer.future.timeout(const Duration(seconds: 25), onTimeout: () {
+      safeDispose(h);
+      return '';
+    });
   }
 
   iw.WebResourceResponse _textResponse(String msg, int code) => iw.WebResourceResponse(
