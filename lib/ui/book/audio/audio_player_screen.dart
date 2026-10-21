@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'package:audioplayers/audioplayers.dart';
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:legado_md3/data/model/book.dart';
 import 'package:legado_md3/data/model/book_chapter.dart';
 import 'package:legado_md3/data/model/book_source.dart';
@@ -34,6 +35,11 @@ class _AudioPlayerScreenState extends State<AudioPlayerScreen> {
   // 歌词
   List<LrcLine> _lyrics = [];
   int _lyricIndex = -1;
+  // 跳过片头/片尾（秒），对齐 legado-E 的 AudioSkipCredits
+  int _skipStart = 0;
+  int _skipEnd = 0;
+  bool _skipStartDone = false;
+  bool _skipEndDone = false;
 
   static String _fmt(Duration d) {
     String two(int n) => n.toString().padLeft(2, '0');
@@ -51,6 +57,13 @@ class _AudioPlayerScreenState extends State<AudioPlayerScreen> {
   void _bind() {
     _posSub = _player.onPositionChanged.listen((p) {
       if (!mounted) return;
+      // 跳过片尾：接近结尾时自动切下一章
+      if (_skipEnd > 0 && _duration.inSeconds > _skipEnd && !_skipEndDone &&
+          p.inSeconds >= _duration.inSeconds - _skipEnd) {
+        _skipEndDone = true;
+        _next();
+        return;
+      }
       setState(() {
         _position = p;
         if (_lyrics.isNotEmpty) _lyricIndex = LrcParser.indexAt(_lyrics, p);
@@ -64,6 +77,12 @@ class _AudioPlayerScreenState extends State<AudioPlayerScreen> {
   }
 
   Future<void> _load() async {
+    // 读取跳过片头片尾配置（对齐 legado-E AudioSkipCredits）
+    try {
+      final p = await SharedPreferences.getInstance();
+      _skipStart = p.getInt('audio_skip_start') ?? 0;
+      _skipEnd = p.getInt('audio_skip_end') ?? 0;
+    } catch (_) {}
     final list = await _db.getChapters(widget.book.name, widget.book.author);
     if (!mounted) return;
     setState(() => _chapters = list.where((c) => !c.isVolume).toList());
@@ -98,8 +117,15 @@ class _AudioPlayerScreenState extends State<AudioPlayerScreen> {
         }
       }
       if (audioUrl != null && audioUrl.startsWith('http')) {
+        _skipStartDone = false;
+        _skipEndDone = false;
         await _player.play(UrlSource(audioUrl));
         await _player.setPlaybackRate(_rate);
+        // 跳过片头：播放后立即跳转到片头结束位置
+        if (_skipStart > 0) {
+          await _player.seek(Duration(seconds: _skipStart));
+          _skipStartDone = true;
+        }
       } else if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('无法解析音频地址')));
       }
@@ -148,6 +174,42 @@ class _AudioPlayerScreenState extends State<AudioPlayerScreen> {
         onTap: () { _startSleep(m); Navigator.pop(c); },
       )),
     ])));
+  }
+
+  /// 跳过片头片尾配置（对齐 legado-E 的 AudioSkipCredits）。
+  void _showSkipConfig() {
+    showModalBottomSheet(context: context, builder: (c) => StatefulBuilder(builder: (c, setLocal) {
+      var start = _skipStart.toDouble();
+      var end = _skipEnd.toDouble();
+      Future<void> save() async {
+        final p = await SharedPreferences.getInstance();
+        await p.setInt('audio_skip_start', start.toInt());
+        await p.setInt('audio_skip_end', end.toInt());
+      }
+      return SafeArea(child: Padding(padding: const EdgeInsets.all(16), child: Column(mainAxisSize: MainAxisSize.min, children: [
+        const Text('跳过片头片尾', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+        const SizedBox(height: 8),
+        Row(children: [
+          const SizedBox(width: 70, child: Text('跳过片头')),
+          Expanded(child: Slider(value: start, min: 0, max: 120, divisions: 24, label: '${start.toInt()}s', onChanged: (v) => setLocal(() => start = v))),
+          SizedBox(width: 40, child: Text('${start.toInt()}s', textAlign: TextAlign.right)),
+        ]),
+        Row(children: [
+          const SizedBox(width: 70, child: Text('跳过片尾')),
+          Expanded(child: Slider(value: end, min: 0, max: 120, divisions: 24, label: '${end.toInt()}s', onChanged: (v) => setLocal(() => end = v))),
+          SizedBox(width: 40, child: Text('${end.toInt()}s', textAlign: TextAlign.right)),
+        ]),
+        const SizedBox(height: 8),
+        FilledButton(onPressed: () async {
+          await save();
+          setState(() { _skipStart = start.toInt(); _skipEnd = end.toInt(); });
+          if (mounted) Navigator.pop(context);
+          if (start.toInt() > 0 || end.toInt() > 0) {
+            _playAt(_index); // 重新播放以应用片头跳过
+          }
+        }, child: const Text('保存并应用')),
+      ])));
+    }));
   }
 
   /// 歌词列表弹层（高亮当前行，点击跳转）
@@ -203,6 +265,7 @@ class _AudioPlayerScreenState extends State<AudioPlayerScreen> {
         actions: [
           IconButton(icon: const Icon(Icons.playlist_play), tooltip: '章节列表', onPressed: _showChapterList),
           IconButton(icon: const Icon(Icons.timer_outlined), tooltip: '定时', onPressed: _showSleepDialog),
+          IconButton(icon: const Icon(Icons.tune), tooltip: '跳过片头片尾', onPressed: _showSkipConfig),
         ],
       ),
       body: SafeArea(child: Column(children: [

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:legado_md3/data/model/book.dart';
 import 'package:legado_md3/data/model/book_chapter.dart';
 import 'package:legado_md3/data/local/app_database.dart';
@@ -20,12 +21,25 @@ class _MangaReaderScreenState extends State<MangaReaderScreen> {
   bool _loading = true;
   bool _showMenu = false;
   int _scrollMode = 0; // 0:连续滚动 1:翻页
+  bool _gray = false;   // 灰度模式
+  bool _eink = false;   // 墨水屏优化
 
   @override
   void initState() {
     super.initState();
     _currentChapter = widget.initialChapter;
     _loadChapters();
+    _loadFilters();
+  }
+
+  Future<void> _loadFilters() async {
+    try {
+      final p = await SharedPreferences.getInstance();
+      if (mounted) setState(() {
+        _gray = p.getBool('manga_gray') ?? false;
+        _eink = p.getBool('manga_eink') ?? false;
+      });
+    } catch (_) {}
   }
 
   Future<void> _loadChapters() async {
@@ -65,26 +79,60 @@ class _MangaReaderScreenState extends State<MangaReaderScreen> {
     if (_scrollMode == 0) {
       return ListView.builder(
         itemCount: images.length,
-        itemBuilder: (context, index) => CachedNetworkImage(
-          imageUrl: images[index],
-          fit: BoxFit.fitWidth,
-          placeholder: (context, url) => Container(height: 200, color: Colors.grey[900], child: const Center(child: CircularProgressIndicator())),
-          errorWidget: (context, url, error) => Container(height: 200, color: Colors.grey[900], child: const Icon(Icons.broken_image, color: Colors.grey)),
-        ),
+        itemBuilder: (context, index) => _buildImage(images[index], BoxFit.fitWidth, true),
       );
     } else {
       return PageView.builder(
         itemCount: images.length,
-        itemBuilder: (context, index) => Center(
-          child: CachedNetworkImage(
-            imageUrl: images[index],
-            fit: BoxFit.contain,
-            placeholder: (context, url) => const Center(child: CircularProgressIndicator(color: Colors.white)),
-            errorWidget: (context, url, error) => const Icon(Icons.broken_image, color: Colors.grey),
-          ),
-        ),
+        itemBuilder: (context, index) => Center(child: _buildImage(images[index], BoxFit.contain, false)),
       );
     }
+  }
+
+  /// 渲染单张漫画图片，应用灰度/墨水屏滤镜。
+  Widget _buildImage(String url, BoxFit fit, bool dark) {
+    Widget img = CachedNetworkImage(
+      imageUrl: url,
+      fit: fit,
+      placeholder: (context, url) => Container(
+        height: 200,
+        color: dark ? Colors.grey[900] : null,
+        child: Center(child: CircularProgressIndicator(color: dark ? null : Colors.white)),
+      ),
+      errorWidget: (context, url, error) => Icon(Icons.broken_image, color: dark ? Colors.grey : Colors.grey),
+    );
+    // 墨水屏优化：灰度 + 提高对比度
+    if (_eink) {
+      img = ColorFiltered(
+        colorFilter: const ColorFilter.matrix([
+          0.2126, 0.7152, 0.0722, 0, 0,
+          0.2126, 0.7152, 0.0722, 0, 0,
+          0.2126, 0.7152, 0.0722, 0, 0,
+          0, 0, 0, 1, 0,
+        ]),
+        child: img,
+      );
+      img = ColorFiltered(
+        colorFilter: const ColorFilter.matrix([
+          1.2, 0, 0, 0, -20,
+          0, 1.2, 0, 0, -20,
+          0, 0, 1.2, 0, -20,
+          0, 0, 0, 1, 0,
+        ]),
+        child: img,
+      );
+    } else if (_gray) {
+      img = ColorFiltered(
+        colorFilter: const ColorFilter.matrix([
+          0.2126, 0.7152, 0.0722, 0, 0,
+          0.2126, 0.7152, 0.0722, 0, 0,
+          0.2126, 0.7152, 0.0722, 0, 0,
+          0, 0, 0, 1, 0,
+        ]),
+        child: img,
+      );
+    }
+    return img;
   }
 
   List<String> _parseImages(String content) {
