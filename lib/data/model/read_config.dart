@@ -70,6 +70,7 @@ class ReadConfig {
   bool showMenuOnTap;
   bool longPressSelect;
   String? charset;
+  int chineseConverter; // 0:不转换 1:转简体 2:转繁体
   int preDownloadCount;
   bool showTimeBattery;
   bool customHeaderEnabled;
@@ -133,6 +134,7 @@ class ReadConfig {
     this.showMenuOnTap = true,
     this.longPressSelect = true,
     this.charset,
+    this.chineseConverter = 0,
     this.preDownloadCount = 0,
     this.showTimeBattery = true,
     this.customHeaderEnabled = false,
@@ -159,7 +161,7 @@ class ReadConfig {
     'headerSize': headerSize, 'footerSize': footerSize,
     'headerBold': headerBold, 'footerBold': footerBold,
     'keepScreenOn': keepScreenOn, 'showMenuOnTap': showMenuOnTap, 'longPressSelect': longPressSelect,
-    'charset': charset, 'preDownloadCount': preDownloadCount,
+    'charset': charset, 'chineseConverter': chineseConverter, 'preDownloadCount': preDownloadCount,
     'showTimeBattery': showTimeBattery,
     'customHeaderEnabled': customHeaderEnabled, 'customFooterEnabled': customFooterEnabled,
   };
@@ -222,6 +224,7 @@ class ReadConfig {
     showMenuOnTap: json['showMenuOnTap'] ?? true,
     longPressSelect: json['longPressSelect'] ?? true,
     charset: json['charset'],
+    chineseConverter: json['chineseConverter'] ?? 0,
     preDownloadCount: json['preDownloadCount'] ?? 0,
     showTimeBattery: json['showTimeBattery'] ?? true,
     customHeaderEnabled: json['customHeaderEnabled'] ?? false,

@@ -16,6 +16,7 @@ import 'package:legado_md3/data/model/read_config.dart';
 import 'package:legado_md3/di/book_provider.dart';
 import 'package:legado_md3/help/config/read_menu_config.dart';
 import 'package:legado_md3/help/http/cookie_manager.dart';
+import 'package:legado_md3/help/readaloud/chinese_converter.dart';
 import 'package:legado_md3/help/readaloud/reading_record.dart';
 import 'package:legado_md3/help/readaloud/tts_service.dart';
 import 'package:legado_md3/help/source/content_services.dart';
@@ -417,6 +418,14 @@ class _ReadingScreenState extends State<ReadingScreen> with SingleTickerProvider
           }
         }
       } catch (_) {}
+    }
+
+    // 简繁转换（chineseConverter: 0不转换 1转简 2转繁）
+    if (_content != null && _content!.isNotEmpty) {
+      final mode = context.read<ReadProvider>().config.chineseConverter;
+      if (mode != 0) {
+        _content = ChineseConverter.convert(_content!, mode);
+      }
     }
 
     _paginateContent();
@@ -1252,6 +1261,7 @@ class _ReadingScreenState extends State<ReadingScreen> with SingleTickerProvider
       case 'resegment': return ListTile(leading: const Icon(Icons.format_align_left), title: const Text('重新分段'), onTap: () { close(); _reSegment(); });
       case 'delruby': return ListTile(leading: const Icon(Icons.text_fields), title: const Text('删除注音(ruby)'), onTap: () { close(); _cleanContent('ruby'); });
       case 'delh': return ListTile(leading: const Icon(Icons.title), title: const Text('删除标题标签'), onTap: () { close(); _cleanContent('h'); });
+      case 'chineseconvert': return ListTile(leading: const Icon(Icons.translate), title: const Text('简繁转换'), onTap: () { close(); _showChineseConverter(); });
       case 'charset': return ListTile(leading: const Icon(Icons.code), title: const Text('选择编码'), onTap: () { close(); _selectCharset(); });
       case 'txttoc': return ListTile(leading: const Icon(Icons.list_alt), title: const Text('TXT目录规则'), onTap: () { close(); Navigator.push(context, MaterialPageRoute(builder: (_) => const TxtTocRuleScreen())); });
       case 'debug': return ListTile(leading: const Icon(Icons.receipt_long), title: const Text('调试日志'), onTap: () { close(); _showDebugLog(); });
@@ -1371,6 +1381,28 @@ class _ReadingScreenState extends State<ReadingScreen> with SingleTickerProvider
         _loadChapterContent(_currentChapterIndex);
         if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('已切换编码 $cs 并重新加载')));
       })),
+    ])));
+  }
+
+  /// 简繁转换（0不转换 1转简体 2转繁体），对齐 legado-E 的 ChineseConverter。
+  void _showChineseConverter() {
+    final current = context.read<ReadProvider>().config.chineseConverter;
+    const names = ['不转换', '转为简体', '转为繁体'];
+    showModalBottomSheet(context: context, builder: (c) => SafeArea(child: Column(mainAxisSize: MainAxisSize.min, children: [
+      const Padding(padding: EdgeInsets.all(16), child: Text('简繁转换', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold))),
+      for (var i = 0; i < names.length; i++)
+        RadioListTile<int>(
+          title: Text(names[i]),
+          value: i,
+          groupValue: current,
+          onChanged: (v) {
+            Navigator.pop(c);
+            if (v == null) return;
+            context.read<ReadProvider>().updateConfig((cfg) => cfg.chineseConverter = v);
+            _loadChapterContent(_currentChapterIndex);
+            if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('已${names[v]}并重新加载')));
+          },
+        ),
     ])));
   }
 
