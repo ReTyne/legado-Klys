@@ -5,8 +5,6 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:legado_md3/di/book_provider.dart';
 import 'package:legado_md3/help/config/read_menu_config.dart';
-import 'package:legado_md3/ui/book/read/config/reading_settings_screen.dart';
-import 'package:legado_md3/ui/book/read/config/reading_settings_screen.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 

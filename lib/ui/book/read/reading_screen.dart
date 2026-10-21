@@ -19,7 +19,6 @@ import 'package:legado_md3/help/http/cookie_manager.dart';
 import 'package:legado_md3/help/readaloud/reading_record.dart';
 import 'package:legado_md3/help/readaloud/tts_service.dart';
 import 'package:legado_md3/help/source/content_services.dart';
-import 'package:legado_md3/help/source/content_services.dart';
 import 'package:legado_md3/help/source/replace_rule_service.dart';
 import 'package:legado_md3/help/source/source_engine.dart';
 import 'package:legado_md3/help/storage/local_book_parser.dart';
