@@ -8,6 +8,7 @@ import 'package:legado_md3/ui/main/main_screen.dart';
 import 'package:legado_md3/ui/welcome/welcome_screen.dart';
 import 'package:legado_md3/help/storage/crash_log_helper.dart';
 import 'package:legado_md3/help/storage/auto_sync_service.dart';
+import 'package:legado_md3/help/storage/backup_service.dart';
 import 'package:legado_md3/help/web/web_service.dart';
 import 'package:legado_md3/data/local/app_database.dart';
 import 'package:legado_md3/common/app_navigator.dart';
@@ -25,6 +26,8 @@ void main() async {
   }
   // 实验室：打开应用时自动 WebDAV 同步（开关关闭则立即返回，不影响启动）
   AutoSyncService.syncOnOpen();
+  // 自动备份：到点则在后台做一次 zip 备份（auto_backup_hours <= 0 直接返回）
+  BackupService.scheduleAutoBackup();
   // 漫画界面开关（oc_showMangaUi）
   showMangaUi = prefs.getBool('oc_showMangaUi') ?? true;
   // 语言设置（oc_language）

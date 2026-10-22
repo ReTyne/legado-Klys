@@ -48,6 +48,12 @@ class _ViewCfg {
   bool searchFilterFirst;
   bool showTabMenu;
   int updateLimit;
+  /// bs_showLocalBook：书架是否显示本地导入书籍（默认值与设置页一致：false）
+  bool showLocalBook;
+  /// bs_showWaitUpdateCount：分组页签是否显示待更新数量
+  bool showWaitUpdateCount;
+  /// bs_showFastScroller：书架是否显示快速滚动条
+  bool showFastScroller;
 
   _ViewCfg({
     this.columnCount = 3,
@@ -73,6 +79,9 @@ class _ViewCfg {
     this.searchFilterFirst = false,
     this.showTabMenu = true,
     this.updateLimit = 0,
+    this.showLocalBook = false,
+    this.showWaitUpdateCount = false,
+    this.showFastScroller = true,
   });
 
   static Future<_ViewCfg> load() async {
@@ -101,6 +110,9 @@ class _ViewCfg {
       searchFilterFirst: p.getBool('bs_searchFilterFirst') ?? false,
       showTabMenu: p.getBool('bs_showTabMenu') ?? true,
       updateLimit: p.getInt('bs_updateLimit') ?? 0,
+      showLocalBook: p.getBool('bs_showLocalBook') ?? false,
+      showWaitUpdateCount: p.getBool('bs_showWaitUpdateCount') ?? false,
+      showFastScroller: p.getBool('bs_showFastScroller') ?? true,
     );
   }
 
@@ -171,6 +183,7 @@ class _BookshelfScreenState extends State<BookshelfScreen> {
   bool _searching = false;
   String _searchQuery = '';
   final TextEditingController _searchController = TextEditingController();
+  final ScrollController _scrollController = ScrollController();
   _ViewCfg _cfg = _ViewCfg();
   _CoverCfg _coverCfg = const _CoverCfg();
 
@@ -214,6 +227,7 @@ class _BookshelfScreenState extends State<BookshelfScreen> {
   @override
   void dispose() {
     _searchController.dispose();
+    _scrollController.dispose();
     super.dispose();
   }
 
@@ -236,6 +250,11 @@ class _BookshelfScreenState extends State<BookshelfScreen> {
               b.name.toLowerCase().contains(q) ||
               b.author.toLowerCase().contains(q))
           .toList();
+    }
+    // bs_showLocalBook：关闭时书架不显示本地导入书籍（仅过滤视图，数据保留，
+    // 长按菜单/书籍详情等其它入口不受影响）
+    if (!_cfg.showLocalBook) {
+      books = books.where((b) => !b.local).toList();
     }
     books = List.from(books);
     switch (_sortBy) {
@@ -387,7 +406,12 @@ class _BookshelfScreenState extends State<BookshelfScreen> {
             ListTile(leading: const Icon(Icons.select_all), title: const Text('多选模式'), onTap: () { Navigator.pop(context); setState(() => _selectMode = true); }),
             const Divider(),
             ListTile(leading: const Icon(Icons.bar_chart_outlined), title: const Text('阅读记录'), onTap: () { Navigator.pop(context); Navigator.push(context, MaterialPageRoute(builder: (_) => const ReadRecordScreen())); }),
-            ListTile(leading: const Icon(Icons.settings), title: const Text('设置'), onTap: () { Navigator.pop(context); Navigator.push(context, MaterialPageRoute(builder: (_) => const SettingsScreen())); }),
+            ListTile(leading: const Icon(Icons.settings), title: const Text('设置'), onTap: () async {
+              Navigator.pop(context);
+              // 从设置页返回后重载配置，使 bs_showLocalBook 等开关即时生效
+              await Navigator.push(context, MaterialPageRoute(builder: (_) => const SettingsScreen()));
+              await _reloadCfg();
+            }),
             const Divider(),
             ListTile(leading: const Icon(Icons.delete_sweep, color: Colors.red), title: const Text('清空书架', style: TextStyle(color: Colors.red)), onTap: () async {
               Navigator.pop(context);
@@ -630,7 +654,7 @@ class _BookshelfScreenState extends State<BookshelfScreen> {
                   const SizedBox(height: 24),
                   FilledButton.icon(onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const SearchScreen())), icon: const Icon(Icons.search), label: const Text('去搜索')),
                 ]))
-              : _buildBody(provider, books, layout),
+              : _wrapFastScroller(_buildBody(provider, books, layout)),
       bottomNavigationBar: _selectMode
           ? SafeArea(child: Column(mainAxisSize: MainAxisSize.min, children: [
               const Divider(height: 1),
@@ -648,7 +672,17 @@ class _BookshelfScreenState extends State<BookshelfScreen> {
 
   Widget _buildGroupTabs(BookProvider provider) {
     final hideEmpty = _cfg.hideEmptyGroups && _searchQuery.isEmpty;
-    final groups = provider.displayGroups(hideEmpty: hideEmpty);
+    var groups = provider.displayGroups(hideEmpty: hideEmpty);
+    int Function(String) countOf = provider.bookCountOf;
+    // bs_showLocalBook 关闭时本地书籍整体隐藏：页签计数与可见性按过滤后的集合计算，
+    // 可见数为 0 的虚拟分组（如“本地”）不再展示，避免点进去是空书架
+    if (!_cfg.showLocalBook) {
+      int visibleOf(String g) => provider.books
+          .where((b) => !b.local && BookProvider.bookInGroup(b, g))
+          .length;
+      groups = groups.where((g) => g == '全部' || visibleOf(g) > 0).toList();
+      countOf = visibleOf;
+    }
     return Container(
       height: 48,
       padding: const EdgeInsets.symmetric(horizontal: 8),
@@ -657,9 +691,7 @@ class _BookshelfScreenState extends State<BookshelfScreen> {
         children: [
           for (var i = 0; i < groups.length; i++) ...[
             FilterChip(
-              label: Text(_cfg.showBookCount
-                  ? '${groups[i]} ${provider.bookCountOf(groups[i])}'
-                  : groups[i]),
+              label: Text(_chipLabel(groups[i], countOf(groups[i]), provider)),
               selected: provider.currentGroup == groups[i],
               onSelected: (_) => provider.setCurrentGroup(groups[i]),
             ),
@@ -669,6 +701,26 @@ class _BookshelfScreenState extends State<BookshelfScreen> {
       ),
     );
   }
+
+  /// 分组页签文案：书籍数量（bs_showBookCount）与待更新数量（bs_showWaitUpdateCount）
+  String _chipLabel(String group, int count, BookProvider provider) {
+    var label = _cfg.showBookCount ? '$group $count' : group;
+    if (_cfg.showWaitUpdateCount) {
+      final wait = _waitUpdateCount(provider, group);
+      if (wait > 0) label = '$label · 待更新$wait';
+    }
+    return label;
+  }
+
+  /// 待更新数量：可参与“一键更新”的网络书籍数（本地书、禁止更新、缺书源/目录地址的不计）
+  int _waitUpdateCount(BookProvider provider, String group) => provider.books
+      .where((b) =>
+          BookProvider.bookInGroup(b, group) &&
+          !b.local &&
+          b.canUpdate &&
+          b.origin != null &&
+          b.noteUrl != null)
+      .length;
 
   Widget _buildBody(BookProvider provider, List<Book> books, int layout) {
     // 平铺分组：全部视图且未搜索时，按分组分区
@@ -691,6 +743,7 @@ class _BookshelfScreenState extends State<BookshelfScreen> {
         if (ungrouped.isNotEmpty) sections.add(MapEntry('未分组', ungrouped));
       }
       return ListView(
+        controller: _scrollController,
         padding: const EdgeInsets.only(bottom: 12),
         children: [
           for (final sec in sections) ...[
@@ -742,11 +795,17 @@ class _BookshelfScreenState extends State<BookshelfScreen> {
     }
   }
 
+  /// bs_showFastScroller：控制书架是否显示快速滚动条（常显滑块，可拖动快速定位）
+  Widget _wrapFastScroller(Widget child) => _cfg.showFastScroller
+      ? Scrollbar(controller: _scrollController, thumbVisibility: true, child: child)
+      : child;
+
   Widget _buildBookList(List<Book> books, int layout) {
     switch (layout) {
       case 0:
       case 1:
         return ListView.separated(
+          controller: _scrollController,
           padding: const EdgeInsets.all(8),
           itemCount: books.length,
           separatorBuilder: (_, __) => _cfg.showDivider
@@ -761,6 +820,7 @@ class _BookshelfScreenState extends State<BookshelfScreen> {
             ? (_cfg.columnCount + 1).clamp(2, 8)
             : _cfg.columnCount.clamp(1, 8);
         return GridView.builder(
+          controller: _scrollController,
           padding: EdgeInsets.all(layout == 3 ? 4 : 8),
           gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
             crossAxisCount: cols,
@@ -774,6 +834,7 @@ class _BookshelfScreenState extends State<BookshelfScreen> {
         );
       case 4:
         return GridView.builder(
+          controller: _scrollController,
           padding: const EdgeInsets.all(12),
           gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
             crossAxisCount: _cfg.columnCount.clamp(1, 8),
@@ -786,6 +847,7 @@ class _BookshelfScreenState extends State<BookshelfScreen> {
         );
       default:
         return ListView.builder(
+          controller: _scrollController,
           itemCount: books.length,
           itemBuilder: (c, i) => _buildListItem(books[i]),
         );

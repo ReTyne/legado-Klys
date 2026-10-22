@@ -1,7 +1,9 @@
-
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:legado_md3/constant/app_theme.dart';
 import 'package:legado_md3/data/local/app_database.dart';
 import 'package:legado_md3/data/model/book.dart';
@@ -11,6 +13,7 @@ import 'package:legado_md3/help/web/web_service.dart';
 import 'package:legado_md3/ui/backup/backup_screen.dart';
 import 'package:legado_md3/ui/book/detail/book_detail_screen.dart';
 import 'package:legado_md3/ui/book/manga/manga_config_screen.dart';
+import 'package:legado_md3/ui/book/read/config/reading_settings_screen.dart';
 import 'package:legado_md3/ui/cache/cache_manage_screen.dart';
 import 'package:legado_md3/ui/cache/download_manage_screen.dart';
 import 'package:legado_md3/ui/config/cloud_tts_screen.dart';
@@ -23,6 +26,7 @@ import 'package:legado_md3/ui/config/replace_rule_screen.dart';
 import 'package:legado_md3/ui/config/theme_manage_screen.dart';
 import 'package:legado_md3/ui/config/translation_screen.dart';
 import 'package:legado_md3/ui/config/txt_toc_rule_screen.dart';
+import 'package:legado_md3/ui/main/bookshelf/bookshelf_config_screen.dart';
 import 'package:legado_md3/ui/main/homepage/homepage_manage_screen.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -65,8 +69,56 @@ class _SettingsScreenState extends State<SettingsScreen> {
   int _paragraphSpacing = 1;
   int _pageAnim = 0;
 
+  // ===== 补齐项：书籍 =====
+  /// 仅更新已读完的书籍（only_update_read）
+  bool _onlyUpdateRead = false;
+  /// 书架是否显示本地导入书籍（bs_showLocalBook）
+  bool _showLocalBook = false;
+  /// 显示「发现」页（showDiscovery）
+  bool _showDiscovery = true;
+  /// 显示「订阅/RSS」页（showRss）
+  bool _showRss = true;
+  /// 默认首页页签（defaultHomePage：0书架 1发现 2订阅）
+  int _defaultHomePage = 0;
+  /// 新加入的书籍默认不更新（bk_bookUpdateDisable，对应 legado-E Book.canUpdate 默认值）
+  bool _bookUpdateDisable = false;
+
+  // ===== 补齐项：阅读 =====
+  bool _clickTurnPage = true;
+  bool _volumeKeyReverse = false;
+  bool _horizontalPage = false;
+  bool _scrollMode = false;
+  bool _disableHorizontalScroll = false;
+  bool _immersiveRead = false;
+  bool _fullScreenRead = false;
+  bool _longPressSelect = true;
+  int _autoNextPageSpeed = 5;
+
+  // ===== 补齐项：界面 =====
+  bool _immersionStatusBar = true;
+  bool _confirmExit = false;
+  int _exitClickCount = 2;
+
+  // ===== 补齐项：线程与并发 =====
+  int _threadCount = 32;
+  int _updateThreads = 4;
+  int _searchThreads = 4;
+  int _importThreads = 2;
+
+  // ===== 补齐项：缓存 / 备份 / 其它 =====
+  int _cacheMaxMB = 500;
+  String _cachePath = '';
+  int _autoBackupHours = 24;
+  String _backupPath = '';
+  String _webdavUrl = '';
+  bool _webdavSyncProgress = true;
+  double _fontScale = 1.0;
+  String _readFontPath = '';
+  int _readFontCount = -1;
+
   static const List<String> _pageAnimNames = ['覆盖', '仿真', '滑动', '滚动', '无动画', '上下'];
   static const List<String> _alignNames = ['左对齐', '居中', '两端对齐'];
+  static const List<String> _homePageNames = ['书架', '发现', '订阅'];
 
   @override
   void initState() {
@@ -76,11 +128,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Future<void> _loadSettings() async {
-    _prefs = await SharedPreferences.getInstance();
+    // 在 await 之前取 Provider，避免跨异步使用 context
     final readProvider = Provider.of<ReadProvider>(context, listen: false);
     final cfg = readProvider.config;
+    _prefs = await SharedPreferences.getInstance();
+    final p = _prefs!;
     setState(() {
-      _autoUpdate = _prefs?.getBool('auto_update') ?? true;
+      _autoUpdate = p.getBool('auto_update') ?? true;
       _autoUpdateHours = _prefs?.getInt('auto_update_hours') ?? 6;
       _wifiOnly = _prefs?.getBool('wifi_only') ?? false;
       _volumeKeyPage = cfg.volumeKeyPage;
@@ -102,8 +156,58 @@ class _SettingsScreenState extends State<SettingsScreen> {
       _textIndent = cfg.textIndent;
       _paragraphSpacing = cfg.paragraphSpacing;
       _pageAnim = cfg.pageAnim;
+
+      // 书籍
+      _onlyUpdateRead = p.getBool('only_update_read') ?? false;
+      _showLocalBook = p.getBool('bs_showLocalBook') ?? false;
+      _showDiscovery = p.getBool('showDiscovery') ?? true;
+      _showRss = p.getBool('showRss') ?? true;
+      _defaultHomePage = p.getInt('defaultHomePage') ?? 0;
+      _bookUpdateDisable = p.getBool('bk_bookUpdateDisable') ?? false;
+
+      // 阅读
+      _clickTurnPage = cfg.clickTurnPage;
+      _volumeKeyReverse = cfg.volumeKeyReverse;
+      _horizontalPage = cfg.screenOrientation == 2;
+      _scrollMode = cfg.pageAnim == 3;
+      _disableHorizontalScroll = p.getBool('read_disableHorizontalSwipe') ?? false;
+      _immersiveRead = cfg.immersiveMode;
+      _fullScreenRead = cfg.fullScreen;
+      _longPressSelect = cfg.longPressSelect;
+      _autoNextPageSpeed = cfg.autoNextPageSpeed;
+
+      // 界面
+      _immersionStatusBar = p.getBool('ui_immersionStatusBar') ?? true;
+      _confirmExit = p.getBool('ui_confirmExit') ?? false;
+      _exitClickCount = p.getInt('ui_exitClickCount') ?? 2;
+
+      // 线程与并发
+      _threadCount = p.getInt('threadCount') ?? 32;
+      _updateThreads = p.getInt('bk_updateThreads') ?? 4;
+      _searchThreads = p.getInt('bk_searchThreads') ?? 4;
+      _importThreads = p.getInt('bk_importThreads') ?? 2;
+
+      // 缓存 / 备份 / 其它
+      _cacheMaxMB = p.getInt('cache_contentMaxMB') ?? 500;
+      _autoBackupHours = p.getInt('auto_backup_hours') ?? 24;
+      final bd = p.getString('backup_path') ?? '';
+      _backupPath = bd.isEmpty ? 'Legado/backup' : bd;
+      _webdavUrl = p.getString('webdav_url') ?? '';
+      _webdavSyncProgress = p.getBool('webdav_syncProgress') ?? true;
+      _fontScale = p.getDouble('fontScale') ?? 1.0;
+      _readFontPath = p.getString('read_font_path') ?? '';
     });
+    _loadCachePath();
     _calcCacheSize();
+  }
+
+  /// 解析缓存目录的实际绝对路径用于展示
+  Future<void> _loadCachePath() async {
+    try {
+      final dir = await getApplicationDocumentsDirectory();
+      if (!mounted) return;
+      setState(() => _cachePath = dir.path);
+    } catch (_) {}
   }
 
   /// 更新阅读配置并持久化（同步到 ReadProvider，阅读界面实时生效）
@@ -186,7 +290,29 @@ class _SettingsScreenState extends State<SettingsScreen> {
             trailing: const Icon(Icons.chevron_right),
             onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const OtherConfigScreen())),
           ),
+          ..._buildBooksSection(),
           _buildSectionHeader('主题设置'),
+          ListTile(
+            title: const Text('主题模式'),
+            subtitle: Text(_themeModeName(theme.themeMode)),
+            trailing: DropdownButton<ThemeMode>(
+              value: theme.themeMode,
+              items: const [
+                DropdownMenuItem(value: ThemeMode.system, child: Text('跟随系统')),
+                DropdownMenuItem(value: ThemeMode.light, child: Text('浅色')),
+                DropdownMenuItem(value: ThemeMode.dark, child: Text('深色')),
+              ],
+              onChanged: (v) {
+                if (v != null) theme.setThemeMode(v);
+              },
+            ),
+          ),
+          SwitchListTile(
+            title: const Text('Material You 动态取色'),
+            subtitle: Text(theme.dynamicColor ? '已开启：按系统动态色偏好' : '已关闭：使用下方固定主题色'),
+            value: theme.dynamicColor,
+            onChanged: (v) => theme.setDynamicColor(v),
+          ),
           SwitchListTile(
             title: const Text('深色模式'),
             subtitle: Text(theme.themeMode == ThemeMode.dark ? '已开启' : theme.themeMode == ThemeMode.system ? '跟随系统' : '已关闭'),
@@ -295,6 +421,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
             value: _showPageNumber,
             onChanged: (v) => setState(() { _showPageNumber = v; _updateReadConfig((c) => c.pageNumberVisibility = v); }),
           ),
+          ..._buildReadExtraSection(),
+          ..._buildUiSection(),
           const Divider(),
 
           // 网络和更新
@@ -328,6 +456,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               onChanged: (v) => setState(() { _preDownloadCount = v ?? 5; _updateReadConfig((c) => c.preDownloadCount = _preDownloadCount); }),
             ),
           ),
+          ..._buildThreadSection(),
           const Divider(),
 
           // 数据管理
@@ -350,6 +479,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             subtitle: const Text('清除书籍内容缓存'),
             onTap: () => _showClearCacheDialog(),
           ),
+          ..._buildCacheExtraSection(),
           const Divider(),
 
           // 主题管理
@@ -514,10 +644,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
           SwitchListTile(
             title: const Text('自动备份'),
-            subtitle: const Text('每天自动备份'),
+            subtitle: Text('每 $_autoBackupHours 小时自动备份一次'),
             value: _autoBackup,
             onChanged: (v) => setState(() { _autoBackup = v; _saveSetting('auto_backup', v); }),
           ),
+          ..._buildBackupExtraSection(),
 
           _buildSectionHeader('缓存管理'),
           ListTile(
@@ -580,6 +711,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             onTap: () => _showHomepageModuleScreen(),
           ),
 
+          ..._buildOtherExtraSection(),
           _buildSectionHeader('其他'),
           SwitchListTile(
             title: const Text('显示通知栏'),
@@ -588,8 +720,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
           SwitchListTile(
             title: const Text('横屏锁定'),
+            subtitle: const Text('锁定后立即切换屏幕方向'),
             value: _landscapeLock,
-            onChanged: (v) => setState(() { _landscapeLock = v; _saveSetting('landscape_lock', v); }),
+            onChanged: (v) async {
+              setState(() => _landscapeLock = v);
+              _saveSetting('landscape_lock', v);
+              await SystemChrome.setPreferredOrientations(
+                v
+                    ? const [DeviceOrientation.landscapeLeft, DeviceOrientation.landscapeRight]
+                    : DeviceOrientation.values,
+              );
+            },
           ),
           ListTile(
             leading: const Icon(Icons.info_outline),
@@ -607,6 +748,471 @@ class _SettingsScreenState extends State<SettingsScreen> {
     padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
     child: Text(title, style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Theme.of(context).colorScheme.primary)),
   );
+
+  /* ===== 以下为补齐设置项（对齐 legado-E pref_config_other / pref_main） ===== */
+
+  /// 通用开关项
+  Widget _sw(String title, bool value, ValueChanged<bool> onChanged, {String? sub}) => SwitchListTile(
+    dense: true,
+    contentPadding: const EdgeInsets.symmetric(horizontal: 16),
+    title: Text(title, style: const TextStyle(fontSize: 14)),
+    subtitle: sub == null ? null : Text(sub, style: const TextStyle(fontSize: 11)),
+    value: value,
+    onChanged: onChanged,
+  );
+
+  /// 整数步进控件（±1）
+  Widget _step(String title, int value, int min, int max, ValueChanged<int> onChanged, {String? sub}) => ListTile(
+    dense: true,
+    contentPadding: const EdgeInsets.symmetric(horizontal: 16),
+    title: Text(title, style: const TextStyle(fontSize: 14)),
+    subtitle: sub == null ? null : Text(sub, style: const TextStyle(fontSize: 11)),
+    trailing: Row(mainAxisSize: MainAxisSize.min, children: [
+      IconButton(
+        icon: const Icon(Icons.remove_circle_outline),
+        tooltip: '减少',
+        onPressed: value > min ? () => onChanged(value - 1) : null,
+      ),
+      SizedBox(
+        width: 40,
+        child: Text('$value', textAlign: TextAlign.center,
+          style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
+      ),
+      IconButton(
+        icon: const Icon(Icons.add_circle_outline),
+        tooltip: '增加',
+        onPressed: value < max ? () => onChanged(value + 1) : null,
+      ),
+    ]),
+  );
+
+  /// 通用跳转项
+  Widget _jump({IconData? icon, required String title, String? sub, required Widget page}) => ListTile(
+    leading: icon == null ? null : Icon(icon),
+    title: Text(title),
+    subtitle: sub == null ? null : Text(sub),
+    trailing: const Icon(Icons.chevron_right),
+    onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => page)),
+  );
+
+  /// 书籍类设置（对齐 legado-E pref_config_other 的 main_activity 分类）
+  List<Widget> _buildBooksSection() => [
+    _buildSectionHeader('书架与书籍'),
+    _sw('仅更新已读完的书籍', _onlyUpdateRead, (v) {
+      setState(() => _onlyUpdateRead = v);
+      _saveSetting('only_update_read', v);
+    }, sub: '更新时只刷新已读完的书籍'),
+    _sw('书架显示本地书籍', _showLocalBook, (v) {
+      setState(() => _showLocalBook = v);
+      _saveSetting('bs_showLocalBook', v);
+    }, sub: '导入到本机的 TXT/EPUB 一并显示在书架'),
+    _sw('显示发现页', _showDiscovery, (v) {
+      setState(() => _showDiscovery = v);
+      _saveSetting('showDiscovery', v);
+    }),
+    _sw('显示订阅页', _showRss, (v) {
+      setState(() => _showRss = v);
+      _saveSetting('showRss', v);
+    }),
+    ListTile(
+      dense: true,
+      title: const Text('默认首页'),
+      subtitle: Text(_homePageNames[_defaultHomePage.clamp(0, _homePageNames.length - 1)], style: const TextStyle(fontSize: 11)),
+      trailing: DropdownButton<int>(
+        value: _defaultHomePage,
+        items: List.generate(_homePageNames.length, (i) => DropdownMenuItem(value: i, child: Text(_homePageNames[i]))),
+        onChanged: (v) {
+          final nv = v ?? 0;
+          setState(() => _defaultHomePage = nv);
+          _saveSetting('defaultHomePage', nv);
+        },
+      ),
+    ),
+    _sw('新书默认不更新', _bookUpdateDisable, (v) {
+      setState(() => _bookUpdateDisable = v);
+      _saveSetting('bk_bookUpdateDisable', v);
+    }, sub: '加入书架的书籍默认关闭自动更新'),
+    _jump(icon: Icons.grid_view_outlined, title: '书架布局与排序', sub: '分组/排序/网格/角标', page: const BookshelfConfigScreen()),
+  ];
+
+  /// 阅读类补充设置（走 ReadProvider<ReadConfig>，阅读界面即时生效）
+  List<Widget> _buildReadExtraSection() => [
+    _buildSectionHeader('阅读设置补充'),
+    _sw('点击翻页区域', _clickTurnPage, (v) {
+      setState(() => _clickTurnPage = v);
+      _updateReadConfig((c) => c.clickTurnPage = v);
+    }, sub: '关闭后点击屏幕不翻页'),
+    _sw('音量键反向翻页', _volumeKeyReverse, (v) {
+      setState(() => _volumeKeyReverse = v);
+      _updateReadConfig((c) => c.volumeKeyReverse = v);
+    }),
+    _sw('横向翻页', _horizontalPage, (v) {
+      setState(() => _horizontalPage = v);
+      _updateReadConfig((c) => c.screenOrientation = v ? 2 : 0);
+    }, sub: '阅读时强制横屏'),
+    _sw('滚屏模式', _scrollMode, (v) {
+      setState(() => _scrollMode = v);
+      _updateReadConfig((c) => c.pageAnim = v ? 3 : 0);
+    }, sub: '等价于翻页动画=滚动'),
+    _sw('禁用水平滑动', _disableHorizontalScroll, (v) {
+      setState(() => _disableHorizontalScroll = v);
+      _saveSetting('read_disableHorizontalSwipe', v);
+    }, sub: '禁止左右滑动切换章节'),
+    _sw('沉浸式阅读', _immersiveRead, (v) {
+      setState(() => _immersiveRead = v);
+      _updateReadConfig((c) => c.immersiveMode = v);
+    }),
+    _sw('阅读全屏', _fullScreenRead, (v) {
+      setState(() => _fullScreenRead = v);
+      _updateReadConfig((c) => c.fullScreen = v);
+    }),
+    _sw('长按选择文字', _longPressSelect, (v) {
+      setState(() => _longPressSelect = v);
+      _updateReadConfig((c) => c.longPressSelect = v);
+    }),
+    ListTile(
+      dense: true,
+      title: Text('自动翻页间隔: $_autoNextPageSpeed 秒'),
+      subtitle: Slider(
+        value: _autoNextPageSpeed.clamp(1, 20).toDouble(),
+        min: 1, max: 20, divisions: 19,
+        label: '$_autoNextPageSpeed 秒',
+        onChanged: (v) {
+          setState(() => _autoNextPageSpeed = v.toInt());
+          _updateReadConfig((c) => c.autoNextPageSpeed = v.toInt());
+        },
+      ),
+    ),
+    _jump(icon: Icons.menu_book_outlined, title: '完整阅读设置', sub: '字体/间距/页边距/反馈区域', page: const ReadingSettingsScreen()),
+  ];
+
+  /// 界面设置（沉浸式/全屏/退出确认）
+  List<Widget> _buildUiSection() => [
+    _buildSectionHeader('界面'),
+    _sw('沉浸式状态栏', _immersionStatusBar, (v) async {
+      setState(() => _immersionStatusBar = v);
+      await _saveSetting('ui_immersionStatusBar', v);
+      await SystemChrome.setEnabledSystemUIMode(v ? SystemUiMode.edgeToEdge : SystemUiMode.manual, overlays: SystemUiOverlay.values);
+    }, sub: '状态栏透明并延伸到底部，立即生效'),
+    ListTile(
+      dense: true,
+      title: const Text('全屏显示'),
+      subtitle: const Text('隐藏系统状态栏与导航栏', style: TextStyle(fontSize: 11)),
+      trailing: const Icon(Icons.fullscreen),
+      onTap: () async {
+        await SystemChrome.setEnabledSystemUIMode(SystemUiMode.immersiveSticky);
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('已进入全屏，上滑可临时唤出系统栏')));
+      },
+    ),
+    _sw('返回键退出确认', _confirmExit, (v) {
+      setState(() => _confirmExit = v);
+      _saveSetting('ui_confirmExit', v);
+    }, sub: '在首页按返回时提示再按一次退出'),
+    _step('连续点击退出次数', _exitClickCount, 2, 5, (v) {
+      setState(() => _exitClickCount = v);
+      _saveSetting('ui_exitClickCount', v);
+    }, sub: '需要连续点击几次返回键才退出'),
+  ];
+
+  /// 线程与并发
+  List<Widget> _buildThreadSection() => [
+    _buildSectionHeader('线程与并发'),
+    _step('并发任务数', _threadCount, 1, 64, (v) {
+      setState(() => _threadCount = v);
+      _saveSetting('threadCount', v);
+    }, sub: '全局网络/解析并发上限（threadCount）'),
+    _step('更新线程数', _updateThreads, 1, 16, (v) {
+      setState(() => _updateThreads = v);
+      _saveSetting('bk_updateThreads', v);
+    }, sub: '刷新书架时同时更新的书籍数量'),
+    _step('搜索线程数', _searchThreads, 1, 16, (v) {
+      setState(() => _searchThreads = v);
+      _saveSetting('bk_searchThreads', v);
+    }, sub: '聚合搜索时同时请求的书源数量'),
+    _step('导入线程数', _importThreads, 1, 8, (v) {
+      setState(() => _importThreads = v);
+      _saveSetting('bk_importThreads', v);
+    }, sub: '本地书籍导入时的并发数量'),
+  ];
+
+  /// 缓存（大小/路径/清理入口）
+  List<Widget> _buildCacheExtraSection() => [
+    _buildSectionHeader('缓存'),
+    ListTile(
+      dense: true,
+      title: Text('内容缓存上限: ${_cacheMaxMB}MB'),
+      subtitle: Slider(
+        value: _cacheMaxMB.clamp(50, 2048).toDouble(),
+        min: 50, max: 2048, divisions: 39,
+        label: '${_cacheMaxMB}MB',
+        onChanged: (v) {
+          final nv = (v / 50).round() * 50;
+          setState(() => _cacheMaxMB = nv);
+          _saveSetting('cache_contentMaxMB', nv);
+        },
+      ),
+    ),
+    ListTile(
+      dense: true,
+      leading: const Icon(Icons.folder_open_outlined),
+      title: const Text('缓存路径'),
+      subtitle: Text(_cachePath.isEmpty ? '读取中…' : _cachePath, style: const TextStyle(fontSize: 11)),
+    ),
+    ListTile(
+      dense: true,
+      leading: const Icon(Icons.cleaning_services_outlined),
+      title: const Text('缓存清理'),
+      subtitle: Text('当前已缓存正文: $_cacheSize / 上限 ${_cacheMaxMB}MB', style: const TextStyle(fontSize: 11)),
+      trailing: const Icon(Icons.chevron_right),
+      onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const CacheManageScreen())),
+    ),
+  ];
+
+  /// 备份（自动备份间隔/路径/WebDAV）
+  List<Widget> _buildBackupExtraSection() => [
+    _buildSectionHeader('备份'),
+    _step('自动备份间隔（小时）', _autoBackupHours, 1, 168, (v) {
+      setState(() => _autoBackupHours = v);
+      _saveSetting('auto_backup_hours', v);
+    }, sub: '开启自动备份后按此间隔执行'),
+    ListTile(
+      dense: true,
+      leading: const Icon(Icons.folder_outlined),
+      title: const Text('本地备份路径'),
+      subtitle: Text(_backupPath, style: const TextStyle(fontSize: 11)),
+      trailing: const Icon(Icons.edit, size: 18),
+      onTap: () async {
+        final ctl = TextEditingController(text: _backupPath);
+        if (!mounted) return;
+        final v = await showDialog<String>(
+          context: context,
+          builder: (c) => AlertDialog(
+            title: const Text('备份路径'),
+            content: TextField(controller: ctl, decoration: const InputDecoration(hintText: 'Legado/backup')),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(c), child: const Text('取消')),
+              FilledButton(onPressed: () => Navigator.pop(c, ctl.text), child: const Text('确定')),
+            ],
+          ),
+        );
+        if (v != null && v.isNotEmpty) {
+          setState(() => _backupPath = v);
+          _saveSetting('backup_path', v);
+        }
+      },
+    ),
+    ListTile(
+      dense: true,
+      leading: const Icon(Icons.cloud_outlined),
+      title: const Text('WebDAV 配置'),
+      subtitle: Text(_webdavUrl.isEmpty ? '未配置' : _webdavUrl, style: const TextStyle(fontSize: 11)),
+      trailing: const Icon(Icons.chevron_right),
+      onTap: () async {
+        await Navigator.push(context, MaterialPageRoute(builder: (_) => const BackupScreen()));
+        if (!mounted) return;
+        final p = await SharedPreferences.getInstance();
+        setState(() {
+          _webdavUrl = p.getString('webdav_url') ?? '';
+          _webdavSyncProgress = p.getBool('webdav_syncProgress') ?? true;
+        });
+      },
+    ),
+    _sw('同步阅读进度', _webdavSyncProgress, (v) {
+      setState(() => _webdavSyncProgress = v);
+      _saveSetting('webdav_syncProgress', v);
+    }, sub: '备份时同时上传阅读进度（webdav_syncProgress）'),
+  ];
+
+  /// 其它（字体/字体大小/动态色）
+  List<Widget> _buildOtherExtraSection() => [
+    _buildSectionHeader('其它'),
+    ListTile(
+      dense: true,
+      leading: const Icon(Icons.font_download_outlined),
+      title: const Text('阅读字体'),
+      subtitle: Text(_fontSubtitle(), style: const TextStyle(fontSize: 11)),
+      trailing: const Icon(Icons.chevron_right),
+      onTap: _showFontPicker,
+    ),
+    ListTile(
+      dense: true,
+      title: Text('界面字体缩放: ${(_fontScale * 100).round()}%'),
+      subtitle: Slider(
+        value: _fontScale,
+        min: 0.8, max: 1.6, divisions: 16,
+        label: '${(_fontScale * 100).round()}%',
+        onChanged: (v) {
+          setState(() => _fontScale = v);
+          _saveSetting('fontScale', v);
+        },
+      ),
+    ),
+  ];
+
+  String _readFontName() {
+    if (_readFontPath.isEmpty) return '系统默认';
+    final parts = _readFontPath.split(RegExp(r'[\\/]'));
+    return parts.isEmpty ? _readFontPath : parts.last;
+  }
+
+  String _themeModeName(ThemeMode mode) {
+    switch (mode) {
+      case ThemeMode.system:
+        return '跟随系统明暗切换（theme_mode）';
+      case ThemeMode.light:
+        return '始终浅色';
+      case ThemeMode.dark:
+        return '始终深色';
+    }
+  }
+
+  /// Flutter FontLoader 仅支持 ttf/otf/ttc，woff 无法加载，扫描时过滤
+  static const List<String> _fontExtensions = ['.ttf', '.otf', '.ttc'];
+
+  String _fontSubtitle() {
+    final name = _readFontName();
+    if (_readFontCount < 0) return name;
+    return '（共扫描到 $_readFontCount 个字体）$name';
+  }
+
+  String _baseName(String path) {
+    final parts = path.split(RegExp(r'[\\/]'));
+    final file = parts.isEmpty ? path : parts.last;
+    final dot = file.lastIndexOf('.');
+    return dot > 0 ? file.substring(0, dot) : file;
+  }
+
+  /// 扫描字体：内置 assets/web/fonts + 应用文档目录 + 外部存储 Fonts 目录
+  Future<List<_FontEntry>> _scanFonts() async {
+    final result = <_FontEntry>[];
+    final seen = <String>{};
+
+    void add(_FontEntry e) {
+      if (seen.add('${e.source}|${e.name}')) result.add(e);
+    }
+
+    // 1) 内置资源（AssetManifest 列出真实文件清单）
+    try {
+      final manifest = jsonDecode(await rootBundle.loadString('AssetManifest.json')) as Map<String, dynamic>;
+      for (final key in manifest.keys) {
+        final lower = key.toLowerCase();
+        if (!lower.startsWith('assets/web/fonts/')) continue;
+        if (!_fontExtensions.any(lower.endsWith)) continue;
+        add(_FontEntry(path: key, name: _baseName(key), source: '内置资源', asset: true));
+      }
+    } catch (_) {}
+
+    // 2) 应用文档目录 +（Android）外部存储 Fonts 目录
+    final roots = <Directory>[];
+    try {
+      roots.add(await getApplicationDocumentsDirectory());
+      if (Platform.isAndroid) {
+        final ext = await getExternalStorageDirectory();
+        if (ext != null) roots.add(ext);
+      }
+    } catch (_) {}
+
+    for (final root in roots) {
+      for (final sub in <String>['Fonts', 'fonts', '']) {
+        final dir = sub.isEmpty ? root : Directory('${root.path}${Platform.pathSeparator}$sub');
+        if (!await dir.exists()) continue;
+        try {
+          await for (final entity in dir.list()) {
+            if (entity is! File) continue;
+            final lower = entity.path.toLowerCase();
+            if (!_fontExtensions.any(lower.endsWith)) continue;
+            add(_FontEntry(path: entity.path, name: _baseName(entity.path), source: '本机文件', asset: false));
+          }
+        } catch (_) {}
+      }
+    }
+    return result..sort((a, b) => a.name.compareTo(b.name));
+  }
+
+  /// 字体选择：列出真实字体文件名，选择后加载并持久化 read_font_path
+  Future<void> _showFontPicker() async {
+    final fonts = await _scanFonts();
+    if (!mounted) return;
+    setState(() => _readFontCount = fonts.length);
+
+    await showModalBottomSheet<void>(
+      context: context,
+      builder: (sheetCtx) => SafeArea(
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+            child: Row(children: [
+              const Icon(Icons.font_download_outlined, size: 20),
+              const SizedBox(width: 8),
+              Expanded(child: Text('选择阅读字体（${fonts.length}）', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold))),
+            ]),
+          ),
+          Flexible(
+            child: ListView(
+              shrinkWrap: true,
+              children: [
+                RadioListTile<String>(
+                  title: const Text('系统默认'),
+                  value: '',
+                  groupValue: _readFontPath,
+                  onChanged: (_) => _resetFont(sheetCtx),
+                ),
+                if (fonts.isEmpty)
+                  const Padding(
+                    padding: EdgeInsets.all(24),
+                    child: Center(child: Text('未扫描到字体文件\n可将 .ttf/.otf 放入应用文档的 Fonts 目录', textAlign: TextAlign.center)),
+                  ),
+                ...fonts.map((f) => RadioListTile<String>(
+                      title: Text(f.name, style: TextStyle(fontFamily: _loadedFamilies.contains(f.name) ? f.name : null)),
+                      subtitle: Text('${f.source} · ${f.path}', style: const TextStyle(fontSize: 11)),
+                      value: f.path,
+                      groupValue: _readFontPath,
+                      onChanged: (_) => _applyFont(f, sheetCtx),
+                    )),
+              ],
+            ),
+          ),
+        ]),
+      ),
+    );
+  }
+
+  /// 已在本会话通过 FontLoader 载入成功的字体族名
+  final Set<String> _loadedFamilies = <String>{};
+
+  /// 恢复系统默认字体
+  Future<void> _resetFont(BuildContext sheetCtx) async {
+    _updateReadConfig((c) => c.fontFamily = null);
+    final p = await SharedPreferences.getInstance();
+    await p.setString('read_font_path', '');
+    if (!mounted) return;
+    setState(() => _readFontPath = '');
+    if (sheetCtx.mounted) Navigator.pop(sheetCtx);
+  }
+
+  /// 应用选中字体：加载字体 + 写入 ReadConfig.fontFamily（阅读界面即时生效）+ 持久化 read_font_path
+  Future<void> _applyFont(_FontEntry font, BuildContext sheetCtx) async {
+    try {
+      final ByteData data = font.asset
+          ? await rootBundle.load(font.path)
+          : ByteData.sublistView(await File(font.path).readAsBytes());
+      final family = font.name;
+      final loader = FontLoader(family)..addFont(Future<ByteData>.value(data));
+      await loader.load();
+      _loadedFamilies.add(family);
+      _updateReadConfig((c) => c.fontFamily = family);
+      final p = await SharedPreferences.getInstance();
+      await p.setString('read_font_path', font.path);
+      await p.setString('font_family', family);
+      if (!mounted) return;
+      setState(() => _readFontPath = font.path);
+      if (sheetCtx.mounted) Navigator.pop(sheetCtx);
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('已应用字体「$family」')));
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('字体加载失败: $e')));
+    }
+  }
 
   void _showColorPicker(AppTheme theme) {
     showDialog(
@@ -871,5 +1477,14 @@ class _ImportBookConfigScreenState extends State<ImportBookConfigScreen> {
       ]),
     );
   }
+}
+
+/// 字体选择列表项：区分内置资源与本机文件，便于 FontLoader 取字节
+class _FontEntry {
+  final String path;
+  final String name;
+  final String source;
+  final bool asset;
+  const _FontEntry({required this.path, required this.name, required this.source, required this.asset});
 }
 

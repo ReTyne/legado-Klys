@@ -5,7 +5,6 @@ import 'package:flutter/material.dart';
 import 'package:legado_md3/data/local/app_database.dart';
 import 'package:legado_md3/data/model/book.dart';
 import 'package:legado_md3/data/model/db_models.dart';
-import 'package:legado_md3/ui/book/knowledge/character_list_screen.dart';
 
 class BookCharacter {
   final String name;

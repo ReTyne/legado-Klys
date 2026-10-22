@@ -92,7 +92,6 @@ class TextPaginator {
     var offset = 0;
     for (var i = 0; i < metrics.length && offset < text.length; i++) {
       final boundary = tp.getLineBoundary(TextPosition(offset: offset));
-      if (boundary == null) break;
       var start = boundary.start;
       var end = boundary.end;
       if (start < 0) start = 0;

@@ -11,7 +11,6 @@ import 'package:legado_md3/help/source/js/legado_js_runtime.dart';
 import 'package:legado_md3/help/source/rule_auto_completer.dart';
 import 'package:legado_md3/ui/book/source/source_debug_screen.dart';
 import 'package:legado_md3/ui/book/source/source_login_screen.dart';
-import 'package:legado_md3/ui/browser/browser_screen.dart';
 import 'package:legado_md3/ui/book/search/search_screen.dart';
 
 /// 书源编辑页 —— 对齐 legado-with-MD3：

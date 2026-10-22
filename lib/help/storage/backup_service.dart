@@ -3,6 +3,7 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:package_info_plus/package_info_plus.dart';
+import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:legado_md3/data/model/book.dart';
@@ -22,6 +23,13 @@ class BackupService {
   /// 本地备份保留份数的 SharedPreferences key
   static const String _keepCountKey = 'backup_keep_count';
   static const int defaultKeepCount = 5;
+
+  /// 自动备份间隔（小时）SharedPreferences key，<=0 表示关闭
+  static const String autoBackupHoursKey = 'auto_backup_hours';
+  /// 上次备份时间（毫秒时间戳）SharedPreferences key
+  static const String autoBackupLastTimeKey = 'auto_backup_last_time';
+  /// 用户自定义备份目录 SharedPreferences key，为空用默认目录
+  static const String backupPathKey = 'backup_path';
 
   /* ================= 旧版纯 JSON 备份（保留，保证向后兼容） ================= */
 
@@ -238,20 +246,81 @@ class BackupService {
     );
   }
 
-  /// 导出 zip 备份到本地文件（.zip），并执行「只保留最近 N 份」清理
+  /// 默认备份目录（应用文档目录）
+  static Future<String> getDefaultBackupDirectoryPath() async {
+    final dir = await getApplicationDocumentsDirectory();
+    return dir.path;
+  }
+
+  /// 探测目录是否可写：不存在则尝试创建；返回 null 表示可用，否则返回错误原因
+  static Future<String?> _ensureWritableDir(Directory dir) async {
+    try {
+      if (!await dir.exists()) {
+        await dir.create(recursive: true);
+      }
+      // Android 11+ 分区存储下目录可能只读，用探测文件确认可写
+      final probe = File(p.join(dir.path, '.legado_write_probe'));
+      await probe.writeAsString('ok');
+      await probe.delete();
+      return null;
+    } catch (e) {
+      return '备份目录不可用: ${dir.path}（$e）';
+    }
+  }
+
+  /// 解析本地备份目录：
+  /// - prefs `backup_path` 为空 → 应用文档目录（默认）
+  /// - 绝对路径 → 直接使用；不存在则尝试创建；不可写则回退默认目录
+  /// - 相对路径 → 依次以外部存储目录(Android)/应用文档目录为基准拼接
+  /// [BackupDirResult.fallback] 为 true 时表示已回退，调用方应向用户提示
+  static Future<BackupDirResult> resolveBackupDirectory() async {
+    final prefs = await SharedPreferences.getInstance();
+    final configured = (prefs.getString(backupPathKey) ?? '').trim();
+    final defaultDir = Directory(await getDefaultBackupDirectoryPath());
+    if (configured.isEmpty) return BackupDirResult(defaultDir, false, null);
+
+    if (p.isAbsolute(configured)) {
+      final dir = Directory(configured);
+      final error = await _ensureWritableDir(dir);
+      if (error == null) return BackupDirResult(dir, false, null);
+      return BackupDirResult(defaultDir, true, error);
+    }
+
+    // 相对路径：先试外部存储目录，再试应用文档目录
+    final bases = <String>[];
+    try {
+      final ext = await getExternalStorageDirectory();
+      if (ext != null) bases.add(ext.path);
+    } catch (_) {}
+    if (!bases.contains(defaultDir.path)) bases.add(defaultDir.path);
+    String? reason;
+    for (final base in bases) {
+      final dir = Directory(p.join(base, configured));
+      final error = await _ensureWritableDir(dir);
+      if (error == null) return BackupDirResult(dir, false, null);
+      reason ??= error;
+    }
+    return BackupDirResult(defaultDir, true, reason);
+  }
+
+  /// 导出 zip 备份到本地文件（.zip），写入 [backup_path] 指定目录（不可用时回退默认目录），
+  /// 并执行「只保留最近 N 份」清理。任何文件操作失败都会抛出，由调用方提示。
   Future<String> exportZipBackupToFile({
     required BackupSelection selection,
     String? password,
     bool autoBackup = false,
   }) async {
     final bytes = await createZipBackup(selection: selection, password: password);
-    final directory = await getApplicationDocumentsDirectory();
+    final resolved = await resolveBackupDirectory();
+    final directory = resolved.directory;
     final prefix = autoBackup ? 'legado_backup_auto' : 'legado_backup';
     final fileName = '${prefix}_${DateTime.now().millisecondsSinceEpoch}.zip';
-    final file = File('${directory.path}/$fileName');
+    final file = File(p.join(directory.path, fileName));
     await file.writeAsBytes(bytes);
-    // 只保留最近 N 份
-    await cleanOldBackups();
+    // 只保留最近 N 份（同一目录内清理）
+    await cleanOldBackups(directory: directory);
+    // 记录上次备份时间（自动备份间隔以此为基准）
+    await markBackupTime();
     return file.path;
   }
 
@@ -268,16 +337,75 @@ class BackupService {
     }
   }
 
+  /// 记录「上次备份时间」（毫秒时间戳）
+  static Future<void> markBackupTime() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt(
+        autoBackupLastTimeKey, DateTime.now().millisecondsSinceEpoch);
+  }
+
+  /// 自动备份间隔（小时），<=0 表示关闭（默认 24 小时）
+  static Future<int> getAutoBackupHours() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getInt(autoBackupHoursKey) ?? 24;
+  }
+
+  /// 是否到达自动备份时间点（关闭时恒为 false；从未备份过时返回 true）
+  static Future<bool> shouldAutoBackup() async {
+    final hours = await getAutoBackupHours();
+    if (hours <= 0) return false;
+    final prefs = await SharedPreferences.getInstance();
+    final last = prefs.getInt(autoBackupLastTimeKey) ?? 0;
+    if (last <= 0) return true;
+    final elapsedMs = DateTime.now().millisecondsSinceEpoch - last;
+    return elapsedMs >= hours * 3600 * 1000;
+  }
+
+  /// 强制执行一次自动备份（绕过间隔判断），返回备份文件路径；失败返回 null
+  static Future<String?> runAutoBackup() async {
+    try {
+      return await BackupService().exportZipBackupToFile(
+        selection: BackupSelection.all(),
+        autoBackup: true,
+      );
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// 到点则执行一次自动备份（未到点或已关闭返回 null，失败静默）
+  static Future<String?> checkAutoBackup() async {
+    try {
+      if (!await shouldAutoBackup()) return null;
+      return await runAutoBackup();
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// 按 `auto_backup_hours` 周期执行的自动备份入口，供 main() 启动时调用：
+  /// 间隔 <=0 直接返回；到点则在后台执行一次完整 zip 备份，任何失败静默处理。
+  static Future<void> scheduleAutoBackup() async {
+    try {
+      final hours = await getAutoBackupHours();
+      if (hours <= 0) return;
+      await checkAutoBackup();
+    } catch (_) {
+      // 自动备份是后台能力，失败不影响启动
+    }
+  }
+
   /// 清理旧备份：只保留最近 [keep] 份（默认读配置，5 份）
+  /// [directory] 为空时按 `backup_path` 解析目录（不可用回退默认目录）
   /// 返回删除的文件数
-  Future<int> cleanOldBackups({int? keep}) async {
+  Future<int> cleanOldBackups({int? keep, Directory? directory}) async {
     final n = keep ?? await getKeepCount();
-    final directory = await getApplicationDocumentsDirectory();
-    final files = directory
+    final dir = directory ?? (await resolveBackupDirectory()).directory;
+    final files = dir
         .listSync()
         .whereType<File>()
         .where((f) {
-          final name = f.path.split('/').last;
+          final name = p.basename(f.path);
           return name.startsWith('legado_backup_') &&
               (name.endsWith('.zip') || name.endsWith('.json') || name.endsWith('.bak'));
         })
@@ -666,12 +794,12 @@ class BackupService {
     return count;
   }
 
-  /// 获取备份文件列表
+  /// 获取备份文件列表（按修改时间倒序，取自 `backup_path` 解析出的目录）
   Future<List<File>> getBackupFiles() async {
-    final directory = await getApplicationDocumentsDirectory();
+    final directory = (await resolveBackupDirectory()).directory;
     final files = directory.listSync()
         .whereType<File>()
-        .where((f) => f.path.contains('legado_backup_'))
+        .where((f) => p.basename(f.path).contains('legado_backup_'))
         .toList()
       ..sort((a, b) => b.lastModifiedSync().compareTo(a.lastModifiedSync()));
     return files;
@@ -682,6 +810,17 @@ class BackupService {
     final file = File(filePath);
     if (await file.exists()) await file.delete();
   }
+}
+
+/// 备份目录解析结果
+class BackupDirResult {
+  /// 实际使用的备份目录
+  final Directory directory;
+  /// true 表示用户配置的路径不可用，已回退到默认目录
+  final bool fallback;
+  /// 回退原因（供 UI 提示），未回退时为 null
+  final String? error;
+  const BackupDirResult(this.directory, this.fallback, this.error);
 }
 
 /// 备份恢复结果

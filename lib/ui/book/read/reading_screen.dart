@@ -38,7 +38,6 @@ import 'package:legado_md3/ui/browser/browser_screen.dart';
 import 'package:legado_md3/ui/config/replace_rule_screen.dart';
 import 'package:legado_md3/ui/config/txt_toc_rule_screen.dart';
 import 'package:provider/provider.dart';
-import 'package:share_plus/share_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class ReadingScreen extends StatefulWidget {
@@ -99,6 +98,9 @@ class _ReadingScreenState extends State<ReadingScreen> with SingleTickerProvider
   bool _pageDiag = false;
   // 实验室开关：加速下载（预缓存时多章节并发拉取）
   bool _accelerateDownload = false;
+  // 设置项：禁用水平滑动翻页（read_disableHorizontalSwipe）。
+  // 只禁横向 PageView 的手势翻页，纵向滚动模式与代码跳页（点击/音量键/菜单）不受影响。
+  bool _disableHorizontalSwipe = false;
   // 文字抗锯齿（oc_antiAlias，Flutter 引擎限制，用禁用字距/连字近似）
   bool _antiAlias = true;
   // 下载缓存配置：阅读时向后预缓存的章节数（0 表示关闭）
@@ -225,6 +227,8 @@ class _ReadingScreenState extends State<ReadingScreen> with SingleTickerProvider
         _pageDiag = labOn && (p.getBool('lab_pageDiag') ?? false);
         _accelerateDownload = labOn && (p.getBool('lab_accDownload') ?? false);
         _antiAlias = p.getBool('oc_antiAlias') ?? true;
+        // 阅读页禁用水平滑动翻页（read_disableHorizontalSwipe）
+        _disableHorizontalSwipe = p.getBool('read_disableHorizontalSwipe') ?? false;
       });
     }
   }
@@ -457,7 +461,8 @@ class _ReadingScreenState extends State<ReadingScreen> with SingleTickerProvider
       _currentPage = targetPage;
     } else if (widget.initialChapter == null && index == widget.book.durChapterIndex) {
       // 恢复上次阅读页码（仅首次加载时）
-      final savedPos = widget.book.durChapterPos ?? 0;
+      // durChapterPos 是非空 int（默认 0），无需再做空判断
+      final savedPos = widget.book.durChapterPos;
       if (savedPos > 0 && savedPos < _pages.length) {
         _currentPage = savedPos;
       }
@@ -579,6 +584,15 @@ class _ReadingScreenState extends State<ReadingScreen> with SingleTickerProvider
       }
       if (currentPage.isNotEmpty) pages.add(currentPage.toString().trimRight());
       _pages = pages.isEmpty ? [_content!] : pages;
+    }
+    if (_pageDiag) {
+      final total = _pages.length;
+      final chars = _pages.fold<int>(0, (s, p) => s + p.length);
+      final per = total == 0 ? 0 : chars ~/ total;
+      final mode = (w != null && h != null && w > 0 && h > 0) ? '真实测量' : '字数估算';
+      debugPrint('[分页诊断] 《${widget.book.name}》页=$total 总字数=$chars '
+          '均字/页=$per 视口=${_pageW?.toStringAsFixed(1)}x${_pageH?.toStringAsFixed(1)} '
+          '字号=${config.textSize} 行距=${config.lineSpacing} 段距=${config.paragraphSpacing} 模式=$mode');
     }
     // 修复：PageView跳转到当前页（可能是恢复的页码）
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -973,10 +987,14 @@ class _ReadingScreenState extends State<ReadingScreen> with SingleTickerProvider
   Widget _buildPageView(ReadConfig config, bool isVertical, bool noAnim) {
     final cover = config.pageAnim == 0; // 覆盖
     final simulate = config.pageAnim == 1; // 仿真
+    // 无动画翻页或用户禁用了水平滑动时，禁掉手势翻页（代码跳页仍然可用）
+    final lockGesture = noAnim || (_disableHorizontalSwipe && !isVertical);
+    final physics =
+        lockGesture ? const NeverScrollableScrollPhysics() : const PageScrollPhysics();
     final base = PageView.builder(
       controller: _pageController,
       scrollDirection: isVertical ? Axis.vertical : Axis.horizontal,
-      physics: noAnim ? const NeverScrollableScrollPhysics() : const PageScrollPhysics(),
+      physics: physics,
       itemCount: _pages.length,
       onPageChanged: (page) => setState(() => _currentPage = page),
       itemBuilder: (context, index) => _pageItem(config, index),
@@ -992,7 +1010,7 @@ class _ReadingScreenState extends State<ReadingScreen> with SingleTickerProvider
         return PageView.builder(
           controller: _pageController,
           scrollDirection: isVertical ? Axis.vertical : Axis.horizontal,
-          physics: noAnim ? const NeverScrollableScrollPhysics() : const PageScrollPhysics(),
+          physics: physics,
           itemCount: _pages.length,
           onPageChanged: (p) => setState(() => _currentPage = p),
           itemBuilder: (context, index) {
