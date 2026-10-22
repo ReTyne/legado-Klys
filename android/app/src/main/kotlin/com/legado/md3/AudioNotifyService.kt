@@ -5,8 +5,14 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.app.Service
+import android.content.BroadcastReceiver
+import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.content.pm.ServiceInfo
+import android.media.AudioAttributes
+import android.media.AudioFocusRequest
+import android.media.AudioManager
 import android.os.Build
 import android.os.IBinder
 import androidx.core.app.NotificationCompat
@@ -74,20 +80,41 @@ class AudioNotifyService : Service() {
     private var subtitle: String = ""
     private var playing: Boolean = false
 
+    // ---- 音频焦点（播放时持有，暂停时释放） ----
+    private var audioFocusRequest: AudioFocusRequest? = null
+    private var audioFocusChangeListener: AudioManager.OnAudioFocusChangeListener? = null
+    private var hasAudioFocus: Boolean = false
+
+    /** 拔耳机 / 蓝牙断开：输出即将变为 noisy，暂停播放 */
+    private val becomingNoisyReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context?, intent: Intent?) {
+            if (intent?.action == AudioManager.ACTION_AUDIO_BECOMING_NOISY) {
+                sendCommand(CMD_PAUSE)
+            }
+        }
+    }
+
     override fun onCreate() {
         super.onCreate()
         instance = this
         createNotificationChannel()
         bindChannel()
+        // ACTION_AUDIO_BECOMING_NOISY 是系统保护广播，无需声明 exported 标记
+        try {
+            registerReceiver(becomingNoisyReceiver, IntentFilter(AudioManager.ACTION_AUDIO_BECOMING_NOISY))
+        } catch (_: Exception) {
+        }
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        when (intent?.action) {
+        val action = intent?.action ?: ""
+        when (action) {
             CMD_PLAY, CMD_PAUSE, CMD_PREV, CMD_NEXT -> {
                 // 通知栏按钮：命令由 Intent action 携带，直接透传给 Dart
-                sendCommand(intent.action!!)
+                if (action == CMD_PLAY) requestAudioFocus()
+                sendCommand(action)
                 return START_NOT_STICKY
             }
 
@@ -112,7 +139,10 @@ class AudioNotifyService : Service() {
     fun updateFromDart(title: String?, subtitle: String?, playing: Boolean?) {
         if (title != null) this.title = title
         if (subtitle != null) this.subtitle = subtitle
-        if (playing != null) this.playing = playing
+        if (playing != null) {
+            this.playing = playing
+            applyPlayingState()
+        }
         updateNotification()
     }
 
@@ -121,7 +151,78 @@ class AudioNotifyService : Service() {
         intent.getStringExtra(EXTRA_SUBTITLE)?.let { subtitle = it }
         if (intent.hasExtra(EXTRA_PLAYING)) {
             playing = intent.getBooleanExtra(EXTRA_PLAYING, playing)
+            applyPlayingState()
         }
+    }
+
+    /** 播放中持有音频焦点，暂停时释放（避免挡住其它应用的声音） */
+    private fun applyPlayingState() {
+        if (playing) requestAudioFocus() else abandonAudioFocus()
+    }
+
+    /** 被其它音频抢占（来电 / 其它播放器）时暂停，与 legado-E 的 AudioFocusHelper 一致 */
+    private fun handleFocusChange(change: Int) {
+        when (change) {
+            AudioManager.AUDIOFOCUS_LOSS,
+            AudioManager.AUDIOFOCUS_LOSS_TRANSIENT -> sendCommand(CMD_PAUSE)
+        }
+    }
+
+    /** 获取 AudioManager（兼容 minSdk 21：getSystemService(Class) 需 API 23） */
+    private fun audioManager(): AudioManager? {
+        return try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                getSystemService(AudioManager::class.java)
+            } else {
+                @Suppress("DEPRECATION")
+                getSystemService(Context.AUDIO_SERVICE) as? AudioManager
+            }
+        } catch (_: Exception) {
+            null
+        }
+    }
+
+    private fun requestAudioFocus() {
+        if (hasAudioFocus) return
+        val am = audioManager() ?: return
+        val listener = AudioManager.OnAudioFocusChangeListener { handleFocusChange(it) }
+        audioFocusChangeListener = listener
+        val granted = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val attrs = AudioAttributes.Builder()
+                .setUsage(AudioAttributes.USAGE_MEDIA)
+                .setContentType(AudioAttributes.CONTENT_TYPE_MUSIC)
+                .build()
+            val req = AudioFocusRequest.Builder(AudioManager.AUDIOFOCUS_GAIN)
+                .setAudioAttributes(attrs)
+                .setOnAudioFocusChangeListener(listener)
+                .build()
+            audioFocusRequest = req
+            am.requestAudioFocus(req)
+        } else {
+            @Suppress("DEPRECATION")
+            am.requestAudioFocus(
+                listener,
+                AudioManager.STREAM_MUSIC,
+                AudioManager.AUDIOFOCUS_GAIN,
+            )
+        }
+        hasAudioFocus = granted == AudioManager.AUDIOFOCUS_REQUEST_GRANTED
+    }
+
+    private fun abandonAudioFocus() {
+        val am = audioManager() ?: return
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                audioFocusRequest?.let { am.abandonAudioFocusRequest(it) }
+            } else {
+                @Suppress("DEPRECATION")
+                audioFocusChangeListener?.let { am.abandonAudioFocus(it) }
+            }
+        } catch (_: Exception) {
+        }
+        audioFocusRequest = null
+        audioFocusChangeListener = null
+        hasAudioFocus = false
     }
 
     /** 注册与 Dart 通信的命令频道（复用应用级 FlutterEngine） */
@@ -134,7 +235,7 @@ class AudioNotifyService : Service() {
 
     private fun createNotificationChannel() {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.O) return
-        val manager = getSystemService(NotificationManager::class.java) ?: return
+        val manager = notificationManager() ?: return
         if (manager.getNotificationChannel(NOTIFY_CHANNEL_ID) != null) return
         val ch = NotificationChannel(
             NOTIFY_CHANNEL_ID,
@@ -147,6 +248,20 @@ class AudioNotifyService : Service() {
             lockscreenVisibility = Notification.VISIBILITY_PUBLIC
         }
         manager.createNotificationChannel(ch)
+    }
+
+    /** 获取 NotificationManager（兼容 minSdk 21） */
+    private fun notificationManager(): NotificationManager? {
+        return try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                getSystemService(NotificationManager::class.java)
+            } else {
+                @Suppress("DEPRECATION")
+                getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
+            }
+        } catch (_: Exception) {
+            null
+        }
     }
 
     private fun buildNotification(): Notification {
@@ -250,13 +365,18 @@ class AudioNotifyService : Service() {
 
     private fun updateNotification() {
         try {
-            val manager = getSystemService(NotificationManager::class.java)
+            val manager = notificationManager()
             manager?.notify(NOTIFY_ID, buildNotification())
         } catch (_: Exception) {
         }
     }
 
     override fun onDestroy() {
+        abandonAudioFocus()
+        try {
+            unregisterReceiver(becomingNoisyReceiver)
+        } catch (_: Exception) {
+        }
         channel = null
         if (instance === this) instance = null
         super.onDestroy()

@@ -204,6 +204,13 @@ class AudioPlaybackController {
     _bindPlayer(player);
     _initActions();
     await _loadPrefs();
+    try {
+      // 音频焦点改由 AudioNotifyService 统一管理（失去焦点 / 拔耳机时暂停），
+      // 这里关掉 audioplayers 自带的焦点请求，避免两份请求互相打架
+      await player.setAudioContext(const AudioContext(
+        android: AudioContextAndroid(audioFocus: AndroidAudioFocus.none),
+      ));
+    } catch (_) {}
   }
 
   /// 播放页退出。
