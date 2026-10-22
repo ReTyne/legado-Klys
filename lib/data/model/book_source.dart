@@ -238,8 +238,6 @@ class BookSource implements JsSource {
     'variableComment': variableComment,
     'jsLib': jsLib,
     'variable': variable,
-    'rulePut': rulePut,
-    'ruleGet': ruleGet,
   };
 
   String toJsonString() => jsonEncode(toJson());

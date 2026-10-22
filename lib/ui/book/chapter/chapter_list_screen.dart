@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:legado_md3/data/model/book.dart';
 import 'package:legado_md3/data/model/book_chapter.dart';
 import 'package:legado_md3/data/local/app_database.dart';
-import 'package:legado_md3/ui/book/read/reading_screen.dart';
 
 class ChapterListScreen extends StatefulWidget {
   final Book? book;

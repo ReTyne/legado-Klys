@@ -1,76 +1,19 @@
 import 'dart:async';
-import 'dart:convert';
-import 'dart:math' as math;
 
-import 'package:audioplayers/audioplayers.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:legado_md3/data/model/book.dart';
 import 'package:legado_md3/data/model/book_chapter.dart';
-import 'package:legado_md3/data/model/book_source.dart';
 import 'package:legado_md3/data/local/app_database.dart';
-import 'package:legado_md3/help/source/source_engine.dart';
+import 'package:legado_md3/help/audio/audio_playback_controller.dart';
 import 'package:legado_md3/help/readaloud/lrc_parser.dart';
 
-/// 播放模式（对齐 legado-E AudioPlay.PlayMode）
-enum AudioPlayMode {
-  /// 顺序播放，播完最后一集停止
-  sequence,
-  /// 单曲循环
-  singleLoop,
-  /// 随机播放
-  random,
-  /// 列表循环
-  listLoop,
-}
-
-extension _AudioPlayModeExt on AudioPlayMode {
-  String get label => const ['顺序播放', '单曲循环', '随机播放', '列表循环'][index];
-
-  IconData get icon =>
-      const [Icons.playlist_play, Icons.repeat_one, Icons.shuffle, Icons.repeat][index];
-
-  AudioPlayMode get next =>
-      AudioPlayMode.values[(index + 1) % AudioPlayMode.values.length];
-}
-
-/// 后台续播上下文：页面退出时若选择「继续后台播放」，播放器实例与当前轨道信息
-/// 保留在这里，再次进入播放页复用，避免重复解析与重头播放。
+/// 有声书播放器界面，对齐原版 AudioPlayActivity。
 ///
-/// 本项目未引入 audio_service / 前台服务，无法做通知栏控制与系统级后台播放，
-/// 这里用「进程内保留播放器 + 退出确认开关 + 页内迷你悬浮窗」做降级替代。
-class _AudioSession {
-  final AudioPlayer player;
-  int index;
-  List<String> segments;
-  int segment;
-
-  _AudioSession(this.player)
-      : index = 0,
-        segment = 0,
-        segments = <String>[];
-}
-
-/// 全局保留的后台播放会话（为空表示当前没有后台续播中的音频）。
-_AudioSession? _retainedAudio;
-
-_AudioSession _acquireAudio() {
-  final retained = _retainedAudio;
-  if (retained != null) return retained;
-  final created = _AudioSession(AudioPlayer());
-  _retainedAudio = created;
-  return created;
-}
-
-/// 断点续听读取结果：片段下标 + 片段内位置。
-class _ResumePoint {
-  final int segment;
-  final Duration position;
-  const _ResumePoint(this.segment, this.position);
-}
-
-/// 有声书播放器，对齐原版 AudioPlayActivity + AudioPlayService。
+/// 播放逻辑全部在 [AudioPlaybackController]（对应原版 AudioPlayService）中：
+/// 本页只负责展示与交互。退出页面时若选择「继续后台播放」，控制器保留会话，
+/// 并由 Android 前台服务 + 媒体通知栏继续控制（见 `audio_notify_service.dart`）。
 class AudioPlayerScreen extends StatefulWidget {
   final Book book;
   final int initialIndex;
@@ -83,43 +26,35 @@ class AudioPlayerScreen extends StatefulWidget {
 class _AudioPlayerScreenState extends State<AudioPlayerScreen> {
   static const List<double> _rates = [0.5, 0.75, 1.0, 1.25, 1.5, 1.75, 2.0, 2.5, 3.0];
   static const List<int> _sleepPresets = [15, 30, 60, 90];
-  static const String _prefMode = 'audio_play_mode';
-  static const String _prefRate = 'audio_play_rate';
   static const String _prefBackground = 'audio_background_play';
-  static const String _prefSkipStart = 'audio_skip_start';
-  static const String _prefSkipEnd = 'audio_skip_end';
-  /// 音频扩展名（用于判断文本里是否直接是媒体地址）
-  static final RegExp _audioExt =
-      RegExp(r'\.(mp3|m4a|aac|wav|ogg|flac|opus|m3u8)(\?|#|$)', caseSensitive: false);
-  static final RegExp _urlRe = RegExp(r'''https?://[^\s"'<>\\]+''');
 
   final DatabaseService _db = DatabaseService();
-  final BookSourceEngine _engine = BookSourceEngine();
+  final AudioPlaybackController _audio = AudioPlaybackController.instance;
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
+  final List<StreamSubscription> _subs = [];
 
-  late final AudioPlayer _player;
+  /// 是否在恢复一个后台续播会话（只同步 UI，不重新解析）
   late final bool _restoring;
 
+  // ---- 以下为控制器状态的 UI 镜像 ----
   List<BookChapter> _chapters = [];
-  BookSource? _source;
   int _index = 0;
   bool _isPlaying = false;
-  /// 解析/缓冲中
   bool _loading = false;
   Duration _position = Duration.zero;
   Duration _duration = Duration.zero;
   double _rate = 1.0;
   AudioPlayMode _mode = AudioPlayMode.sequence;
-
-  /// 当前章节的音频片段队列（一段书源正文可能是多个 URL，需顺序播放）
   List<String> _segments = [];
   int _segIndex = 0;
+  int _skipStart = 0;
+  int _skipEnd = 0;
 
   /// 拖动进度条期间为 true，避免 position 事件回写造成抖动
   bool _seeking = false;
   double _seekValue = 0;
 
-  /// 退出页面时是否继续后台播放（无通知栏，降级为「保留播放器」）
+  /// 退出页面时是否继续后台播放（保留前台服务 + 通知栏控制）
   bool _backgroundPlay = false;
   /// 迷你悬浮播放窗（页内 PiP 式降级入口）
   bool _miniMode = false;
@@ -129,78 +64,27 @@ class _AudioPlayerScreenState extends State<AudioPlayerScreen> {
   List<LrcLine> _lyrics = [];
   int _lyricIndex = -1;
 
-  // 跳过片头/片尾（秒），对齐 legado-E 的 AudioSkipCredits
-  int _skipStart = 0;
-  int _skipEnd = 0;
-  bool _skipEndDone = false;
-
   // 定时关闭
   Timer? _sleepTimer;
   DateTime? _sleepEnd;
-  bool _stopAfterCurrent = false;
-
-  // 断点续听保存节流
-  int _lastSaveMs = 0;
-  StreamSubscription? _posSub, _durSub, _stateSub, _completeSub;
-
-  /// 音频书章节正文可能直接就是媒体地址；也可能是需要书源规则解析的页面。
-  /// 与 legado-E 一致：解析结果是 "http..." 单地址，或 JSON 数组（多个片段顺序播放）。
-  static List<String> _parseUrls(String? raw) {
-    final text = raw?.trim() ?? '';
-    if (text.isEmpty || LrcParser.looksLikeLrc(text)) return const [];
-    // 1) JSON 数组：legado-E 里 ExoPlayerHelper.getMediaSource 处理的形态
-    if (text.startsWith('[')) {
-      try {
-        final arr = jsonDecode(text);
-        if (arr is List) {
-          final out = <String>[];
-          for (final e in arr) {
-            if (e is String) {
-              if (e.startsWith('http')) out.add(e);
-            } else if (e is Map) {
-              final u = (e['url'] ?? e['src'] ?? e['playUrl'])?.toString();
-              if (u != null && u.startsWith('http')) out.add(u);
-            }
-          }
-          if (out.isNotEmpty) return out;
-        }
-      } catch (_) {}
-    }
-    // 2) 多行地址：每行一个片段
-    final lines = text
-        .split('\n')
-        .map((e) => e.trim())
-        .where((e) => e.startsWith('http'))
-        .toList();
-    if (lines.isNotEmpty) return lines;
-    // 3) 文本里内嵌的音频地址
-    final m = _urlRe.firstMatch(text);
-    if (m != null) {
-      final u = m.group(0)!;
-      if (_audioExt.hasMatch(u) || !text.contains('<')) return [u];
-    }
-    return const [];
-  }
 
   static String _fmt(Duration d) {
     String two(int n) => n.toString().padLeft(2, '0');
     return '${two(d.inMinutes.remainder(60))}:${two(d.inSeconds.remainder(60))}';
   }
 
-  String _positionKey(int idx) => 'audio_position_${widget.book.name}_$idx';
+  bool get _stopAfterCurrent => _audio.stopAfterCurrent;
 
   @override
   void initState() {
     super.initState();
-    _restoring = _retainedAudio != null;
-    _player = _acquireAudio().player;
-    _index = widget.initialIndex;
-    _bind();
+    _restoring = _audio.hasSessionFor(widget.book);
+    _bindStreams();
     _load();
   }
 
-  void _bind() {
-    _posSub = _player.onPositionChanged.listen((p) {
+  void _bindStreams() {
+    _subs.add(_audio.positions.listen((p) {
       if (!mounted) return;
       setState(() {
         _loading = false;
@@ -209,69 +93,74 @@ class _AudioPlayerScreenState extends State<AudioPlayerScreen> {
           if (_lyrics.isNotEmpty) _lyricIndex = LrcParser.indexAt(_lyrics, p);
         }
       });
-      unawaited(_savePosition());
-      // 跳过片尾：接近结尾时自动切下一集
-      if (_skipEnd > 0 &&
-          _duration.inSeconds > _skipEnd &&
-          !_skipEndDone &&
-          p.inSeconds >= _duration.inSeconds - _skipEnd) {
-        _skipEndDone = true;
-        unawaited(_next());
-      }
-    });
-    _durSub = _player.onDurationChanged.listen((d) {
+    }));
+    _subs.add(_audio.durations.listen((d) {
       if (!mounted) return;
       setState(() => _duration = d);
-    });
-    _stateSub = _player.onPlayerStateChanged.listen((s) {
+    }));
+    _subs.add(_audio.playingStates.listen((p) {
       if (!mounted) return;
-      setState(() => _isPlaying = s == PlayerState.playing);
-    });
-    _completeSub = _player.onPlayerComplete.listen((_) {
+      setState(() => _isPlaying = p);
+    }));
+    _subs.add(_audio.loadingStates.listen((l) {
       if (!mounted) return;
-      if (_segIndex + 1 < _segments.length) {
-        unawaited(_playSegment(_segIndex + 1));
-      } else {
-        unawaited(_handleTrackComplete());
-      }
-    });
+      setState(() => _loading = l);
+    }));
+    _subs.add(_audio.trackChanges.listen((_) {
+      if (!mounted) return;
+      setState(() {
+        _index = _audio.index;
+        _segments = _audio.segments;
+        _segIndex = _audio.segIndex;
+        _syncLyricOfCurrent();
+      });
+    }));
+    _subs.add(_audio.messages.listen((m) {
+      if (!mounted) return;
+      _toast(m);
+      // 同步被引擎重置的标志（如「播完当前集停止」）
+      setState(() {});
+    }));
   }
 
   Future<void> _load() async {
     await _loadPrefs();
     final list = await _db.getChapters(widget.book.name, widget.book.author);
     if (!mounted) return;
-    _chapters = list.where((c) => !c.isVolume).toList();
-    if (_index < 0 || _index >= _chapters.length) _index = 0;
-    setState(() {});
-
+    final chapters = list.where((c) => !c.isVolume).toList();
+    await _audio.attach(
+        book: widget.book, chapters: chapters, initialIndex: widget.initialIndex);
+    if (!mounted) return;
+    _syncFromController();
     if (_restoring) {
-      // 复用后台续播中的播放器：只同步 UI，不重新解析、不重头播放
-      final session = _retainedAudio;
-      if (session != null) {
-        _index = session.index;
-        _segments = session.segments;
-        _segIndex = session.segment;
-      }
-      final pos = await _player.getCurrentPosition();
-      final dur = await _player.getDuration();
-      if (!mounted) return;
-      setState(() {
-        _position = pos ?? Duration.zero;
-        _duration = dur ?? Duration.zero;
-        _isPlaying = _player.state == PlayerState.playing;
-        _loading = false;
-        _syncLyricOfCurrent();
-      });
+      // 复用后台续播中的会话：只同步 UI，不重新解析、不重头播放
       return;
     }
+    final saved = await _audio.loadPosition(_audio.index);
+    if (!mounted) return;
+    await _audio.playAt(_audio.index,
+        segment: saved?.segment ?? 0, startAt: saved?.position);
+  }
 
-    final saved = await _loadPosition(_index);
-    await _playAt(_index, segment: saved?.segment ?? 0, startAt: saved?.position);
+  void _syncFromController() {
+    _chapters = _audio.chapters;
+    _index = _audio.index;
+    _segments = _audio.segments;
+    _segIndex = _audio.segIndex;
+    _isPlaying = _audio.isPlaying;
+    _loading = _audio.loading;
+    _position = _audio.position;
+    _duration = _audio.duration;
+    _rate = _audio.rate;
+    _mode = _audio.mode;
+    _skipStart = _audio.skipStart;
+    _skipEnd = _audio.skipEnd;
+    _syncLyricOfCurrent();
   }
 
   void _syncLyricOfCurrent() {
-    final content = _index >= 0 && _index < _chapters.length ? _chapters[_index].content : null;
+    final content =
+        _index >= 0 && _index < _chapters.length ? _chapters[_index].content : null;
     if (LrcParser.looksLikeLrc(content)) {
       _lyrics = LrcParser.parse(content!);
       _lyricIndex = LrcParser.indexAt(_lyrics, _position);
@@ -284,28 +173,7 @@ class _AudioPlayerScreenState extends State<AudioPlayerScreen> {
   Future<void> _loadPrefs() async {
     try {
       final p = await SharedPreferences.getInstance();
-      final m = p.getInt(_prefMode) ?? 0;
-      _mode = m >= 0 && m < AudioPlayMode.values.length
-          ? AudioPlayMode.values[m]
-          : AudioPlayMode.sequence;
-      _rate = p.getDouble(_prefRate) ?? 1.0;
       _backgroundPlay = p.getBool(_prefBackground) ?? false;
-      _skipStart = p.getInt(_prefSkipStart) ?? 0;
-      _skipEnd = p.getInt(_prefSkipEnd) ?? 0;
-    } catch (_) {}
-  }
-
-  Future<void> _persistDouble(String key, double v) async {
-    try {
-      final p = await SharedPreferences.getInstance();
-      await p.setDouble(key, v);
-    } catch (_) {}
-  }
-
-  Future<void> _persistInt(String key, int v) async {
-    try {
-      final p = await SharedPreferences.getInstance();
-      await p.setInt(key, v);
     } catch (_) {}
   }
 
@@ -316,218 +184,30 @@ class _AudioPlayerScreenState extends State<AudioPlayerScreen> {
     } catch (_) {}
   }
 
-  // ==================== 断点续听 ====================
+  // ==================== 播放控制（转发控制器） ====================
 
-  Future<void> _savePosition({bool force = false}) async {
-    if (_chapters.isEmpty) return;
-    final now = DateTime.now().millisecondsSinceEpoch;
-    if (!force && now - _lastSaveMs < 3000) return;
-    _lastSaveMs = now;
-    try {
-      final p = await SharedPreferences.getInstance();
-      await p.setString(
-          _positionKey(_index), '$_segIndex|${_position.inMilliseconds}');
-    } catch (_) {}
-  }
+  Future<void> _playAt(int idx) => _audio.playAt(idx);
 
-  Future<_ResumePoint?> _loadPosition(int idx) async {
-    try {
-      final p = await SharedPreferences.getInstance();
-      final v = p.getString(_positionKey(idx));
-      if (v == null) return null;
-      final parts = v.split('|');
-      if (parts.length != 2) return null;
-      final seg = int.tryParse(parts[0]) ?? 0;
-      final ms = int.tryParse(parts[1]) ?? 0;
-      if (seg <= 0 && ms <= 0) return null;
-      return _ResumePoint(seg, Duration(milliseconds: ms));
-    } catch (_) {
-      return null;
-    }
-  }
+  Future<void> _toggle() => _audio.toggle();
 
-  // ==================== 播放 ====================
+  Future<void> _next() => _audio.next();
 
-  /// 解析当前章节的真实音频地址列表。
-  Future<List<String>> _resolveSegments(int idx) async {
-    final ch = _chapters[idx];
-    final fromContent = _parseUrls(ch.content);
-    if (fromContent.isNotEmpty) return fromContent;
-    if (ch.url.startsWith('http') && _audioExt.hasMatch(ch.url)) return [ch.url];
-    // 音频书源：走书源规则解析（等价 legado-E WebBook.getContent）
-    try {
-      _source ??= await _db.getSource(widget.book.origin ?? '');
-      final source = _source;
-      if (source != null) {
-        final raw = await _engine.getAudioContent(source, ch.url,
-            bookInfo: {'name': widget.book.name, 'author': widget.book.author},
-            chapter: {'index': idx, 'title': ch.title, 'url': ch.url});
-        final parsed = _parseUrls(raw);
-        if (parsed.isNotEmpty) return parsed;
-      }
-    } catch (_) {}
-    return const [];
-  }
+  Future<void> _prev() => _audio.prev();
 
-  Future<void> _playAt(int idx, {int segment = 0, Duration? startAt}) async {
-    if (idx < 0 || idx >= _chapters.length) {
-      if (mounted) setState(() => _loading = false);
-      return;
-    }
-    // 切轨前保存上一轨进度
-    await _savePosition(force: true);
-    final ch = _chapters[idx];
-    final hasLrc = LrcParser.looksLikeLrc(ch.content);
-    setState(() {
-      _index = idx;
-      _loading = true;
-      _position = startAt ?? Duration.zero;
-      _duration = Duration.zero;
-      _skipEndDone = false;
-      _lyrics = hasLrc ? LrcParser.parse(ch.content!) : const [];
-      _lyricIndex = hasLrc ? 0 : -1;
-    });
-    final urls = await _resolveSegments(idx);
-    if (!mounted) return;
-    if (urls.isEmpty) {
-      setState(() => _loading = false);
-      _toast('无法解析音频地址');
-      return;
-    }
-    _segments = urls;
-    _retainedAudio?.segments = urls;
-    await _playSegment(segment.clamp(0, urls.length - 1), startAt: startAt);
-  }
+  Future<void> _seekTo(Duration d) => _audio.seekTo(d);
 
-  Future<void> _playSegment(int seg, {Duration? startAt}) async {
-    if (seg < 0 || seg >= _segments.length) return;
-    final url = _segments[seg];
-    var at = startAt ?? Duration.zero;
-    if (seg == 0 && _skipStart > 0 && at < Duration(seconds: _skipStart)) {
-      at = Duration(seconds: _skipStart);
-    }
-    setState(() {
-      _segIndex = seg;
-      _loading = true;
-      _position = at;
-    });
-    _retainedAudio?.segment = seg;
-    _retainedAudio?.index = _index;
-    try {
-      await _player.stop();
-      await _player.setSource(UrlSource(url));
-      await _player.resume();
-      try {
-        // 部分平台（尤其 Android 低版本）不支持变速，失败时保持原速
-        await _player.setPlaybackRate(_rate);
-      } catch (_) {}
-      if (at > Duration.zero) await _player.seek(at);
-      if (mounted) setState(() => _position = at);
-    } catch (e) {
-      if (mounted) {
-        setState(() => _loading = false);
-        _toast('播放失败: $e');
-      }
-    }
-  }
+  Future<void> _seekBy(int sec) => _audio.seekBy(sec);
 
-  /// 一整集（所有片段）播放结束
-  Future<void> _handleTrackComplete() async {
-    await _savePosition(force: true);
-    if (_stopAfterCurrent) {
-      _stopAfterCurrent = false;
-      _cancelSleep();
-      await _player.pause();
-      if (mounted) {
-        setState(() {});
-        _toast('已播完当前集，定时停止生效');
-      }
-      return;
-    }
-    await _next();
-  }
+  Future<void> _setRate(double rate) => _audio.setRate(rate);
 
-  int _randomIndex() {
-    if (_chapters.length <= 1) return 0;
-    final n = math.Random().nextInt(_chapters.length);
-    return n == _index ? (n + 1) % _chapters.length : n;
-  }
-
-  Future<void> _next() async {
-    if (_chapters.isEmpty) return;
-    switch (_mode) {
-      case AudioPlayMode.sequence:
-        if (_index + 1 < _chapters.length) {
-          await _playAt(_index + 1);
-        } else {
-          await _player.pause();
-          _toast('已是最后一集');
-        }
-        break;
-      case AudioPlayMode.singleLoop:
-        await _playAt(_index);
-        break;
-      case AudioPlayMode.random:
-        await _playAt(_randomIndex());
-        break;
-      case AudioPlayMode.listLoop:
-        await _playAt((_index + 1) % _chapters.length);
-        break;
-    }
-  }
-
-  Future<void> _prev() async {
-    if (_chapters.isEmpty) return;
-    if (_mode == AudioPlayMode.random) {
-      await _playAt(_randomIndex());
-      return;
-    }
-    // 播放超过 3 秒时，「上一曲」先回到本集开头
-    if (_position.inSeconds > 3) {
-      await _seekTo(Duration.zero);
-      return;
-    }
-    if (_index > 0) await _playAt(_index - 1);
-  }
-
-  Future<void> _toggle() async {
-    if (_isPlaying) {
-      await _player.pause();
-      await _savePosition(force: true);
-    } else {
-      if (_segments.isEmpty) {
-        await _playAt(_index);
-        return;
-      }
-      await _player.resume();
-      try {
-        await _player.setPlaybackRate(_rate);
-      } catch (_) {}
-    }
-  }
-
-  Future<void> _seekTo(Duration d) async {
-    setState(() => _position = d);
-    await _player.seek(d);
-    await _savePosition(force: true);
-  }
-
-  Future<void> _seekBy(int sec) async {
-    await _seekTo(Duration(
-        milliseconds: (_position.inMilliseconds + sec * 1000).clamp(0, 1 << 31)));
+  void _cycleMode() {
+    final mode = _audio.mode.next;
+    setState(() => _mode = mode);
+    unawaited(_audio.setMode(mode));
+    _toast(mode.label);
   }
 
   // ==================== 倍速 / 播放模式 / 定时 ====================
-
-  Future<void> _setRate(double rate) async {
-    setState(() => _rate = rate);
-    await _persistDouble(_prefRate, rate);
-    try {
-      await _player.setPlaybackRate(rate);
-    } catch (_) {
-      if (mounted) _toast('当前设备不支持变速播放');
-    }
-  }
 
   void _showRateSheet() {
     showModalBottomSheet(
@@ -558,13 +238,6 @@ class _AudioPlayerScreenState extends State<AudioPlayerScreen> {
     );
   }
 
-  void _cycleMode() {
-    final mode = _mode.next;
-    setState(() => _mode = mode);
-    unawaited(_persistInt(_prefMode, mode.index));
-    _toast(mode.label);
-  }
-
   void _startSleep(int minutes) {
     _cancelSleep();
     if (minutes <= 0) {
@@ -581,7 +254,7 @@ class _AudioPlayerScreenState extends State<AudioPlayerScreen> {
       if (DateTime.now().isAfter(end)) {
         _sleepEnd = null;
         t.cancel();
-        unawaited(_player.pause());
+        unawaited(_audio.pause());
         if (mounted) setState(() {});
       } else {
         setState(() {});
@@ -598,7 +271,8 @@ class _AudioPlayerScreenState extends State<AudioPlayerScreen> {
 
   void _setStopAfterCurrent(bool v) {
     _cancelSleep();
-    setState(() => _stopAfterCurrent = v);
+    _audio.setStopAfterCurrent(v);
+    setState(() {});
   }
 
   void _showSleepDialog() {
@@ -645,7 +319,7 @@ class _AudioPlayerScreenState extends State<AudioPlayerScreen> {
                 Navigator.pop(c);
                 setState(() {
                   _cancelSleep();
-                  _stopAfterCurrent = false;
+                  _audio.setStopAfterCurrent(false);
                 });
               },
             ),
@@ -738,16 +412,14 @@ class _AudioPlayerScreenState extends State<AudioPlayerScreen> {
               const SizedBox(height: 8),
               FilledButton(
                 onPressed: () async {
-                  await _persistInt(_prefSkipStart, start.toInt());
-                  await _persistInt(_prefSkipEnd, end.toInt());
+                  await _audio.setSkip(start: start.toInt(), end: end.toInt());
                   if (!mounted) return;
                   setState(() {
                     _skipStart = start.toInt();
                     _skipEnd = end.toInt();
-                    _skipEndDone = false;
                   });
                   Navigator.pop(context);
-                  await _playAt(_index);
+                  await _audio.playAt(_audio.index);
                 },
                 child: const Text('保存并应用'),
               ),
@@ -860,7 +532,7 @@ class _AudioPlayerScreenState extends State<AudioPlayerScreen> {
 
   void _handlePop(bool didPop) {
     if (didPop) return;
-    if (!_isPlaying) {
+    if (!_audio.isPlaying) {
       Navigator.of(context).pop();
       return;
     }
@@ -886,31 +558,20 @@ class _AudioPlayerScreenState extends State<AudioPlayerScreen> {
     if (result == null || !mounted) return;
     _backgroundPlay = result;
     await _persistBool(_prefBackground, result);
-    if (!result) await _player.pause();
+    if (!result) await _audio.pause();
     if (!mounted) return;
     Navigator.of(context).pop();
   }
 
   @override
   void dispose() {
-    unawaited(_savePosition(force: true));
-    _posSub?.cancel();
-    _durSub?.cancel();
-    _stateSub?.cancel();
-    _completeSub?.cancel();
-    _sleepTimer?.cancel();
-    if (_backgroundPlay && _isPlaying) {
-      // 保留播放器继续后台播放（无 audio_service，无法做通知栏/前台服务）
-      final session = _retainedAudio;
-      if (session != null) {
-        session.index = _index;
-        session.segments = _segments;
-        session.segment = _segIndex;
-      }
-    } else {
-      _retainedAudio = null;
-      unawaited(_player.dispose());
+    for (final s in _subs) {
+      unawaited(s.cancel());
     }
+    _sleepTimer?.cancel();
+    // 后台播放：保留会话并交给 Android 前台服务 + 媒体通知栏
+    unawaited(_audio.detach(
+        backgroundPlay: _backgroundPlay && _audio.isPlaying));
     super.dispose();
   }
 
@@ -920,7 +581,7 @@ class _AudioPlayerScreenState extends State<AudioPlayerScreen> {
   Widget build(BuildContext context) {
     final current = _index >= 0 && _index < _chapters.length ? _chapters[_index] : null;
     return PopScope(
-      canPop: !_isPlaying,
+      canPop: !_audio.isPlaying,
       onPopInvokedWithResult: (didPop, _) => _handlePop(didPop),
       child: Scaffold(
         key: _scaffoldKey,
@@ -1237,7 +898,7 @@ class _AudioPlayerScreenState extends State<AudioPlayerScreen> {
             IconButton(
               icon: const Icon(Icons.close, size: 18),
               onPressed: () async {
-                await _player.pause();
+                await _audio.pause();
                 if (mounted) setState(() => _miniMode = false);
               },
             ),

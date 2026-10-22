@@ -55,6 +55,11 @@ android {
     }
 }
 
+dependencies {
+    // 媒体通知栏样式（NotificationCompat.MediaStyle），minSdk 19
+    implementation "androidx.media:media:1.7.0"
+}
+
 flutter {
     source '../..'
 }

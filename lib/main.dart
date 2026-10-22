@@ -44,7 +44,7 @@ void main() async {
   }
   // 自动清理过期内容（oc_autoClearExpired）
   if (prefs.getBool('oc_autoClearExpired') ?? false) {
-    DatabaseService().clearExpiredChapterContent().catchError((_) {});
+    DatabaseService().clearExpiredChapterContent().catchError((_) => 0);
   }
   runApp(const LegadoApp());
 }

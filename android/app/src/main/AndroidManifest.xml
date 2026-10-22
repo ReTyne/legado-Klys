@@ -62,6 +62,12 @@
                 <data android:pathPattern=".*\\..*\\.epub"/>
             </intent-filter>
         </activity>
+        <!-- 音频播放前台服务：切后台后保活进程，并提供媒体通知控制 -->
+        <service
+            android:name=".AudioNotifyService"
+            android:enabled="true"
+            android:exported="false"
+            android:foregroundServiceType="mediaPlayback" />
         <meta-data
             android:name="flutterEmbedding"
             android:value="2" />
