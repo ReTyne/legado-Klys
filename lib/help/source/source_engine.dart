@@ -9,6 +9,7 @@ import 'package:legado_md3/data/model/book.dart';
 import 'package:legado_md3/data/model/replace_rule.dart';
 import 'package:legado_md3/help/source/replace_rule_service.dart';
 import 'package:legado_md3/help/source/rule_pipeline.dart';
+import 'package:legado_md3/help/source/url_option.dart';
 import 'package:legado_md3/help/source/ttf_parser.dart';
 import 'package:legado_md3/help/source/js/legado_js_runtime.dart';
 import 'js_mini_eval.dart';
@@ -138,35 +139,22 @@ class BookSourceEngine {
     return result;
   }
 
-  /// 解析URL和选项（原版格式：url,{options} / url,POST:body）
-  Map<String, dynamic> _parseUrlWithOptions(String urlStr) {
-    var url = urlStr.trim();
-    final options = <String, dynamic>{};
-    final commaJson = url.indexOf(',{');
-    if (commaJson > 0) {
-      final optStr = url.substring(commaJson + 1);
-      url = url.substring(0, commaJson);
-      try {
-        final o = jsonDecode(optStr);
-        if (o is Map) options.addAll(o.map((k, v) => MapEntry(k.toString(), v)));
-      } catch (_) {}
-      return {'url': url, 'options': options};
-    }
-    final m = RegExp(r'^(.+?),(POST|GET|PUT|DELETE)(?::(.*))?$', caseSensitive: false).firstMatch(url);
-    if (m != null) {
-      url = m.group(1)!.trim();
-      options['method'] = m.group(2)!.toUpperCase();
-      final b = m.group(3);
-      if (b != null && b.isNotEmpty) options['body'] = b;
-    }
-    return {'url': url, 'options': options};
+
+  /// 取一个 URL 选项的字符串值（不存在或为 null 时返回 null）
+  static String? _optStr(Map<String, dynamic>? opts, String key) {
+    if (opts == null) return null;
+    final v = opts[key];
+    if (v == null) return null;
+    final s = v.toString();
+    return s;
   }
 
   /// 发送HTTP请求，[baseUrl] 用于解析相对地址
   Future<String> _fetch(String url, {Map<String, dynamic>? options, String? body, String? baseUrl}) async {
-    final parsed = _parseUrlWithOptions(url);
-    var finalUrl = parsed['url'] as String;
-    final opts = parsed['options'] as Map<String, dynamic>;
+    // URL 里的 `{{...}}` / `,{json}` / `,POST:body` 选项统一由 UrlOptions 解析
+    final parsed = UrlOptions.parse(url);
+    var finalUrl = parsed.url;
+    final opts = parsed.options;
 
     // data: URI（书源用 data:;base64,<状态码> 在书址里携带上下文，不发起网络请求）
     if (finalUrl.startsWith('data:')) {
@@ -222,6 +210,44 @@ class BookSourceEngine {
     final optCharset = (opts['charset'] ?? options?['charset'])?.toString();
     final optType = (opts['type'] ?? options?['type'])?.toString();
     final optRetry = int.tryParse((opts['retry'] ?? options?['retry'] ?? '0').toString()) ?? 0;
+
+    // URL 选项：UA / Cookie / Referer（legado {{ua=}} {{cookie=}} {{referer=}}）
+    final optUa = _optStr(opts, 'ua') ?? _optStr(options, 'ua');
+    if (optUa != null && optUa.isNotEmpty) headers['User-Agent'] = optUa;
+    final optCookie = _optStr(opts, 'cookie') ?? _optStr(options, 'cookie');
+    if (optCookie != null && optCookie.isNotEmpty) headers['Cookie'] = optCookie;
+    final optReferer = _optStr(opts, 'referer') ?? _optStr(options, 'referer');
+    if (optReferer != null && optReferer.isNotEmpty) headers['Referer'] = optReferer;
+
+    // URL 选项：超时与严格状态码
+    final optTimeout = int.tryParse((_optStr(opts, 'timeout') ?? _optStr(options, 'timeout') ?? ''));
+    final optStrict = opts['strict'] ?? options?['strict'];
+
+    // URL 选项：{{host=xxx}} 多域名切换（用于源里定义的备用域名）
+    final optHost = _optStr(opts, 'host') ?? _optStr(options, 'host');
+    if (optHost != null && optHost.isNotEmpty) {
+      try {
+        final u = Uri.parse(finalUrl);
+        final h = optHost.replaceFirst(RegExp(r'^https?://'), '');
+        final seg = h.split('/').where((s) => s.isNotEmpty).toList();
+        final rest = seg.skip(1).join('/');
+        final pathTail = rest.isEmpty ? '' : (rest.startsWith('/') ? rest : '/$rest');
+        final newPath = u.path.isEmpty ? pathTail : (pathTail.isEmpty ? u.path : '${u.path.replaceAll(RegExp(r'/$'), '')}$pathTail');
+        final q = u.query.isEmpty ? '' : '?${u.query}';
+        final frag = u.fragment.isEmpty ? '' : '#${u.fragment}';
+        final rebuilt = '${u.scheme}://${seg.first}$newPath$q$frag';
+        _log('host 切换: ${u.host} -> ${seg.first}');
+        finalUrl = rebuilt;
+      } catch (e) {
+        _log('host 选项解析失败: $e');
+      }
+    }
+
+    // URL 选项：{{webView=true}} —— 本项目无无头 WebView 能力，降级为普通请求
+    if ((opts['webview'] ?? options?['webview']) == true) {
+      _log('webView 选项：无头 WebView 不可用，降级为普通请求');
+    }
+
     var optBody = body ?? opts['body'] ?? options?['body'] ?? '';
     // bodyJs：用 JS 生成请求体
     final bodyJs = (opts['bodyJs'] ?? options?['bodyJs'])?.toString() ?? '';
@@ -268,7 +294,8 @@ class BookSourceEngine {
         headers: headers,
         responseType: ResponseType.bytes,
         followRedirects: true,
-        validateStatus: (s) => s != null && s < 400);
+        receiveTimeout: optTimeout != null && optTimeout > 0 ? Duration(milliseconds: optTimeout) : null,
+        validateStatus: optStrict == false ? (s) => s != null && s < 500 : (s) => s != null && s < 400);
 
     await _throttle();
     _log('$method $finalUrl');
