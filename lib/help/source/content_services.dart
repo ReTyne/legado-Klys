@@ -36,6 +36,32 @@ class ContentDictService {
     }
   }
 
+  /// 读取当前规则列表（供「字典规则 → 词语替换」界面展示）。
+  /// 返回 `[{'rule': ..., 'replacement': ...}, ...]`
+  static Future<List<Map<String, String>>> loadRules() async {
+    final p = await SharedPreferences.getInstance();
+    final out = <Map<String, String>>[];
+    for (final raw in p.getStringList('dict_rules') ?? const <String>[]) {
+      final idx = raw.indexOf('|||');
+      final rule = idx >= 0 ? raw.substring(0, idx) : raw;
+      final repl = idx >= 0 ? raw.substring(idx + 3) : '';
+      if (rule.isEmpty) continue;
+      out.add({'rule': rule, 'replacement': repl});
+    }
+    return out;
+  }
+
+  /// 保存规则并立即刷新缓存（界面侧调用）
+  static Future<void> saveRules(bool enabled, List<Map<String, String>> rules) async {
+    final p = await SharedPreferences.getInstance();
+    await p.setBool('dict_rule_enabled', enabled);
+    await p.setStringList(
+      'dict_rules',
+      rules.where((r) => (r['rule'] ?? '').isNotEmpty).map((r) => '${r['rule']}|||${r['replacement'] ?? ''}').toList(),
+    );
+    await reload();
+  }
+
   /// 确保已加载
   static Future<void> _ensureLoaded() async {
     if (_patternCache == null) await reload();

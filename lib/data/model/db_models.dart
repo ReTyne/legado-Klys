@@ -171,6 +171,16 @@ class DictRule {
 
   DictRule({this.id, required this.name, this.summary = '', this.url = '', this.rule, this.enabled = 1, this.order});
 
+  DictRule copyWith({int? id, String? name, String? summary, String? url, String? rule, int? enabled, int? order}) => DictRule(
+    id: id ?? this.id,
+    name: name ?? this.name,
+    summary: summary ?? this.summary,
+    url: url ?? this.url,
+    rule: rule ?? this.rule,
+    enabled: enabled ?? this.enabled,
+    order: order ?? this.order,
+  );
+
   Map<String, dynamic> toMap() => {
     'id': id, 'name': name, 'summary': summary, 'url': url,
     'rule': rule, 'enabled': enabled, 'order': order,

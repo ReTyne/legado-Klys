@@ -30,6 +30,7 @@ import 'package:legado_md3/help/translate/translation_service.dart';
 import 'package:legado_md3/ui/book/chapter/chapter_list_screen.dart';
 import 'package:legado_md3/ui/book/detail/book_detail_screen.dart';
 import 'package:legado_md3/ui/book/read/config/reading_settings_screen.dart';
+import 'package:legado_md3/ui/book/read/dict_lookup_sheet.dart';
 import 'package:legado_md3/ui/book/read/tts_player_screen.dart';
 import 'package:legado_md3/ui/book/read/widgets/download_sheet.dart';
 import 'package:legado_md3/ui/book/search/search_content_screen.dart';
@@ -702,14 +703,22 @@ class _ReadingScreenState extends State<ReadingScreen> with SingleTickerProvider
     if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('已添加划线，可在 我的-书籍标记 查看'), duration: Duration(seconds: 2)));
   }
 
+  /// 划词查词：弹出应用内词典面板（列出启用的词典规则，内嵌 WebView 展示结果），
+  /// 不再跳出到外部浏览器。规则数据源与「设置 → 词典规则」共用数据库。
   Future<void> _dictLookup(String word) async {
     final w = word.trim();
     if (w.isEmpty) return;
     final rules = await _db.getDictRules();
-    final rule = rules.firstWhere((r) => r.enabled == 1 && r.url.contains('{word}'), orElse: () => DictRule(name: '在线词典', url: 'https://www.baidu.com/s?wd={word}'));
-    final url = rule.url.replaceAll('{word}', Uri.encodeComponent(w));
+    final usable = rules.where((r) => r.enabled == 1 && r.url.contains('{word}')).toList();
     if (!mounted) return;
-    Navigator.push(context, MaterialPageRoute(builder: (_) => BrowserScreen(url: url, title: '${rule.name}: $w')));
+    if (usable.isEmpty) {
+      // 没有可用规则时给一次引导，避免用户以为点了没反应
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('还没有词典规则，可在 我的-词典规则 添加'),
+        duration: Duration(seconds: 2),
+      ));
+    }
+    await DictLookupSheet.open(context, w);
   }
 
   @override

@@ -548,6 +548,18 @@ class DatabaseService {
     await db.insert('dict_rules', rule.toMap());
   }
 
+  /// 更新词典规则（编辑名称/地址/规则/启停/排序后保存）
+  Future<void> updateDictRule(DictRule rule) async {
+    if (rule.id == null) return insertDictRule(rule);
+    final db = await database;
+    await db.update(
+      'dict_rules',
+      rule.toMap(),
+      where: 'id = ?',
+      whereArgs: [rule.id],
+    );
+  }
+
   Future<void> deleteDictRule(int id) async {
     final db = await database;
     await db.delete('dict_rules', where: 'id = ?', whereArgs: [id]);
