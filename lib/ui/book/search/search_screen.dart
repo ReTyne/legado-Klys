@@ -121,7 +121,7 @@ class _SearchScreenState extends State<SearchScreen> {
       if (src != null) {
         if (src.bookSourceType == 1) bookType = 2; // 音频
         else if (src.bookSourceType == 2) bookType = 3; // 图片/漫画
-        else if (src.bookSourceType == 3) bookType = 4; // 视频
+        else if (src.bookSourceType == 4) bookType = 4; // 视频（legado 标准：3=文件，4=视频）
       }
     } catch (_) {}
     final newBook = Book(

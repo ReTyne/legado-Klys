@@ -749,12 +749,19 @@ class _SourceManageScreenState extends State<SourceManageScreen> {
       while (cursor < sources.length) {
         final s = sources[cursor++];
         try {
-          // 用一次真实搜索判断规则是否可用（搜索地址缺失则探测根地址）
+          // 真实校验：有搜索地址则执行搜索，能解析出书籍列表才算有效；空结果视为失效
           bool ok = false;
           if ((s.searchUrl ?? '').isNotEmpty) {
-            final r = await engine.search(s, '测试', page: 1).timeout(const Duration(seconds: 12), onTimeout: () => []);
-            ok = true; // 能正常返回（即使空结果）说明规则链路通
-            if (r.isEmpty) ok = true;
+            final keyword = (s.checkKeyWord ?? '').isNotEmpty ? s.checkKeyWord! : '的';
+            final r = await engine.search(s, keyword, page: 1).timeout(const Duration(seconds: 15), onTimeout: () => []);
+            ok = r.isNotEmpty; // 搜索必须返回有效书籍列表
+          } else if ((s.exploreUrl ?? '').isNotEmpty) {
+            // 无搜索但有发现：尝试拉取第一个发现分类
+            final kinds = engine.getExploreKinds(s);
+            if (kinds.isNotEmpty) {
+              final r = await engine.exploreByUrl(s, kinds.first['url'] ?? '', page: 1).timeout(const Duration(seconds: 15), onTimeout: () => []);
+              ok = r.isNotEmpty;
+            }
           } else {
             final client = HttpClient();
             try {
@@ -878,7 +885,7 @@ class _SourceManageScreenState extends State<SourceManageScreen> {
                       const SizedBox(height: 8),
                       Text('分组: ${source.bookSourceGroup ?? "默认"}'),
                       const SizedBox(height: 8),
-                      Text('类型: ${source.bookSourceType == 0 ? "文本" : source.bookSourceType == 1 ? "音频" : source.bookSourceType == 2 ? "图片" : source.bookSourceType == 3 ? "视频" : "文件"}'),
+                      Text('类型: ${source.bookSourceType == 0 ? "文本" : source.bookSourceType == 1 ? "音频" : source.bookSourceType == 2 ? "图片" : source.bookSourceType == 3 ? "文件" : "视频"}'),
                       const SizedBox(height: 8),
                       Text('搜索URL: ${source.searchUrl ?? "无"}'),
                       const SizedBox(height: 8),

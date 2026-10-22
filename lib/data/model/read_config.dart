@@ -1,5 +1,38 @@
 import 'dart:convert';
 
+/// 页脚槽位内容枚举（对齐 legado-E 阅读器页脚三槽位能力）
+enum FooterSlot {
+  none,           // 空白
+  chapterTitle,   // 章节名
+  bookName,       // 书名
+  pageNumber,     // 页码（章内）
+  totalPages,     // 总页数（章内）
+  progress,       // 进度%（全书：当前章+当前页/全书）
+  time,           // 时间
+  battery,        // 电量（图标；无真实读数时降级为静态图标）
+  batteryPercent, // 电量%（无真实读数时降级为图标）
+}
+
+/// 页脚槽位枚举的中文标签（供设置界面选择）
+const Map<FooterSlot, String> footerSlotLabels = {
+  FooterSlot.none: '空白',
+  FooterSlot.chapterTitle: '章节名',
+  FooterSlot.bookName: '书名',
+  FooterSlot.pageNumber: '页码',
+  FooterSlot.totalPages: '总页数',
+  FooterSlot.progress: '进度%',
+  FooterSlot.time: '时间',
+  FooterSlot.battery: '电量',
+  FooterSlot.batteryPercent: '电量%',
+};
+
+/// 页脚三槽位默认配置：左-时间 / 中-页码 / 右-电量（与旧版页脚视觉一致）
+const List<FooterSlot> defaultFooterSlots = [
+  FooterSlot.time,
+  FooterSlot.pageNumber,
+  FooterSlot.battery,
+];
+
 /// 阅读配置
 class ReadConfig {
   // 文字
@@ -56,6 +89,8 @@ class ReadConfig {
   int footerHeight;
   String? headerString;
   String? footerString;
+  // 页脚三槽位内容（依次为 左/中/右 槽位），null 时回退旧版单行页脚逻辑
+  List<FooterSlot>? footerSlots;
   int headerSize;
   int footerSize;
   bool headerBold;
@@ -122,6 +157,7 @@ class ReadConfig {
     this.footerHeight = 32,
     this.headerString,
     this.footerString,
+    this.footerSlots = defaultFooterSlots,
     this.headerSize = 12,
     this.footerSize = 12,
     this.headerBold = false,
@@ -158,6 +194,8 @@ class ReadConfig {
     'paddingTop': paddingTop, 'paddingBottom': paddingBottom,
     'headerHeight': headerHeight, 'footerHeight': footerHeight,
     'headerString': headerString, 'footerString': footerString,
+    // 槽位枚举按 index 持久化，保证跨版本兼容
+    'footerSlots': footerSlots?.map((e) => e.index).toList(),
     'headerSize': headerSize, 'footerSize': footerSize,
     'headerBold': headerBold, 'footerBold': footerBold,
     'keepScreenOn': keepScreenOn, 'showMenuOnTap': showMenuOnTap, 'longPressSelect': longPressSelect,
@@ -212,6 +250,11 @@ class ReadConfig {
     footerHeight: json['footerHeight'] ?? 32,
     headerString: json['headerString'],
     footerString: json['footerString'],
+    // 兼容旧配置：无 footerSlots 字段时用默认三槽位
+    footerSlots: (json['footerSlots'] as List<dynamic>?)
+            ?.map((e) => FooterSlot.values[(e as num).toInt().clamp(0, FooterSlot.values.length - 1)])
+            .toList() ??
+        defaultFooterSlots,
     headerSize: json['headerSize'] ?? 12,
     footerSize: json['footerSize'] ?? 12,
     headerBold: json['headerBold'] ?? false,

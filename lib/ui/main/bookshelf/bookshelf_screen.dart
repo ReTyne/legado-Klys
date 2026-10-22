@@ -110,6 +110,51 @@ class _ViewCfg {
   static const sortMap = [3, 1, 2, 4, 0];
 }
 
+/// 封面配置（来自 SharedPreferences，由封面配置页 CoverConfigScreen 写入）
+class _CoverCfg {
+  /// cover_onlyWifi：仅 WiFi 下加载封面。
+  /// Flutter 端无轻量 WiFi 判断方式（不新增依赖），此处降级为仅记录、不阻断加载。
+  final bool onlyWifi;
+  /// cover_useDefault：无封面/封面加载失败时使用默认占位
+  final bool useDefault;
+  /// cover_showName：封面区域叠加显示书名
+  final bool showName;
+  /// cover_showAuthor：封面区域叠加显示作者
+  final bool showAuthor;
+  /// cover_defaultColor：默认占位背景色
+  final int defaultColor;
+  /// cover_dayTextColor / cover_nightTextColor：叠加文字颜色（按日夜间取用）
+  final int dayTextColor;
+  final int nightTextColor;
+  /// 默认封面图片路径（可选键 cover_defaultImage，本版本配置页未提供，读取仅作容错扩展）
+  final String? defaultImage;
+
+  const _CoverCfg({
+    this.onlyWifi = false,
+    this.useDefault = false,
+    this.showName = true,
+    this.showAuthor = true,
+    this.defaultColor = 0xFF607D8B,
+    this.dayTextColor = 0xFFFFFFFF,
+    this.nightTextColor = 0xFFB0BEC5,
+    this.defaultImage,
+  });
+
+  static Future<_CoverCfg> load() async {
+    final p = await SharedPreferences.getInstance();
+    return _CoverCfg(
+      onlyWifi: p.getBool('cover_onlyWifi') ?? false,
+      useDefault: p.getBool('cover_useDefault') ?? false,
+      showName: p.getBool('cover_showName') ?? true,
+      showAuthor: p.getBool('cover_showAuthor') ?? true,
+      defaultColor: p.getInt('cover_defaultColor') ?? 0xFF607D8B,
+      dayTextColor: p.getInt('cover_dayTextColor') ?? 0xFFFFFFFF,
+      nightTextColor: p.getInt('cover_nightTextColor') ?? 0xFFB0BEC5,
+      defaultImage: p.getString('cover_defaultImage'),
+    );
+  }
+}
+
 class BookshelfScreen extends StatefulWidget {
   const BookshelfScreen({super.key});
 
@@ -127,6 +172,7 @@ class _BookshelfScreenState extends State<BookshelfScreen> {
   String _searchQuery = '';
   final TextEditingController _searchController = TextEditingController();
   _ViewCfg _cfg = _ViewCfg();
+  _CoverCfg _coverCfg = const _CoverCfg();
 
   static const List<String> _sortOptions = ['智能排序', '书名', '作者', '最近阅读', '添加时间', '字数'];
   int _sortBy = 3;
@@ -155,9 +201,11 @@ class _BookshelfScreenState extends State<BookshelfScreen> {
 
   Future<void> _reloadCfg() async {
     final cfg = await _ViewCfg.load();
+    final coverCfg = await _CoverCfg.load();
     if (!mounted) return;
     setState(() {
       _cfg = cfg;
+      _coverCfg = coverCfg;
       _sortBy = _ViewCfg.sortMap[cfg.sortType.clamp(0, 4)];
       _sortAsc = cfg.sortAscending;
     });
@@ -479,7 +527,10 @@ class _BookshelfScreenState extends State<BookshelfScreen> {
   void _showMoveGroupDialog(Book book) {
     final provider = Provider.of<BookProvider>(context, listen: false);
     final controller = TextEditingController(text: book.group ?? '');
-    final groups = provider.displayGroups().where((g) => g != '全部').toList();
+    // 移动分组仅支持用户自定义分组，虚拟分组（本地/音频/视频/未分组）不可作为目标
+    final groups = provider.displayGroups()
+        .where((g) => g != '全部' && !BookProvider.isVirtualGroup(g))
+        .toList();
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
@@ -629,12 +680,16 @@ class _BookshelfScreenState extends State<BookshelfScreen> {
           .toList();
       final sections = <MapEntry<String, List<Book>>>[];
       for (final g in groups) {
-        final gb = books.where((b) => b.group == g).toList();
+        // 统一走分组判定：用户分组按 group 匹配，虚拟分组按属性匹配
+        final gb = books.where((b) => BookProvider.bookInGroup(b, g)).toList();
         if (gb.isNotEmpty) sections.add(MapEntry(g, gb));
       }
-      final ungrouped =
-          books.where((b) => b.group == null || b.group!.isEmpty).toList();
-      if (ungrouped.isNotEmpty) sections.add(MapEntry('未分组', ungrouped));
+      // 分组列表已含“未分组”虚拟分组时不再重复追加未分组分区
+      if (!groups.contains(BookProvider.vGroupUngrouped)) {
+        final ungrouped =
+            books.where((b) => b.group == null || b.group!.isEmpty).toList();
+        if (ungrouped.isNotEmpty) sections.add(MapEntry('未分组', ungrouped));
+      }
       return ListView(
         padding: const EdgeInsets.only(bottom: 12),
         children: [
@@ -900,6 +955,8 @@ class _BookshelfScreenState extends State<BookshelfScreen> {
         : book.coverUrl;
     Widget img;
     if (url != null && url.isNotEmpty) {
+      // 注意：cover_onlyWifi（仅 WiFi 加载封面）已降级为仅记录（见 _CoverCfg.onlyWifi），
+      // 不阻断网络封面加载，避免新增依赖。
       img = Image.network(url,
           width: width,
           height: height,
@@ -908,6 +965,11 @@ class _BookshelfScreenState extends State<BookshelfScreen> {
               _buildDefaultCover(book, width, height, radius));
     } else {
       img = _buildDefaultCover(book, width, height, radius);
+    }
+    // 封面叠加书名/作者文字（cover_showName / cover_showAuthor）
+    final overlay = _buildCoverTextOverlay(book);
+    if (overlay != null) {
+      img = Stack(fit: StackFit.expand, children: [img, overlay]);
     }
     final rounded = ClipRRect(
       borderRadius: BorderRadius.circular(radius),
@@ -932,8 +994,83 @@ class _BookshelfScreenState extends State<BookshelfScreen> {
     return _withBadge(book, shadowed, width, height);
   }
 
+  /// 封面底部叠加的文字（书名/作者），受封面配置 cover_showName / cover_showAuthor 控制
+  Widget? _buildCoverTextOverlay(Book book) {
+    if (!_coverCfg.showName && !_coverCfg.showAuthor) return null;
+    final dark = Theme.of(context).brightness == Brightness.dark;
+    final textColor = Color(dark ? _coverCfg.nightTextColor : _coverCfg.dayTextColor);
+    final lines = <Widget>[
+      if (_coverCfg.showName)
+        Text(book.name,
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+                color: textColor,
+                fontSize: 10,
+                fontWeight: FontWeight.bold,
+                shadows: const [Shadow(blurRadius: 2)])),
+      if (_coverCfg.showAuthor)
+        Text(book.author,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: TextStyle(
+                color: textColor,
+                fontSize: 9,
+                shadows: const [Shadow(blurRadius: 2)])),
+    ];
+    return Align(
+      alignment: Alignment.bottomCenter,
+      child: Container(
+        width: double.infinity,
+        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 3),
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [Color(0x00000000), Color(0x99000000)],
+          ),
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: lines,
+        ),
+      ),
+    );
+  }
+
   Widget _buildDefaultCover(
       Book book, double width, double height, double radius) {
+    // 封面配置 cover_useDefault：无封面/加载失败时显示统一默认占位。
+    // 本版本封面配置页仅提供默认颜色（cover_defaultColor）与可选的本地图片路径
+    // （cover_defaultImage，配置页暂未提供入口），故：有图片路径则用 Image.file
+    // 容错加载，否则用配置颜色 + Icons.book 图标占位。
+    if (_coverCfg.useDefault) {
+      final bg = Color(_coverCfg.defaultColor);
+      final iconSize = (width.isFinite ? width : 48.0) * 0.4;
+      final imgPath = _coverCfg.defaultImage;
+      Widget placeholder = Container(
+        width: width,
+        height: height,
+        decoration:
+            BoxDecoration(color: bg, borderRadius: BorderRadius.circular(radius)),
+        child: Center(
+          child: Icon(Icons.book,
+              size: iconSize.clamp(16.0, 64.0), color: Colors.white70),
+        ),
+      );
+      if (imgPath != null && imgPath.isNotEmpty) {
+        // 本地图片路径容错：文件不存在或解码失败时回退到图标占位
+        return Image.file(
+          File(imgPath),
+          width: width,
+          height: height,
+          fit: BoxFit.cover,
+          errorBuilder: (_, __, ___) => placeholder,
+        );
+      }
+      return placeholder;
+    }
     const colors = [
       Colors.blueGrey,
       Colors.brown,
@@ -976,7 +1113,10 @@ class _BookshelfScreenState extends State<BookshelfScreen> {
 
   Future<void> _batchMoveGroup() async {
     final provider = Provider.of<BookProvider>(context, listen: false);
-    final groups = provider.displayGroups().where((g) => g != '全部').toList();
+    // 移动分组仅支持用户自定义分组，虚拟分组（本地/音频/视频/未分组）不可作为目标
+    final groups = provider.displayGroups()
+        .where((g) => g != '全部' && !BookProvider.isVirtualGroup(g))
+        .toList();
     final controller = TextEditingController();
     if (!mounted) return;
     showDialog(

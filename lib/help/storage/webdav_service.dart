@@ -75,7 +75,7 @@ class WebDavService {
       final regex = RegExp(r'<d:href>([^<]+)</d:href>');
       for (final match in regex.allMatches(body)) {
         final href = match.group(1)!;
-        if (href.endsWith('.json') || href.endsWith('.bak')) {
+        if (href.endsWith('.json') || href.endsWith('.bak') || href.endsWith('.zip')) {
           files.add(href.split('/').last);
         }
       }
@@ -94,6 +94,58 @@ class WebDavService {
       return response.statusCode == 200 || response.statusCode == 204;
     } catch (e) {
       return false;
+    }
+  }
+
+  /// 列出指定目录下的所有条目（isDir 区分目录/文件），用于远程书库浏览
+  Future<List<WebDavEntry>> listDir(String dir) async {
+    try {
+      if (_baseUrl == null) return [];
+      var d = dir.trim();
+      if (d.isEmpty) d = '/';
+      if (!d.endsWith('/')) d = '$d/';
+      if (d.startsWith('/')) d = d.substring(1);
+      final url = '$_baseUrl$d';
+      final response = await _dio.request(
+        url,
+        options: Options(method: 'PROPFIND', headers: {'Depth': '1'}),
+      );
+      final body = response.data.toString();
+      final entries = <WebDavEntry>[];
+      // 按 <D:response> 块解析，提取 href 与是否集合
+      final respRegex = RegExp(r'<[a-zA-Z]*:?response>(.*?)<[a-zA-Z]*:\/response>', dotAll: true);
+      final hrefRegex = RegExp(r'<[a-zA-Z]*:?href>([^<]+)</[a-zA-Z]*:?href>');
+      final dirRegex = RegExp(r'<[a-zA-Z]*:?collection\s*/?>');
+      for (final m in respRegex.allMatches(body)) {
+        final block = m.group(1)!;
+        final hrefM = hrefRegex.firstMatch(block);
+        if (hrefM == null) continue;
+        var href = Uri.decodeComponent(hrefM.group(1)!);
+        // 去掉开头的主机路径，只保留相对当前目录的名字
+        final name = href.split('/').where((s) => s.isNotEmpty).last;
+        final currentName = d.split('/').where((s) => s.isNotEmpty).last;
+        if (name == currentName) continue; // 跳过自身目录
+        final isDir = dirRegex.hasMatch(block);
+        entries.add(WebDavEntry(name, isDir, href));
+      }
+      return entries;
+    } catch (e) {
+      return [];
+    }
+  }
+
+  /// 从指定目录下载文件
+  Future<List<int>?> downloadFile(String dir, String fileName) async {
+    try {
+      if (_baseUrl == null) return null;
+      var d = dir.trim();
+      if (d.isNotEmpty && !d.endsWith('/')) d = '$d/';
+      if (d.startsWith('/')) d = d.substring(1);
+      final url = '$_baseUrl$d$fileName';
+      final response = await _dio.get(url, options: Options(responseType: ResponseType.bytes));
+      return response.data as List<int>;
+    } catch (e) {
+      return null;
     }
   }
 
@@ -128,4 +180,12 @@ class WebDavService {
     final data = jsonEncode({'records': records.map((r) => r.toMap()).toList(), 'time': DateTime.now().millisecondsSinceEpoch});
     return uploadBackup('read_records.json', utf8.encode(data));
   }
+}
+
+/// WebDAV 目录条目
+class WebDavEntry {
+  final String name;
+  final bool isDir;
+  final String href;
+  WebDavEntry(this.name, this.isDir, this.href);
 }

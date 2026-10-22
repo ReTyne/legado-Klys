@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/services.dart' show rootBundle;
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:shelf/shelf.dart';
 import 'package:shelf/shelf_io.dart' as shelf_io;
 import 'package:shelf_router/shelf_router.dart';
@@ -65,9 +66,34 @@ class WebService {
 
     final handler = const Pipeline()
         .addMiddleware(logRequests())
+        .addMiddleware(_authMiddleware())
         .addHandler(router);
 
     _server = await shelf_io.serve(handler, InternetAddress.anyIPv4, port);
+  }
+
+  /// 访问鉴权中间件：设置了 web_password 时，要求 ?key= 或 Authorization 头匹配
+  Middleware _authMiddleware() {
+    return (Handler inner) {
+      return (Request request) async {
+        String pwd = '';
+        try {
+          final p = await SharedPreferences.getInstance();
+          pwd = p.getString('web_password') ?? '';
+        } catch (_) {}
+        if (pwd.isEmpty) return inner(request); // 未设置密码则放行
+        final key = request.url.queryParameters['key'] ?? '';
+        final auth = request.headers['authorization'] ?? '';
+        final token = auth.startsWith('Bearer ')
+            ? auth.substring(7)
+            : auth.startsWith('Basic ')
+                ? utf8.decode(base64.decode(auth.substring(6))).split(':').last
+                : '';
+        if (key == pwd || token == pwd) return inner(request);
+        return Response.forbidden(jsonEncode({'error': '未授权，请提供正确的访问密码'}),
+            headers: {'content-type': 'application/json; charset=utf-8'});
+      };
+    };
   }
 
   Future<void> stop() async {

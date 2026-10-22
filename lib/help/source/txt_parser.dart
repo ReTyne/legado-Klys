@@ -1,8 +1,55 @@
 import 'dart:convert';
+import 'dart:io';
+import 'package:enough_convert/enough_convert.dart';
 import 'package:legado_md3/data/model/book_chapter.dart';
 import 'package:legado_md3/data/model/txt_toc_rule.dart';
 
 class TxtParserService {
+  /// 自动识别编码并解码 TXT 字节（支持 UTF-8 BOM / UTF-16 LE/BE / GBK / UTF-8）
+  static String decodeBytes(List<int> bytes) {
+    if (bytes.isEmpty) return '';
+    // BOM 检测
+    if (bytes.length >= 3 && bytes[0] == 0xEF && bytes[1] == 0xBB && bytes[2] == 0xBF) {
+      return utf8.decode(bytes.sublist(3), allowMalformed: true);
+    }
+    if (bytes.length >= 2 && bytes[0] == 0xFF && bytes[1] == 0xFE) {
+      return utf16leDecode(bytes.sublist(2));
+    }
+    if (bytes.length >= 2 && bytes[0] == 0xFE && bytes[1] == 0xFF) {
+      return utf16beDecode(bytes.sublist(2));
+    }
+    // 先尝试 UTF-8 严格解码
+    try {
+      return utf8.decode(bytes);
+    } catch (_) {}
+    // 退化为 GBK（中文 TXT 常见编码）
+    try {
+      return const GbkCodec().decode(bytes);
+    } catch (_) {}
+    return utf8.decode(bytes, allowMalformed: true);
+  }
+
+  static String utf16leDecode(List<int> bytes) {
+    final codes = <int>[];
+    for (var i = 0; i + 1 < bytes.length; i += 2) {
+      codes.add(bytes[i] | (bytes[i + 1] << 8));
+    }
+    return String.fromCharCodes(codes);
+  }
+
+  static String utf16beDecode(List<int> bytes) {
+    final codes = <int>[];
+    for (var i = 0; i + 1 < bytes.length; i += 2) {
+      codes.add((bytes[i] << 8) | bytes[i + 1]);
+    }
+    return String.fromCharCodes(codes);
+  }
+
+  /// 读取文件并自动识别编码
+  static Future<String> readFileAutoDetect(File file) async {
+    return decodeBytes(await file.readAsBytes());
+  }
+
   /// 默认章节匹配规则
   static const List<String> defaultPatterns = [
     r'^\s*第[零一二三四五六七八九十百千万两\d]+[章节回卷集部篇].*$',

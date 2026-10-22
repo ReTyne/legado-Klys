@@ -7,7 +7,8 @@ import 'package:legado_md3/help/source/source_engine.dart';
 /// 书内全文搜索 - 对齐原版SearchContentScreen
 class SearchContentScreen extends StatefulWidget {
   final Book book;
-  const SearchContentScreen({super.key, required this.book});
+  final String? initialKeyword;
+  const SearchContentScreen({super.key, required this.book, this.initialKeyword});
 
   @override
   State<SearchContentScreen> createState() => _SearchContentScreenState();
@@ -33,6 +34,13 @@ class _SearchContentScreenState extends State<SearchContentScreen> {
   @override
   void initState() {
     super.initState();
+    if ((widget.initialKeyword ?? '').isNotEmpty) {
+      _controller.text = widget.initialKeyword!;
+      // 预填划词：自动执行一次搜索
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _search(widget.initialKeyword!);
+      });
+    }
     _loadChapters();
   }
 

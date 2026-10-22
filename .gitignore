@@ -43,6 +43,13 @@ app.*.map.json
 /android/app/profile
 /android/app/release
 
+# Local Android SDK / signing config (contains machine-specific paths)
+/android/local.properties
+/android/key.properties
+android/key.jks
+**/*.jks
+**/*.keystore
+
 # iOS
 ios/Pods/
 ios/.symlinks/

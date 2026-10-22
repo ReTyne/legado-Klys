@@ -20,11 +20,51 @@ class BookProvider extends ChangeNotifier {
   int get bookshelfLayout => _bookshelfLayout;
   String get currentGroup => _currentGroup;
 
+  /// 虚拟分组名称（按书籍属性自动计算，不属于用户自定义分组）
+  static const String vGroupLocal = '本地';
+  static const String vGroupAudio = '音频';
+  static const String vGroupVideo = '视频';
+  static const String vGroupUngrouped = '未分组';
+
+  /// 全部虚拟分组（同时决定展示顺序）
+  static const List<String> virtualGroups = [
+    vGroupLocal,
+    vGroupAudio,
+    vGroupVideo,
+    vGroupUngrouped,
+  ];
+
+  /// 是否为虚拟分组
+  static bool isVirtualGroup(String group) => virtualGroups.contains(group);
+
+  /// 书籍是否命中某虚拟分组（本地/音频/视频/未分组）
+  static bool inVirtualGroup(Book book, String group) {
+    switch (group) {
+      case vGroupLocal:
+        return book.local;
+      case vGroupAudio:
+        return book.type == Book.typeAudio;
+      case vGroupVideo:
+        return book.type == Book.typeVideo;
+      case vGroupUngrouped:
+        return book.group == null || book.group!.isEmpty;
+      default:
+        return false;
+    }
+  }
+
+  /// 书籍是否属于指定分组：用户分组按 group 相等，虚拟分组按属性判定
+  static bool bookInGroup(Book book, String group) {
+    if (group == '全部') return true;
+    if (book.group == group) return true;
+    return isVirtualGroup(group) && inVirtualGroup(book, group);
+  }
+
   /// 书架分组：合并 book_groups 元数据（排序/显隐）与书籍实际分组
   List<String> displayGroups({bool hideEmpty = false}) =>
       resolveGroups(_books, _groupMeta, hideEmpty: hideEmpty);
 
-  /// 纯函数：由书籍与分组元数据计算展示分组（首位固定“全部”）
+  /// 纯函数：由书籍与分组元数据计算展示分组（首位固定“全部”，末尾追加有书的虚拟分组）
   static List<String> resolveGroups(
     List<Book> books,
     List<BookGroup> meta, {
@@ -49,8 +89,11 @@ class BookProvider extends ChangeNotifier {
       if (byName[n]?.show == 0) return false;
       if (hideEmpty && (counts[n] ?? 0) == 0) return false;
       return true;
-    });
-    return ['全部', ...visible];
+    }).toList();
+    // 追加虚拟分组：仅存在命中书籍时展示，且避免与用户分组重名
+    final extraVirtual = virtualGroups.where(
+        (vg) => !visible.contains(vg) && books.any((b) => inVirtualGroup(b, vg)));
+    return ['全部', ...visible, ...extraVirtual];
   }
 
   /// 兼容旧引用
@@ -58,11 +101,11 @@ class BookProvider extends ChangeNotifier {
 
   int bookCountOf(String group) => group == '全部'
       ? _books.length
-      : _books.where((b) => b.group == group).length;
+      : _books.where((b) => bookInGroup(b, group)).length;
 
   List<Book> get filteredBooks {
     if (_currentGroup == '全部') return _books;
-    return _books.where((b) => b.group == _currentGroup).toList();
+    return _books.where((b) => bookInGroup(b, _currentGroup)).toList();
   }
 
   Future<void> loadBooks() async {
@@ -164,7 +207,7 @@ class BookProvider extends ChangeNotifier {
 class ReadProvider extends ChangeNotifier {
   ReadConfig _config = ReadConfig();
   bool _showMenu = false;
-  double _brightness = 0.5;
+  double _brightness = 1.0; // 默认不压暗屏幕
   bool _loaded = false;
 
   static const String _prefKey = 'read_config_json';
@@ -182,6 +225,7 @@ class ReadProvider extends ChangeNotifier {
       if (json != null && json.isNotEmpty) {
         _config = ReadConfig.fromJsonString(json);
       }
+      _brightness = prefs.getDouble('read_brightness') ?? 1.0;
     } catch (_) {}
     _loaded = true;
     notifyListeners();
@@ -218,6 +262,7 @@ class ReadProvider extends ChangeNotifier {
 
   void setBrightness(double value) {
     _brightness = value;
+    SharedPreferences.getInstance().then((p) => p.setDouble('read_brightness', value));
     notifyListeners();
   }
 

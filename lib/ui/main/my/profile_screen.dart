@@ -28,6 +28,8 @@ import 'package:legado_md3/ui/main/homepage/homepage_manage_screen.dart';
 import 'package:legado_md3/ui/main/subscribe/subscribe_screen.dart';
 import 'package:legado_md3/ui/rss/rule_subscription_screen.dart';
 import 'package:legado_md3/ui/stats/reading_stats_screen.dart';
+import 'package:legado_md3/ui/stats/read_record_screen.dart';
+import 'package:legado_md3/ui/cache/download_manage_screen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 
@@ -97,7 +99,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           _buildMenuItem(context, Icons.rss_feed_outlined, 'RSS订阅', '订阅源管理', () => Navigator.push(context, MaterialPageRoute(builder: (_) => const SubscribeScreen()))),
           _buildMenuItem(context, Icons.cloud_outlined, '云盘同步', 'WebDAV云同步', () => Navigator.push(context, MaterialPageRoute(builder: (_) => const BackupScreen()))),
           _buildMenuItem(context, Icons.subscriptions_outlined, '规则订阅', '订阅书源规则', () => Navigator.push(context, MaterialPageRoute(builder: (_) => const RuleSubscriptionScreen()))),
-          _buildMenuItem(context, Icons.download_outlined, '下载管理', '管理下载任务', () => Navigator.push(context, MaterialPageRoute(builder: (_) => const CacheManageScreen()))),
+          _buildMenuItem(context, Icons.download_outlined, '下载管理', '管理下载任务', () => Navigator.push(context, MaterialPageRoute(builder: (_) => const DownloadManageScreen()))),
           _buildMenuItem(context, Icons.palette_outlined, '主题管理', '自定义主题', () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ThemeManageScreen()))),
           _buildMenuItem(context, Icons.record_voice_over_outlined, 'TTS设置', '朗读引擎设置', () => Navigator.push(context, MaterialPageRoute(builder: (_) => const CloudTtsScreen()))),
           _buildMenuItem(context, Icons.translate_outlined, '翻译设置', '翻译引擎配置', () => Navigator.push(context, MaterialPageRoute(builder: (_) => const TranslationScreen()))),
@@ -105,7 +107,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
           _buildMenuItem(context, Icons.flag_outlined, '书籍标记', '标记管理', () => Navigator.push(context, MaterialPageRoute(builder: (_) => const BookMarkingScreen(bookName: '', author: '')))),
           _buildMenuItem(context, Icons.settings_outlined, '设置', '应用设置', () => Navigator.push(context, MaterialPageRoute(builder: (_) => const SettingsScreen()))),
           _buildMenuItem(context, Icons.bookmark_border, '书签', '所有书签', () => Navigator.push(context, MaterialPageRoute(builder: (_) => const BookmarkScreen()))),
-          _buildMenuItem(context, Icons.bar_chart_outlined, '阅读记录', '阅读统计', () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ReadingStatsScreen()))),
+          _buildMenuItem(context, Icons.history_outlined, '阅读记录', '每本书的阅读明细', () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ReadRecordScreen()))),
+          _buildMenuItem(context, Icons.bar_chart_outlined, '阅读统计', '时长与趋势', () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ReadingStatsScreen()))),
           _buildMenuItem(context, Icons.cleaning_services_outlined, '缓存管理', '书籍缓存', () => Navigator.push(context, MaterialPageRoute(builder: (_) => const CacheManageScreen()))),
           _buildMenuItem(context, Icons.backup_outlined, '备份恢复', '数据备份', () => Navigator.push(context, MaterialPageRoute(builder: (_) => const BackupScreen()))),
           _buildMenuItem(context, Icons.folder_outlined, '文件管理', '本地文件', () => Navigator.push(context, MaterialPageRoute(builder: (_) => const FileManageScreen()))),

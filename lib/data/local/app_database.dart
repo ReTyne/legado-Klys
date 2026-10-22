@@ -18,7 +18,7 @@ class DatabaseService {
   DatabaseService._internal();
 
   Database? _db;
-  static const int _dbVersion = 9;
+  static const int _dbVersion = 10;
 
   Future<Database> get database async {
     if (_db != null) return _db!;
@@ -97,6 +97,21 @@ class DatabaseService {
         'update_time TEXT',
       ]);
     }
+    if (oldVersion < 10) {
+      // v10：rss_sources 补运行时字段列（articleStyle/enableJs/loadWithBaseUrl/preload/
+      // singleUrl/cacheFirst/redirectPolicy/type），与 RssSource.toMap/fromMap 对齐，
+      // 否则旧库写入会抛 "table rss_sources has no column named X"。逐列 ADD 可重入。
+      await _addColumnsIfMissing(db, 'rss_sources', const [
+        'articleStyle INTEGER',
+        'enableJs INTEGER DEFAULT 0',
+        'loadWithBaseUrl INTEGER DEFAULT 0',
+        'preload INTEGER DEFAULT 0',
+        'singleUrl INTEGER DEFAULT 0',
+        'cacheFirst INTEGER DEFAULT 0',
+        'redirectPolicy TEXT',
+        'type INTEGER DEFAULT 0',
+      ]);
+    }
     await _onCreate(db, newVersion);
   }
 
@@ -129,7 +144,7 @@ class DatabaseService {
     await db.execute('CREATE TABLE IF NOT EXISTS http_tts (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, url TEXT, method TEXT, headers TEXT, body TEXT, enabled INTEGER DEFAULT 1, concurrentRate INTEGER)');
     await db.execute('CREATE TABLE IF NOT EXISTS read_records (id INTEGER PRIMARY KEY AUTOINCREMENT, bookName TEXT, author TEXT, duration INTEGER, date INTEGER, chapterIndex INTEGER, pagePos INTEGER)');
     await db.execute('CREATE TABLE IF NOT EXISTS replace_rules (id INTEGER PRIMARY KEY AUTOINCREMENT, replaceSummary TEXT, replaceRule TEXT, replacement TEXT, enable INTEGER DEFAULT 1, isTitle INTEGER DEFAULT 0, isContent INTEGER DEFAULT 1, isRegex INTEGER DEFAULT 1, scope TEXT, order_num INTEGER, "order" INTEGER)');
-    await db.execute('CREATE TABLE IF NOT EXISTS rss_sources (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, url TEXT, sourceIcon TEXT, group_name TEXT, sourceComment TEXT, searchUrl TEXT, sortUrl TEXT, loginUrl TEXT, loginUi TEXT, loginCheckJs TEXT, coverDecodeJs TEXT, header TEXT, variableComment TEXT, concurrentRate TEXT, jsLib TEXT, startHtml TEXT, startStyle TEXT, startJs TEXT, preloadJs TEXT, ruleArticles TEXT, ruleNextPage TEXT, ruleTitle TEXT, rulePubDate TEXT, ruleDescription TEXT, ruleImage TEXT, ruleLink TEXT, ruleContent TEXT, style TEXT, injectJs TEXT, contentWhitelist TEXT, contentBlacklist TEXT, shouldOverrideUrlLoading TEXT, enabled INTEGER DEFAULT 1, customOrder INTEGER, lastUpdateTime INTEGER, unreadCount INTEGER DEFAULT 0, variable TEXT, enabledCookieJar INTEGER DEFAULT 0, "group" TEXT, icon TEXT, description TEXT)');
+    await db.execute('CREATE TABLE IF NOT EXISTS rss_sources (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, url TEXT, sourceIcon TEXT, group_name TEXT, sourceComment TEXT, searchUrl TEXT, sortUrl TEXT, loginUrl TEXT, loginUi TEXT, loginCheckJs TEXT, coverDecodeJs TEXT, header TEXT, variableComment TEXT, concurrentRate TEXT, jsLib TEXT, startHtml TEXT, startStyle TEXT, startJs TEXT, preloadJs TEXT, ruleArticles TEXT, ruleNextPage TEXT, ruleTitle TEXT, rulePubDate TEXT, ruleDescription TEXT, ruleImage TEXT, ruleLink TEXT, ruleContent TEXT, style TEXT, injectJs TEXT, contentWhitelist TEXT, contentBlacklist TEXT, shouldOverrideUrlLoading TEXT, enabled INTEGER DEFAULT 1, customOrder INTEGER, lastUpdateTime INTEGER, unreadCount INTEGER DEFAULT 0, variable TEXT, enabledCookieJar INTEGER DEFAULT 0, articleStyle INTEGER, enableJs INTEGER DEFAULT 0, loadWithBaseUrl INTEGER DEFAULT 0, preload INTEGER DEFAULT 0, singleUrl INTEGER DEFAULT 0, cacheFirst INTEGER DEFAULT 0, redirectPolicy TEXT, type INTEGER DEFAULT 0, "group" TEXT, icon TEXT, description TEXT)');
     await db.execute('CREATE TABLE IF NOT EXISTS rss_articles (id INTEGER PRIMARY KEY AUTOINCREMENT, sourceUrl TEXT, title TEXT, link TEXT, description TEXT, content TEXT, image TEXT, pubDate INTEGER, author TEXT, category TEXT, sourceName TEXT, isRead INTEGER DEFAULT 0, starred INTEGER DEFAULT 0, readTime INTEGER, star INTEGER DEFAULT 0, desc TEXT, read INTEGER DEFAULT 0)');
     await db.execute('CREATE TABLE IF NOT EXISTS rss_stars (id INTEGER PRIMARY KEY AUTOINCREMENT, sourceUrl TEXT, title TEXT, link TEXT, desc TEXT, content TEXT, starTime INTEGER)');
     await db.execute('CREATE TABLE IF NOT EXISTS rule_subs (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, url TEXT, type TEXT, enabled INTEGER DEFAULT 1, lastUpdateTime INTEGER, customOrder INTEGER)');

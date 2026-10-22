@@ -10,7 +10,7 @@ import 'package:legado_md3/help/source/txt_parser.dart';
 import 'package:legado_md3/help/storage/epub_parser.dart';
 import 'package:legado_md3/help/storage/import_book_service.dart';
 
-/// 远程书籍导入（WebDAV），对齐原版 import/remote/RemoteBookScreen
+/// 远程书籍导入（WebDAV 书库浏览），对齐原版 import/remote/RemoteBookActivity
 class RemoteBookScreen extends StatefulWidget {
   const RemoteBookScreen({super.key});
 
@@ -22,13 +22,20 @@ class _RemoteBookScreenState extends State<RemoteBookScreen> {
   final WebDavService _webDav = WebDavService();
   final DatabaseService _db = DatabaseService();
   final TxtParserService _parser = TxtParserService();
-  List<String> _files = [];
+  List<WebDavEntry> _entries = [];
   bool _loading = false;
   String? _error;
   int _sortKey = 0; // 0 默认 1 名称
-  String? _baseUrl, _user, _pass, _dir;
+  String? _baseUrl, _user, _pass;
+  String _bookDir = '书籍'; // 远程书库根目录
+  final List<String> _pathStack = []; // 已进入的子目录路径
 
-  static const _bookExt = ['txt', 'epub', 'zip', 'mobi', 'umd'];
+  static const _bookExt = ['txt', 'epub', 'zip', 'mobi', 'umd', 'azw', 'azw3', 'pdf', 'rar', '7z'];
+
+  String get _currentPath {
+    final parts = [_bookDir, ..._pathStack];
+    return parts.where((s) => s.isNotEmpty).join('/');
+  }
 
   @override
   void initState() { super.initState(); _initAndLoad(); }
@@ -38,34 +45,48 @@ class _RemoteBookScreenState extends State<RemoteBookScreen> {
     _baseUrl = p.getString('webdav_url');
     _user = p.getString('webdav_user');
     _pass = p.getString('webdav_pass');
-    _dir = p.getString('webdav_dir') ?? 'Legado/backup';
+    _bookDir = p.getString('webdav_book_dir') ?? '书籍';
     _loadFiles();
   }
 
   Future<void> _loadFiles() async {
     if (_baseUrl == null || _baseUrl!.isEmpty) {
-      setState(() => _error = '尚未配置 WebDAV，请先在 备份与恢复 中填写');
+      setState(() => _error = '尚未配置 WebDAV，请先在下方 配置服务器 中填写');
       return;
     }
     setState(() { _loading = true; _error = null; });
     try {
       _webDav.configure(baseUrl: _baseUrl!, username: _user, password: _pass);
-      final all = await _webDav.listBackups();
-      final books = all.where((f) {
-        final ext = f.contains('.') ? f.split('.').last.toLowerCase() : '';
-        return _bookExt.contains(ext);
-      }).toList();
-      if (_sortKey == 1) books.sort();
-      if (mounted) setState(() { _files = books; _loading = false; });
+      var entries = await _webDav.listDir(_currentPath);
+      // 目录在前，书籍文件其次，其余隐藏
+      entries = entries.where((e) => e.isDir || _bookExt.contains(_ext(e.name))).toList();
+      entries.sort((a, b) {
+        if (a.isDir != b.isDir) return a.isDir ? -1 : 1;
+        return _sortKey == 1 ? a.name.compareTo(b.name) : 0;
+      });
+      if (mounted) setState(() { _entries = entries; _loading = false; });
     } catch (e) {
       if (mounted) setState(() { _error = '连接失败: $e'; _loading = false; });
     }
   }
 
+  String _ext(String name) => name.contains('.') ? name.split('.').last.toLowerCase() : '';
+
+  void _enterDir(String name) {
+    setState(() => _pathStack.add(name));
+    _loadFiles();
+  }
+
+  void _goUp() {
+    if (_pathStack.isEmpty) return;
+    setState(() => _pathStack.removeLast());
+    _loadFiles();
+  }
+
   Future<void> _downloadAndImport(String file) async {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('下载并导入 $file ...')));
     try {
-      final data = await _webDav.downloadBackup(file);
+      final data = await _webDav.downloadFile(_currentPath, file);
       if (data == null) throw Exception('下载为空');
       final dir = await getApplicationDocumentsDirectory();
       final bookDir = Directory('${dir.path}/books');
@@ -73,6 +94,11 @@ class _RemoteBookScreenState extends State<RemoteBookScreen> {
       final local = File('${bookDir.path}/$file');
       await local.writeAsBytes(data);
       final lower = file.toLowerCase();
+      if (lower.endsWith('.mobi') || lower.endsWith('.azw') || lower.endsWith('.azw3') || lower.endsWith('.umd')) {
+        final res = await ImportBookService().importPath(local.path);
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('《${res.book.name}》导入成功，共 ${res.chapterCount} 章')));
+        return;
+      }
       Book book;
       List<BookChapter> chapters;
       if (lower.endsWith('.epub')) {
@@ -93,13 +119,8 @@ class _RemoteBookScreenState extends State<RemoteBookScreen> {
         final info = _parser.extractBookInfo(content, file);
         chapters = _parser.parseChapters(content);
         book = Book(name: info['name'] ?? file, author: info['author'] ?? '未知', intro: info['intro'], origin: 'local', originName: '本地书籍', noteUrl: 'local://${local.path}', bookUrl: 'local://${local.path}', type: 1, lastChapter: chapters.isNotEmpty ? chapters.last.title : null, wordCount: content.length);
-      } else if (lower.endsWith('.mobi') || lower.endsWith('.azw') || lower.endsWith('.umd')) {
-        // MOBI/AZW/UMD 走统一导入服务
-        final res = await ImportBookService().importPath(local.path);
-        if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('《${res.book.name}》导入成功，共 ${res.chapterCount} 章')));
-        return;
       } else {
-        if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('《$file》已保存到 books 目录（ZIP 请解压后导入）')));
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('《$file》已保存到 books 目录（压缩包请解压后导入）')));
         return;
       }
       await _db.insertBook(book);
@@ -114,23 +135,29 @@ class _RemoteBookScreenState extends State<RemoteBookScreen> {
     final urlCtl = TextEditingController(text: _baseUrl);
     final userCtl = TextEditingController(text: _user);
     final passCtl = TextEditingController(text: _pass);
+    final dirCtl = TextEditingController(text: _bookDir);
     showDialog(context: context, builder: (c) => AlertDialog(
       title: const Text('服务器配置'),
-      content: Column(mainAxisSize: MainAxisSize.min, children: [
+      content: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, children: [
         TextField(controller: urlCtl, decoration: const InputDecoration(labelText: 'WebDAV 地址', isDense: true)),
         const SizedBox(height: 8),
         TextField(controller: userCtl, decoration: const InputDecoration(labelText: '账号', isDense: true)),
         const SizedBox(height: 8),
         TextField(controller: passCtl, obscureText: true, decoration: const InputDecoration(labelText: '密码', isDense: true)),
-      ]),
+        const SizedBox(height: 8),
+        TextField(controller: dirCtl, decoration: const InputDecoration(labelText: '书库目录', hintText: '书籍', isDense: true)),
+      ])),
       actions: [
         TextButton(onPressed: () => Navigator.pop(c), child: const Text('取消')),
         FilledButton(onPressed: () async {
           final p = await SharedPreferences.getInstance();
-          await p.setString('webdav_url', urlCtl.text);
-          await p.setString('webdav_user', userCtl.text);
+          await p.setString('webdav_url', urlCtl.text.trim());
+          await p.setString('webdav_user', userCtl.text.trim());
           await p.setString('webdav_pass', passCtl.text);
-          _baseUrl = urlCtl.text; _user = userCtl.text; _pass = passCtl.text;
+          await p.setString('webdav_book_dir', dirCtl.text.trim().isEmpty ? '书籍' : dirCtl.text.trim());
+          _baseUrl = urlCtl.text.trim(); _user = userCtl.text.trim(); _pass = passCtl.text;
+          _bookDir = dirCtl.text.trim().isEmpty ? '书籍' : dirCtl.text.trim();
+          _pathStack.clear();
           if (mounted) { Navigator.pop(c); _loadFiles(); }
         }, child: const Text('保存')),
       ],
@@ -141,7 +168,10 @@ class _RemoteBookScreenState extends State<RemoteBookScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('远程书籍'),
+        title: Text(_pathStack.isEmpty ? '远程书籍' : _pathStack.last),
+        leading: _pathStack.isNotEmpty
+            ? IconButton(icon: const Icon(Icons.arrow_back), onPressed: _goUp)
+            : null,
         actions: [
           IconButton(icon: const Icon(Icons.dns_outlined), tooltip: '服务器配置', onPressed: _configServer),
           PopupMenuButton<int>(
@@ -165,20 +195,22 @@ class _RemoteBookScreenState extends State<RemoteBookScreen> {
                   const SizedBox(height: 16),
                   FilledButton.icon(onPressed: _configServer, icon: const Icon(Icons.settings), label: const Text('配置服务器')),
                 ])))
-              : _files.isEmpty
-                  ? const Center(child: Text('远程没有可导入的书籍文件'))
+              : _entries.isEmpty
+                  ? const Center(child: Text('当前目录没有可导入的书籍文件'))
                   : RefreshIndicator(onRefresh: _loadFiles, child: ListView.separated(
-                      itemCount: _files.length,
+                      itemCount: _entries.length,
                       separatorBuilder: (_, __) => const Divider(height: 1),
                       itemBuilder: (c, i) {
-                        final f = _files[i];
-                        final ext = f.contains('.') ? f.split('.').last.toLowerCase() : '';
+                        final e = _entries[i];
+                        final ext = _ext(e.name);
                         return ListTile(
-                          leading: Icon(ext == 'epub' ? Icons.menu_book : Icons.description_outlined),
-                          title: Text(f),
-                          subtitle: Text('目录: $_dir', style: const TextStyle(fontSize: 11)),
-                          trailing: const Icon(Icons.download),
-                          onTap: () => _downloadAndImport(f),
+                          leading: Icon(e.isDir
+                              ? Icons.folder_outlined
+                              : ext == 'epub' ? Icons.menu_book : Icons.description_outlined),
+                          title: Text(e.name),
+                          subtitle: e.isDir ? const Text('目录', style: TextStyle(fontSize: 11)) : Text(ext.toUpperCase(), style: const TextStyle(fontSize: 11)),
+                          trailing: Icon(e.isDir ? Icons.chevron_right : Icons.download),
+                          onTap: () => e.isDir ? _enterDir(e.name) : _downloadAndImport(e.name),
                         );
                       },
                     )),

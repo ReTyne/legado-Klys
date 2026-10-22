@@ -3,6 +3,7 @@ import 'dart:io';
 import 'package:archive/archive.dart';
 import 'package:legado_md3/data/model/book.dart';
 import 'package:legado_md3/data/model/book_chapter.dart';
+import 'package:legado_md3/help/source/txt_parser.dart';
 import 'epub_parser.dart';
 
 /// 本地书籍解析器 - 支持TXT/EPUB/MOBI/PDF/UMD
@@ -66,7 +67,7 @@ class LocalBookParser {
   static Future<List<BookChapter>> _parseTxtToc(String filePath) async {
     try {
       final file = File(filePath);
-      final content = await file.readAsString(encoding: utf8);
+      final content = await TxtParserService.readFileAutoDetect(file);
       final lines = content.split('\n');
       final chapters = <BookChapter>[];
       final chapterRegex = RegExp(r'^\s*(第[一二三四五六七八九十百千万零〇两\d]+[章节回卷集部篇][^\n]*)|^\s*(\d+[\.、][^\n]+)|^\s*([【\[][^\n]+[】\]])');
@@ -206,7 +207,7 @@ class LocalBookParser {
   static Future<String?> readTxtChapter(String filePath, int chapterIndex, List<BookChapter> chapters) async {
     try {
       final file = File(filePath);
-      final content = await file.readAsString(encoding: utf8);
+      final content = await TxtParserService.readFileAutoDetect(file);
       final lines = content.split('\n');
       if (chapterIndex >= chapters.length) return null;
       final chapter = chapters[chapterIndex];

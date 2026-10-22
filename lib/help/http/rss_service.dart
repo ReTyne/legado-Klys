@@ -1,5 +1,6 @@
 import 'dart:convert';
 import 'package:dio/dio.dart';
+import 'package:html/dom.dart' as dom;
 import 'package:html/parser.dart' as html_parser;
 import 'package:enough_convert/enough_convert.dart';
 import 'package:legado_md3/data/model/rss_source.dart';
@@ -12,6 +13,13 @@ class RssCategory {
   final String name;
   final String rawUrl;
   RssCategory(this.name, this.rawUrl);
+}
+
+/// 取文章列表的起始页：待解析 HTML 及其实际地址（用于相对链接解析）
+class _StartPage {
+  _StartPage(this.html, this.url);
+  final String html;
+  final String url;
 }
 
 /// RSS订阅服务
@@ -41,13 +49,16 @@ class RssService {
         return await _fetchJsArticles(source, baseUrl: source.jsHttpUrl);
       }
       final articles = <RssArticle>[];
-      final content = await _httpGet(source.url, source.header);
+      // 起始页：startJs 执行结果 / startHtml 静态 HTML 优先，否则抓取 sourceUrl
+      final start = await _resolveStartPage(source, source.url);
+      final content = start.html;
       if (content.isEmpty) return articles;
       articles.addAll(_parseRss(content, source));
       if (articles.isEmpty) articles.addAll(_parseAtom(content, source));
       if (articles.isEmpty &&
           (source.ruleArticles?.trim().isNotEmpty ?? false)) {
-        articles.addAll(await _parseByRules(source, content));
+        articles.addAll(await _parseByRules(source, content,
+            startUrl: start.url));
       }
       if (articles.isEmpty) articles.addAll(_parseHtml(content, source));
       return articles;
@@ -64,6 +75,52 @@ class RssService {
       if (r != null && ruleNeedsRealJs(r)) return true;
     }
     return false;
+  }
+
+  // ============================ 起始页 ============================
+
+  /// 计算取文章列表的起始页。
+  /// 优先级：startJs 执行结果（URL 或 HTML）> startHtml 静态 HTML > 抓取 baseUrl。
+  /// startJs 依赖 JS 引擎（能执行则执行）；执行失败时容错回退，不阻塞主链路。
+  Future<_StartPage> _resolveStartPage(RssSource s, String baseUrl) async {
+    // 1) startJs：执行得到起始 URL（http 开头则继续抓取）或直接得到 HTML
+    final js = (s.startJs ?? '').trim();
+    if (js.isNotEmpty) {
+      try {
+        final rt = await JsRuntimeManager.instance.forSource(s);
+        final res = await rt.eval(JsEvalRequest(
+          source: s,
+          script: _stripJs(js),
+          result: '',
+          baseUrl: baseUrl,
+        ));
+        final v = (res.stringValue ?? '').trim();
+        if (v.startsWith('http')) {
+          // JS 产出 URL：按该 URL 抓取起始页
+          final html = await _httpGet(v, await _resolveHeader(s));
+          if (html.isNotEmpty) return _StartPage(html, v);
+        } else if (v.contains('<')) {
+          // JS 直接产出 HTML：作为待解析起始页（相对链接仍按 baseUrl 解析）
+          return _StartPage(v, baseUrl);
+        }
+        // 其它返回值（空 / 非 URL 非 HTML）：按后续逻辑降级
+      } catch (_) {
+        // JS 引擎不可用或执行异常：忽略，继续走 startHtml / 默认抓取
+      }
+    }
+    // 2) startHtml：直接作为待解析 HTML 起始页（支持 {{}} mustache 求值）
+    final sh = (s.startHtml ?? '').trim();
+    if (sh.isNotEmpty) {
+      final html = sh.contains('{{')
+          ? await _applyMustache(s, sh, result: '', baseUrl: baseUrl)
+          : sh;
+      return _StartPage(html, baseUrl);
+    }
+    // 3) 默认：抓取页面（逻辑源 / data: 源无页面可抓时返回空）
+    final html = baseUrl.startsWith('http')
+        ? await _httpGet(baseUrl, await _resolveHeader(s))
+        : '';
+    return _StartPage(html, baseUrl);
   }
 
   // ============================ JS 链路 ============================
@@ -106,11 +163,10 @@ class RssService {
     if (rule.isEmpty) return [];
     final rt = await JsRuntimeManager.instance.forSource(s);
 
-    // 抓取页面（best effort；部分逻辑源不依赖页面）
-    var pageContent = '';
-    if (baseUrl.startsWith('http')) {
-      pageContent = await _httpGet(baseUrl, await _resolveHeader(s));
-    }
+    // 抓取页面（best effort；部分逻辑源不依赖页面）。
+    // startJs / startHtml 优先：逻辑源常以 startHtml 提供列表页 HTML。
+    final start = await _resolveStartPage(s, baseUrl);
+    var pageContent = start.html;
 
     var body = _stripJs(rule);
     body = await _applyMustache(s, body,
@@ -183,7 +239,57 @@ class RssService {
         result: pageHtml,
         baseUrl: article.link,
         rssArticle: am));
-    return res.stringValue;
+    // 白名单/黑名单按 CSS 选择器过滤后再返回
+    return _applyContentFilter(
+        res.stringValue ?? '', s.contentWhitelist, s.contentBlacklist);
+  }
+
+  /// 内容白名单/黑名单过滤（按 CSS 选择器）。
+  /// [whitelist] 非空时只保留选择器命中的内容；[blacklist] 删除选择器命中的内容。
+  /// 选择器列表支持逗号/中文逗号/换行分隔。
+  /// 解析或选择器异常时保留原 HTML，避免破坏正文。
+  String _applyContentFilter(String html, String? whitelist, String? blacklist) {
+    final wl = _splitSelectors(whitelist);
+    final bl = _splitSelectors(blacklist);
+    if (html.isEmpty || (wl.isEmpty && bl.isEmpty)) return html;
+    try {
+      final doc = html_parser.parse(html);
+      // 黑名单：删除匹配节点
+      for (final sel in bl) {
+        for (final el in doc.querySelectorAll(sel)) {
+          el.remove();
+        }
+      }
+      // 白名单：仅保留匹配节点内容；无命中时保留原 HTML，防止误清空正文
+      if (wl.isNotEmpty) {
+        final kept = <dom.Element>[];
+        for (final sel in wl) {
+          kept.addAll(doc.querySelectorAll(sel));
+        }
+        if (kept.isNotEmpty) {
+          final sb = StringBuffer();
+          for (final el in kept) {
+            sb.write(el.outerHtml);
+          }
+          return sb.toString();
+        }
+      }
+      return doc.body?.innerHtml ?? html;
+    } catch (_) {
+      // 选择器非法 / 解析异常：保留原 HTML
+      return html;
+    }
+  }
+
+  /// 拆分选择器列表：逗号、中文逗号、换行分隔，去空白、去空项
+  List<String> _splitSelectors(String? raw) {
+    final r = (raw ?? '').trim();
+    if (r.isEmpty) return const [];
+    return r
+        .split(RegExp(r'[,，\r\n]+'))
+        .map((e) => e.trim())
+        .where((e) => e.isNotEmpty)
+        .toList();
   }
 
   /// 解析请求头：@js 规则求值为 JSON 字符串，普通头原样返回。
@@ -298,11 +404,13 @@ class RssService {
   }
 
   /// 依据用户自定义规则抓取文章列表（支持 ruleNextPage 翻页，最多 5 页）
-  Future<List<RssArticle>> _parseByRules(RssSource source, String firstContent) async {
+  /// [startUrl] 起始页实际地址（startJs 可能改写），默认取 source.url
+  Future<List<RssArticle>> _parseByRules(RssSource source, String firstContent,
+      {String? startUrl}) async {
     final out = <RssArticle>[];
     final seen = <String>{};
     var content = firstContent;
-    var currentUrl = source.url;
+    var currentUrl = startUrl ?? source.url;
     _pipeline.baseUrl = currentUrl;
 
     for (var page = 0; page < 5; page++) {

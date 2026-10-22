@@ -187,6 +187,15 @@ class RssSource implements JsSource {
     'unreadCount': unreadCount,
     'variable': variable,
     'enabledCookieJar': enabledCookieJar ? 1 : 0,
+    // 运行时/兼容字段一并持久化，避免重启后丢失（DB v10 已补列）
+    'articleStyle': articleStyle,
+    'enableJs': enableJs ? 1 : 0,
+    'loadWithBaseUrl': loadWithBaseUrl ? 1 : 0,
+    'preload': preload ? 1 : 0,
+    'singleUrl': singleUrl ? 1 : 0,
+    'cacheFirst': cacheFirst ? 1 : 0,
+    'redirectPolicy': redirectPolicy,
+    'type': sourceType,
   };
 
   factory RssSource.fromMap(Map<String, dynamic> map) => RssSource(
@@ -232,6 +241,15 @@ class RssSource implements JsSource {
     articleStyle: map['articleStyle'] is int
         ? map['articleStyle'] as int
         : int.tryParse(map['articleStyle']?.toString() ?? ''),
+    enableJs: (map['enableJs'] as int?) == 1,
+    loadWithBaseUrl: (map['loadWithBaseUrl'] as int?) == 1,
+    preload: (map['preload'] as int?) == 1,
+    singleUrl: (map['singleUrl'] as int?) == 1,
+    cacheFirst: (map['cacheFirst'] as int?) == 1,
+    redirectPolicy: map['redirectPolicy'] as String?,
+    sourceType: map['type'] is int
+        ? map['type'] as int
+        : int.tryParse(map['type']?.toString() ?? '') ?? 0,
   );
 
   /// 原版JSON格式兼容

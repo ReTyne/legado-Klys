@@ -1515,11 +1515,11 @@ class BookSourceEngine {
   /// 是否为图片/漫画书源（bookSourceType=2）
   bool isImageSource(BookSource source) => source.bookSourceType == 2;
 
-  /// 是否为视频书源（bookSourceType=3）
-  bool isVideoSource(BookSource source) => source.bookSourceType == 3;
+  /// 是否为文件/下载站书源（bookSourceType=3）
+  bool isFileSource(BookSource source) => source.bookSourceType == 3;
 
-  /// 是否为文件书源（bookSourceType=4）
-  bool isFileSource(BookSource source) => source.bookSourceType == 4;
+  /// 是否为视频书源（bookSourceType=4）
+  bool isVideoSource(BookSource source) => source.bookSourceType == 4;
 
   /// 获取图片书源内容（返回图片 URL 列表，每行一个）
   Future<String?> getImageContent(BookSource source, String contentUrl,

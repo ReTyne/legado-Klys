@@ -868,7 +868,7 @@ class _SourceEditScreenState extends State<SourceEditScreen> with SingleTickerPr
       );
 
   Widget _typeSelector() {
-    const names = ['文本', '音频', '图片', '视频', '文件'];
+    const names = ['文本', '音频', '图片', '文件', '视频']; // legado 标准顺序 3=文件 4=视频
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
       child: Column(

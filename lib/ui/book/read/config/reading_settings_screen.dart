@@ -3,6 +3,7 @@
 
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:legado_md3/data/model/read_config.dart';
 import 'package:legado_md3/di/book_provider.dart';
 import 'package:legado_md3/help/config/read_menu_config.dart';
 import 'package:provider/provider.dart';
@@ -190,6 +191,14 @@ class _ReadingSettingsScreenState extends State<ReadingSettingsScreen> with Sing
         if (config.customHeaderEnabled) ListTile(title: const Text('头部文字'), trailing: const Icon(Icons.edit), onTap: () => _showHeaderEditor()),
         SwitchListTile(title: const Text('自定义底部'), value: config.customFooterEnabled, onChanged: (v) => context.read<ReadProvider>().updateConfig((c) => c.customFooterEnabled = v)),
         if (config.customFooterEnabled) ListTile(title: const Text('底部文字'), trailing: const Icon(Icons.edit), onTap: () => _showFooterEditor()),
+        // 页脚三槽位内容配置（自定义底部文字开启时以自定义文字优先）
+        ListTile(
+          leading: const Icon(Icons.view_column),
+          title: const Text('页脚槽位'),
+          subtitle: Text('左:${footerSlotLabels[_safeFooterSlots(config)[0]]}  中:${footerSlotLabels[_safeFooterSlots(config)[1]]}  右:${footerSlotLabels[_safeFooterSlots(config)[2]]}'),
+          trailing: const Icon(Icons.chevron_right),
+          onTap: () => _showFooterSlotsPicker(),
+        ),
         SwitchListTile(dense: true, title: const Text('头部加粗'), value: config.headerBold, onChanged: (v) => context.read<ReadProvider>().updateConfig((c) => c.headerBold = v)),
         SwitchListTile(dense: true, title: const Text('底部加粗'), value: config.footerBold, onChanged: (v) => context.read<ReadProvider>().updateConfig((c) => c.footerBold = v)),
       ],
@@ -222,6 +231,56 @@ class _ReadingSettingsScreenState extends State<ReadingSettingsScreen> with Sing
     final controller = TextEditingController(text: context.read<ReadProvider>().config.footerString ?? '');
     showDialog(context: context, builder: (context) => AlertDialog(title: const Text('自定义底部'), content: TextField(controller: controller, maxLines: 2), actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('取消')), FilledButton(onPressed: () { context.read<ReadProvider>().updateConfig((c) => c.footerString = controller.text); Navigator.pop(context); }, child: const Text('保存'))]));
   }
+
+  /// 页脚三槽位选择弹窗：左 / 中 / 右各自从内容枚举中选择
+  void _showFooterSlotsPicker() {
+    showDialog(
+      context: context,
+      builder: (ctx) {
+        // dialog 的 context 位于 MultiProvider 子树内，可直接 watch 最新配置
+        final slots = _safeFooterSlots(ctx.watch<ReadProvider>().config);
+        return AlertDialog(
+          title: const Text('页脚槽位'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: List.generate(3, (i) {
+              final label = i == 0 ? '左槽' : i == 1 ? '中槽' : '右槽';
+              return ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: SizedBox(width: 48, child: Text(label)),
+                trailing: DropdownButton<FooterSlot>(
+                  value: slots[i],
+                  items: footerSlotLabels.entries
+                      .map((e) => DropdownMenuItem(value: e.key, child: Text(e.value)))
+                      .toList(),
+                  onChanged: (v) {
+                    if (v == null) return;
+                    ctx.read<ReadProvider>().updateConfig((c) {
+                      final next = _safeFooterSlots(c);
+                      next[i] = v;
+                      c.footerSlots = next;
+                    });
+                  },
+                ),
+              );
+            }),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('完成')),
+          ],
+        );
+      },
+    );
+  }
+}
+
+/// 读取页脚三槽位配置；长度不足时补空白槽，保证一定返回 3 个元素
+List<FooterSlot> _safeFooterSlots(ReadConfig config) {
+  final list = List<FooterSlot>.of(config.footerSlots ?? defaultFooterSlots);
+  while (list.length < 3) {
+    list.add(FooterSlot.none);
+  }
+  return list.sublist(0, 3);
 }
 
 /* ===== 由 click_action_config_screen.dart 合并 ===== */
@@ -236,9 +295,26 @@ class ClickActionConfigScreen extends StatefulWidget {
 }
 
 class _ClickActionConfigScreenState extends State<ClickActionConfigScreen> {
-  // 动作: 0无 1上一章 2下一章 3菜单 4上一页 5下一页
-  static const actions = ['无动作', '上一章', '下一章', '显示菜单', '上一页', '下一页'];
-  static const icons = [Icons.remove, Icons.skip_previous, Icons.skip_next, Icons.menu_book, Icons.chevron_left, Icons.chevron_right];
+  // 动作（向后兼容 0-5，新增 6-14 对齐 legado 九宫格）
+  // 0无 1上一章 2下一章 3菜单 4上一页 5下一页 6目录 7全文搜索 8朗读 9加书签 10编辑正文 11书签列表 12同步进度 13朗读暂停恢复 14切换净化
+  static const actions = ['无动作', '上一章', '下一章', '显示菜单', '上一页', '下一页', '目录', '全文搜索', '朗读', '添加书签', '编辑正文', '书签列表', '同步进度', '朗读暂停/恢复', '切换净化'];
+  static const icons = [
+    Icons.remove_circle_outline,
+    Icons.skip_previous,
+    Icons.skip_next,
+    Icons.menu_book,
+    Icons.chevron_left,
+    Icons.chevron_right,
+    Icons.list_alt,
+    Icons.search,
+    Icons.headphones,
+    Icons.bookmark_border,
+    Icons.edit_note,
+    Icons.bookmarks,
+    Icons.sync,
+    Icons.pause_circle_outline,
+    Icons.cleaning_services_outlined,
+  ];
   List<int> _grid = List.filled(9, 2);
 
   @override

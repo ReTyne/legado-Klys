@@ -7,6 +7,7 @@ import 'package:file_picker/file_picker.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:legado_md3/help/storage/backup_service.dart';
+import 'package:legado_md3/help/storage/backup_zip.dart';
 import 'package:legado_md3/data/local/app_database.dart';
 
 class BackupScreen extends StatefulWidget {
@@ -18,10 +19,18 @@ class BackupScreen extends StatefulWidget {
 
 class _BackupScreenState extends State<BackupScreen> {
   final BackupService _backupService = BackupService();
-  bool _includeBooks = true;
-  bool _includeSources = true;
-  bool _includeRules = true;
-  bool _includeRecords = true;
+
+  /// 备份内容勾选（默认全选）
+  final Map<BackupType, bool> _selected = {
+    for (final t in BackupType.values) t: true,
+  };
+  /// 是否对敏感内容加密（zip 备份）
+  bool _encryptBackup = false;
+  /// 本地备份保留份数（0 表示不限）
+  int _keepCount = BackupService.defaultKeepCount;
+  /// 恢复前自动备份当前数据
+  bool _restoreAutoBackup = true;
+
   bool _isWorking = false;
   List<File> _backupFiles = [];
   final _webdavUrl = TextEditingController();
@@ -35,11 +44,29 @@ class _BackupScreenState extends State<BackupScreen> {
     super.initState();
     _loadBackupFiles();
     _loadWebdav();
+    _loadBackupPrefs();
   }
 
   Future<void> _loadBackupFiles() async {
     final files = await _backupService.getBackupFiles();
     if (mounted) setState(() => _backupFiles = files);
+  }
+
+  Future<void> _loadBackupPrefs() async {
+    final p = await SharedPreferences.getInstance();
+    if (!mounted) return;
+    setState(() {
+      _encryptBackup = p.getBool('backup_encrypt') ?? false;
+      _keepCount = p.getInt('backup_keep_count') ?? BackupService.defaultKeepCount;
+      _restoreAutoBackup = p.getBool('backup_restore_auto') ?? true;
+    });
+  }
+
+  Future<void> _saveBackupPrefs() async {
+    final p = await SharedPreferences.getInstance();
+    await p.setBool('backup_encrypt', _encryptBackup);
+    await p.setInt('backup_keep_count', _keepCount);
+    await p.setBool('backup_restore_auto', _restoreAutoBackup);
   }
 
   Future<void> _loadWebdav() async {
@@ -102,23 +129,29 @@ class _BackupScreenState extends State<BackupScreen> {
     _tip(ok ? 'WebDAV 连接成功' : '连接失败，请检查地址/账号/密码');
   }
 
+  /// 上传 zip 备份到 WebDAV（含勾选内容，可选加密）
   Future<void> _uploadWebDav() async {
     if (_webdavUrl.text.trim().isEmpty) { _tip('请先填写 WebDAV 地址'); return; }
+    final selection = BackupSelection(_selected.entries.where((e) => e.value).map((e) => e.key).toSet());
+    if (selection.types.isEmpty) { _tip('请先勾选备份内容'); return; }
     await _saveWebdav();
+    // 加密备份需要先输入密码
+    String? password;
+    if (_encryptBackup) {
+      password = await _askPassword(confirm: true);
+      if (password == null) return;
+    }
     setState(() => _isWorking = true);
     try {
-      final data = await _backupService.createBackup(
-        includeBooks: _includeBooks, includeSources: _includeSources,
-        includeReplaceRules: _includeRules, includeReadRecords: _includeRecords,
-      );
+      final bytes = await _backupService.createZipBackup(selection: selection, password: password);
       final ts = DateTime.now().toIso8601String().replaceAll(':', '-').split('.').first;
-      var ok = await _webdav().uploadBackup('backup_$ts.json', utf8.encode(jsonEncode(data)));
+      final ok = await _webdav().uploadBackup('backup_$ts.zip', bytes);
       // 勾选「同步阅读进度」时，额外上传一份阅读进度
       if (ok && _syncProgress) {
         final progress = await DatabaseService().getAllBookProgress();
         await _webdav().uploadReadingProgress(progress.map((e) => e.toMap()).toList());
       }
-      _tip(ok ? '已上传到 WebDAV' : '上传失败');
+      _tip(ok ? '已上传到 WebDAV（zip${password != null ? '·加密' : ''}）' : '上传失败');
     } catch (e) {
       _tip('上传失败: $e');
     }
@@ -140,9 +173,192 @@ class _BackupScreenState extends State<BackupScreen> {
       final bytes = await _webdav().downloadBackup(chosen);
       if (bytes == null) { _tip('下载失败'); return; }
       final dir = await getTemporaryDirectory();
-      final tmp = File('${dir.path}/webdav_restore.json');
+      // 云端可能是 zip 或旧版 json，按文件头自动识别，后缀不影响
+      final tmp = File('${dir.path}/webdav_restore_${DateTime.now().millisecondsSinceEpoch}.bak');
       await tmp.writeAsBytes(bytes);
-      final res = await _backupService.restoreFromFile(tmp.path);
+      await _showRestoreDialog(tmp.path);
+    } catch (e) {
+      _tip('恢复失败: $e');
+    }
+    if (mounted) setState(() => _isWorking = false);
+  }
+
+  /// 弹出密码输入对话框；[confirm] 为 true 时需输入两次
+  Future<String?> _askPassword({bool confirm = false}) async {
+    final p1 = TextEditingController();
+    final p2 = TextEditingController();
+    final result = await showDialog<String>(
+      context: context,
+      builder: (d) => AlertDialog(
+        title: Text(confirm ? '设置备份密码' : '输入备份密码'),
+        content: Column(mainAxisSize: MainAxisSize.min, children: [
+          TextField(controller: p1, obscureText: true, autofocus: true,
+            decoration: const InputDecoration(labelText: '密码（留空则不加密）')),
+          if (confirm) ...[
+            const SizedBox(height: 8),
+            TextField(controller: p2, obscureText: true,
+              decoration: const InputDecoration(labelText: '确认密码')),
+          ],
+        ]),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(d), child: const Text('取消')),
+          FilledButton(onPressed: () {
+            if (confirm && p1.text != p2.text) return; // 两次不一致不关闭
+            Navigator.pop(d, p1.text);
+          }, child: const Text('确定')),
+        ],
+      ),
+    );
+    if (confirm && result != null && result.isEmpty) return null;
+    return result;
+  }
+
+  /// 创建 zip 备份（含内容勾选与可选加密）
+  Future<void> _createBackup() async {
+    final selection = BackupSelection(_selected.entries.where((e) => e.value).map((e) => e.key).toSet());
+    if (selection.types.isEmpty) {
+      _tip('请先勾选备份内容');
+      return;
+    }
+    await _saveBackupPrefs();
+    // 加密备份：弹窗输入密码
+    String? password;
+    if (_encryptBackup) {
+      password = await _askPassword(confirm: true);
+      if (password == null) return;
+    }
+    setState(() => _isWorking = true);
+    try {
+      final path = await _backupService.exportZipBackupToFile(
+        selection: selection,
+        password: password,
+      );
+      await _loadBackupFiles();
+      if (mounted) {
+        _tip('备份已保存: ${path.split('/').last}（只保留最近 $_keepCount 份）');
+      }
+    } catch (e) {
+      _tip('备份失败: $e');
+    }
+    if (mounted) setState(() => _isWorking = false);
+  }
+
+  /// 弹出「选择性恢复」对话框：勾选恢复内容 + 恢复前自动备份 + 密码
+  Future<void> _showRestoreDialog(String filePath) async {
+    final info = await _backupService.inspectBackupFile(filePath);
+    if (!mounted) return;
+    // 恢复勾选（默认勾选备份中包含的类型；解析失败时全列）
+    final restoreTypes = <BackupType>{...info.selection.types};
+    final pwdController = TextEditingController();
+    var autoBackup = _restoreAutoBackup;
+
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (d) => StatefulBuilder(builder: (ctx, setDialogState) {
+        Future<void> verifyPassword() async {
+          final pwd = pwdController.text;
+          final re = await _backupService.inspectBackupFile(filePath, password: pwd);
+          if (!ctx.mounted) return;
+          setDialogState(() {
+            restoreTypes
+              ..clear()
+              ..addAll(re.selection.types);
+            if (re.error != null) {
+              _tip(re.error!);
+            }
+          });
+        }
+        return AlertDialog(
+          title: const Text('选择恢复内容'),
+          content: SizedBox(
+            width: double.maxFinite,
+            child: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // 备份概要
+                  Text(
+                    '${info.fileName}\n'
+                    '${info.isZip ? 'zip' : '旧版JSON'}'
+                    '${info.encrypted ? ' · 加密' : ''}'
+                    '${info.deviceName != null ? ' · ${info.deviceName}' : ''}',
+                    style: Theme.of(ctx).textTheme.bodySmall,
+                  ),
+                  if (info.error != null && restoreTypes.isEmpty)
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 8),
+                      child: Text('无法读取备份内容：${info.error}\n若是加密备份，请输入密码后点击「验证密码」。',
+                        style: TextStyle(color: Theme.of(ctx).colorScheme.error)),
+                    ),
+                  const Divider(),
+                  // 内容多选
+                  ...BackupType.values.map((t) {
+                    final inBackup = info.selection.types.isEmpty || info.selection.contains(t);
+                    return CheckboxListTile(
+                      dense: true,
+                      contentPadding: EdgeInsets.zero,
+                      value: restoreTypes.contains(t),
+                      title: Text(inBackup || info.selection.types.isEmpty ? t.label : '${t.label}（备份中无）'),
+                      onChanged: (v) => setDialogState(() {
+                        if (v == true) {
+                          restoreTypes.add(t);
+                        } else {
+                          restoreTypes.remove(t);
+                        }
+                      }),
+                    );
+                  }),
+                  const Divider(),
+                  // 恢复前自动备份保护
+                  SwitchListTile(
+                    dense: true,
+                    contentPadding: EdgeInsets.zero,
+                    title: const Text('恢复前自动备份当前数据'),
+                    value: autoBackup,
+                    onChanged: (v) => setDialogState(() => autoBackup = v),
+                  ),
+                  // 加密备份密码
+                  if (info.encrypted || info.error != null) ...[
+                    const SizedBox(height: 8),
+                    TextField(controller: pwdController, obscureText: true,
+                      decoration: const InputDecoration(labelText: '备份密码', isDense: true)),
+                    Align(
+                      alignment: Alignment.centerRight,
+                      child: TextButton(onPressed: verifyPassword, child: const Text('验证密码')),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(d, false), child: const Text('取消')),
+            FilledButton(onPressed: () => Navigator.pop(d, true), child: const Text('开始恢复')),
+          ],
+        );
+      }),
+    );
+    if (ok != true) return;
+    if (restoreTypes.isEmpty) { _tip('请至少勾选一项恢复内容'); return; }
+    if (autoBackup != _restoreAutoBackup) {
+      _restoreAutoBackup = autoBackup;
+      await _saveBackupPrefs();
+    }
+    setState(() => _isWorking = true);
+    try {
+      // 恢复前自动备份当前数据，避免恢复后丢失
+      if (autoBackup) {
+        final autoPath = await _backupService.autoBackupBeforeRestore();
+        if (autoPath != null) {
+          _tip('已自动备份当前数据: ${autoPath.split('/').last}');
+        }
+      }
+      final res = await _backupService.restoreFromFile(
+        filePath,
+        password: pwdController.text.isEmpty ? null : pwdController.text,
+        only: BackupSelection(restoreTypes),
+      );
       _tip(res.summary);
       await _loadBackupFiles();
     } catch (e) {
@@ -151,54 +367,18 @@ class _BackupScreenState extends State<BackupScreen> {
     if (mounted) setState(() => _isWorking = false);
   }
 
-  Future<void> _createBackup() async {
-    setState(() => _isWorking = true);
-    try {
-      final path = await _backupService.exportBackupToFile(
-        includeBooks: _includeBooks,
-        includeSources: _includeSources,
-        includeReplaceRules: _includeRules,
-        includeReadRecords: _includeRecords,
-      );
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('备份已保存: $path')),
-        );
-        await _loadBackupFiles();
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('备份失败: $e')),
-        );
-      }
-    }
-    if (mounted) setState(() => _isWorking = false);
-  }
-
+  /// 从文件恢复（支持 zip / 旧版 json）
   Future<void> _restoreBackup() async {
     try {
       final result = await FilePicker.platform.pickFiles(
         type: FileType.custom,
-        allowedExtensions: ['json'],
+        allowedExtensions: ['json', 'zip', 'bak'],
       );
       if (result == null || result.files.isEmpty) return;
-
-      setState(() => _isWorking = true);
-      final backupResult = await _backupService.restoreFromFile(result.files.first.path!);
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(backupResult.summary)),
-        );
-      }
+      await _showRestoreDialog(result.files.first.path!);
     } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('恢复失败: $e')),
-        );
-      }
+      _tip('恢复失败: $e');
     }
-    if (mounted) setState(() => _isWorking = false);
   }
 
   Future<void> _importSources() async {
@@ -263,26 +443,73 @@ class _BackupScreenState extends State<BackupScreen> {
           : ListView(
               padding: const EdgeInsets.all(16),
               children: [
-                // 备份选项
+                // 备份内容勾选 + 加密 + 保留份数
                 Card(
                   child: Padding(
                     padding: const EdgeInsets.all(16),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text('备份内容', style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
+                        Row(children: [
+                          Text('备份内容', style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
+                          const Spacer(),
+                          TextButton(onPressed: () => setState(() {
+                            for (final t in _selected.keys) { _selected[t] = true; }
+                          }), child: const Text('全选')),
+                          TextButton(onPressed: () => setState(() {
+                            for (final t in _selected.keys) { _selected[t] = false; }
+                          }), child: const Text('全不选')),
+                        ]),
                         const SizedBox(height: 8),
-                        SwitchListTile(title: const Text('书籍'), value: _includeBooks, onChanged: (v) => setState(() => _includeBooks = v)),
-                        SwitchListTile(title: const Text('书源'), value: _includeSources, onChanged: (v) => setState(() => _includeSources = v)),
-                        SwitchListTile(title: const Text('替换规则'), value: _includeRules, onChanged: (v) => setState(() => _includeRules = v)),
-                        SwitchListTile(title: const Text('阅读记录'), value: _includeRecords, onChanged: (v) => setState(() => _includeRecords = v)),
-                        const SizedBox(height: 16),
+                        // 内容多选（chip 形式，紧凑展示 17 类）
+                        Wrap(
+                          spacing: 8,
+                          runSpacing: 4,
+                          children: BackupType.values.map((t) => FilterChip(
+                            label: Text(t.label),
+                            selected: _selected[t] == true,
+                            onSelected: (v) => setState(() => _selected[t] = v),
+                          )).toList(),
+                        ),
+                        const SizedBox(height: 12),
+                        // 加密开关（zip 内敏感数据加密）
+                        SwitchListTile(
+                          dense: true,
+                          contentPadding: EdgeInsets.zero,
+                          title: const Text('加密敏感内容'),
+                          subtitle: const Text('书源/服务器等含登录信息的数据将以密码加密后存入 zip'),
+                          value: _encryptBackup,
+                          onChanged: (v) { setState(() => _encryptBackup = v); _saveBackupPrefs(); },
+                        ),
+                        // 保留份数
+                        ListTile(
+                          dense: true,
+                          contentPadding: EdgeInsets.zero,
+                          title: const Text('本地备份保留份数'),
+                          trailing: DropdownButton<int>(
+                            value: _keepCount,
+                            items: const [
+                              DropdownMenuItem(value: 3, child: Text('3 份')),
+                              DropdownMenuItem(value: 5, child: Text('5 份')),
+                              DropdownMenuItem(value: 10, child: Text('10 份')),
+                              DropdownMenuItem(value: 20, child: Text('20 份')),
+                              DropdownMenuItem(value: 100, child: Text('不限')),
+                            ],
+                            onChanged: (v) {
+                              if (v == null) return;
+                              setState(() => _keepCount = v);
+                              _saveBackupPrefs();
+                              _backupService.cleanOldBackups(keep: v).then((_) => _loadBackupFiles());
+                            },
+                          ),
+                        ),
+                        const SizedBox(height: 8),
                         SizedBox(
                           width: double.infinity,
                           child: FilledButton.icon(
                             onPressed: _createBackup,
                             icon: const Icon(Icons.backup),
-                            label: const Text('创建备份'),
+                            label: const Text('创建备份（zip）'),
                           ),
                         ),
                       ],
@@ -297,7 +524,7 @@ class _BackupScreenState extends State<BackupScreen> {
                       ListTile(
                         leading: const Icon(Icons.restore),
                         title: const Text('从文件恢复'),
-                        subtitle: const Text('选择备份文件恢复数据'),
+                        subtitle: const Text('支持 zip / 旧版 JSON 备份，可选择恢复内容'),
                         onTap: _restoreBackup,
                       ),
                       const Divider(height: 1),
@@ -320,25 +547,20 @@ class _BackupScreenState extends State<BackupScreen> {
                 const SizedBox(height: 16),
                 _buildWebdavCard(),
                 const SizedBox(height: 16),
-                // 备份文件列表
+                // 本地备份列表
                 if (_backupFiles.isNotEmpty) ...[
                   Text('本地备份', style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
                   const SizedBox(height: 8),
                   ..._backupFiles.map((file) => Card(
                     child: ListTile(
-                      leading: const Icon(Icons.description),
+                      leading: Icon(file.path.endsWith('.zip') ? Icons.folder_zip : Icons.description),
                       title: Text(file.path.split('/').last),
                       subtitle: Text('${file.lengthSync() ~/ 1024} KB'),
                       trailing: IconButton(
                         icon: const Icon(Icons.delete_outline),
                         onPressed: () => _deleteBackup(file),
                       ),
-                      onTap: () async {
-                        final result = await _backupService.restoreFromFile(file.path);
-                        if (mounted) {
-                          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(result.summary)));
-                        }
-                      },
+                      onTap: () => _showRestoreDialog(file.path),
                     ),
                   )),
                 ],

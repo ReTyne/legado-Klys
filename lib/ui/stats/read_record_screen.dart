@@ -34,8 +34,9 @@ class _ReadRecordScreenState extends State<ReadRecordScreen> {
     });
   }
 
-  String _formatDuration(int ms) {
-    final minutes = ms ~/ 60000;
+  // duration 单位是秒
+  String _formatDuration(int seconds) {
+    final minutes = seconds ~/ 60;
     final hours = minutes ~/ 60;
     final mins = minutes % 60;
     if (hours > 0) return '$hours小时$mins分钟';

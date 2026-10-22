@@ -105,8 +105,8 @@ class _LocalImportScreenState extends State<LocalImportScreen> {
           chapters = res.chapters;
           book.lastChapter = chapters.isNotEmpty ? chapters.last.title : null;
         } else {
-          // TXT
-          final content = await file.readAsString();
+          // TXT（自动识别编码，支持 GBK/UTF-16/BOM）
+          final content = await TxtParserService.readFileAutoDetect(file);
           final info = _parser.extractBookInfo(content, fileName);
           chapters = _parser.parseChapters(content);
           book = Book(

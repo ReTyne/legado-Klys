@@ -53,11 +53,11 @@ class _HomeScreenState extends State<HomeScreen> {
     final todayMs = today.millisecondsSinceEpoch;
 
     for (final r in _readRecords) {
-      final duration = (r.duration as int?) ?? 0;
-      _totalMinutes += duration ~/ 60000;
+      final duration = (r.duration as int?) ?? 0; // 单位：秒
+      _totalMinutes += duration ~/ 60;
       final readDate = r.date as int?;
       if (readDate != null && readDate >= todayMs) {
-        _todayMinutes += duration ~/ 60000;
+        _todayMinutes += duration ~/ 60;
       }
     }
 

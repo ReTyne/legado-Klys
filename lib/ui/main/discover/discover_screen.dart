@@ -74,8 +74,10 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
   Future<void> _loadSources() async {
     try {
       final sources = await _db.getAllSources(enabled: true);
-      // 与发现页实际可用口径一致：只要配置了发现地址即纳入（enabledExplore 仅作偏好，不作为硬过滤）
-      final exploreSources = sources.where((s) => (s.exploreUrl ?? '').trim().isNotEmpty).toList();
+      // 发现页只显示启用发现（enabledExplore）且配置了发现地址的书源
+      final exploreSources = sources
+          .where((s) => s.enabledExplore && (s.exploreUrl ?? '').trim().isNotEmpty)
+          .toList();
       if (!mounted) return;
       setState(() => _sources = exploreSources);
       // 仅一个发现源时直接进入
@@ -262,7 +264,7 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
           children: [
             const Padding(padding: EdgeInsets.all(16), child: Text('选择发现书源', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold))),
             if (_sources.isEmpty)
-              const Padding(padding: EdgeInsets.all(24), child: Text('暂无配置发现地址的书源'))
+              const Padding(padding: EdgeInsets.all(24), child: Text('暂无启用的发现书源'))
             else
               Flexible(
                 child: ListView(
@@ -450,7 +452,7 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
             const SizedBox(height: 16),
             const Text('暂无发现书源', style: TextStyle(fontSize: 18)),
             const SizedBox(height: 8),
-            const Text('请在「书源管理」中导入含发现地址的书源并启用', style: TextStyle(color: Colors.grey), textAlign: TextAlign.center),
+            const Text('请在「书源管理」中导入书源、配置发现地址并启用发现', style: TextStyle(color: Colors.grey), textAlign: TextAlign.center),
           ],
         ),
       );

@@ -29,6 +29,8 @@ class TtsService {
   /// 按需加载某章正文（网络书未缓存时使用）
   Future<String?> Function(int index)? contentLoader;
   int _currentIndex = 0;
+  // 单段朗读守卫：划词朗读时不自动续播下一章
+  bool _onceGuard = false;
   Function(String)? onProgress;
   Function()? onComplete;
   Function(String)? onError;
@@ -51,6 +53,10 @@ class TtsService {
 
       _flutterTts.setCompletionHandler(() {
         _isPlaying = false;
+        if (_onceGuard) {
+          _onceGuard = false; // 单段朗读结束，不自动续播
+          return;
+        }
         // 自动播放下一章
         if (_currentIndex < _chapters.length - 1) {
           _currentIndex++;
@@ -91,6 +97,16 @@ class TtsService {
     await _speakCurrent();
   }
   bool _cloudModeResolved = false;
+
+  /// 单段朗读（划词朗读）：朗读一段文本，结束后不自动续播下一章
+  Future<void> speakOnce(String text) async {
+    if (text.trim().isEmpty) return;
+    if (!_isInitialized) await init();
+    _onceGuard = true;
+    _isPlaying = true;
+    _isPaused = false;
+    await _flutterTts.speak(text);
+  }
 
   /// 解析启用的云端 TTS 引擎；无则回退系统 TTS
   Future<void> resolveCloudEngine() async {

@@ -50,14 +50,20 @@ class ReadMenuConfig {
     'share', 'reverse', 'resegment', 'delruby', 'delh', 'chineseconvert', 'charset', 'txttoc', 'debug', 'sourceaction',
   ];
 
-  /// 文本选择菜单
+  /// 文本选择菜单（对齐 legado 8 项）
   static const Map<String, String> selectMenuItems = {
     'copy': '复制',
     'marking': '划线',
     'dict': '查词',
     'translate': '翻译',
+    'bookmark': '加书签',
+    'tts': '朗读',
+    'search': '搜索正文',
+    'browser': '浏览器',
+    'share': '分享',
+    'replace': '替换',
   };
-  static const List<String> defaultSelectMenu = ['copy', 'marking', 'dict', 'translate'];
+  static const List<String> defaultSelectMenu = ['copy', 'marking', 'dict', 'translate', 'bookmark', 'search', 'browser', 'share'];
 
   /// 悬浮快捷栏（阅读时边缘悬浮按钮）
   static const String kFloatingBar = 'read_floatingbar_order';
