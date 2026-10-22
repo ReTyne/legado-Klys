@@ -3,6 +3,85 @@ import 'package:flutter/material.dart';
 import 'package:legado_md3/data/model/book_chapter.dart';
 import 'package:legado_md3/help/readaloud/tts_service.dart';
 
+/// 朗读控制条（阅读页 TTS 控制页与 RSS 朗读迷你条共用）
+/// * [isPlaying]：播放中（非暂停）时为 true，图标在播放/暂停间切换
+/// * [progressText]：进度说明（如「正在朗读第 3 / 20 段」），null 时不显示
+/// * [progress]：0.0 ~ 1.0 进度条，null 时不显示
+class TtsControlBar extends StatelessWidget {
+  const TtsControlBar({
+    super.key,
+    required this.isPlaying,
+    required this.onPlayPause,
+    required this.onPrev,
+    required this.onNext,
+    required this.onExit,
+    this.progressText,
+    this.progress,
+  });
+
+  final bool isPlaying;
+  final VoidCallback onPlayPause;
+  final VoidCallback onPrev;
+  final VoidCallback onNext;
+  final VoidCallback onExit;
+  final String? progressText;
+  final double? progress;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (progress != null)
+          LinearProgressIndicator(value: progress, minHeight: 3),
+        if (progressText != null)
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+            child: Text(
+              progressText!,
+              style: theme.textTheme.bodySmall
+                  ?.copyWith(color: theme.colorScheme.onSurfaceVariant),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
+          ),
+        Row(
+          mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+          children: [
+            IconButton(
+              icon: const Icon(Icons.skip_previous),
+              iconSize: 32,
+              tooltip: '上一段',
+              onPressed: onPrev,
+            ),
+            IconButton(
+              icon: Icon(isPlaying
+                  ? Icons.pause_circle_filled
+                  : Icons.play_circle_filled),
+              iconSize: 48,
+              tooltip: isPlaying ? '暂停' : '播放',
+              onPressed: onPlayPause,
+            ),
+            IconButton(
+              icon: const Icon(Icons.skip_next),
+              iconSize: 32,
+              tooltip: '下一段',
+              onPressed: onNext,
+            ),
+            IconButton(
+              icon: const Icon(Icons.close),
+              iconSize: 28,
+              tooltip: '退出朗读',
+              onPressed: onExit,
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+}
+
 class TtsPlayerScreen extends StatefulWidget {
   final TtsService ttsService;
   final List<BookChapter> chapters;
@@ -39,9 +118,21 @@ class _TtsPlayerScreenState extends State<TtsPlayerScreen> {
     _speechRate = widget.ttsService.speechRate;
     _pitch = widget.ttsService.speechPitch;
     _volume = widget.ttsService.volume;
+    // 同步设置页保存的语速/音调偏好（init 可能尚未完成）
+    widget.ttsService.loadPrefs().then((_) {
+      if (!mounted) return;
+      setState(() {
+        _speechRate = widget.ttsService.speechRate;
+        _pitch = widget.ttsService.speechPitch;
+      });
+    });
     _loadLanguages();
     widget.ttsService.onComplete = () {
       if (mounted) setState(() => _isPlaying = false);
+    };
+    // 自动续章 / 切章时同步当前章索引与播放态
+    widget.ttsService.onSegmentStart = (i, text) {
+      if (mounted) setState(() { _currentIndex = i; _isPlaying = true; });
     };
   }
 
@@ -56,37 +147,37 @@ class _TtsPlayerScreenState extends State<TtsPlayerScreen> {
   }
 
   Future<void> _togglePlay() async {
-    if (_isPlaying) {
-      await widget.ttsService.pause();
+    final tts = widget.ttsService;
+    if (tts.isSpeaking) {
+      await tts.pause();
       setState(() => _isPlaying = false);
+    } else if (tts.isPaused) {
+      // 从暂停处续读（系统 TTS 由插件内部记录进度）
+      await tts.resume();
+      setState(() => _isPlaying = true);
     } else {
-      if (widget.ttsService.isCloudMode && widget.ttsService.isPaused) {
-        await widget.ttsService.resume();
-      } else {
-        widget.ttsService.setChapters(widget.chapters, startIndex: _currentIndex);
-        await widget.ttsService.play();
-      }
+      tts.setChapters(widget.chapters, startIndex: _currentIndex);
+      await tts.play();
       setState(() => _isPlaying = true);
     }
   }
 
   Future<void> _nextChapter() async {
-    if (_currentIndex < widget.chapters.length - 1) {
+    if (_currentIndex >= widget.chapters.length - 1) return;
+    if (_isPlaying) {
+      // 由服务内部切章，onSegmentStart 回同步索引
+      await widget.ttsService.next();
+    } else {
       setState(() => _currentIndex++);
-      if (_isPlaying) {
-        widget.ttsService.setChapters(widget.chapters, startIndex: _currentIndex);
-        await widget.ttsService.play();
-      }
     }
   }
 
   Future<void> _prevChapter() async {
-    if (_currentIndex > 0) {
+    if (_currentIndex <= 0) return;
+    if (_isPlaying) {
+      await widget.ttsService.previous();
+    } else {
       setState(() => _currentIndex--);
-      if (_isPlaying) {
-        widget.ttsService.setChapters(widget.chapters, startIndex: _currentIndex);
-        await widget.ttsService.play();
-      }
     }
   }
 
@@ -128,27 +219,16 @@ class _TtsPlayerScreenState extends State<TtsPlayerScreen> {
               ),
             ),
 
-            // 播放控制
-            Row(
-              mainAxisAlignment: MainAxisAlignment.center,
-              children: [
-                IconButton(
-                  icon: const Icon(Icons.skip_previous),
-                  iconSize: 36,
-                  onPressed: _prevChapter,
-                ),
-                const SizedBox(width: 24),
-                FloatingActionButton.large(
-                  onPressed: _togglePlay,
-                  child: Icon(_isPlaying ? Icons.pause : Icons.play_arrow, size: 40),
-                ),
-                const SizedBox(width: 24),
-                IconButton(
-                  icon: const Icon(Icons.skip_next),
-                  iconSize: 36,
-                  onPressed: _nextChapter,
-                ),
-              ],
+            // 播放控制（与 RSS 朗读迷你条共用同一控制组件）
+            TtsControlBar(
+              isPlaying: _isPlaying,
+              progress: widget.chapters.isNotEmpty
+                  ? (_currentIndex + 1) / widget.chapters.length
+                  : null,
+              onPlayPause: _togglePlay,
+              onPrev: _prevChapter,
+              onNext: _nextChapter,
+              onExit: () => Navigator.pop(context),
             ),
             const SizedBox(height: 8),
             // 定时停止
@@ -162,16 +242,16 @@ class _TtsPlayerScreenState extends State<TtsPlayerScreen> {
 
             const SizedBox(height: 32),
 
-            // 语速调节
+            // 语速调节（范围与设置页 tts_rate 一致：0.3 ~ 3.0）
             _buildSlider(
               label: '语速',
               value: _speechRate,
-              min: 0.1,
-              max: 1.0,
-              divisions: 9,
+              min: 0.3,
+              max: 3.0,
+              divisions: 27,
               onChanged: (v) {
                 setState(() => _speechRate = v);
-                widget.ttsService.setSpeechRate(v);
+                widget.ttsService.setRate(v);
               },
             ),
 
@@ -348,6 +428,8 @@ class _TtsPlayerScreenState extends State<TtsPlayerScreen> {
   @override
   void dispose() {
     _sleepTimer?.cancel();
+    widget.ttsService.onComplete = null;
+    widget.ttsService.onSegmentStart = null;
     super.dispose();
   }
 

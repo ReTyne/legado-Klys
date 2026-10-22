@@ -48,6 +48,12 @@ class BookSource implements JsSource {
   Map<String, dynamic>? ruleReview;
   Map<String, dynamic>? ruleImage;
 
+  // 变量规则（@put:/@get: 跨步骤传值，如登录后拿 token 传给后续请求）。
+  // 注意：仅参与导入/导出（fromJson/toJson），未落库——待 DB 迁移补列后
+  // 再加入 toMap/fromMap。
+  String? rulePut;
+  String? ruleGet;
+
   // 变量
   String? variableComment;
   String? jsLib;
@@ -117,6 +123,8 @@ class BookSource implements JsSource {
     this.ruleContent,
     this.ruleReview,
     this.ruleImage,
+    this.rulePut,
+    this.ruleGet,
     this.variableComment,
     this.jsLib,
     this.variable,
@@ -169,6 +177,8 @@ class BookSource implements JsSource {
       ruleContent: _parseRule(json['ruleContent']),
       ruleReview: _parseRule(json['ruleReview']),
       ruleImage: _parseRule(json['ruleImage']),
+      rulePut: json['rulePut'],
+      ruleGet: json['ruleGet'],
       variableComment: json['variableComment'],
       jsLib: json['jsLib'],
       variable: json['variable'],
@@ -223,9 +233,13 @@ class BookSource implements JsSource {
     'ruleContent': ruleContent,
     'ruleReview': ruleReview,
     'ruleImage': ruleImage,
+    'rulePut': rulePut,
+    'ruleGet': ruleGet,
     'variableComment': variableComment,
     'jsLib': jsLib,
     'variable': variable,
+    'rulePut': rulePut,
+    'ruleGet': ruleGet,
   };
 
   String toJsonString() => jsonEncode(toJson());
@@ -314,6 +328,8 @@ class BookSource implements JsSource {
     variableComment: map['variableComment'],
     jsLib: map['jsLib'],
     variable: map['variable'],
+    rulePut: map['rulePut'],
+    ruleGet: map['ruleGet'],
   );
 
   // 兼容旧方法名

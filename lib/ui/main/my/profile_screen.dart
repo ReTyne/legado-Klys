@@ -52,8 +52,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Future<void> _toggleWebService(bool value) async {
+    final prefs = await SharedPreferences.getInstance();
+    // 与「设置 → Web 服务」共用同一个开关 key，两处状态保持一致
+    await prefs.setBool('oc_webAutoStart', value);
     if (value) {
-      final prefs = await SharedPreferences.getInstance();
       final port = prefs.getInt('oc_webPort') ?? 1122;
       await _webService.start(port: port);
       setState(() => _webServiceRunning = true);

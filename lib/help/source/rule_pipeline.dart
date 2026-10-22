@@ -20,6 +20,8 @@ enum RuleMode { auto, css, xpath, json, js, regex, defaultRule }
 /// * 取值后缀：`@text/@textNodes/@ownText/@html/@all/@href/@src/属性名`
 /// * 后处理：`##正则##替换`（可多段；单独 `##正则` 为删除；`###正则` 为只取首个匹配）
 /// * JS：结尾 `@js:脚本`、整段 `<js>脚本</js>`、模板内 `{{脚本}}`
+/// * 变量：`@put:{key:rule}` 把 rule 的结果存入变量表、`@get:{key||default}`
+///   取出（支持 `&&`/`||` 组合，如 `@put:{token:<js>…}</js>}&&@get:{token}`）
 /// * 默认(JSoup)语法：`tag.div@class.box!0@text`、`children`、负索引/区间索引
 class RulePipeline {
   RulePipeline({this.baseUrl = '', this.keyword, this.page});
@@ -28,6 +30,190 @@ class RulePipeline {
   String baseUrl;
   String? keyword;
   int? page;
+
+  // ============================== 变量（@put: / @get:） ==============================
+
+  /// 变量表：`@put:{key:rule}` 存入、`@get:{key}` 取出，用于跨步骤传值
+  /// （如登录后拿 token 再传给后续请求）。
+  /// 作用域为「书源 + 当前书籍/请求」，由引擎在每次新的书籍操作开始时
+  /// 调用 [clearVariables] 清理。
+  final Map<String, String> variables = {};
+
+  /// 清空变量表（引擎在 search / explore / getBookInfo 等入口调用）。
+  void clearVariables() => variables.clear();
+
+  /// 扫描规则中的顶层变量语法块（`@put:` / `@get:`，大小写不敏感），
+  /// 返回 (起始位置, 结束位置, 花括号内部文本)。
+  /// 花括号先按引号感知配对（`<js>{...}</js>` 嵌套），引号不配平时
+  /// （如正则值 `:token="([^"]+)"`）回退为纯深度配对。
+  List<(int, int, String)> scanVarBlocks(String rule, String tag) {
+    final result = <(int, int, String)>[];
+    final lower = rule.toLowerCase();
+    final tagLower = tag.toLowerCase();
+    var from = 0;
+    while (true) {
+      final start = lower.indexOf(tagLower, from);
+      if (start < 0) break;
+      var i = start + tagLower.length;
+      // 标签后跳过空白，期待 '{'
+      while (i < rule.length && _isSpace(rule[i])) {
+        i++;
+      }
+      if (i >= rule.length || rule[i] != '{') {
+        from = start + tagLower.length;
+        continue;
+      }
+      final end = _matchBrace(rule, i, quoteAware: true) >= 0
+          ? _matchBrace(rule, i, quoteAware: true)
+          : _matchBrace(rule, i, quoteAware: false);
+      if (end < 0) {
+        from = start + tagLower.length;
+        continue;
+      }
+      result.add((start, end + 1, rule.substring(i + 1, end)));
+      from = end + 1;
+    }
+    return result;
+  }
+
+  /// 从 rule[open] 的 '{' 起找配对的 '}' 下标，找不到返回 -1。
+  int _matchBrace(String rule, int open, {required bool quoteAware}) {
+    var depth = 0;
+    var quote = '';
+    for (var j = open; j < rule.length; j++) {
+      final c = rule[j];
+      if (quoteAware) {
+        if (quote.isNotEmpty) {
+          if (c == quote) quote = '';
+          continue;
+        }
+        if (c == "'" || c == '"') {
+          quote = c;
+          continue;
+        }
+      }
+      if (c == '{') {
+        depth++;
+      } else if (c == '}') {
+        depth--;
+        if (depth == 0) return j;
+      }
+    }
+    return -1;
+  }
+
+  /// 解析 `@put:` 花括号内部的 `key:rule,key2:rule2` 条目
+  ///（按第一个 `:` 切分，value 里的 `:`/`,` 不受影响）。
+  List<MapEntry<String, String>> parsePutEntries(String inner) {
+    final out = <MapEntry<String, String>>[];
+    for (final part in _splitTop(inner, const [','])) {
+      final p = part.trim();
+      if (p.isEmpty) continue;
+      final idx = p.indexOf(':');
+      if (idx <= 0) continue;
+      final key = _unquote(p.substring(0, idx).trim());
+      if (key.isEmpty) continue;
+      out.add(MapEntry(key, p.substring(idx + 1).trim()));
+    }
+    return out;
+  }
+
+  /// 把规则中的 `@get:{key||default}` 替换为变量值（无匹配时原样返回）。
+  String substituteGets(String rule) {
+    final blocks = scanVarBlocks(rule, '@get:');
+    if (blocks.isEmpty) return rule;
+    var out = rule;
+    for (final b in blocks.reversed) {
+      out = out.substring(0, b.$1) + _readVariable(b.$3) + out.substring(b.$2);
+    }
+    return out;
+  }
+
+  /// 读取 `@get:{key||default}`：变量非空取值，否则取 `||` 后的默认值。
+  String _readVariable(String inner) {
+    final sep = inner.indexOf('||');
+    final key = _unquote((sep < 0 ? inner : inner.substring(0, sep)).trim());
+    final v = variables[key];
+    if (v != null && v.isNotEmpty) return v;
+    if (sep < 0) return '';
+    return _unquote(inner.substring(sep + 2).trim());
+  }
+
+  /// put 值是否“像规则”（含选择器/JS/正则特征）。不像规则时按字面文本
+  /// 处理——如 `@put:{x:@get:{a}_c}` / `@put:{u:@get:{host}/a.jpg}`
+  /// 期望得到拼接字符串而非选择器。
+  static bool looksLikeRule(String value) {
+    final t = value.trim();
+    if (t.isEmpty) return false;
+    final low = t.toLowerCase();
+    if (low.startsWith('@css:') ||
+        low.startsWith('@xpath:') ||
+        low.startsWith('@json:') ||
+        low.startsWith('@js:')) {
+      return true;
+    }
+    if (t.startsWith('<js>') || t.startsWith('@@')) return true;
+    if (t.startsWith(r'$.') || t.startsWith(r'$[')) return true;
+    if (t.startsWith('//')) return true; // XPath
+    if (t.startsWith(':')) return true; // 正则
+    if (t.startsWith('#') || t.startsWith('.') || t.startsWith('[')) return true;
+    if (t.startsWith('-')) return true; // 目录倒序标记
+    if (t.contains('##') || t.contains('{{')) return true;
+    if (t.contains('@')) return true; // 取值后缀 / 残留 @get
+    if (t.contains('/')) return false; // URL 等字面量
+    // 其余含 CSS 结构字符（class./tag./后代/子组合）的视为规则
+    if (RegExp(r'[.\[\]#>]').hasMatch(t)) return true;
+    return false; // 裸词按字面量
+  }
+
+  /// 规则若是 `<js>字符串字面量</js>` 返回该字面量，否则 null。
+  /// 迷你求值器「result 优先」会把纯字面量误返回成原始内容，故这里直取。
+  static String? jsLiteralValue(String rule) {
+    final m = RegExp(r'^<js>\s*([\s\S]*?)\s*</js>$').firstMatch(rule.trim());
+    if (m == null) return null;
+    final s = m.group(1)!.trim();
+    if (s.length < 2) return null;
+    final q = s[0];
+    if (q != '"' && q != "'") return null;
+    if (!s.endsWith(q)) return null;
+    final body = s.substring(1, s.length - 1);
+    final sb = StringBuffer();
+    for (var i = 0; i < body.length; i++) {
+      final c = body[i];
+      if (c == r'\' && i + 1 < body.length) {
+        final n = body[i + 1];
+        switch (n) {
+          case 'n':
+            sb.write('\n');
+            break;
+          case 't':
+            sb.write('\t');
+            break;
+          case 'r':
+            sb.write('\r');
+            break;
+          default:
+            sb.write(n);
+        }
+        i++;
+      } else {
+        sb.write(c);
+      }
+    }
+    return sb.toString();
+  }
+
+  static bool _isSpace(String c) =>
+      c == ' ' || c == '\t' || c == '\n' || c == '\r';
+
+  static String _unquote(String s) {
+    if (s.length >= 2 &&
+        ((s.startsWith('"') && s.endsWith('"')) ||
+            (s.startsWith("'") && s.endsWith("'")))) {
+      return s.substring(1, s.length - 1);
+    }
+    return s;
+  }
 
   // ============================== 文本级 ==============================
 
@@ -39,7 +225,23 @@ class RulePipeline {
   /// * `&&` 合并：多个分支结果拼接
   List<String> extractListFromRaw(String raw, String rule, {bool forceJson = false}) {
     if (rule.trim().isEmpty) return raw.isEmpty ? [] : [raw];
-    final alternatives = _splitByConnectors(rule, const ['||']);
+    // @put: 变量语法：先执行所有 put（左→右，对当前内容求值）并从规则中
+    // 移除，避免 put 段里的连接符/花括号干扰后续 ||/&&/%% 拆分
+    var effective = rule;
+    final puts = scanVarBlocks(rule, '@put:');
+    if (puts.isNotEmpty) {
+      var rest = rule;
+      for (final b in puts.reversed) {
+        rest = rest.substring(0, b.$1) + rest.substring(b.$2);
+      }
+      for (final b in puts) {
+        for (final e in parsePutEntries(b.$3)) {
+          variables[e.key] = _evalPutValue(raw, substituteGets(e.value), forceJson);
+        }
+      }
+      effective = rest;
+    }
+    final alternatives = _splitByConnectors(effective, const ['||']);
     for (final alt in alternatives) {
       final values = _extractCombined(raw, alt.text.trim(), forceJson);
       if (values.isNotEmpty) {
@@ -47,6 +249,17 @@ class RulePipeline {
       }
     }
     return [];
+  }
+
+  /// 求一个 put 值：`<js>` 字面量直取；不像规则的纯文本按字面处理；
+  /// 否则按普通规则对 [raw] 求值（多个结果换行合并）。
+  String _evalPutValue(String raw, String valueRule, bool forceJson) {
+    final lit = jsLiteralValue(valueRule);
+    if (lit != null) return lit;
+    if (!looksLikeRule(valueRule)) return valueRule;
+    final values = _extractSingleChain(raw, valueRule, forceJson);
+    if (values.isEmpty) return '';
+    return values.length == 1 ? values.first : values.join('\n');
   }
 
   /// 从一整段响应文本按规则取首个字符串
@@ -148,13 +361,28 @@ class RulePipeline {
   /// 处理 `&&`（合并）组合。
   List<String> _extractMerged(String raw, String rule, bool forceJson) {
     final merged = _splitByConnectors(rule, const ['&&']);
-    if (merged.length <= 1) return _extractSingleChain(raw, rule, forceJson);
+    if (merged.length <= 1) return _valuesFromChain(raw, rule, forceJson);
     final out = <String>[];
     for (final seg in merged) {
       if (seg.text.trim().isEmpty) continue;
-      out.addAll(_extractSingleChain(raw, seg.text.trim(), forceJson));
+      out.addAll(_valuesFromChain(raw, seg.text.trim(), forceJson));
     }
     return out;
+  }
+
+  /// 单个规则段（@put: 已在 [extractListFromRaw] 提取完毕）：
+  /// 整段即单个 `@get:{...}` 时直接取变量值，否则替换 @get: 后走普通链。
+  /// 例：`@put:{token:<js>…</js>}&&@get:{token}` 移除 put 后剩
+  /// `&&@get:{token}`，切出 `@get:{token}` 段即命中本分支。
+  List<String> _valuesFromChain(String raw, String rule, bool forceJson) {
+    final t = rule.trim();
+    if (t.isEmpty) return [];
+    final gets = scanVarBlocks(t, '@get:');
+    if (gets.length == 1 && gets.single.$1 == 0 && gets.single.$2 == t.length) {
+      final v = _readVariable(gets.single.$3);
+      return v.isEmpty ? const [] : [v];
+    }
+    return _extractSingleChain(raw, substituteGets(t), forceJson);
   }
 
   /// `%%` 按位交叉：依次取每个列表对应位置的值。
@@ -225,7 +453,33 @@ class RulePipeline {
   /// 相对一个 JSON item 取字段
   String? fieldFromJson(dynamic item, String rule) {
     if (rule.trim().isEmpty) return null;
-    final r = rule.trim();
+    var r = rule.trim();
+    // @put: 只存变量不产出字段值；@get: 替换为变量值
+    final puts = scanVarBlocks(r, '@put:');
+    if (puts.isNotEmpty) {
+      var rest = r;
+      for (final b in puts.reversed) {
+        rest = rest.substring(0, b.$1) + rest.substring(b.$2);
+      }
+      for (final b in puts) {
+        for (final e in parsePutEntries(b.$3)) {
+          variables[e.key] = _putValueFromJson(item, substituteGets(e.value));
+        }
+      }
+      r = rest.trim();
+      // put 移除后可能残留前导连接符
+      while (r.startsWith('&&') || r.startsWith('||') || r.startsWith('%%')) {
+        r = r.substring(2).trim();
+      }
+    }
+    if (r.isEmpty) return null;
+    // 整段即单个 @get:{...}：直接返回变量值
+    final gets = scanVarBlocks(r, '@get:');
+    if (gets.length == 1 && gets.single.$1 == 0 && gets.single.$2 == r.length) {
+      final v = _readVariable(gets.single.$3);
+      return v.isEmpty ? null : v;
+    }
+    r = substituteGets(r);
     final mode = _detectMode(r);
     final parsed = _splitPostProcess(r);
     String? value;
@@ -251,6 +505,15 @@ class RulePipeline {
       value = JsMiniEvaluator.eval(tail, result: value, key: keyword, page: page, baseUrl: baseUrl) ?? value;
     }
     return value.isEmpty ? null : value;
+  }
+
+  /// put 值按 JSON 规则求值：`<js>` 字面量直取；不像规则的纯文本按字面
+  /// 处理；否则递归 [fieldFromJson] 对当前 item 求值。
+  String _putValueFromJson(dynamic item, String valueRule) {
+    final lit = jsLiteralValue(valueRule);
+    if (lit != null) return lit;
+    if (!looksLikeRule(valueRule)) return valueRule;
+    return fieldFromJson(item, valueRule) ?? '';
   }
 
   // ===================== 供异步 JS 引擎复用的公共解析能力 =====================

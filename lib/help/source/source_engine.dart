@@ -12,10 +12,12 @@ import 'package:legado_md3/help/source/rule_pipeline.dart';
 import 'package:legado_md3/help/source/url_option.dart';
 import 'package:legado_md3/help/source/ttf_parser.dart';
 import 'package:legado_md3/help/source/js/legado_js_runtime.dart';
+import 'package:legado_md3/help/source/js/headless_webview.dart';
 import 'js_mini_eval.dart';
 import 'package:legado_md3/help/http/cookie_manager.dart';
 import 'package:legado_md3/data/local/app_database.dart';
 import 'package:enough_convert/enough_convert.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 /// Legado书源引擎 - 对齐原版规则格式（CSS / XPath / JSONPath / 正则 / JS子集）
 class BookSourceEngine {
@@ -49,6 +51,83 @@ class BookSourceEngine {
   /// 请求节流：书源并发率 concurrentRate（纯数字=最小间隔毫秒；n/ms=每 ms 内 n 次）
   int _minIntervalMs = 0;
   DateTime? _lastFetchAt;
+
+  /// 无头 WebView 抓取开关（SharedPreferences `oc_webViewFetch`，默认 true）。
+  /// 出问题时可一键关掉，回退到纯 HTTP 请求。读取一次后缓存。
+  bool? _webViewFetchCached;
+  Future<bool> _webViewFetchEnabled() async {
+    if (_webViewFetchCached != null) return _webViewFetchCached!;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      _webViewFetchCached = prefs.getBool('oc_webViewFetch') ?? true;
+    } catch (_) {
+      _webViewFetchCached = true;
+    }
+    return _webViewFetchCached!;
+  }
+
+  /// 每次新的书籍操作入口调用：清空 @put:/@get: 变量表，并执行书源级
+  /// rulePut（把跨步骤要用的值先存好，如登录 token）。
+  Future<void> _beginSourceSession(BookSource source) async {
+    _pipeline.clearVariables();
+    await _runSourcePutRule(source);
+  }
+
+  /// 执行书源级 rulePut：兼容 `@put:{key:rule,...}` 与裸 `{key:rule,...}`
+  /// 两种写法；无内容时什么都不做。异常一律吞掉（不影响主链路）。
+  Future<void> _runSourcePutRule(BookSource source) async {
+    final raw = source.rulePut?.trim() ?? '';
+    if (raw.isEmpty) return;
+    final wrapped =
+        raw.toLowerCase().startsWith('@put:') ? raw : '@put:$raw';
+    try {
+      await _resolveRuleVariables(source, '', wrapped,
+          baseUrl: source.bookSourceUrl);
+    } catch (_) {}
+  }
+
+  /// webJs：用无头 WebView 执行 JS 渲染后取结果。
+  /// 成功返回渲染结果（webJs 有非空返回值时优先取它，否则取整页 HTML），
+  /// 失败/被开关关闭返回 null，由调用方降级为普通请求结果。
+  Future<String?> _fetchWebJsRendered(
+      BookSource source, String url, String webJs) async {
+    if (!await _webViewFetchEnabled()) {
+      _log('webJs：oc_webViewFetch 开关已关闭，跳过 WebView 渲染');
+      return null;
+    }
+    try {
+      final headers = <String, String>{};
+      // 书源级请求头（JSON 型注入 WebView；JS 型不注入，仍走普通请求路径）
+      for (final e in _sourceHeaders.entries) {
+        if (e.key == '__js__') continue;
+        final v = e.value;
+        if (v is String || v is num || v is bool) headers[e.key] = v.toString();
+      }
+      final rendered = await HeadlessWebViewFetcher.fetch(
+        url: url,
+        injectJs: webJs,
+        evalJs:
+            'window.__legadoWebJsResult || document.documentElement.outerHTML',
+        headers: headers.isEmpty ? null : headers,
+        userAgent: headers['User-Agent'],
+        timeoutMs: 15000,
+      );
+      return rendered.isEmpty ? null : rendered;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// 请求头 Map 转字符串 Map（过滤不可序列化的值），空则返回 null。
+  static Map<String, String>? _stringHeaders(Map<String, dynamic> headers) {
+    if (headers.isEmpty) return null;
+    final out = <String, String>{};
+    headers.forEach((k, v) {
+      if (v is String || v is num || v is bool) out[k] = v.toString();
+    });
+    return out.isEmpty ? null : out;
+  }
+
   void _applySourceFlags(BookSource source) {
     _currentSource = source;
     _persistCookieJar = source.enabledCookieJar;
@@ -93,6 +172,7 @@ class BookSourceEngine {
   Future<String> editFetch(BookSource source, String urlTpl,
       {String keyword = '', int page = 1}) async {
     _applySourceFlags(source);
+    await _beginSourceSession(source);
     final url = await _resolveUrlRule(source, urlTpl,
         key: keyword, page: page, baseUrl: source.bookSourceUrl);
     return _fetch(url, baseUrl: source.bookSourceUrl);
@@ -243,9 +323,24 @@ class BookSourceEngine {
       }
     }
 
-    // URL 选项：{{webView=true}} —— 本项目无无头 WebView 能力，降级为普通请求
-    if ((opts['webview'] ?? options?['webview']) == true) {
-      _log('webView 选项：无头 WebView 不可用，降级为普通请求');
+    // URL 选项：{{webView=true}} —— 先用无头 WebView 取渲染后的结果，
+    // 失败（超时/异常/空结果/被开关关闭）再回退普通请求
+    if ((opts['webview'] ?? options?['webview']) == true && method == 'GET') {
+      if (await _webViewFetchEnabled()) {
+        final rendered = await HeadlessWebViewFetcher.fetch(
+          url: finalUrl,
+          headers: _stringHeaders(headers),
+          userAgent: headers['User-Agent']?.toString(),
+          timeoutMs: optTimeout != null && optTimeout > 0 ? optTimeout : 15000,
+        );
+        if (rendered.isNotEmpty) {
+          _log('webView 选项：无头 WebView 渲染成功，${rendered.length} 字符');
+          return rendered;
+        }
+        _log('webView 选项：无头 WebView 渲染失败，降级为普通请求');
+      } else {
+        _log('webView 选项：oc_webViewFetch 开关已关闭，降级为普通请求');
+      }
     }
 
     var optBody = body ?? opts['body'] ?? options?['body'] ?? '';
@@ -486,6 +581,66 @@ class BookSourceEngine {
     }
   }
 
+  /// 处理规则中的 `@put:` / `@get:` 变量语法（供异步 JS 路径复用）：
+  /// * 先执行所有顶层 `@put:{key:rule}`（rule 对当前内容求值后存入变量表），
+  ///   并从规则中移除；
+  /// * 再把 `@get:{key||default}` 替换为变量值。
+  ///
+  /// 返回 (rule, value)：
+  /// * [value] 非空 —— 原规则整体就是一个 `@get:`，字段值即 value；
+  /// * rule 为空 —— 规则被完全消费（纯 `@put:`），无字段值；
+  /// * 否则用 rule 继续走普通解析。
+  Future<({String rule, String? value})> _resolveRuleVariables(
+    BookSource source,
+    String content,
+    String rule, {
+    String? baseUrl,
+    Map<String, dynamic>? book,
+    Map<String, dynamic>? chapter,
+  }) async {
+    if (!rule.contains('@put:') && !rule.contains('@get:')) {
+      return (rule: rule, value: null);
+    }
+    var rest = rule;
+    final puts = _pipeline.scanVarBlocks(rule, '@put:');
+    if (puts.isNotEmpty) {
+      for (final b in puts.reversed) {
+        rest = rest.substring(0, b.$1) + rest.substring(b.$2);
+      }
+      for (final b in puts) {
+        for (final e in _pipeline.parsePutEntries(b.$3)) {
+          final valueRule = _pipeline.substituteGets(e.value);
+          // <js> 字面量直取；纯文本按字面处理；其余按规则对当前内容求值
+          final lit = RulePipeline.jsLiteralValue(valueRule);
+          if (lit != null) {
+            _pipeline.variables[e.key] = lit;
+          } else if (RulePipeline.looksLikeRule(valueRule)) {
+            final v = await _evalRuleContent(source, content, valueRule,
+                baseUrl: baseUrl, book: book, chapter: chapter);
+            _pipeline.variables[e.key] = v ?? '';
+          } else {
+            _pipeline.variables[e.key] = valueRule;
+          }
+        }
+      }
+    }
+    var tail = rest.trim();
+    // put 移除后可能残留前导连接符
+    while (tail.startsWith('&&') || tail.startsWith('||') || tail.startsWith('%%')) {
+      tail = tail.substring(2).trim();
+    }
+    if (tail.isEmpty) return (rule: '', value: null);
+    // 整段即单个 @get:{...}：直接取变量值
+    final gets = _pipeline.scanVarBlocks(tail, '@get:');
+    if (gets.length == 1 &&
+        gets.single.$1 == 0 &&
+        gets.single.$2 == tail.length) {
+      final v = _pipeline.substituteGets(tail);
+      return (rule: '', value: v.isEmpty ? null : v);
+    }
+    return (rule: _pipeline.substituteGets(rest), value: null);
+  }
+
   /// 解析 URL 规则：`<js>` 脚本求值（可返回 `url,{options}`），否则走模板替换。
   Future<String> _resolveUrlRule(
     BookSource source,
@@ -525,7 +680,12 @@ class BookSourceEngine {
     Map<String, dynamic>? book,
     Map<String, dynamic>? chapter,
   }) async {
-    final r = rule.trim();
+    // @put:/@get: 变量语法（put 的 value 以当前 JSON 节点为内容求值）
+    final resolved = await _resolveRuleVariables(
+        source, item is String ? item : jsonEncode(item), rule,
+        baseUrl: baseUrl, book: book, chapter: chapter);
+    if (resolved.value != null) return resolved.value;
+    final r = resolved.rule.trim();
     if (r.isEmpty) return null;
     final parts = _pipeline.parseFieldParts(r);
     var selector = parts.selector.trim();
@@ -613,7 +773,11 @@ class BookSourceEngine {
     Map<String, dynamic>? book,
     Map<String, dynamic>? chapter,
   }) async {
-    final r = rule.trim();
+    // @put:/@get: 变量语法（put 的 value 以当前元素 outerHtml 为内容求值）
+    final resolved = await _resolveRuleVariables(source, el.outerHtml, rule,
+        baseUrl: baseUrl, book: book, chapter: chapter);
+    if (resolved.value != null) return resolved.value;
+    final r = resolved.rule.trim();
     if (r.isEmpty) return null;
     if (ruleNeedsRealJs(r)) {
       final parts = _pipeline.parseFieldParts(r);
@@ -802,6 +966,7 @@ class BookSourceEngine {
   /// 搜索书籍
   Future<List<SearchBook>> search(BookSource source, String keyword, {int page = 1}) async {
     _applySourceFlags(source);
+    await _beginSourceSession(source);
     if (source.searchUrl == null || source.searchUrl!.isEmpty) return [];
     if (source.ruleSearch == null) return [];
     // checkKeyWord：校验关键字是否符合源要求（正则）
@@ -844,6 +1009,7 @@ class BookSourceEngine {
   /// 按指定发现分类 URL 探索
   Future<List<SearchBook>> exploreByUrl(BookSource source, String exploreUrl, {int page = 1}) async {
     _applySourceFlags(source);
+    await _beginSourceSession(source);
     if (source.ruleExplore == null || exploreUrl.isEmpty) return [];
     try {
       final url = await _resolveUrlRule(source, exploreUrl,
@@ -932,6 +1098,7 @@ class BookSourceEngine {
   Future<Book?> getBookInfo(BookSource source, String bookUrl,
       {String? presetName, String? presetAuthor}) async {
     _applySourceFlags(source);
+    await _beginSourceSession(source);
     try {
       final rule = source.ruleBookInfo ?? {};
       var content = await _fetch(bookUrl, baseUrl: source.bookSourceUrl);
@@ -1041,7 +1208,11 @@ class BookSourceEngine {
     Map<String, dynamic>? book,
     Map<String, dynamic>? chapter,
   }) async {
-    final r = rule.trim();
+    // @put:/@get: 变量语法
+    final resolved = await _resolveRuleVariables(source, content, rule,
+        baseUrl: baseUrl, book: book, chapter: chapter);
+    if (resolved.value != null) return resolved.value;
+    final r = resolved.rule.trim();
     if (r.isEmpty) return null;
     final lead = _leadingJs.firstMatch(r);
     if (lead != null) {
@@ -1266,7 +1437,7 @@ class BookSourceEngine {
     if (source.ruleContent == null) return null;
     try {
       final rule = source.ruleContent!;
-      final raw = await _fetch(contentUrl, baseUrl: source.bookSourceUrl);
+      var raw = await _fetch(contentUrl, baseUrl: source.bookSourceUrl);
       _pipeline.baseUrl = contentUrl;
       final contentRule = (rule['content'] ?? '').toString();
       if (contentRule.isEmpty) return null;
@@ -1275,10 +1446,17 @@ class BookSourceEngine {
       if (chapter != null) seed['durChapterIndex'] = chapter['index'] ?? 0;
       final ch = chapter ?? {'index': 0, 'title': '', 'url': contentUrl};
 
-      // webJs：需要 WebView 渲染的页面（记录日志，降级为普通解析）
+      // webJs：需要 WebView 渲染的页面 —— 先用无头 WebView 执行 JS 取渲染
+      // 结果；失败（超时/异常/空结果/开关关闭）回退到普通请求的原始 HTML
       final webJs = rule['webJs']?.toString() ?? '';
       if (webJs.trim().isNotEmpty) {
-        _log('webJs 规则存在，当前使用普通解析（WebView 渲染需前端配合）');
+        final rendered = await _fetchWebJsRendered(source, contentUrl, webJs);
+        if (rendered != null && rendered.isNotEmpty) {
+          raw = rendered;
+          _log('webJs：无头 WebView 渲染成功，${raw.length} 字符');
+        } else {
+          _log('webJs：无头 WebView 不可用/失败，降级为普通请求结果');
+        }
       }
 
       var result = await _evalRuleContent(source, raw, contentRule,

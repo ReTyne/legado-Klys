@@ -26,7 +26,6 @@ class _OtherConfigScreenState extends State<OtherConfigScreen> {
       _prefs['webAutoStart'] = p.getBool('oc_webAutoStart') ?? false;
       _prefs['autoRefresh'] = p.getBool('oc_autoRefresh') ?? false;
       _prefs['defaultRead'] = p.getBool('oc_defaultRead') ?? false;
-      _prefs['localPassword'] = p.getBool('oc_localPassword') ?? false;
       _prefs['antiAlias'] = p.getBool('oc_antiAlias') ?? true;
       _prefs['replaceDefault'] = p.getBool('oc_replaceDefault') ?? true;
       _prefs['autoClearExpired'] = p.getBool('oc_autoClearExpired') ?? false;
@@ -34,13 +33,11 @@ class _OtherConfigScreenState extends State<OtherConfigScreen> {
       _prefs['showMangaUi'] = p.getBool('oc_showMangaUi') ?? true;
       _prefs['webWakeLock'] = p.getBool('oc_webWakeLock') ?? false;
       _prefs['recordLog'] = p.getBool('oc_recordLog') ?? false;
-      _prefs['recordHeapDump'] = p.getBool('recordHeapDump') ?? false;
       _prefs['sourceEditMaxLine'] = p.getInt('oc_sourceEditMaxLine') ?? 10;
       _prefs['webPort'] = p.getInt('oc_webPort') ?? 1122;
       _prefs['language'] = p.getInt('oc_language') ?? 0;
       // ===== 补齐项 =====
-      _prefs['customHosts'] = p.getString('customHosts') ?? '';
-      _prefs['bookTreeUri'] = p.getString('defaultBookTreeUri') ?? '';
+      // 本地密码统一使用 oc_password（main.dart 按非空判断），原 oc_localPassword 布尔键无消费方已移除
       _prefs['loadCoverOnlyWifi'] = p.getBool('cover_onlyWifi') ?? false;
       _prefs['mediaButtonOnExit'] = p.getBool('mediaButtonOnExit') ?? true;
       _prefs['readAloudByMediaButton'] = p.getBool('readAloudByMediaButton') ?? false;
@@ -139,40 +136,8 @@ class _OtherConfigScreenState extends State<OtherConfigScreen> {
             );
           }),
         _section('网络和封面'),
-        ListTile(
-          dense: true,
-          leading: const Icon(Icons.dns_outlined),
-          title: const Text('自定义 Hosts'),
-          subtitle: Text(_hostsSummary('${_prefs['customHosts']}'), style: const TextStyle(fontSize: 11), maxLines: 2),
-          trailing: const Icon(Icons.edit, size: 18),
-          onTap: () async {
-            final v = await _textDialog(
-              title: '自定义 Hosts',
-              initial: _prefs['customHosts'] as String? ?? '',
-              hint: '每行一条：example.com=1.2.3.4',
-              maxLines: 6,
-            );
-            if (v != null) await _setString('customHosts', 'customHosts', v);
-          },
-        ),
         _sw('仅WiFi下加载封面', 'loadCoverOnlyWifi', 'cover_onlyWifi',
           sub: '移动网络下不请求网络封面（cover_onlyWifi）'),
-        ListTile(
-          dense: true,
-          leading: const Icon(Icons.folder_copy_outlined),
-          title: const Text('书籍保存位置'),
-          subtitle: Text(_prefs['bookTreeUri']?.toString().isEmpty == true ? '默认应用文档目录' : '${_prefs['bookTreeUri']}',
-            style: const TextStyle(fontSize: 11), maxLines: 2),
-          trailing: const Icon(Icons.edit, size: 18),
-          onTap: () async {
-            final v = await _textDialog(
-              title: '书籍保存位置',
-              initial: _prefs['bookTreeUri'] as String? ?? '',
-              hint: '导入/导出书籍的根目录，留空使用默认目录',
-            );
-            if (v != null) await _setString('bookTreeUri', 'defaultBookTreeUri', v);
-          },
-        ),
         _section('朗读'),
         _sw('媒体键控制朗读', 'readAloudByMediaButton', 'readAloudByMediaButton',
           sub: '使用耳机/蓝牙媒体键开始或暂停朗读'),
@@ -215,7 +180,6 @@ class _OtherConfigScreenState extends State<OtherConfigScreen> {
             }
           }),
         _sw('记录日志', 'recordLog', 'oc_recordLog'),
-        _sw('记录堆转储', 'recordHeapDump', 'recordHeapDump', sub: '排查内存问题，开启会产生较大文件'),
         const SizedBox(height: 24),
       ]),
     );
@@ -230,11 +194,5 @@ class _OtherConfigScreenState extends State<OtherConfigScreen> {
       default:
         return '正式版';
     }
-  }
-
-  String _hostsSummary(String hosts) {
-    final lines = hosts.split('\n').map((e) => e.trim()).where((e) => e.isNotEmpty).toList();
-    if (lines.isEmpty) return '未配置';
-    return '已配置 ${lines.length} 条：${lines.take(2).join('，')}${lines.length > 2 ? '…' : ''}';
   }
 }

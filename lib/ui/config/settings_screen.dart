@@ -46,12 +46,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool _volumeKeyPage = true;
   bool _keepScreenOn = true;
   bool _showMenuOnTap = true;
-  bool _showNotification = true;
-  bool _landscapeLock = false;
   bool _webServiceEnabled = false;
   final WebService _webService = WebService();
   String _lanIp = 'localhost';
-  bool _autoBackup = false;
   bool _autoCleanCache = false;
   String _cacheSize = '0 MB';
   bool _autoNextPage = false;
@@ -95,15 +92,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
   int _autoNextPageSpeed = 5;
 
   // ===== 补齐项：界面 =====
-  bool _immersionStatusBar = true;
   bool _confirmExit = false;
   int _exitClickCount = 2;
 
   // ===== 补齐项：线程与并发 =====
-  int _threadCount = 32;
-  int _updateThreads = 4;
-  int _searchThreads = 4;
-  int _importThreads = 2;
+  int _updateThreads = 32;
 
   // ===== 补齐项：缓存 / 备份 / 其它 =====
   int _cacheMaxMB = 500;
@@ -136,12 +129,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
     setState(() {
       _autoUpdate = p.getBool('auto_update') ?? true;
       _autoUpdateHours = _prefs?.getInt('auto_update_hours') ?? 6;
-      _wifiOnly = _prefs?.getBool('wifi_only') ?? false;
+      // 仅WiFi加载封面与封面配置共用同一键 cover_onlyWifi（bookshelf_screen 消费）
+      _wifiOnly = p.getBool('cover_onlyWifi') ?? false;
       _volumeKeyPage = cfg.volumeKeyPage;
       _keepScreenOn = cfg.keepScreenOn;
       _showMenuOnTap = cfg.showMenuOnTap;
-      _showNotification = _prefs?.getBool('show_notification') ?? true;
-      _landscapeLock = _prefs?.getBool('landscape_lock') ?? false;
       _autoNextPage = cfg.autoNextPage;
       _translateEnabled = _prefs?.getBool('translate_enabled') ?? false;
       _simulateReading = cfg.simulatedReading;
@@ -177,19 +169,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
       _autoNextPageSpeed = cfg.autoNextPageSpeed;
 
       // 界面
-      _immersionStatusBar = p.getBool('ui_immersionStatusBar') ?? true;
       _confirmExit = p.getBool('ui_confirmExit') ?? false;
       _exitClickCount = p.getInt('ui_exitClickCount') ?? 2;
 
-      // 线程与并发
-      _threadCount = p.getInt('threadCount') ?? 32;
-      _updateThreads = p.getInt('bk_updateThreads') ?? 4;
-      _searchThreads = p.getInt('bk_searchThreads') ?? 4;
-      _importThreads = p.getInt('bk_importThreads') ?? 2;
+      // 线程与并发（仅保留有真实消费方的 bk_updateThreads，见 auto_update_service）
+      _updateThreads = p.getInt('bk_updateThreads') ?? 32;
 
       // 缓存 / 备份 / 其它
       _cacheMaxMB = p.getInt('cache_contentMaxMB') ?? 500;
       _autoBackupHours = p.getInt('auto_backup_hours') ?? 24;
+      // 自动清理过期内容与其他设置共用同一键 oc_autoClearExpired（main.dart 消费）
+      _autoCleanCache = p.getBool('oc_autoClearExpired') ?? false;
       final bd = p.getString('backup_path') ?? '';
       _backupPath = bd.isEmpty ? 'Legado/backup' : bd;
       _webdavUrl = p.getString('webdav_url') ?? '';
@@ -244,7 +234,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
       }
     } catch (_) {}
     final p = await SharedPreferences.getInstance();
-    if (p.getBool('web_service_enabled') ?? false) {
+    // Web 服务开关与「其他设置-Web服务自动启动」共用同一键 oc_webAutoStart（main.dart 启动时消费）
+    if (p.getBool('oc_webAutoStart') ?? false) {
       _webServiceEnabled = true;
       _webService.start().catchError((_) {});
     }
@@ -253,7 +244,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   Future<void> _toggleWebService(bool v) async {
     setState(() { _webServiceEnabled = v; });
-    await _saveSetting('web_service_enabled', v);
+    await _saveSetting('oc_webAutoStart', v);
     try {
       if (v) {
         final port = (await SharedPreferences.getInstance()).getInt('oc_webPort') ?? 1122;
@@ -445,8 +436,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
           SwitchListTile(
             title: const Text('仅WiFi下更新'),
+            subtitle: const Text('与「封面配置-仅WiFi加载封面」为同一设置（cover_onlyWifi）'),
             value: _wifiOnly,
-            onChanged: (v) => setState(() { _wifiOnly = v; _saveSetting('wifi_only', v); }),
+            onChanged: (v) => setState(() { _wifiOnly = v; _saveSetting('cover_onlyWifi', v); }),
           ),
           ListTile(
             title: const Text('预下载章节数'),
@@ -519,7 +511,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ListTile(
             leading: const Icon(Icons.mic_outlined),
             title: const Text('朗读语速'),
-            subtitle: const Text('调整TTS朗读速度'),
+            subtitle: const Text('保存语速偏好 tts_rate（0.3-3.0 倍）；朗读引擎读取该值的接线由 tts_service 完成'),
             trailing: const Icon(Icons.chevron_right),
             onTap: () async {
               double rate = (await SharedPreferences.getInstance()).getDouble('tts_rate') ?? 1.0;
@@ -635,18 +627,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
             trailing: const Icon(Icons.chevron_right),
             onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const BackupScreen())),
           ),
-          ListTile(
-            leading: const Icon(Icons.file_download_outlined),
-            title: const Text('导入书籍配置'),
-            subtitle: const Text('导入路径/文件名规则/排序'),
-            trailing: const Icon(Icons.chevron_right),
-            onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ImportBookConfigScreen())),
-          ),
           SwitchListTile(
             title: const Text('自动备份'),
-            subtitle: Text('每 $_autoBackupHours 小时自动备份一次'),
-            value: _autoBackup,
-            onChanged: (v) => setState(() { _autoBackup = v; _saveSetting('auto_backup', v); }),
+            subtitle: Text(_autoBackupHours > 0 ? '每 $_autoBackupHours 小时自动备份一次（auto_backup_hours）' : '已关闭：将 auto_backup_hours 置 0'),
+            value: _autoBackupHours > 0,
+            onChanged: (v) => setState(() {
+              _autoBackupHours = v ? (_autoBackupHours > 0 ? _autoBackupHours : 24) : 0;
+              _saveSetting('auto_backup_hours', _autoBackupHours);
+            }),
           ),
           ..._buildBackupExtraSection(),
 
@@ -667,9 +655,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ),
           SwitchListTile(
             title: const Text('自动清理缓存'),
-            subtitle: const Text('超过7天自动清理'),
+            subtitle: const Text('超过7天自动清理（与「其他设置-自动清理过期内容」为同一设置 oc_autoClearExpired）'),
             value: _autoCleanCache,
-            onChanged: (v) => setState(() { _autoCleanCache = v; _saveSetting('auto_clean_cache', v); }),
+            onChanged: (v) => setState(() { _autoCleanCache = v; _saveSetting('oc_autoClearExpired', v); }),
           ),
 
           _buildSectionHeader('规则管理'),
@@ -713,25 +701,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
           ..._buildOtherExtraSection(),
           _buildSectionHeader('其他'),
-          SwitchListTile(
-            title: const Text('显示通知栏'),
-            value: _showNotification,
-            onChanged: (v) => setState(() { _showNotification = v; _saveSetting('show_notification', v); }),
-          ),
-          SwitchListTile(
-            title: const Text('横屏锁定'),
-            subtitle: const Text('锁定后立即切换屏幕方向'),
-            value: _landscapeLock,
-            onChanged: (v) async {
-              setState(() => _landscapeLock = v);
-              _saveSetting('landscape_lock', v);
-              await SystemChrome.setPreferredOrientations(
-                v
-                    ? const [DeviceOrientation.landscapeLeft, DeviceOrientation.landscapeRight]
-                    : DeviceOrientation.values,
-              );
-            },
-          ),
           ListTile(
             leading: const Icon(Icons.info_outline),
             title: const Text('关于'),
@@ -887,13 +856,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
   ];
 
   /// 界面设置（沉浸式/全屏/退出确认）
+  /// 说明：阅读页沉浸/横屏由 ReadConfig.immersiveMode / fullScreen / screenOrientation
+  /// 驱动（见 reading_screen._applyScreenMode），已在「阅读设置补充」中提供真实开关，
+  /// 此处的 ui_immersionStatusBar / landscape_lock 预置键无消费方，已移除。
   List<Widget> _buildUiSection() => [
     _buildSectionHeader('界面'),
-    _sw('沉浸式状态栏', _immersionStatusBar, (v) async {
-      setState(() => _immersionStatusBar = v);
-      await _saveSetting('ui_immersionStatusBar', v);
-      await SystemChrome.setEnabledSystemUIMode(v ? SystemUiMode.edgeToEdge : SystemUiMode.manual, overlays: SystemUiOverlay.values);
-    }, sub: '状态栏透明并延伸到底部，立即生效'),
     ListTile(
       dense: true,
       title: const Text('全屏显示'),
@@ -914,25 +881,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }, sub: '需要连续点击几次返回键才退出'),
   ];
 
-  /// 线程与并发
+  /// 线程与并发（只保留有真实消费方的项；其余无消费点已移除）
   List<Widget> _buildThreadSection() => [
     _buildSectionHeader('线程与并发'),
-    _step('并发任务数', _threadCount, 1, 64, (v) {
-      setState(() => _threadCount = v);
-      _saveSetting('threadCount', v);
-    }, sub: '全局网络/解析并发上限（threadCount）'),
-    _step('更新线程数', _updateThreads, 1, 16, (v) {
+    _step('更新线程数', _updateThreads, 1, 64, (v) {
       setState(() => _updateThreads = v);
       _saveSetting('bk_updateThreads', v);
-    }, sub: '刷新书架时同时更新的书籍数量'),
-    _step('搜索线程数', _searchThreads, 1, 16, (v) {
-      setState(() => _searchThreads = v);
-      _saveSetting('bk_searchThreads', v);
-    }, sub: '聚合搜索时同时请求的书源数量'),
-    _step('导入线程数', _importThreads, 1, 8, (v) {
-      setState(() => _importThreads = v);
-      _saveSetting('bk_importThreads', v);
-    }, sub: '本地书籍导入时的并发数量'),
+    }, sub: '刷新书架时同时更新的书籍数量（bk_updateThreads）'),
   ];
 
   /// 缓存（大小/路径/清理入口）
@@ -971,10 +926,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
   /// 备份（自动备份间隔/路径/WebDAV）
   List<Widget> _buildBackupExtraSection() => [
     _buildSectionHeader('备份'),
-    _step('自动备份间隔（小时）', _autoBackupHours, 1, 168, (v) {
+    _step('自动备份间隔（小时）', _autoBackupHours, 0, 168, (v) {
       setState(() => _autoBackupHours = v);
       _saveSetting('auto_backup_hours', v);
-    }, sub: '开启自动备份后按此间隔执行'),
+    }, sub: _autoBackupHours == 0 ? '当前为 0：关闭自动备份' : '每 $_autoBackupHours 小时执行一次，0 表示关闭'),
     ListTile(
       dense: true,
       leading: const Icon(Icons.folder_outlined),
@@ -1390,94 +1345,8 @@ class _CoverAlbumScreenState extends State<CoverAlbumScreen> {
 }
 
 /* ===== 由 import_book_config_screen.dart 合并 ===== */
-
-/// 导入书籍配置，对齐原版 importBookConfig/ImportBookConfig
-class ImportBookConfigScreen extends StatefulWidget {
-  const ImportBookConfigScreen({super.key});
-
-  @override
-  State<ImportBookConfigScreen> createState() => _ImportBookConfigScreenState();
-}
-
-class _ImportBookConfigScreenState extends State<ImportBookConfigScreen> {
-  String _path = '';
-  String _fileNameTpl = '';
-  int _sort = 0;
-  static const _sorts = ['默认', '按文件名', '按修改时间', '按大小'];
-
-  @override
-  void initState() { super.initState(); _load(); }
-
-  Future<void> _load() async {
-    final p = await SharedPreferences.getInstance();
-    setState(() {
-      _path = p.getString('import_path') ?? 'Legado/books';
-      _fileNameTpl = p.getString('import_nameTpl') ?? '{name} - {author}';
-      _sort = p.getInt('import_sort') ?? 0;
-    });
-  }
-
-  Future<void> _save() async {
-    final p = await SharedPreferences.getInstance();
-    await p.setString('import_path', _path);
-    await p.setString('import_nameTpl', _fileNameTpl);
-    await p.setInt('import_sort', _sort);
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('导入书籍配置'), actions: [
-        TextButton(onPressed: () { _save(); ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('已保存'))); }, child: const Text('保存')),
-      ]),
-      body: ListView(children: [
-        ListTile(
-          leading: const Icon(Icons.folder_outlined),
-          title: const Text('默认导入路径'),
-          subtitle: Text(_path, style: const TextStyle(fontSize: 12)),
-          trailing: const Icon(Icons.edit, size: 18),
-          onTap: () async {
-            final ctl = TextEditingController(text: _path);
-            final v = await showDialog<String>(context: context, builder: (c) => AlertDialog(
-              title: const Text('导入路径'),
-              content: TextField(controller: ctl, decoration: const InputDecoration(hintText: '相对路径')),
-              actions: [TextButton(onPressed: () => Navigator.pop(c), child: const Text('取消')), FilledButton(onPressed: () => Navigator.pop(c, ctl.text), child: const Text('确定'))],
-            ));
-            if (v != null) setState(() => _path = v);
-          },
-        ),
-        ListTile(
-          leading: const Icon(Icons.drive_file_rename_outline),
-          title: const Text('导入文件名规则'),
-          subtitle: const Text('可用变量：{name} 书名、{author} 作者、{index} 序号', style: TextStyle(fontSize: 11)),
-          trailing: Text(_fileNameTpl, style: const TextStyle(fontSize: 12)),
-          onTap: () async {
-            final ctl = TextEditingController(text: _fileNameTpl);
-            final v = await showDialog<String>(context: context, builder: (c) => AlertDialog(
-              title: const Text('文件名规则'),
-              content: TextField(controller: ctl),
-              actions: [TextButton(onPressed: () => Navigator.pop(c), child: const Text('取消')), FilledButton(onPressed: () => Navigator.pop(c, ctl.text), child: const Text('确定'))],
-            ));
-            if (v != null && v.isNotEmpty) setState(() => _fileNameTpl = v);
-          },
-        ),
-        ListTile(
-          leading: const Icon(Icons.sort),
-          title: const Text('本地导入排序'),
-          trailing: DropdownButton<int>(
-            value: _sort, underline: const SizedBox(),
-            items: List.generate(_sorts.length, (i) => DropdownMenuItem(value: i, child: Text(_sorts[i]))),
-            onChanged: (v) => setState(() => _sort = v ?? 0),
-          ),
-        ),
-        const Padding(padding: EdgeInsets.all(16), child: Text(
-          '说明：远程书籍服务器在「本地导入 → 远程书籍」中配置 WebDAV；导入的 TXT/EPUB 会按文件名规则保存到默认导入路径。',
-          style: TextStyle(fontSize: 12, color: Colors.grey),
-        )),
-      ]),
-    );
-  }
-}
+/// 导入书籍配置已移除：import_path / import_sort / import_nameTpl 无任何消费方，
+/// ImportBookService.importPath(path) 仅接收调用方传入的 path 参数。
 
 /// 字体选择列表项：区分内置资源与本机文件，便于 FontLoader 取字节
 class _FontEntry {
