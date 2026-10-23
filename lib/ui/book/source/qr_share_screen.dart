@@ -78,7 +78,7 @@ class QrEncoder {
   static const int _penaltyN4 = 10;
 
   /// 纠错等级 M 的 2 位指示符（用于格式信息）
-  static const int _ecLevelBits = 0b00;
+  static const int _ecLevelBits = 0; // 纠错等级 M（00）
 
   // ---- GF(256) 运算表（本原多项式 x^8+x^4+x^3+x+1 = 0x11D）----
 
@@ -173,7 +173,7 @@ class QrEncoder {
       }
     }
 
-    put(0b0100, 4);
+    put(4, 4); // 模式指示符 0100 = 字节模式
     put(data.length, countBits);
     for (final b in data) {
       put(b, 8);

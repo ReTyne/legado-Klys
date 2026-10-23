@@ -32,12 +32,56 @@ class _SearchScreenState extends State<SearchScreen> {
   Set<String> _selectedSources = {};
   bool _groupBySource = false;
 
+  /// 搜索范围：0=全部 1=书名 2=作者（对齐 legado-E SearchScope）
+  int _searchScope = 0;
+
+  /// 精准搜索：结果的书名或作者需完整包含关键词
+  bool _precision = false;
+
   static const List<String> _hotKeywords = ['斗破苍穹', '凡人修仙传', '诡秘之主', '大奉打更人', '夜的命名术', '灵境行者'];
 
   @override
   void initState() {
     super.initState();
     _loadHistory();
+    _loadScope();
+  }
+
+  Future<void> _loadScope() async {
+    final prefs = await SharedPreferences.getInstance();
+    final v = prefs.getInt('search_scope') ?? 0;
+    if (mounted) setState(() => _searchScope = v >= 0 && v <= 2 ? v : 0);
+  }
+
+  Future<void> _setScope(int scope) async {
+    setState(() => _searchScope = scope);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt('search_scope', scope);
+  }
+
+  /// 应用范围 + 精准过滤后的结果（原始结果保留在 [_results]，切换时无需重新搜索）
+  List<SearchBook> get _displayResults {
+    if (_searchScope == 0 && !_precision) return _results;
+    final kw = (_searchKeyword ?? '').trim();
+    return _results.where((b) {
+      if (_precision && kw.isNotEmpty) {
+        final hitName = b.name.contains(kw);
+        final hitAuthor = b.author.contains(kw);
+        if (!hitName && !hitAuthor) return false;
+        // 范围再叠加
+        if (_searchScope == 1) return hitName;
+        if (_searchScope == 2) return hitAuthor;
+        return true;
+      }
+      switch (_searchScope) {
+        case 1:
+          return kw.isEmpty || b.name.contains(kw);
+        case 2:
+          return kw.isEmpty || b.author.contains(kw);
+        default:
+          return true;
+      }
+    }).toList();
   }
 
   @override
@@ -281,14 +325,40 @@ class _SearchScreenState extends State<SearchScreen> {
         Text('未找到"$_searchKeyword"相关结果', style: TextStyle(color: Colors.grey[600])),
       ]));
     }
+    final display = _displayResults;
     return Column(
       children: [
         if (_isSearching) LinearProgressIndicator(value: _totalSources > 0 ? _searchedSources / _totalSources : 0),
+        // 搜索范围 + 精准搜索
+        Padding(
+          padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+          child: Row(
+            children: [
+              for (final e in const [(0, '全部'), (1, '书名'), (2, '作者')])
+                Padding(
+                  padding: const EdgeInsets.only(right: 8),
+                  child: ChoiceChip(
+                    label: Text(e.$2),
+                    selected: _searchScope == e.$1,
+                    visualDensity: VisualDensity.compact,
+                    onSelected: (_) => _setScope(e.$1),
+                  ),
+                ),
+              const Spacer(),
+              FilterChip(
+                label: const Text('精准'),
+                visualDensity: VisualDensity.compact,
+                selected: _precision,
+                onSelected: (v) => setState(() => _precision = v),
+              ),
+            ],
+          ),
+        ),
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
           child: Row(
             children: [
-              Text('共找到 ${_results.length} 条', style: const TextStyle(fontSize: 12, color: Colors.grey)),
+              Text('共找到 ${display.length} 条', style: const TextStyle(fontSize: 12, color: Colors.grey)),
               const Spacer(),
               Text('$_searchedSources/$_totalSources 源', style: const TextStyle(fontSize: 12, color: Colors.grey)),
               IconButton(
@@ -302,19 +372,21 @@ class _SearchScreenState extends State<SearchScreen> {
             ],
           ),
         ),
-        Expanded(child: _groupBySource ? _buildGroupedList() : _buildFlatList()),
+        Expanded(child: display.isEmpty
+            ? Center(child: Text('当前范围/精准条件下无结果', style: TextStyle(color: Colors.grey[600])))
+            : (_groupBySource ? _buildGroupedList(display) : _buildFlatList(display))),
       ],
     );
   }
 
-  Widget _buildFlatList() => ListView.separated(
-    itemCount: _results.length,
+  Widget _buildFlatList(List<SearchBook> items) => ListView.separated(
+    itemCount: items.length,
     separatorBuilder: (_, __) => const Divider(height: 1),
-    itemBuilder: (c, i) => _buildResultTile(_results[i]),
+    itemBuilder: (c, i) => _buildResultTile(items[i]),
   );
 
-  Widget _buildGroupedList() {
-    final groups = groupBy(_results, (SearchBook b) => b.originName ?? b.origin ?? '未知来源');
+  Widget _buildGroupedList(List<SearchBook> items) {
+    final groups = groupBy(items, (SearchBook b) => b.originName ?? b.origin ?? '未知来源');
     final entries = groups.entries.toList();
     return ListView.builder(
       itemCount: entries.length,

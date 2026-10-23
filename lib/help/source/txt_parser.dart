@@ -1,13 +1,16 @@
 import 'dart:convert';
 import 'dart:io';
+import 'dart:typed_data';
 import 'package:enough_convert/enough_convert.dart';
 import 'package:legado_md3/data/model/book_chapter.dart';
 import 'package:legado_md3/data/model/txt_toc_rule.dart';
+import 'package:legado_md3/utils/encoding_detect.dart';
 
 class TxtParserService {
-  /// 自动识别编码并解码 TXT 字节（支持 UTF-8 BOM / UTF-16 LE/BE / GBK / UTF-8）
+  /// 自动识别编码并解码 TXT 字节（支持 UTF-8 / UTF-16 LE/BE / GBK / Big5）
   static String decodeBytes(List<int> bytes) {
     if (bytes.isEmpty) return '';
+    final b = Uint8List.fromList(bytes);
     // BOM 检测
     if (bytes.length >= 3 && bytes[0] == 0xEF && bytes[1] == 0xBB && bytes[2] == 0xBF) {
       return utf8.decode(bytes.sublist(3), allowMalformed: true);
@@ -18,15 +21,26 @@ class TxtParserService {
     if (bytes.length >= 2 && bytes[0] == 0xFE && bytes[1] == 0xFF) {
       return utf16beDecode(bytes.sublist(2));
     }
-    // 先尝试 UTF-8 严格解码
-    try {
-      return utf8.decode(bytes);
-    } catch (_) {}
-    // 退化为 GBK（中文 TXT 常见编码）
-    try {
-      return const GbkCodec().decode(bytes);
-    } catch (_) {}
-    return utf8.decode(bytes, allowMalformed: true);
+    // 统计探测：区分 UTF-8 / UTF-16 / GBK / Big5
+    switch (EncodingDetector.detect(b)) {
+      case 'utf-8':
+        return utf8.decode(bytes, allowMalformed: true);
+      case 'utf-16le':
+        return utf16leDecode(bytes);
+      case 'utf-16be':
+        return utf16beDecode(bytes);
+      case 'big5':
+        try {
+          return const Big5Codec().decode(bytes);
+        } catch (_) {}
+        return utf8.decode(bytes, allowMalformed: true);
+      case 'gbk':
+      default:
+        try {
+          return const GbkCodec().decode(bytes);
+        } catch (_) {}
+        return utf8.decode(bytes, allowMalformed: true);
+    }
   }
 
   static String utf16leDecode(List<int> bytes) {

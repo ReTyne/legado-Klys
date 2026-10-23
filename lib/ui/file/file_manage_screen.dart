@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:legado_md3/utils/alphanum_comparator.dart';
 
 /// 文件管理页面 - 对齐原版FileManage
 /// 浏览应用数据目录下的书籍、缓存、备份、导出文件
@@ -45,7 +46,8 @@ class _FileManageScreenState extends State<FileManageScreen> {
         final aDir = a is Directory;
         final bDir = b is Directory;
         if (aDir != bDir) return aDir ? -1 : 1;
-        return a.path.toLowerCase().compareTo(b.path.toLowerCase());
+        // 自然排序：第 2 章 < 第 10 章
+        return AlphanumComparator.naturalCompare(a.path, b.path);
       });
       setState(() { _entities = list; _loading = false; });
     } catch (e) {

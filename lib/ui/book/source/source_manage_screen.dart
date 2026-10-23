@@ -12,6 +12,7 @@ import 'package:legado_md3/help/source/source_engine.dart';
 import 'package:legado_md3/ui/book/source/source_debug_screen.dart';
 import 'package:legado_md3/ui/book/source/source_edit_screen.dart';
 import 'package:legado_md3/ui/book/source/source_login_screen.dart';
+import 'package:legado_md3/ui/book/source/qr_share_screen.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:share_plus/share_plus.dart';
 
@@ -833,6 +834,15 @@ class _SourceManageScreenState extends State<SourceManageScreen> {
               },
             ),
             ListTile(
+              leading: const Icon(Icons.qr_code_2),
+              title: const Text('分享二维码'),
+              subtitle: const Text('生成书源二维码，供其它设备扫码导入'),
+              onTap: () {
+                Navigator.pop(context);
+                Navigator.push(context, MaterialPageRoute(builder: (_) => QrShareScreen(source: source)));
+              },
+            ),
+            ListTile(
               leading: const Icon(Icons.push_pin_outlined),
               title: Text(source.customOrder > 0 ? '取消置顶' : '置顶'),
               onTap: () {
@@ -986,12 +996,35 @@ class _QrScannerScreenState extends State<QrScannerScreen> {
     }
   }
 
+  /// 从相册选择图片识别二维码
+  Future<void> _pickFromGallery() async {
+    try {
+      final result = await FilePicker.platform.pickFiles(type: FileType.image);
+      final path = result?.files.single.path;
+      if (path == null || !mounted) return;
+      final ok = await _controller.analyzeImage(path);
+      if (!ok && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('未能从图片中识别出二维码')),
+        );
+      }
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('读取图片失败')),
+        );
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
         title: Text(widget.title),
         actions: [
+          IconButton(icon: const Icon(Icons.photo_library_outlined), tooltip: '从相册选择',
+            onPressed: _pickFromGallery),
           IconButton(icon: const Icon(Icons.flash_on), tooltip: '闪光灯',
             onPressed: () => _controller.toggleTorch()),
           IconButton(icon: const Icon(Icons.cameraswitch), tooltip: '切换镜头',
