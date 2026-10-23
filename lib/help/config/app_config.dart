@@ -1,5 +1,4 @@
-
-
+import 'package:shared_preferences/shared_preferences.dart';
 
 /// 全局应用配置（运行时常量与特性开关）
 class AppConfig {
@@ -57,3 +56,353 @@ class AppConstants {
   static const int maxSearchHistory = 50;
 }
 
+/* ===== 持久化全局配置（SharedPreferences）=====
+ * 对照 legado-E help/config/AppConfig.kt 的 PreferKey 逐项补齐。
+ * 用法：
+ *  - 读取：静态 getter（启动时 load 进内存，之后同步读取）；
+ *  - 写入：静态 setter（同步改内存 + 异步落盘，UI 可直接赋值后 setState）；
+ *  - 启动加载：main() 里已有 SharedPreferences 实例，加一行
+ *    `AppConfig.loadFrom(prefs);` 即可；也可随时 `await AppConfig.load();`。
+ */
+/// 全局持久化配置（键名与 legado-E PreferKey 保持一致，便于配置互通）
+class AppPrefs {
+  AppPrefs._();
+
+  /* ---------- SharedPreferences 键名 ---------- */
+  static const String keyThreadCount = 'threadCount';
+  static const String keyPreDownloadNum = 'preDownloadNum';
+  static const String keyUserAgent = 'userAgent';
+  static const String keyCustomHosts = 'customHosts';
+  static const String keyDefaultBookTreeUri = 'defaultBookTreeUri';
+  static const String keyProcessText = 'process_text';
+  static const String keyBitmapCacheSize = 'bitmapCacheSize';
+  static const String keyRecordHeapDump = 'recordHeapDump';
+  static const String keyTtsTimer = 'ttsTimer';
+  static const String keyExportCharset = 'exportCharset';
+  static const String keyExportUseReplace = 'exportUseReplace';
+  static const String keyExportNoChapterName = 'exportNoChapterName';
+  static const String keyExportPictureFile = 'exportPictureFile';
+  static const String keyExportToWebDav = 'exportToWebDav';
+  static const String keyParallelExportBook = 'parallelExportBook';
+  // 封面（沿用本项目已有键，bookshelf_screen 直接消费，勿改键名）
+  static const String keyUseDefaultCover = 'cover_useDefault';
+  static const String keyCoverShowName = 'cover_showName';
+  static const String keyCoverShowAuthor = 'cover_showAuthor';
+  // 主题外观（legado-E pref_config_theme.xml）
+  static const String keyTransparentStatusBar = 'transparentStatusBar';
+  static const String keyImmNavigationBar = 'immNavigationBar';
+  static const String keyBarElevation = 'barElevation';
+  static const String keyBackgroundImage = 'backgroundImage';
+  static const String keyColorBottomBackground = 'colorBottomBackground';
+  // 备份（legado-E pref_config_backup.xml）
+  static const String keyWebDavDeviceName = 'webDavDeviceName';
+  static const String keyRestoreIgnore = 'restoreIgnore';
+  static const String keyOnlyLatestBackup = 'onlyLatestBackup';
+  static const String keyAutoCheckNewBackup = 'autoCheckNewBackup';
+
+  /* ---------- 内存缓存（默认值与 legado-E 对齐） ---------- */
+  static int _threadCount = 32;
+  static int _preDownloadNum = 2;
+  static String _userAgent = '';
+  static String _customHosts = '';
+  static String _defaultBookTreeUri = '';
+  static bool _processText = true;
+  static int _bitmapCacheSize = 50;
+  static bool _recordHeapDump = false;
+  static int _ttsTimer = 0;
+  static String _exportCharset = 'UTF-8';
+  static bool _exportUseReplace = true;
+  static bool _exportNoChapterName = false;
+  static bool _exportPictureFile = false;
+  static bool _exportToWebDav = false;
+  static bool _parallelExportBook = false;
+  static bool _useDefaultCover = false;
+  static bool _coverShowName = true;
+  static bool _coverShowAuthor = true;
+  static bool _transparentStatusBar = true;
+  static bool _immNavigationBar = true;
+  static int _barElevation = 0;
+  static String _backgroundImage = '';
+  static int _colorBottomBackground = 0; // 0 = 未设置（用主题默认色）
+  static String _webDavDeviceName = '';
+  static List<String> _restoreIgnore = const [];
+  static bool _onlyLatestBackup = true;
+  static bool _autoCheckNewBackup = true;
+
+  /* ---------- getter ---------- */
+  /// 并发线程数（搜索/目录/正文并发上限），默认 32
+  static int get threadCount => _threadCount;
+  /// 预下载章节数，默认 2
+  static int get preDownloadNum => _preDownloadNum;
+  /// 全局 UA；为空时返回默认 UA（写入请用 setter，空串表示用默认）
+  static String get userAgent =>
+      _userAgent.isNotEmpty ? _userAgent : AppConstants.defaultUserAgent;
+  /// 自定义 Host 映射原文，每行一条 `host=ip`
+  static String get customHosts => _customHosts;
+  /// 默认书籍保存目录（本地书籍导入/落盘位置）
+  static String get defaultBookTreeUri => _defaultBookTreeUri;
+  /// 系统文本处理菜单入口开关。
+  /// 说明：Flutter 版暂无 Android Intent.ACTION_PROCESS_TEXT 注册能力，
+  /// 该值仅持久化保存，待原生层支持后消费。
+  static bool get processText => _processText;
+  /// 图片缓存大小（MB），默认 50
+  static int get bitmapCacheSize => _bitmapCacheSize;
+  /// 性能监测时记录堆转储
+  static bool get recordHeapDump => _recordHeapDump;
+  /// 朗读定时分钟数（0 = 不定时）
+  static int get ttsTimer => _ttsTimer;
+  /// 导出编码（gbk / utf-8）
+  static String get exportCharset => _exportCharset;
+  /// 导出时应用替换净化
+  static bool get exportUseReplace => _exportUseReplace;
+  /// 导出时不添加章节名
+  static bool get exportNoChapterName => _exportNoChapterName;
+  /// 导出包含图片
+  static bool get exportPictureFile => _exportPictureFile;
+  /// 导出到 WebDAV
+  static bool get exportToWebDav => _exportToWebDav;
+  /// 并发导出多本书
+  static bool get parallelExportBook => _parallelExportBook;
+  /// 无封面时使用默认封面（bookshelf_screen 消费）
+  static bool get useDefaultCover => _useDefaultCover;
+  /// 封面显示书名（bookshelf_screen 消费）
+  static bool get coverShowName => _coverShowName;
+  /// 封面显示作者（bookshelf_screen 消费）
+  static bool get coverShowAuthor => _coverShowAuthor;
+  /// 透明状态栏
+  static bool get transparentStatusBar => _transparentStatusBar;
+  /// 沉浸式导航栏
+  static bool get immNavigationBar => _immNavigationBar;
+  /// 顶栏阴影（0-8）
+  static int get barElevation => _barElevation;
+  /// 书架背景图路径（空 = 不使用）
+  static String get backgroundImage => _backgroundImage;
+  /// 底部背景色（0 = 未设置，用主题默认）
+  static int get colorBottomBackground => _colorBottomBackground;
+  /// WebDAV 设备名（标识备份来源设备）
+  static String get webDavDeviceName => _webDavDeviceName;
+  /// 恢复忽略项（BackupType.name 列表）
+  static List<String> get restoreIgnore => _restoreIgnore;
+  /// 仅恢复最新备份
+  static bool get onlyLatestBackup => _onlyLatestBackup;
+  /// 自动检查新备份
+  static bool get autoCheckNewBackup => _autoCheckNewBackup;
+
+  /// 自定义 Host 映射解析结果：每行 `host=ip`，非法行忽略
+  static Map<String, String> get hostMap {
+    final map = <String, String>{};
+    for (final line in _customHosts.split('\n')) {
+      final t = line.trim();
+      if (t.isEmpty) continue;
+      final i = t.indexOf('=');
+      if (i <= 0 || i == t.length - 1) continue;
+      map[t.substring(0, i).trim()] = t.substring(i + 1).trim();
+    }
+    return map;
+  }
+
+  /* ---------- setter（同步改内存 + 异步落盘） ---------- */
+  static set threadCount(int v) {
+    _threadCount = v.clamp(1, 128);
+    _save(keyThreadCount, _threadCount);
+  }
+
+  static set preDownloadNum(int v) {
+    _preDownloadNum = v.clamp(0, 10);
+    _save(keyPreDownloadNum, _preDownloadNum);
+  }
+
+  static set userAgent(String v) {
+    _userAgent = v.trim();
+    _save(keyUserAgent, _userAgent);
+  }
+
+  static set customHosts(String v) {
+    _customHosts = v;
+    _save(keyCustomHosts, _customHosts);
+  }
+
+  static set defaultBookTreeUri(String v) {
+    _defaultBookTreeUri = v.trim();
+    if (_defaultBookTreeUri.isEmpty) {
+      _remove(keyDefaultBookTreeUri);
+    } else {
+      _save(keyDefaultBookTreeUri, _defaultBookTreeUri);
+    }
+  }
+
+  static set processText(bool v) {
+    _processText = v;
+    _save(keyProcessText, _processText);
+  }
+
+  static set bitmapCacheSize(int v) {
+    _bitmapCacheSize = v.clamp(10, 512);
+    _save(keyBitmapCacheSize, _bitmapCacheSize);
+  }
+
+  static set recordHeapDump(bool v) {
+    _recordHeapDump = v;
+    _save(keyRecordHeapDump, _recordHeapDump);
+  }
+
+  static set ttsTimer(int v) {
+    _ttsTimer = v.clamp(0, 600);
+    _save(keyTtsTimer, _ttsTimer);
+  }
+
+  static set exportCharset(String v) {
+    _exportCharset = v;
+    _save(keyExportCharset, _exportCharset);
+  }
+
+  static set exportUseReplace(bool v) {
+    _exportUseReplace = v;
+    _save(keyExportUseReplace, _exportUseReplace);
+  }
+
+  static set exportNoChapterName(bool v) {
+    _exportNoChapterName = v;
+    _save(keyExportNoChapterName, _exportNoChapterName);
+  }
+
+  static set exportPictureFile(bool v) {
+    _exportPictureFile = v;
+    _save(keyExportPictureFile, _exportPictureFile);
+  }
+
+  static set exportToWebDav(bool v) {
+    _exportToWebDav = v;
+    _save(keyExportToWebDav, _exportToWebDav);
+  }
+
+  static set parallelExportBook(bool v) {
+    _parallelExportBook = v;
+    _save(keyParallelExportBook, _parallelExportBook);
+  }
+
+  static set useDefaultCover(bool v) {
+    _useDefaultCover = v;
+    _save(keyUseDefaultCover, _useDefaultCover);
+  }
+
+  static set coverShowName(bool v) {
+    _coverShowName = v;
+    _save(keyCoverShowName, _coverShowName);
+  }
+
+  static set coverShowAuthor(bool v) {
+    _coverShowAuthor = v;
+    _save(keyCoverShowAuthor, _coverShowAuthor);
+  }
+
+  static set transparentStatusBar(bool v) {
+    _transparentStatusBar = v;
+    _save(keyTransparentStatusBar, _transparentStatusBar);
+  }
+
+  static set immNavigationBar(bool v) {
+    _immNavigationBar = v;
+    _save(keyImmNavigationBar, _immNavigationBar);
+  }
+
+  static set barElevation(int v) {
+    _barElevation = v.clamp(0, 8);
+    _save(keyBarElevation, _barElevation);
+  }
+
+  static set backgroundImage(String v) {
+    _backgroundImage = v;
+    if (_backgroundImage.isEmpty) {
+      _remove(keyBackgroundImage);
+    } else {
+      _save(keyBackgroundImage, _backgroundImage);
+    }
+  }
+
+  static set colorBottomBackground(int v) {
+    _colorBottomBackground = v;
+    if (_colorBottomBackground == 0) {
+      _remove(keyColorBottomBackground);
+    } else {
+      _save(keyColorBottomBackground, _colorBottomBackground);
+    }
+  }
+
+  static set webDavDeviceName(String v) {
+    _webDavDeviceName = v.trim();
+    _save(keyWebDavDeviceName, _webDavDeviceName);
+  }
+
+  static set restoreIgnore(List<String> v) {
+    _restoreIgnore = List.unmodifiable(v);
+    _save(keyRestoreIgnore, _restoreIgnore);
+  }
+
+  static set onlyLatestBackup(bool v) {
+    _onlyLatestBackup = v;
+    _save(keyOnlyLatestBackup, _onlyLatestBackup);
+  }
+
+  static set autoCheckNewBackup(bool v) {
+    _autoCheckNewBackup = v;
+    _save(keyAutoCheckNewBackup, _autoCheckNewBackup);
+  }
+
+  /* ---------- 加载 ---------- */
+  /// 自行获取 SharedPreferences 并加载（可重复调用刷新）
+  static Future<void> load() async {
+    final p = await SharedPreferences.getInstance();
+    loadFrom(p);
+  }
+
+  /// 用已有 SharedPreferences 实例同步加载（main() 启动时调用）
+  static void loadFrom(SharedPreferences p) {
+    _threadCount = (p.getInt(keyThreadCount) ?? 32).clamp(1, 128);
+    _preDownloadNum = (p.getInt(keyPreDownloadNum) ?? 2).clamp(0, 10);
+    _userAgent = p.getString(keyUserAgent) ?? '';
+    _customHosts = p.getString(keyCustomHosts) ?? '';
+    _defaultBookTreeUri = p.getString(keyDefaultBookTreeUri) ?? '';
+    _processText = p.getBool(keyProcessText) ?? true;
+    _bitmapCacheSize = (p.getInt(keyBitmapCacheSize) ?? 50).clamp(10, 512);
+    _recordHeapDump = p.getBool(keyRecordHeapDump) ?? false;
+    _ttsTimer = (p.getInt(keyTtsTimer) ?? 0).clamp(0, 600);
+    _exportCharset = p.getString(keyExportCharset) ?? 'UTF-8';
+    _exportUseReplace = p.getBool(keyExportUseReplace) ?? true;
+    _exportNoChapterName = p.getBool(keyExportNoChapterName) ?? false;
+    _exportPictureFile = p.getBool(keyExportPictureFile) ?? false;
+    _exportToWebDav = p.getBool(keyExportToWebDav) ?? false;
+    _parallelExportBook = p.getBool(keyParallelExportBook) ?? false;
+    _useDefaultCover = p.getBool(keyUseDefaultCover) ?? false;
+    _coverShowName = p.getBool(keyCoverShowName) ?? true;
+    _coverShowAuthor = p.getBool(keyCoverShowAuthor) ?? true;
+    _transparentStatusBar = p.getBool(keyTransparentStatusBar) ?? true;
+    _immNavigationBar = p.getBool(keyImmNavigationBar) ?? true;
+    _barElevation = (p.getInt(keyBarElevation) ?? 0).clamp(0, 8);
+    _backgroundImage = p.getString(keyBackgroundImage) ?? '';
+    _colorBottomBackground = p.getInt(keyColorBottomBackground) ?? 0;
+    _webDavDeviceName = p.getString(keyWebDavDeviceName) ?? '';
+    _restoreIgnore = p.getStringList(keyRestoreIgnore) ?? const [];
+    _onlyLatestBackup = p.getBool(keyOnlyLatestBackup) ?? true;
+    _autoCheckNewBackup = p.getBool(keyAutoCheckNewBackup) ?? true;
+  }
+
+  /* ---------- 内部落盘 ---------- */
+  static Future<void> _save(String key, Object v) async {
+    final p = await SharedPreferences.getInstance();
+    if (v is bool) {
+      await p.setBool(key, v);
+    } else if (v is int) {
+      await p.setInt(key, v);
+    } else if (v is String) {
+      await p.setString(key, v);
+    } else if (v is List<String>) {
+      await p.setStringList(key, v);
+    }
+  }
+
+  static Future<void> _remove(String key) async {
+    final p = await SharedPreferences.getInstance();
+    await p.remove(key);
+  }
+}

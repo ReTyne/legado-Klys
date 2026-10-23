@@ -1,8 +1,12 @@
 import 'dart:convert';
+import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:legado_md3/constant/app_theme.dart';
+import 'package:legado_md3/help/config/app_config.dart';
 
 class CustomTheme {
   final String id;
@@ -12,7 +16,9 @@ class CustomTheme {
   final int backgroundColor;
   final int surfaceColor;
   final bool isDark;
-  CustomTheme({required this.id, required this.name, required this.primaryColor, required this.secondaryColor, required this.backgroundColor, required this.surfaceColor, this.isDark = false});
+  /// 是否标记为适合 AMOLED 纯黑前景（用于主题分类筛选）
+  final bool amoled;
+  CustomTheme({required this.id, required this.name, required this.primaryColor, required this.secondaryColor, required this.backgroundColor, required this.surfaceColor, this.isDark = false, this.amoled = false});
   factory CustomTheme.fromJson(Map<String, dynamic> json) => CustomTheme(
     id: json['id'] ?? '', name: json['name'] ?? '',
     primaryColor: json['primaryColor'] ?? 0xFF6750A4,
@@ -20,11 +26,12 @@ class CustomTheme {
     backgroundColor: json['backgroundColor'] ?? 0xFFFFFBFE,
     surfaceColor: json['surfaceColor'] ?? 0xFFFFFBFE,
     isDark: json['isDark'] ?? false,
+    amoled: json['amoled'] ?? false,
   );
   Map<String, dynamic> toJson() => {
     'id': id, 'name': name, 'primaryColor': primaryColor,
     'secondaryColor': secondaryColor, 'backgroundColor': backgroundColor,
-    'surfaceColor': surfaceColor, 'isDark': isDark,
+    'surfaceColor': surfaceColor, 'isDark': isDark, 'amoled': amoled,
   };
 }
 
@@ -65,7 +72,7 @@ class _ThemeManageScreenState extends State<ThemeManageScreen> {
     CustomTheme(id: 'blue', name: '蓝色主题', primaryColor: 0xFF1976D2, secondaryColor: 0xFF0288D1, backgroundColor: 0xFFF5F9FF, surfaceColor: 0xFFFFFFFF),
     CustomTheme(id: 'green', name: '绿色主题', primaryColor: 0xFF2E7D32, secondaryColor: 0xFF00796B, backgroundColor: 0xFFF1F8E9, surfaceColor: 0xFFFFFFFF),
     CustomTheme(id: 'orange', name: '橙色主题', primaryColor: 0xFFE64A19, secondaryColor: 0xFFF57C00, backgroundColor: 0xFFFFF3E0, surfaceColor: 0xFFFFFFFF),
-    CustomTheme(id: 'dark', name: '深色主题', primaryColor: 0xFFBB86FC, secondaryColor: 0xFF03DAC6, backgroundColor: 0xFF121212, surfaceColor: 0xFF1E1E1E, isDark: true),
+    CustomTheme(id: 'dark', name: '深色主题', primaryColor: 0xFFBB86FC, secondaryColor: 0xFF03DAC6, backgroundColor: 0xFF121212, surfaceColor: 0xFF1E1E1E, isDark: true, amoled: true),
   ];
   final List<CustomTheme> _custom = [];
   String _selectedThemeId = 'default';
@@ -75,6 +82,16 @@ class _ThemeManageScreenState extends State<ThemeManageScreen> {
   bool _amoled = false;
   double _foregroundOpacity = 1.0;
   bool _loaded = false;
+
+  // 补齐项：系统栏沉浸 / 顶栏阴影 / 字体缩放 / 主题分类 / 书架背景
+  double _fontScale = 1.0;
+  int _themeCategory = 0; // 0 全部 1 明亮 2 黑暗 3 AMOLED
+  // 日/夜主题快照（saveDayTheme / saveNightTheme 保存，切换模式时自动应用）
+  Map<String, dynamic>? _savedDayTheme;
+  Map<String, dynamic>? _savedNightTheme;
+  static const String _kSavedDayTheme = 'theme_saved_day';
+  static const String _kSavedNightTheme = 'theme_saved_night';
+  static const String _kThemeCategory = 'theme_category';
 
   @override
   void initState() {
@@ -90,6 +107,10 @@ class _ThemeManageScreenState extends State<ThemeManageScreen> {
     final savedId = prefs.getString('theme_selected_id') ?? '';
     final seed = prefs.getInt('seed_color') ?? 0xFF6750A4;
     final modeIdx = prefs.getInt('theme_mode') ?? 0;
+    // 全局持久化配置（透明状态栏/沉浸导航栏/顶栏阴影/书架背景等）
+    AppPrefs.loadFrom(prefs);
+    final dayRaw = prefs.getString(_kSavedDayTheme);
+    final nightRaw = prefs.getString(_kSavedNightTheme);
     if (!mounted) return;
     setState(() {
       _custom
@@ -98,11 +119,24 @@ class _ThemeManageScreenState extends State<ThemeManageScreen> {
       _themeMode = ThemeMode.values[modeIdx.clamp(0, ThemeMode.values.length - 1)];
       _amoled = prefs.getBool('theme_amoled') ?? false;
       _foregroundOpacity = prefs.getDouble('theme_foregroundOpacity') ?? 1.0;
+      _fontScale = (prefs.getDouble('fontScale') ?? 1.0).clamp(0.8, 1.4);
+      _themeCategory = prefs.getInt(_kThemeCategory) ?? 0;
+      _savedDayTheme = dayRaw == null ? null : jsonDecode(dayRaw) as Map<String, dynamic>;
+      _savedNightTheme = nightRaw == null ? null : jsonDecode(nightRaw) as Map<String, dynamic>;
       _selectedThemeId = savedId.isNotEmpty && _all.any((t) => t.id == savedId)
           ? savedId
           : _matchSeed(seed);
       _loaded = true;
     });
+    _applySystemUi();
+  }
+
+  /// 应用系统栏沉浸效果（透明状态栏 / 沉浸式导航栏）
+  void _applySystemUi() {
+    SystemChrome.setSystemUIOverlayStyle(SystemUiOverlayStyle(
+      statusBarColor: AppPrefs.transparentStatusBar ? Colors.transparent : null,
+      systemNavigationBarColor: AppPrefs.immNavigationBar ? Colors.transparent : null,
+    ));
   }
 
   /// 持久化选中项；无显式记录时按当前主色匹配内置主题
@@ -153,6 +187,92 @@ class _ThemeManageScreenState extends State<ThemeManageScreen> {
     setState(() => _themeMode = mode);
     final appTheme = context.read<AppTheme>();
     await appTheme.setThemeMode(mode);
+    // saveDayTheme / saveNightTheme：切换到日间/夜间时自动应用对应保存的快照
+    final snap = mode == ThemeMode.light
+        ? _savedDayTheme
+        : mode == ThemeMode.dark
+            ? _savedNightTheme
+            : null;
+    if (snap != null) {
+      await _applyThemeSnapshot(snap);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: Text('已应用保存的${mode == ThemeMode.light ? '日间' : '夜间'}主题')));
+      }
+    }
+  }
+
+  /// 保存当前主题配置为日间/夜间主题快照
+  Future<void> _saveThemeSnapshot({required bool day}) async {
+    final appTheme = context.read<AppTheme>();
+    final snap = <String, dynamic>{
+      'seed': appTheme.seedColor.value,
+      'amoled': appTheme.amoled,
+      'opacity': appTheme.foregroundOpacity,
+      'fontScale': appTheme.fontScale,
+    };
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(day ? _kSavedDayTheme : _kSavedNightTheme, jsonEncode(snap));
+    if (!mounted) return;
+    setState(() {
+      if (day) {
+        _savedDayTheme = snap;
+      } else {
+        _savedNightTheme = snap;
+      }
+    });
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(day ? '已保存日间主题' : '已保存夜间主题')));
+  }
+
+  /// 应用日/夜主题快照（主色 / AMOLED / 前景不透明度 / 字体缩放）
+  Future<void> _applyThemeSnapshot(Map<String, dynamic> snap) async {
+    final appTheme = context.read<AppTheme>();
+    await appTheme.setSeedColor(Color((snap['seed'] as int?) ?? 0xFF6750A4));
+    await appTheme.setAmoled(snap['amoled'] == true);
+    await appTheme.setForegroundOpacity((snap['opacity'] as num?)?.toDouble() ?? 0.0);
+    await appTheme.setFontScale((snap['fontScale'] as num?)?.toDouble() ?? 1.0);
+    if (!mounted) return;
+    setState(() {
+      _amoled = snap['amoled'] == true;
+      _foregroundOpacity = (snap['opacity'] as num?)?.toDouble() ?? 0.0;
+      _fontScale = ((snap['fontScale'] as num?)?.toDouble() ?? 1.0).clamp(0.8, 1.4);
+    });
+  }
+
+  /// 主题分类（全部/明亮/黑暗/AMOLED）切换
+  Future<void> _setThemeCategory(int category) async {
+    setState(() => _themeCategory = category);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt(_kThemeCategory, category);
+  }
+
+  /// 自定义主题是否匹配当前分类
+  bool _themeMatchesCategory(CustomTheme t) {
+    switch (_themeCategory) {
+      case 1:
+        return !t.isDark;
+      case 2:
+        return t.isDark;
+      case 3:
+        return t.isDark && t.amoled;
+      default:
+        return true;
+    }
+  }
+
+  /// 预设主色是否匹配当前分类（按亮度粗分：暗色/适合 AMOLED）
+  bool _presetMatchesCategory(_Preset p) {
+    final lum = Color(p.primary).computeLuminance();
+    switch (_themeCategory) {
+      case 1:
+        return lum >= 0.4;
+      case 2:
+        return lum < 0.4;
+      case 3:
+        return lum < 0.1;
+      default:
+        return true;
+    }
   }
 
   Future<void> _setAmoled(bool v) async {
@@ -186,6 +306,7 @@ class _ThemeManageScreenState extends State<ThemeManageScreen> {
       secondaryColor: color.value,
       backgroundColor: Color.alphaBlend(color.withOpacity(0.08), Colors.white).value,
       surfaceColor: Colors.white.value,
+      amoled: color.computeLuminance() < 0.1,
     );
     setState(() => _custom.add(t));
     _persistCustom().then((_) => _apply(t));
@@ -196,6 +317,7 @@ class _ThemeManageScreenState extends State<ThemeManageScreen> {
   void _showAddTheme() {
     final nameController = TextEditingController();
     int primary = 0xFF6750A4, bg = 0xFFFFFBFE;
+    bool amoled = false;
     showDialog(context: context, builder: (context) => StatefulBuilder(builder: (context, setD) => AlertDialog(
       title: const Text('新建主题'),
       content: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, children: [
@@ -226,6 +348,14 @@ class _ThemeManageScreenState extends State<ThemeManageScreen> {
         ),
         const SizedBox(height: 12),
         _colorPresetsRow(bg, (c) => setD(() => bg = c)),
+        SwitchListTile(
+          dense: true,
+          contentPadding: EdgeInsets.zero,
+          title: const Text('适合 AMOLED'),
+          subtitle: const Text('标记后可在「AMOLED」主题分类中筛选', style: TextStyle(fontSize: 11)),
+          value: amoled,
+          onChanged: (v) => setD(() => amoled = v),
+        ),
       ])),
       actions: [
         TextButton(onPressed: () => Navigator.pop(context), child: const Text('取消')),
@@ -235,6 +365,7 @@ class _ThemeManageScreenState extends State<ThemeManageScreen> {
             id: DateTime.now().millisecondsSinceEpoch.toString(),
             name: nameController.text, primaryColor: primary,
             secondaryColor: primary, backgroundColor: bg, surfaceColor: bg,
+            isDark: Color(bg).computeLuminance() < 0.4, amoled: amoled,
           );
           setState(() => _custom.add(t));
           _persistCustom().then((_) => _apply(t));
@@ -255,11 +386,11 @@ class _ThemeManageScreenState extends State<ThemeManageScreen> {
           Text('主题: ${theme.name}', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
           const SizedBox(height: 16),
           _colorPickerRow('主色调', theme.primaryColor, (c) {
-            final nt = CustomTheme(id: theme.id, name: theme.name, primaryColor: c, secondaryColor: theme.secondaryColor, backgroundColor: theme.backgroundColor, surfaceColor: theme.surfaceColor, isDark: theme.isDark);
+            final nt = CustomTheme(id: theme.id, name: theme.name, primaryColor: c, secondaryColor: theme.secondaryColor, backgroundColor: theme.backgroundColor, surfaceColor: theme.surfaceColor, isDark: theme.isDark, amoled: theme.amoled);
             setSheet(() => _updateTheme(theme.id, nt));
           }),
           _colorPickerRow('背景色', theme.backgroundColor, (c) {
-            final nt = CustomTheme(id: theme.id, name: theme.name, primaryColor: theme.primaryColor, secondaryColor: theme.secondaryColor, backgroundColor: c, surfaceColor: c, isDark: theme.isDark);
+            final nt = CustomTheme(id: theme.id, name: theme.name, primaryColor: theme.primaryColor, secondaryColor: theme.secondaryColor, backgroundColor: c, surfaceColor: c, isDark: theme.isDark, amoled: theme.amoled);
             setSheet(() => _updateTheme(theme.id, nt));
           }),
           const SizedBox(height: 16),
@@ -329,16 +460,24 @@ class _ThemeManageScreenState extends State<ThemeManageScreen> {
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
+    final visibleThemes = _all.where(_themeMatchesCategory).toList();
     return Scaffold(
-      appBar: AppBar(title: const Text('主题管理')),
+      // 顶栏阴影实时反映 barElevation 配置
+      appBar: AppBar(title: const Text('主题管理'), elevation: AppPrefs.barElevation.toDouble()),
       body: ListView(children: [
         _buildAppearanceSection(cs),
+        _buildBookshelfBackgroundSection(cs),
         _buildPresetSection(),
         Padding(
           padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
           child: Text('我的主题', style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: cs.primary)),
         ),
-        ..._all.map((theme) {
+        if (visibleThemes.isEmpty)
+          const Padding(
+            padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            child: Text('当前分类下没有主题', style: TextStyle(fontSize: 12, color: Colors.grey)),
+          ),
+        ...visibleThemes.map((theme) {
           final selected = _selectedThemeId == theme.id;
           return Padding(
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
@@ -414,6 +553,82 @@ class _ThemeManageScreenState extends State<ThemeManageScreen> {
           onChanged: _setForegroundOpacity,
         ),
       ),
+      // 界面字体缩放（AppTheme 消费，全局生效）
+      ListTile(
+        dense: true,
+        title: Text('界面字体缩放: ${(_fontScale * 100).round()}%'),
+        subtitle: Slider(
+          value: _fontScale,
+          min: 0.8, max: 1.4, divisions: 12,
+          label: '${(_fontScale * 100).round()}%',
+          onChanged: (v) => setState(() => _fontScale = v),
+          onChangeEnd: (v) => context.read<AppTheme>().setFontScale(v),
+        ),
+      ),
+      SwitchListTile(
+        dense: true,
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16),
+        title: const Text('透明状态栏', style: TextStyle(fontSize: 14)),
+        subtitle: const Text('状态栏透明，内容延伸到状态栏下方（transparentStatusBar）', style: TextStyle(fontSize: 11)),
+        value: AppPrefs.transparentStatusBar,
+        onChanged: (v) {
+          setState(() => AppPrefs.transparentStatusBar = v);
+          _applySystemUi();
+        },
+      ),
+      SwitchListTile(
+        dense: true,
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16),
+        title: const Text('沉浸式导航栏', style: TextStyle(fontSize: 14)),
+        subtitle: const Text('底部系统导航栏透明（immNavigationBar）', style: TextStyle(fontSize: 11)),
+        value: AppPrefs.immNavigationBar,
+        onChanged: (v) {
+          setState(() => AppPrefs.immNavigationBar = v);
+          _applySystemUi();
+        },
+      ),
+      ListTile(
+        dense: true,
+        title: Text('顶栏阴影: ${AppPrefs.barElevation}'),
+        subtitle: Slider(
+          value: AppPrefs.barElevation.toDouble(),
+          min: 0, max: 8, divisions: 8,
+          label: '${AppPrefs.barElevation}',
+          onChanged: (v) => setState(() => AppPrefs.barElevation = v.toInt()),
+        ),
+      ),
+      ListTile(
+        dense: true,
+        title: const Text('保存日间主题'),
+        subtitle: Text(_savedDayTheme == null ? '保存当前主色/AMOLED/不透明度/字体缩放，切换到浅色时自动应用' : '已保存，切换浅色时自动应用', style: const TextStyle(fontSize: 11)),
+        trailing: const Icon(Icons.save_outlined),
+        onTap: () => _saveThemeSnapshot(day: true),
+      ),
+      ListTile(
+        dense: true,
+        title: const Text('保存夜间主题'),
+        subtitle: Text(_savedNightTheme == null ? '保存当前主色/AMOLED/不透明度/字体缩放，切换到深色时自动应用' : '已保存，切换深色时自动应用', style: const TextStyle(fontSize: 11)),
+        trailing: const Icon(Icons.save_outlined),
+        onTap: () => _saveThemeSnapshot(day: false),
+      ),
+      // 主题分类：全部 / 明亮 / 黑暗 / AMOLED
+      Padding(
+        padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+        child: Text('主题分类', style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: cs.primary)),
+      ),
+      Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 12),
+        child: SegmentedButton<int>(
+          segments: const [
+            ButtonSegment(value: 0, label: Text('全部')),
+            ButtonSegment(value: 1, label: Text('明亮')),
+            ButtonSegment(value: 2, label: Text('黑暗')),
+            ButtonSegment(value: 3, label: Text('AMOLED')),
+          ],
+          selected: {_themeCategory},
+          onSelectionChanged: (set) => _setThemeCategory(set.first),
+        ),
+      ),
       if (_loaded && _selectedThemeId.startsWith('preset_'))
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
@@ -422,18 +637,112 @@ class _ThemeManageScreenState extends State<ThemeManageScreen> {
     ]);
   }
 
+  /// 书架背景：背景图（本地图片）与底部背景色（对齐原版 backgroundImage / colorBottomBackground）
+  Widget _buildBookshelfBackgroundSection(ColorScheme cs) {
+    final hasImage = AppPrefs.backgroundImage.isNotEmpty;
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      Padding(
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+        child: Text('书架背景', style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: cs.primary)),
+      ),
+      ListTile(
+        dense: true,
+        leading: const Icon(Icons.image_outlined),
+        title: const Text('背景图片'),
+        subtitle: Text(hasImage ? AppPrefs.backgroundImage : '未设置', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 11)),
+        trailing: hasImage
+            ? IconButton(tooltip: '清除', icon: const Icon(Icons.clear), onPressed: () => setState(() => AppPrefs.backgroundImage = ''))
+            : const Icon(Icons.add_photo_alternate),
+        onTap: _pickBackgroundImage,
+      ),
+      if (hasImage)
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(12),
+            child: SizedBox(
+              height: 120,
+              width: double.infinity,
+              child: Image.file(
+                File(AppPrefs.backgroundImage),
+                fit: BoxFit.cover,
+                errorBuilder: (_, __, ___) => Container(
+                  color: Colors.grey.shade300,
+                  child: const Center(child: Icon(Icons.broken_image_outlined)),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ListTile(
+        dense: true,
+        leading: const Icon(Icons.palette_outlined),
+        title: const Text('底部背景色'),
+        subtitle: Text(AppPrefs.colorBottomBackground == 0 ? '未设置，使用主题默认' : _toHex(AppPrefs.colorBottomBackground), style: const TextStyle(fontSize: 11)),
+        trailing: CircleAvatar(
+          backgroundColor: AppPrefs.colorBottomBackground == 0 ? Colors.grey.shade400 : Color(AppPrefs.colorBottomBackground),
+          radius: 14,
+        ),
+        onTap: _pickBottomBackground,
+      ),
+    ]);
+  }
+
+  /// 选择书架背景图（本地图片文件，存路径）
+  Future<void> _pickBackgroundImage() async {
+    final res = await FilePicker.platform.pickFiles(type: FileType.image);
+    final path = res?.files.single.path;
+    if (path == null) return;
+    setState(() => AppPrefs.backgroundImage = path);
+  }
+
+  /// 选择底部背景色（0 = 恢复主题默认）
+  Future<void> _pickBottomBackground() async {
+    final picked = await showDialog<int>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('底部背景色'),
+        content: Wrap(spacing: 12, runSpacing: 12, children: [
+          ..._presets.map((p) {
+            final selected = AppPrefs.colorBottomBackground == p.primary;
+            return GestureDetector(
+              onTap: () => Navigator.pop(ctx, p.primary),
+              child: Container(
+                width: 40, height: 40,
+                decoration: BoxDecoration(color: Color(p.primary), shape: BoxShape.circle,
+                  border: Border.all(color: selected ? Colors.black : Colors.grey, width: selected ? 3 : 1)),
+              ),
+            );
+          }),
+        ]),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('取消')),
+          TextButton(onPressed: () => Navigator.pop(ctx, 0), child: const Text('恢复默认')),
+        ],
+      ),
+    );
+    if (picked == null) return;
+    setState(() => AppPrefs.colorBottomBackground = picked);
+  }
+
   Widget _buildPresetSection() {
+    final visiblePresets = _presets.where(_presetMatchesCategory).toList();
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       Padding(
         padding: const EdgeInsets.fromLTRB(16, 20, 16, 8),
-        child: Text('预设主题色（${_presets.length}）', style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Theme.of(context).colorScheme.primary)),
+        child: Text('预设主题色（${visiblePresets.length}/${_presets.length}）', style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Theme.of(context).colorScheme.primary)),
       ),
+      if (visiblePresets.isEmpty)
+        const Padding(
+          padding: EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+          child: Text('当前分类下没有预设主色', style: TextStyle(fontSize: 12, color: Colors.grey)),
+        ),
       Padding(
         padding: const EdgeInsets.symmetric(horizontal: 12),
         child: Wrap(
           spacing: 10,
           runSpacing: 10,
-          children: _presets.map((p) {
+          children: visiblePresets.map((p) {
             final selected = _selectedThemeId == 'preset_${p.primary}';
             return GestureDetector(
               onTap: () => _applyPreset(p),

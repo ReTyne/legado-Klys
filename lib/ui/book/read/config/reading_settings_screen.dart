@@ -116,6 +116,9 @@ class _ReadingSettingsScreenState extends State<ReadingSettingsScreen> with Sing
         ListTile(title: const Text('词间距'), trailing: Slider(value: config.wordSpacing, min: 0, max: 20, divisions: 20, label: config.wordSpacing.toStringAsFixed(1), onChanged: (v) => context.read<ReadProvider>().updateConfig((c) => c.wordSpacing = v))),
         ListTile(title: const Text('阴影等级'), trailing: DropdownButton<int>(value: config.shadowLevel, items: List.generate(4, (i) => DropdownMenuItem(value: i, child: Text('等级$i'))), onChanged: (v) => context.read<ReadProvider>().updateConfig((c) => c.shadowLevel = v ?? 0))),
         ListTile(title: const Text('下划线'), trailing: DropdownButton<int>(value: config.underlineType, items: const [DropdownMenuItem(value: 0, child: Text('无')), DropdownMenuItem(value: 1, child: Text('实线')), DropdownMenuItem(value: 2, child: Text('虚线')), DropdownMenuItem(value: 3, child: Text('波浪线')), DropdownMenuItem(value: 4, child: Text('双线'))], onChanged: (v) => context.read<ReadProvider>().updateConfig((c) => c.underlineType = v ?? 0))),
+        SwitchListTile(title: const Text('正文带到行高'), subtitle: const Text('正文文本高度计入行距计算', style: TextStyle(fontSize: 11)), value: config.readBodyToLh, onChanged: (v) => context.read<ReadProvider>().updateConfig((c) => c.readBodyToLh = v)),
+        SwitchListTile(title: const Text('特殊样式适配'), subtitle: const Text('兼容书源中的特殊排版样式', style: TextStyle(fontSize: 11)), value: config.adaptSpecialStyle, onChanged: (v) => context.read<ReadProvider>().updateConfig((c) => c.adaptSpecialStyle = v)),
+        SwitchListTile(title: const Text('渲染优化'), subtitle: const Text('优化正文渲染性能', style: TextStyle(fontSize: 11)), value: config.optimizeRender, onChanged: (v) => context.read<ReadProvider>().updateConfig((c) => c.optimizeRender = v)),
         const Divider(),
         ListTile(title: const Text('左边距'), trailing: Slider(value: config.paddingLeft.toDouble(), min: 0, max: 64, divisions: 16, label: '${config.paddingLeft}', onChanged: (v) => context.read<ReadProvider>().updateConfig((c) => c.paddingLeft = v.toInt()))),
         ListTile(title: const Text('右边距'), trailing: Slider(value: config.paddingRight.toDouble(), min: 0, max: 64, divisions: 16, label: '${config.paddingRight}', onChanged: (v) => context.read<ReadProvider>().updateConfig((c) => c.paddingRight = v.toInt()))),
@@ -139,6 +142,13 @@ class _ReadingSettingsScreenState extends State<ReadingSettingsScreen> with Sing
         SwitchListTile(title: const Text('模拟阅读'), value: config.simulatedReading, onChanged: (v) => context.read<ReadProvider>().updateConfig((c) => c.simulatedReading = v)),
         SwitchListTile(title: const Text('上下颠倒'), value: config.invertPage, onChanged: (v) => context.read<ReadProvider>().updateConfig((c) => c.invertPage = v)),
         SwitchListTile(title: const Text('竖排(横屏竖握)'), value: config.verticalLayout == 1, onChanged: (v) => context.read<ReadProvider>().updateConfig((c) => c.verticalLayout = v ? 1 : 0)),
+        ListTile(title: const Text('双水平页'), trailing: DropdownButton<int>(value: config.doubleHorizontalPage, items: const [DropdownMenuItem(value: 0, child: Text('单页')), DropdownMenuItem(value: 1, child: Text('双水平页')), DropdownMenuItem(value: 2, child: Text('横屏双页'))], onChanged: (v) => context.read<ReadProvider>().updateConfig((c) => c.doubleHorizontalPage = v ?? 0))),
+        SwitchListTile(title: const Text('滚动无动画'), subtitle: const Text('滚动翻页时禁用平滑动画', style: TextStyle(fontSize: 11)), value: config.noAnimScrollPage, onChanged: (v) => context.read<ReadProvider>().updateConfig((c) => c.noAnimScrollPage = v)),
+        SwitchListTile(title: const Text('播放时音量键翻页'), subtitle: const Text('朗读播放中音量键仍用于翻页', style: TextStyle(fontSize: 11)), value: config.volumeKeyPageOnPlay, onChanged: (v) => context.read<ReadProvider>().updateConfig((c) => c.volumeKeyPageOnPlay = v)),
+        SwitchListTile(title: const Text('长按翻页'), subtitle: const Text('长按音量键持续翻页', style: TextStyle(fontSize: 11)), value: config.keyPageOnLongPress, onChanged: (v) => context.read<ReadProvider>().updateConfig((c) => c.keyPageOnLongPress = v)),
+        SwitchListTile(title: const Text('禁用返回键'), subtitle: const Text('阅读界面不响应系统返回键', style: TextStyle(fontSize: 11)), value: config.disableReturnKey, onChanged: (v) => context.read<ReadProvider>().updateConfig((c) => c.disableReturnKey = v)),
+        ListTile(title: Text('滑动灵敏度: ${config.pageTouchSlop}'), subtitle: Slider(value: config.pageTouchSlop.toDouble(), min: 0, max: 20, divisions: 20, label: '${config.pageTouchSlop}', onChanged: (v) => context.read<ReadProvider>().updateConfig((c) => c.pageTouchSlop = v.toInt()))),
+        ListTile(title: const Text('自定义按键'), subtitle: Text(config.customPageKey ?? '未设置', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 11)), trailing: const Icon(Icons.edit), onTap: () => _showPageKeyEditor()),
       ],
     );
   }
@@ -169,6 +179,9 @@ class _ReadingSettingsScreenState extends State<ReadingSettingsScreen> with Sing
             if (path != null) context.read<ReadProvider>().updateConfig((c) => c.bgImage = path);
           },
         ),
+        SwitchListTile(title: const Text('标题附加信息'), subtitle: const Text('阅读标题栏显示章节附加信息', style: TextStyle(fontSize: 11)), value: config.showReadTitleAddition, onChanged: (v) => context.read<ReadProvider>().updateConfig((c) => c.showReadTitleAddition = v)),
+        SwitchListTile(title: const Text('刘海屏 padding'), subtitle: const Text('为刘海屏/挖孔屏预留安全边距', style: TextStyle(fontSize: 11)), value: config.paddingDisplayCutouts, onChanged: (v) => context.read<ReadProvider>().updateConfig((c) => c.paddingDisplayCutouts = v)),
+        ListTile(title: const Text('图片点击方式'), trailing: DropdownButton<int>(value: config.clickImgWay, items: const [DropdownMenuItem(value: 0, child: Text('无')), DropdownMenuItem(value: 1, child: Text('预览')), DropdownMenuItem(value: 2, child: Text('浏览器'))], onChanged: (v) => context.read<ReadProvider>().updateConfig((c) => c.clickImgWay = v ?? 0))),
       ],
     );
   }
@@ -186,6 +199,15 @@ class _ReadingSettingsScreenState extends State<ReadingSettingsScreen> with Sing
         ListTile(title: const Text('编码格式'), trailing: Text(config.charset ?? '自动'), onTap: () => _showCharsetPicker()),
         ListTile(title: const Text('预下载章节数'), trailing: DropdownButton<int>(value: config.preDownloadCount, items: List.generate(6, (i) => DropdownMenuItem(value: i, child: Text(i == 0 ? '不预下载' : '$i章'))), onChanged: (v) => context.read<ReadProvider>().updateConfig((c) => c.preDownloadCount = v ?? 0))),
         SwitchListTile(title: const Text('显示时间电量'), value: config.showTimeBattery, onChanged: (v) => context.read<ReadProvider>().updateConfig((c) => c.showTimeBattery = v)),
+        SwitchListTile(title: const Text('自动换源'), subtitle: const Text('正文失效时自动切换可用书源', style: TextStyle(fontSize: 11)), value: config.autoChangeSource, onChanged: (v) => context.read<ReadProvider>().updateConfig((c) => c.autoChangeSource = v)),
+        SwitchListTile(title: const Text('阅读栏样式跟随页面'), subtitle: const Text('阅读菜单栏背景跟随当前阅读页背景', style: TextStyle(fontSize: 11)), value: config.readBarStyleFollowPage, onChanged: (v) => context.read<ReadProvider>().updateConfig((c) => c.readBarStyleFollowPage = v)),
+        const Divider(),
+        SwitchListTile(title: const Text('按页朗读'), subtitle: const Text('以页为单位朗读而非整章', style: TextStyle(fontSize: 11)), value: config.readAloudByPage, onChanged: (v) => context.read<ReadProvider>().updateConfig((c) => c.readAloudByPage = v)),
+        SwitchListTile(title: const Text('来电暂停朗读'), value: config.pauseReadAloudWhilePhoneCalls, onChanged: (v) => context.read<ReadProvider>().updateConfig((c) => c.pauseReadAloudWhilePhoneCalls = v)),
+        SwitchListTile(title: const Text('媒体键下一章'), subtitle: const Text('耳机媒体键双击跳到下一章', style: TextStyle(fontSize: 11)), value: config.mediaButtonPerNext, onChanged: (v) => context.read<ReadProvider>().updateConfig((c) => c.mediaButtonPerNext = v)),
+        SwitchListTile(title: const Text('流式朗读音频'), subtitle: const Text('边合成边播放，减少等待', style: TextStyle(fontSize: 11)), value: config.streamReadAloudAudio, onChanged: (v) => context.read<ReadProvider>().updateConfig((c) => c.streamReadAloudAudio = v)),
+        SwitchListTile(title: const Text('系统 TTS 跟随系统语速'), value: config.sysTtsConfig, onChanged: (v) => context.read<ReadProvider>().updateConfig((c) => c.sysTtsConfig = v)),
+        SwitchListTile(title: const Text('朗读跟随系统语速'), value: config.ttsFlowSys, onChanged: (v) => context.read<ReadProvider>().updateConfig((c) => c.ttsFlowSys = v)),
         const Divider(),
         SwitchListTile(title: const Text('自定义头部'), value: config.customHeaderEnabled, onChanged: (v) => context.read<ReadProvider>().updateConfig((c) => c.customHeaderEnabled = v)),
         if (config.customHeaderEnabled) ListTile(title: const Text('头部文字'), trailing: const Icon(Icons.edit), onTap: () => _showHeaderEditor()),
@@ -230,6 +252,23 @@ class _ReadingSettingsScreenState extends State<ReadingSettingsScreen> with Sing
   void _showFooterEditor() {
     final controller = TextEditingController(text: context.read<ReadProvider>().config.footerString ?? '');
     showDialog(context: context, builder: (context) => AlertDialog(title: const Text('自定义底部'), content: TextField(controller: controller, maxLines: 2), actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('取消')), FilledButton(onPressed: () { context.read<ReadProvider>().updateConfig((c) => c.footerString = controller.text); Navigator.pop(context); }, child: const Text('保存'))]));
+  }
+
+  /// 自定义按键 JSON 编辑器（customPageKey）
+  void _showPageKeyEditor() {
+    final controller = TextEditingController(text: context.read<ReadProvider>().config.customPageKey ?? '');
+    showDialog(context: context, builder: (context) => AlertDialog(
+      title: const Text('自定义按键'),
+      content: TextField(controller: controller, maxLines: 6, decoration: const InputDecoration(hintText: '{"prevPage":["KEYCODE_PAGE_UP"],"nextPage":["KEYCODE_PAGE_DOWN"]}')),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(context), child: const Text('取消')),
+        FilledButton(onPressed: () {
+          final text = controller.text.trim();
+          context.read<ReadProvider>().updateConfig((c) => c.customPageKey = text.isEmpty ? null : text);
+          Navigator.pop(context);
+        }, child: const Text('保存')),
+      ],
+    ));
   }
 
   /// 页脚三槽位选择弹窗：左 / 中 / 右各自从内容枚举中选择

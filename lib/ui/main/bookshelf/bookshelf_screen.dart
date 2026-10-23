@@ -1,15 +1,21 @@
+import 'dart:async';
+import 'dart:convert';
+import 'dart:io';
+import 'package:dio/dio.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'dart:io';
 import 'package:share_plus/share_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:legado_md3/data/model/book.dart';
+import 'package:legado_md3/data/model/book_source.dart';
 import 'package:legado_md3/data/model/bookmark.dart';
 import 'package:legado_md3/di/book_provider.dart';
 import 'package:legado_md3/data/local/app_database.dart';
 import 'package:legado_md3/help/source/source_engine.dart';
 import 'package:legado_md3/help/storage/export_book_service.dart';
 import 'package:legado_md3/ui/book/detail/book_detail_screen.dart';
+import 'package:legado_md3/ui/book/import/remote_book_screen.dart';
 import 'package:legado_md3/ui/book/reader_router.dart';
 import 'package:legado_md3/ui/book/local_import_screen.dart';
 import 'package:legado_md3/ui/book/search/search_screen.dart';
@@ -391,6 +397,11 @@ class _BookshelfScreenState extends State<BookshelfScreen> {
             const Divider(),
             ListTile(leading: const Icon(Icons.folder_open), title: const Text('本地导入'), onTap: () { Navigator.pop(context); Navigator.push(context, MaterialPageRoute(builder: (_) => const LocalImportScreen())); }),
             ListTile(leading: const Icon(Icons.cloud_download), title: const Text('书源管理/网络导入'), onTap: () { Navigator.pop(context); Navigator.push(context, MaterialPageRoute(builder: (_) => const SourceManageScreen())); }),
+            ListTile(leading: const Icon(Icons.link), title: const Text('URL添加书籍'), onTap: () { Navigator.pop(context); _showAddBookByUrlDialog(); }),
+            ListTile(leading: const Icon(Icons.cloud_download_outlined), title: const Text('远程书籍'), onTap: () { Navigator.pop(context); Navigator.push(context, MaterialPageRoute(builder: (_) => const RemoteBookScreen())); }),
+            const Divider(),
+            ListTile(leading: const Icon(Icons.ios_share), title: const Text('导出书架'), onTap: () { Navigator.pop(context); _exportBookshelf(); }),
+            ListTile(leading: const Icon(Icons.file_download_outlined), title: const Text('导入书架'), onTap: () { Navigator.pop(context); _showImportBookshelfDialog(); }),
             const Divider(),
             ListTile(leading: const Icon(Icons.view_module), title: const Text('布局设置'), onTap: () async {
               Navigator.pop(context);
@@ -429,6 +440,443 @@ class _BookshelfScreenState extends State<BookshelfScreen> {
       ),
     );
   }
+
+  /// URL 添加书籍对话框（对齐原版 menu_add_url）
+  void _showAddBookByUrlDialog() {
+    final controller = TextEditingController();
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('URL添加书籍'),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          minLines: 1,
+          maxLines: 4,
+          decoration: const InputDecoration(
+            hintText: '书籍链接（每行一个）\n将按书源的书籍地址规则自动匹配',
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text('取消')),
+          FilledButton(
+            onPressed: () {
+              final text = controller.text;
+              Navigator.pop(context);
+              _addBookByUrl(text);
+            },
+            child: const Text('添加'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// URL 添加书籍：按 bookUrlPattern 匹配书源 → 抓取详情/目录 → 入库并刷新书架
+  Future<void> _addBookByUrl(String raw) async {
+    final urls = raw
+        .split(RegExp(r'[\r\n]+'))
+        .map((e) => e.trim())
+        .where((e) => e.isNotEmpty)
+        .toList();
+    if (urls.isEmpty) return;
+    final provider = Provider.of<BookProvider>(context, listen: false);
+    final sources = await _db.getAllSources(enabled: true);
+    int done = 0, ok = 0, fail = 0;
+    bool started = false;
+    await showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (d) => StatefulBuilder(builder: (d, setP) {
+        if (!started) {
+          started = true;
+          _addBooksByUrl(urls, sources, provider, (d2, ok2, fail2) {
+            done = d2;
+            ok = ok2;
+            fail = fail2;
+            setP(() {});
+          }).then((_) {
+            if (mounted) Navigator.pop(d);
+          });
+        }
+        return AlertDialog(
+          title: const Text('URL添加书籍'),
+          content: Column(mainAxisSize: MainAxisSize.min, children: [
+            LinearProgressIndicator(value: done / urls.length),
+            const SizedBox(height: 12),
+            Text('进度 $done/${urls.length}，成功 $ok，失败 $fail'),
+          ]),
+        );
+      }),
+    );
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(ok > 0 ? '添加完成：成功 $ok 本，失败 $fail 本' : '添加失败：没有书源匹配这些链接')));
+  }
+
+  Future<void> _addBooksByUrl(List<String> urls, List<BookSource> sources,
+      BookProvider provider,
+      void Function(int done, int ok, int fail) onProgress) async {
+    int done = 0, ok = 0, fail = 0;
+    for (final url in urls) {
+      // 按书籍地址规则（bookUrlPattern）匹配第一个可用书源
+      BookSource? matched;
+      for (final s in sources) {
+        try {
+          if (_engine.matchBookUrl(s, url)) {
+            matched = s;
+            break;
+          }
+        } catch (_) {}
+      }
+      if (matched == null) {
+        fail++;
+        done++;
+        onProgress(done, ok, fail);
+        continue;
+      }
+      try {
+        final book = await _engine
+            .getBookInfo(matched, url)
+            .timeout(const Duration(seconds: 30));
+        if (book == null || book.name.isEmpty) {
+          fail++;
+          done++;
+          onProgress(done, ok, fail);
+          continue;
+        }
+        book.bookUrl = url;
+        book.origin = matched.bookSourceUrl;
+        book.originName = matched.bookSourceName;
+        book.noteUrl = (book.noteUrl == null || book.noteUrl!.isEmpty) ? url : book.noteUrl;
+        book.lastCheckTime = DateTime.now().millisecondsSinceEpoch;
+        final existing = await _db.getBook(book.name, book.author);
+        if (existing != null) {
+          // 书架已有该书：刷新信息但保留阅读进度与分组
+          book.durChapterIndex = existing.durChapterIndex;
+          book.durChapterPos = existing.durChapterPos;
+          book.durChapterTime = existing.durChapterTime;
+          book.group = existing.group;
+          book.order = existing.order;
+          await _db.updateBook(book);
+        } else {
+          await _db.insertBook(book);
+        }
+        // 尽力拉取目录，便于添加后立即可读
+        try {
+          final chapters = await _engine
+              .getToc(matched, book.noteUrl!, bookInfo: book.jsContext())
+              .timeout(const Duration(seconds: 30));
+          if (chapters.isNotEmpty) {
+            await _db.saveChapters(book.name, book.author, chapters);
+            book.lastChapter = chapters.last.title;
+            book.lastChapterIndex = chapters.length - 1;
+            await _db.updateBook(book);
+          }
+        } catch (_) {}
+        ok++;
+      } catch (_) {
+        fail++;
+      }
+      done++;
+      onProgress(done, ok, fail);
+    }
+    await provider.loadBooks();
+  }
+
+  /// 导出书架：书籍列表（书名/作者/分组/书源URL/目录URL/进度）生成 JSON 并分享
+  Future<void> _exportBookshelf() async {
+    final provider = Provider.of<BookProvider>(context, listen: false);
+    final books = provider.books;
+    if (books.isEmpty) {
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('书架为空，无可导出内容')));
+      return;
+    }
+    try {
+      final data = <Map<String, dynamic>>[];
+      for (final b in books) {
+        data.add({
+          'name': b.name,
+          'author': b.author,
+          'group': b.group,
+          'origin': b.origin,
+          'originName': b.originName,
+          'bookUrl': b.bookUrl,
+          'noteUrl': b.noteUrl,
+          'coverUrl': b.coverUrl,
+          'intro': b.intro,
+          'lastChapter': b.lastChapter,
+          'durChapterIndex': b.durChapterIndex,
+          'durChapterPos': b.durChapterPos,
+          'durChapterTime': b.durChapterTime,
+          'local': b.local,
+        });
+      }
+      final json = const JsonEncoder.withIndent('  ').convert(data);
+      final file = File('${Directory.systemTemp.path}/bookshelf.json');
+      await file.writeAsString(json, flush: true);
+      await Share.shareXFiles([XFile(file.path)], text: '书架导出（${books.length} 本）');
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('导出失败: $e')));
+      }
+    }
+  }
+
+  /// 导入书架对话框：支持粘贴 JSON 内容/JSON 链接，或选择本地文件
+  void _showImportBookshelfDialog() {
+    final controller = TextEditingController();
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('导入书架'),
+        content: Column(mainAxisSize: MainAxisSize.min, children: [
+          TextField(
+            controller: controller,
+            minLines: 2,
+            maxLines: 5,
+            decoration: const InputDecoration(
+              hintText: '书架 JSON 内容，或以 http(s) 开头的 JSON 链接',
+            ),
+          ),
+          Align(
+            alignment: Alignment.centerRight,
+            child: TextButton.icon(
+              onPressed: () {
+                Navigator.pop(context);
+                _pickBookshelfFile();
+              },
+              icon: const Icon(Icons.folder_open, size: 18),
+              label: const Text('选择文件'),
+            ),
+          ),
+        ]),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context), child: const Text('取消')),
+          FilledButton(
+            onPressed: () {
+              final text = controller.text.trim();
+              Navigator.pop(context);
+              _importBookshelf(text);
+            },
+            child: const Text('导入'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _pickBookshelfFile() async {
+    try {
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: ['json', 'txt'],
+      );
+      if (result == null || result.files.isEmpty || result.files.first.path == null) return;
+      final text = await File(result.files.first.path!).readAsString();
+      await _importBookshelf(text);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('导入失败: $e')));
+      }
+    }
+  }
+
+  /// 导入书架：解析 JSON（或先下载链接内容）→ 按 bookUrl/书名去重合并进书架
+  Future<void> _importBookshelf(String input) async {
+    final text = input.trim();
+    if (text.isEmpty) return;
+    String jsonText = text;
+    if (text.startsWith('http://') || text.startsWith('https://')) {
+      try {
+        final dio = Dio(BaseOptions(
+          connectTimeout: const Duration(seconds: 10),
+          receiveTimeout: const Duration(seconds: 20),
+        ));
+        final resp = await dio.get<String>(text,
+            options: Options(responseType: ResponseType.plain));
+        jsonText = (resp.data ?? '').toString();
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context)
+              .showSnackBar(SnackBar(content: Text('下载书架失败: $e')));
+        }
+        return;
+      }
+    }
+    List<dynamic> arr;
+    try {
+      final decoded = jsonDecode(jsonText);
+      if (decoded is! List) throw const FormatException('不是 JSON 数组');
+      arr = decoded;
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('解析失败: $e')));
+      }
+      return;
+    }
+    if (arr.isEmpty) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(const SnackBar(content: Text('JSON 内容为空')));
+      }
+      return;
+    }
+    final provider = Provider.of<BookProvider>(context, listen: false);
+    final sources = await _db.getAllSources(enabled: true);
+    int done = 0, added = 0, skipped = 0, failed = 0;
+    bool started = false;
+    await showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (d) => StatefulBuilder(builder: (d, setP) {
+        if (!started) {
+          started = true;
+          _importBookshelfJson(arr, sources, provider, (d2, a, s, f) {
+            done = d2;
+            added = a;
+            skipped = s;
+            failed = f;
+            setP(() {});
+          }).then((_) {
+            if (mounted) Navigator.pop(d);
+          });
+        }
+        return AlertDialog(
+          title: const Text('导入书架'),
+          content: Column(mainAxisSize: MainAxisSize.min, children: [
+            LinearProgressIndicator(value: done / arr.length),
+            const SizedBox(height: 12),
+            Text('进度 $done/${arr.length}，新增 $added，已存在 $skipped，失败 $failed'),
+          ]),
+        );
+      }),
+    );
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text('导入完成：新增 $added 本，已存在 $skipped 本，失败 $failed 本')));
+  }
+
+  Future<void> _importBookshelfJson(List<dynamic> arr, List<BookSource> sources,
+      BookProvider provider,
+      void Function(int done, int added, int skipped, int failed)
+          onProgress) async {
+    final existingUrls = <String>{
+      for (final b in provider.books)
+        if ((b.bookUrl ?? '').isNotEmpty) b.bookUrl!
+    };
+    final existingKeys = <String>{
+      for (final b in provider.books) '${b.name}_${b.author}'
+    };
+    int done = 0, added = 0, skipped = 0, failed = 0;
+    final now = DateTime.now().millisecondsSinceEpoch;
+    for (final item in arr) {
+      if (item is! Map) {
+        failed++;
+        done++;
+        onProgress(done, added, skipped, failed);
+        continue;
+      }
+      final name = (_jstr(item['name']) ?? '').trim();
+      final author = (_jstr(item['author']) ?? '').trim();
+      if (name.isEmpty) {
+        failed++;
+        done++;
+        onProgress(done, added, skipped, failed);
+        continue;
+      }
+      final bookUrl = (_jstr(item['bookUrl']) ?? '').trim();
+      final origin = (_jstr(item['origin']) ?? '').trim();
+      final group = _jstr(item['group']);
+      // 按 bookUrl 或 书名+作者 去重
+      if ((bookUrl.isNotEmpty && existingUrls.contains(bookUrl)) ||
+          existingKeys.contains('${name}_$author')) {
+        skipped++;
+        done++;
+        onProgress(done, added, skipped, failed);
+        continue;
+      }
+      Book? book;
+      if (bookUrl.isNotEmpty && origin.isNotEmpty) {
+        // 完整书籍信息：直接入库（进度一并恢复）
+        final localRaw = item['local'];
+        book = Book(
+          name: name,
+          author: author,
+          coverUrl: _jstr(item['coverUrl']),
+          intro: _jstr(item['intro']),
+          kind: _jstr(item['kind']),
+          lastChapter: _jstr(item['lastChapter']),
+          origin: origin,
+          originName: _jstr(item['originName']),
+          bookUrl: bookUrl,
+          noteUrl: _jstr(item['noteUrl']),
+          durChapterIndex: _jint(item['durChapterIndex']),
+          durChapterPos: _jint(item['durChapterPos']),
+          durChapterTime: _jint(item['durChapterTime']),
+          local: localRaw == true || localRaw == 1,
+          group: group,
+          lastCheckTime: now,
+        );
+      } else {
+        // 仅书名/作者（如原版导出的精简格式）：走书源精确搜索补全
+        for (final s in sources) {
+          try {
+            final results = await _engine
+                .search(s, name)
+                .timeout(const Duration(seconds: 20));
+            final hit = results
+                    .where((r) => r.name == name && (author.isEmpty || r.author == author))
+                    .firstOrNull ??
+                results.where((r) => r.name == name).firstOrNull;
+            if (hit != null) {
+              book = Book(
+                name: hit.name,
+                author: hit.author,
+                coverUrl: hit.coverUrl,
+                intro: hit.intro,
+                kind: hit.kind,
+                lastChapter: hit.lastChapter,
+                origin: hit.origin,
+                originName: hit.originName,
+                bookUrl: hit.bookUrl,
+                noteUrl: hit.noteUrl,
+                group: group,
+                lastCheckTime: now,
+              );
+              break;
+            }
+          } catch (_) {}
+        }
+      }
+      if (book == null) {
+        failed++;
+        done++;
+        onProgress(done, added, skipped, failed);
+        continue;
+      }
+      try {
+        await _db.insertBook(book);
+        existingKeys.add('${book.name}_${book.author}');
+        if ((book.bookUrl ?? '').isNotEmpty) existingUrls.add(book.bookUrl!);
+        added++;
+      } catch (_) {
+        failed++;
+      }
+      done++;
+      onProgress(done, added, skipped, failed);
+    }
+    await provider.loadBooks();
+  }
+
+  static String? _jstr(dynamic v) => v?.toString();
+
+  static int _jint(dynamic v) =>
+      v is int ? v : (int.tryParse(v?.toString() ?? '') ?? 0);
 
   /// 点击书籍：按「默认直接打开阅读」设置分流到阅读页或详情页
   Future<void> _openBook(Book book) async {

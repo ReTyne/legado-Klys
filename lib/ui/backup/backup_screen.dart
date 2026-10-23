@@ -6,6 +6,7 @@ import 'package:legado_md3/help/storage/webdav_service.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:legado_md3/help/config/app_config.dart';
 import 'package:legado_md3/help/storage/backup_service.dart';
 import 'package:legado_md3/help/storage/backup_zip.dart';
 import 'package:legado_md3/data/local/app_database.dart';
@@ -30,6 +31,12 @@ class _BackupScreenState extends State<BackupScreen> {
   int _keepCount = BackupService.defaultKeepCount;
   /// 恢复前自动备份当前数据
   bool _restoreAutoBackup = true;
+  /// 仅恢复最新备份（跳过云端备份选择弹窗）
+  bool _onlyLatestBackup = true;
+  /// 自动检查新备份（进入页面时静默比对云端备份数量）
+  bool _autoCheckNewBackup = true;
+  /// 恢复忽略项（恢复时默认取消勾选的数据类型）
+  final Set<BackupType> _restoreIgnore = {};
 
   bool _isWorking = false;
   List<File> _backupFiles = [];
@@ -37,7 +44,19 @@ class _BackupScreenState extends State<BackupScreen> {
   final _webdavUser = TextEditingController();
   final _webdavPass = TextEditingController();
   final _webdavDir = TextEditingController();
+  final _webdavDeviceName = TextEditingController();
   bool _syncProgress = false;
+
+  /// 恢复忽略项可选数据类型（对照原版 restoreIgnore：书架/书源/RSS/替换规则/阅读记录/主题/配置）
+  static const Map<BackupType, String> _restoreIgnoreItems = {
+    BackupType.books: '书架',
+    BackupType.bookSources: '书源',
+    BackupType.rssSources: 'RSS',
+    BackupType.replaceRules: '替换规则',
+    BackupType.readRecords: '阅读记录',
+    BackupType.theme: '主题',
+    BackupType.settings: '配置',
+  };
 
   @override
   void initState() {
@@ -54,12 +73,23 @@ class _BackupScreenState extends State<BackupScreen> {
 
   Future<void> _loadBackupPrefs() async {
     final p = await SharedPreferences.getInstance();
+    // 全局持久化配置（webDavDeviceName / restoreIgnore / onlyLatestBackup / autoCheckNewBackup）
+    AppPrefs.loadFrom(p);
     if (!mounted) return;
     setState(() {
       _encryptBackup = p.getBool('backup_encrypt') ?? false;
       _keepCount = p.getInt('backup_keep_count') ?? BackupService.defaultKeepCount;
       _restoreAutoBackup = p.getBool('backup_restore_auto') ?? true;
+      _onlyLatestBackup = AppPrefs.onlyLatestBackup;
+      _autoCheckNewBackup = AppPrefs.autoCheckNewBackup;
+      _restoreIgnore
+        ..clear()
+        ..addAll(BackupType.values.where((t) => AppPrefs.restoreIgnore.contains(t.name)));
     });
+    // 自动检查新备份：配置了 WebDAV 时静默比对云端备份数量
+    if (AppPrefs.autoCheckNewBackup && _webdavUrl.text.trim().isNotEmpty) {
+      _checkNewBackupSilently();
+    }
   }
 
   Future<void> _saveBackupPrefs() async {
@@ -67,6 +97,62 @@ class _BackupScreenState extends State<BackupScreen> {
     await p.setBool('backup_encrypt', _encryptBackup);
     await p.setInt('backup_keep_count', _keepCount);
     await p.setBool('backup_restore_auto', _restoreAutoBackup);
+    AppPrefs.onlyLatestBackup = _onlyLatestBackup;
+    AppPrefs.autoCheckNewBackup = _autoCheckNewBackup;
+  }
+
+  /// 静默检查 WebDAV 云端备份数量变化（autoCheckNewBackup）
+  Future<void> _checkNewBackupSilently() async {
+    try {
+      final list = await _webdav().listBackups();
+      if (!mounted) return;
+      final p = await SharedPreferences.getInstance();
+      final last = p.getInt('webdav_last_backup_count');
+      if (last != null && list.length != last) {
+        _tip('WebDAV 云端备份数量变化：${list.length} 个');
+      }
+      await p.setInt('webdav_last_backup_count', list.length);
+    } catch (_) {}
+  }
+
+  /// 恢复忽略项多选对话框
+  Future<void> _showRestoreIgnoreDialog() async {
+    final temp = Set<BackupType>.of(_restoreIgnore);
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(builder: (context, setDialogState) => AlertDialog(
+        title: const Text('恢复忽略项'),
+        content: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, children: [
+          const Text('勾选的数据类型在恢复时默认取消，避免覆盖本地数据', style: TextStyle(fontSize: 12, color: Colors.grey)),
+          const SizedBox(height: 8),
+          ..._restoreIgnoreItems.entries.map((e) => CheckboxListTile(
+            dense: true,
+            contentPadding: EdgeInsets.zero,
+            value: temp.contains(e.key),
+            title: Text(e.value),
+            onChanged: (v) => setDialogState(() {
+              if (v == true) {
+                temp.add(e.key);
+              } else {
+                temp.remove(e.key);
+              }
+            }),
+          )),
+        ])),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('取消')),
+          FilledButton(onPressed: () {
+            setState(() {
+              _restoreIgnore
+                ..clear()
+                ..addAll(temp);
+            });
+            AppPrefs.restoreIgnore = temp.map((t) => t.name).toList();
+            Navigator.pop(ctx);
+          }, child: const Text('保存')),
+        ],
+      )),
+    );
   }
 
   Future<void> _loadWebdav() async {
@@ -75,6 +161,7 @@ class _BackupScreenState extends State<BackupScreen> {
     _webdavUser.text = p.getString('webdav_user') ?? '';
     _webdavPass.text = p.getString('webdav_pass') ?? '';
     _webdavDir.text = p.getString('webdav_dir') ?? 'Legado/backup';
+    _webdavDeviceName.text = AppPrefs.webDavDeviceName;
     setState(() => _syncProgress = p.getBool('webdav_syncProgress') ?? false);
   }
   Future<void> _saveWebdav() async {
@@ -84,6 +171,7 @@ class _BackupScreenState extends State<BackupScreen> {
     await p.setString('webdav_pass', _webdavPass.text);
     await p.setString('webdav_dir', _webdavDir.text);
     await p.setBool('webdav_syncProgress', _syncProgress);
+    AppPrefs.webDavDeviceName = _webdavDeviceName.text;
   }
   Widget _buildWebdavCard() => Card(
     child: Padding(padding: const EdgeInsets.all(16), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
@@ -100,6 +188,7 @@ class _BackupScreenState extends State<BackupScreen> {
       TextField(controller: _webdavPass, obscureText: true, decoration: const InputDecoration(labelText: '密码', isDense: true, border: OutlineInputBorder())),
       const SizedBox(height: 8),
       TextField(controller: _webdavDir, decoration: const InputDecoration(labelText: '备份子目录', isDense: true, border: OutlineInputBorder())),
+      TextField(controller: _webdavDeviceName, decoration: const InputDecoration(labelText: '设备名', isDense: true, border: OutlineInputBorder(), hintText: '标识备份来源设备，如 我的手机')),
       SwitchListTile(contentPadding: EdgeInsets.zero, dense: true, title: const Text('同步阅读进度'), value: _syncProgress, onChanged: (v) => setState(() => _syncProgress = v)),
       Row(children: [
         OutlinedButton(onPressed: () async { await _saveWebdav(); if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('WebDAV配置已保存'))); }, child: const Text('保存配置')),
@@ -145,7 +234,11 @@ class _BackupScreenState extends State<BackupScreen> {
     try {
       final bytes = await _backupService.createZipBackup(selection: selection, password: password);
       final ts = DateTime.now().toIso8601String().replaceAll(':', '-').split('.').first;
-      final ok = await _webdav().uploadBackup('backup_$ts.zip', bytes);
+      // 设备名（webDavDeviceName）写入云端备份文件名，标识备份来源设备
+      final deviceTag = AppPrefs.webDavDeviceName.isEmpty
+          ? ''
+          : '_${AppPrefs.webDavDeviceName.replaceAll(RegExp(r'[^A-Za-z0-9._-]'), '_')}';
+      final ok = await _webdav().uploadBackup('backup_$ts$deviceTag.zip', bytes);
       // 勾选「同步阅读进度」时，额外上传一份阅读进度
       if (ok && _syncProgress) {
         final progress = await DatabaseService().getAllBookProgress();
@@ -163,11 +256,18 @@ class _BackupScreenState extends State<BackupScreen> {
     final list = await _webdav().listBackups();
     if (!mounted) return;
     if (list.isEmpty) { _tip('云端没有备份文件'); return; }
-    final chosen = await showDialog<String>(context: context, builder: (d) => SimpleDialog(
-      title: const Text('选择云端备份'),
-      children: list.reversed.map((name) => SimpleDialogOption(child: Text(name), onPressed: () => Navigator.pop(d, name))).toList(),
-    ));
-    if (chosen == null) return;
+    String chosen;
+    if (_onlyLatestBackup) {
+      // 仅恢复最新备份：按文件名（时间戳）取最新，跳过选择弹窗
+      chosen = list.reduce((a, b) => a.compareTo(b) >= 0 ? a : b);
+    } else {
+      final picked = await showDialog<String>(context: context, builder: (d) => SimpleDialog(
+        title: const Text('选择云端备份'),
+        children: list.reversed.map((name) => SimpleDialogOption(child: Text(name), onPressed: () => Navigator.pop(d, name))).toList(),
+      ));
+      if (picked == null) return;
+      chosen = picked;
+    }
     setState(() => _isWorking = true);
     try {
       final bytes = await _webdav().downloadBackup(chosen);
@@ -248,7 +348,8 @@ class _BackupScreenState extends State<BackupScreen> {
     final info = await _backupService.inspectBackupFile(filePath);
     if (!mounted) return;
     // 恢复勾选（默认勾选备份中包含的类型；解析失败时全列）
-    final restoreTypes = <BackupType>{...info.selection.types};
+    // restoreIgnore：勾选忽略的类型默认取消且禁止勾选
+    final restoreTypes = <BackupType>{...info.selection.types}..removeWhere(_restoreIgnore.contains);
     final pwdController = TextEditingController();
     var autoBackup = _restoreAutoBackup;
 
@@ -295,12 +396,13 @@ class _BackupScreenState extends State<BackupScreen> {
                   // 内容多选
                   ...BackupType.values.map((t) {
                     final inBackup = info.selection.types.isEmpty || info.selection.contains(t);
+                    final ignored = _restoreIgnore.contains(t);
                     return CheckboxListTile(
                       dense: true,
                       contentPadding: EdgeInsets.zero,
                       value: restoreTypes.contains(t),
-                      title: Text(inBackup || info.selection.types.isEmpty ? t.label : '${t.label}（备份中无）'),
-                      onChanged: (v) => setDialogState(() {
+                      title: Text(ignored ? '${t.label}（恢复忽略）' : (inBackup || info.selection.types.isEmpty ? t.label : '${t.label}（备份中无）')),
+                      onChanged: ignored ? null : (v) => setDialogState(() {
                         if (v == true) {
                           restoreTypes.add(t);
                         } else {
@@ -502,6 +604,44 @@ class _BackupScreenState extends State<BackupScreen> {
                               _backupService.cleanOldBackups(keep: v).then((_) => _loadBackupFiles());
                             },
                           ),
+                        ),
+                        // 恢复忽略项（restoreIgnore）
+                        ListTile(
+                          dense: true,
+                          contentPadding: EdgeInsets.zero,
+                          title: const Text('恢复忽略项'),
+                          subtitle: Text(
+                            _restoreIgnore.isEmpty
+                                ? '无，恢复时勾选备份中的全部内容'
+                                : '已忽略：${_restoreIgnore.map((t) => t.label).join('、')}',
+                            style: const TextStyle(fontSize: 11)),
+                          trailing: const Icon(Icons.chevron_right),
+                          onTap: _showRestoreIgnoreDialog,
+                        ),
+                        // 仅恢复最新备份（onlyLatestBackup）
+                        SwitchListTile(
+                          dense: true,
+                          contentPadding: EdgeInsets.zero,
+                          title: const Text('仅恢复最新备份'),
+                          subtitle: const Text('从 WebDAV 恢复时直接使用最新备份，跳过选择弹窗'),
+                          value: _onlyLatestBackup,
+                          onChanged: (v) {
+                            setState(() => _onlyLatestBackup = v);
+                            _saveBackupPrefs();
+                          },
+                        ),
+                        // 自动检查新备份（autoCheckNewBackup）
+                        SwitchListTile(
+                          dense: true,
+                          contentPadding: EdgeInsets.zero,
+                          title: const Text('自动检查新备份'),
+                          subtitle: const Text('进入本页面时静默比对 WebDAV 云端备份数量，有变化时提示'),
+                          value: _autoCheckNewBackup,
+                          onChanged: (v) {
+                            setState(() => _autoCheckNewBackup = v);
+                            _saveBackupPrefs();
+                            if (v) _checkNewBackupSilently();
+                          },
                         ),
                         const SizedBox(height: 8),
                         SizedBox(

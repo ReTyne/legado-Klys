@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
+import 'package:legado_md3/help/config/app_config.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 /// 其他设置 - 对齐原版OtherConfigScreen
 ///
@@ -21,6 +22,8 @@ class _OtherConfigScreenState extends State<OtherConfigScreen> {
 
   Future<void> _load() async {
     final p = await SharedPreferences.getInstance();
+    // 全局持久化配置加载进 AppPrefs 内存（静态 getter 同步读取）
+    AppPrefs.loadFrom(p);
     setState(() {
       _prefs['autoCheckUpdate'] = p.getBool('oc_autoCheckUpdate') ?? true;
       _prefs['webAutoStart'] = p.getBool('oc_webAutoStart') ?? false;
@@ -66,6 +69,24 @@ class _OtherConfigScreenState extends State<OtherConfigScreen> {
       title: Text(title, style: const TextStyle(fontSize: 14)),
       subtitle: sub != null ? Text(sub, style: const TextStyle(fontSize: 11)) : null,
       value: _prefs[key] ?? false, onChanged: (v) => _setBool(key, prefKey, v));
+
+  /// 基于 AppPrefs 静态配置的滑条（写入即经 AppPrefs setter 落盘）
+  Widget _appSlider(String title, int value, double min, double max, int divisions,
+      ValueChanged<double> onChanged, {String? sub}) {
+    return ListTile(
+      dense: true,
+      title: Text('$title: $value'),
+      subtitle: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+        if (sub != null) Text(sub, style: const TextStyle(fontSize: 11)),
+        Slider(
+          value: value.clamp(min, max).toDouble(),
+          min: min, max: max, divisions: divisions,
+          label: '$value',
+          onChanged: onChanged,
+        ),
+      ]),
+    );
+  }
 
   /// 文本输入弹窗，返回 null 表示取消
   Future<String?> _textDialog({
@@ -138,6 +159,69 @@ class _OtherConfigScreenState extends State<OtherConfigScreen> {
         _section('网络和封面'),
         _sw('仅WiFi下加载封面', 'loadCoverOnlyWifi', 'cover_onlyWifi',
           sub: '移动网络下不请求网络封面（cover_onlyWifi）'),
+        _section('网络与存储（对照原版）'),
+        ListTile(
+          dense: true,
+          title: const Text('全局 User-Agent'),
+          subtitle: Text(
+            AppPrefs.userAgent == AppConstants.defaultUserAgent ? '未设置，使用默认 UA' : AppPrefs.userAgent,
+            maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 11)),
+          trailing: const Icon(Icons.edit),
+          onTap: () async {
+            final v = await _textDialog(
+              title: '全局 User-Agent',
+              initial: AppPrefs.userAgent == AppConstants.defaultUserAgent ? '' : AppPrefs.userAgent,
+              hint: '留空使用默认 UA',
+              maxLines: 3,
+            );
+            if (v == null) return;
+            setState(() => AppPrefs.userAgent = v);
+          },
+        ),
+        ListTile(
+          dense: true,
+          title: const Text('自定义 Host 映射'),
+          subtitle: Text(
+            AppPrefs.customHosts.isEmpty ? '未设置' : AppPrefs.customHosts,
+            maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 11)),
+          trailing: const Icon(Icons.edit),
+          onTap: () async {
+            final v = await _textDialog(
+              title: '自定义 Host 映射',
+              initial: AppPrefs.customHosts,
+              hint: '每行一条：host=ip',
+              maxLines: 5,
+            );
+            if (v == null) return;
+            setState(() => AppPrefs.customHosts = v);
+          },
+        ),
+        ListTile(
+          dense: true,
+          title: const Text('默认书籍保存目录'),
+          subtitle: Text(
+            AppPrefs.defaultBookTreeUri.isEmpty ? '未设置，使用应用默认目录' : AppPrefs.defaultBookTreeUri,
+            maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 11)),
+          trailing: const Icon(Icons.edit),
+          onTap: () async {
+            final v = await _textDialog(
+              title: '默认书籍保存目录',
+              initial: AppPrefs.defaultBookTreeUri,
+              hint: '本地书籍默认保存/导入目录',
+            );
+            if (v == null) return;
+            setState(() => AppPrefs.defaultBookTreeUri = v);
+          },
+        ),
+        _appSlider('并发线程数', AppPrefs.threadCount, 1, 128, 127,
+          (v) => setState(() => AppPrefs.threadCount = v.toInt()),
+          sub: '搜索/目录/正文的并发上限（threadCount）'),
+        _appSlider('预下载章节数', AppPrefs.preDownloadNum, 0, 10, 10,
+          (v) => setState(() => AppPrefs.preDownloadNum = v.toInt()),
+          sub: AppPrefs.preDownloadNum == 0 ? '不预下载' : '后台提前缓存后续 ${AppPrefs.preDownloadNum} 章'),
+        _appSlider('图片缓存大小', AppPrefs.bitmapCacheSize, 10, 510, 50,
+          (v) => setState(() => AppPrefs.bitmapCacheSize = v.toInt()),
+          sub: '封面/插图内存缓存上限（MB）'),
         _section('朗读'),
         _sw('媒体键控制朗读', 'readAloudByMediaButton', 'readAloudByMediaButton',
           sub: '使用耳机/蓝牙媒体键开始或暂停朗读'),
@@ -180,6 +264,22 @@ class _OtherConfigScreenState extends State<OtherConfigScreen> {
             }
           }),
         _sw('记录日志', 'recordLog', 'oc_recordLog'),
+        SwitchListTile(
+          dense: true,
+          contentPadding: const EdgeInsets.symmetric(horizontal: 16),
+          title: const Text('系统文本菜单入口', style: TextStyle(fontSize: 14)),
+          subtitle: const Text('将本应用加入系统文本选择菜单（process_text）。Flutter 版暂不支持注册该入口，仅保存设置', style: TextStyle(fontSize: 11)),
+          value: AppPrefs.processText,
+          onChanged: (v) => setState(() => AppPrefs.processText = v),
+        ),
+        SwitchListTile(
+          dense: true,
+          contentPadding: const EdgeInsets.symmetric(horizontal: 16),
+          title: const Text('性能监测记录堆转储', style: TextStyle(fontSize: 14)),
+          subtitle: const Text('开启性能监测时同时记录堆转储，便于分析内存占用（recordHeapDump）', style: TextStyle(fontSize: 11)),
+          value: AppPrefs.recordHeapDump,
+          onChanged: (v) => setState(() => AppPrefs.recordHeapDump = v),
+        ),
         const SizedBox(height: 24),
       ]),
     );

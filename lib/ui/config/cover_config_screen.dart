@@ -1,7 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:legado_md3/help/config/app_config.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 /// 封面配置页面 - 对齐原版CoverConfigScreen
+///
+/// useDefaultCover / coverShowName / coverShowAuthor 三个开关统一经
+/// [AppPrefs] 读写（键名 cover_useDefault / cover_showName / cover_showAuthor 不变），
+/// 消费点：bookshelf_screen.dart 的 _ViewCfg（无封面占位、封面叠加书名/作者）。
 class CoverConfigScreen extends StatefulWidget {
   const CoverConfigScreen({super.key});
 
@@ -29,13 +34,15 @@ class _CoverConfigScreenState extends State<CoverConfigScreen> {
 
   Future<void> _load() async {
     final p = await SharedPreferences.getInstance();
+    // 三项封面开关统一走 AppPrefs 访问层（键名与 bookshelf_screen 消费方一致）
+    AppPrefs.loadFrom(p);
     setState(() {
       _onlyWifi = p.getBool('cover_onlyWifi') ?? false;
-      _useDefaultCover = p.getBool('cover_useDefault') ?? false;
+      _useDefaultCover = AppPrefs.useDefaultCover;
       // 书架封面阴影读取的键是 bs_coverShadow（bookshelf_screen._ViewCfg.coverShadow）
       _coverShadow = p.getBool('bs_coverShadow') ?? true;
-      _showName = p.getBool('cover_showName') ?? true;
-      _showAuthor = p.getBool('cover_showAuthor') ?? true;
+      _showName = AppPrefs.coverShowName;
+      _showAuthor = AppPrefs.coverShowAuthor;
       _nightShowName = p.getBool('cover_nightShowName') ?? true;
       _nightShowAuthor = p.getBool('cover_nightShowAuthor') ?? true;
       _defaultColor = p.getInt('cover_defaultColor') ?? 0xFF607D8B;
@@ -80,15 +87,15 @@ class _CoverConfigScreenState extends State<CoverConfigScreen> {
         ListTile(dense: true, title: const Text('封面规则'), subtitle: const Text('自定义封面获取规则', style: TextStyle(fontSize: 11)),
           trailing: const Icon(Icons.chevron_right),
           onTap: () => showDialog(context: context, builder: (c) => const AlertDialog(title: Text('封面规则'), content: Text('封面规则用于在书籍无封面时，根据书名/作者从网络搜索匹配封面。')))),
-        _sw('使用默认封面', _useDefaultCover, (v) { setState(() => _useDefaultCover = v); _set('cover_useDefault', v); }, sub: '无封面时显示生成的默认封面'),
+        _sw('使用默认封面', _useDefaultCover, (v) { setState(() => _useDefaultCover = v); AppPrefs.useDefaultCover = v; }, sub: '无封面时显示生成的默认封面（cover_useDefault）'),
         _sw('封面显示阴影', _coverShadow, (v) { setState(() => _coverShadow = v); _set('bs_coverShadow', v); }, sub: '书架封面阴影（bs_coverShadow）'),
         ListTile(dense: true, title: const Text('默认封面颜色'), trailing: CircleAvatar(backgroundColor: Color(_defaultColor), radius: 14),
           onTap: () => _pickColor(_defaultColor, (c) { setState(() => _defaultColor = c); _set('cover_defaultColor', c); })),
         _section('日间'),
         ListTile(dense: true, title: const Text('文字颜色'), trailing: CircleAvatar(backgroundColor: Color(_dayTextColor), radius: 14),
           onTap: () => _pickColor(_dayTextColor, (c) { setState(() => _dayTextColor = c); _set('cover_dayTextColor', c); })),
-        _sw('显示书名', _showName, (v) { setState(() => _showName = v); _set('cover_showName', v); }),
-        _sw('显示作者', _showAuthor, (v) { setState(() => _showAuthor = v); _set('cover_showAuthor', v); }),
+        _sw('显示书名', _showName, (v) { setState(() => _showName = v); AppPrefs.coverShowName = v; }),
+        _sw('显示作者', _showAuthor, (v) { setState(() => _showAuthor = v); AppPrefs.coverShowAuthor = v; }),
         _section('夜间'),
         ListTile(dense: true, title: const Text('文字颜色'), trailing: CircleAvatar(backgroundColor: Color(_nightTextColor), radius: 14),
           onTap: () => _pickColor(_nightTextColor, (c) { setState(() => _nightTextColor = c); _set('cover_nightTextColor', c); })),

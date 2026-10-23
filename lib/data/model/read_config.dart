@@ -111,6 +111,36 @@ class ReadConfig {
   bool customHeaderEnabled;
   bool customFooterEnabled;
 
+  /* ===== 对照 legado-E ReadBookConfig.kt / pref_config_read.xml 补齐 ===== */
+  // 标题与阅读栏
+  bool showReadTitleAddition;    // 标题附加信息（章节名后附加书名等）
+  bool readBarStyleFollowPage;   // 阅读栏样式跟随页面背景
+  // 换源
+  bool autoChangeSource;         // 正文失效时自动换源
+  // 图片
+  int clickImgWay;               // 图片点击方式：0 无 1 预览 2 浏览器
+  // 渲染与排版
+  bool optimizeRender;           // 渲染优化
+  bool adaptSpecialStyle;        // 特殊样式适配
+  bool readBodyToLh;             // 正文带到行高
+  // 翻页
+  int doubleHorizontalPage;      // 双水平页：0 单页 1 双水平页 2 横屏双页
+  bool noAnimScrollPage;         // 滚动模式无动画
+  bool volumeKeyPageOnPlay;      // 朗读播放时音量键翻页
+  bool keyPageOnLongPress;       // 长按音量键翻页
+  bool disableReturnKey;         // 禁用返回键
+  int pageTouchSlop;             // 滑动灵敏度（0 默认，越大越迟钝）
+  String? customPageKey;         // 自定义按键 JSON
+  // 显示
+  bool paddingDisplayCutouts;    // 刘海屏 padding
+  // 朗读
+  bool readAloudByPage;                  // 按页朗读
+  bool pauseReadAloudWhilePhoneCalls;    // 来电暂停朗读
+  bool mediaButtonPerNext;               // 媒体键下一章
+  bool streamReadAloudAudio;             // 流式朗读音频
+  bool sysTtsConfig;                     // 系统 TTS 跟随系统语速
+  bool ttsFlowSys;                       // 朗读语速跟随系统
+
   ReadConfig({
     this.textSize = 20,
     this.textColor = 0xFF333333,
@@ -175,6 +205,28 @@ class ReadConfig {
     this.showTimeBattery = true,
     this.customHeaderEnabled = false,
     this.customFooterEnabled = false,
+    // ===== 补齐字段默认值（对齐 legado-E）=====
+    this.showReadTitleAddition = true,
+    this.readBarStyleFollowPage = false,
+    this.autoChangeSource = true,
+    this.clickImgWay = 0,
+    this.optimizeRender = false,
+    this.adaptSpecialStyle = true,
+    this.readBodyToLh = true,
+    this.doubleHorizontalPage = 0,
+    this.paddingDisplayCutouts = false,
+    this.noAnimScrollPage = false,
+    this.volumeKeyPageOnPlay = false,
+    this.pageTouchSlop = 0,
+    this.disableReturnKey = false,
+    this.keyPageOnLongPress = false,
+    this.customPageKey,
+    this.readAloudByPage = false,
+    this.pauseReadAloudWhilePhoneCalls = false,
+    this.mediaButtonPerNext = false,
+    this.streamReadAloudAudio = false,
+    this.sysTtsConfig = false,
+    this.ttsFlowSys = true,
   });
 
   Map<String, dynamic> toJson() => {
@@ -202,6 +254,28 @@ class ReadConfig {
     'charset': charset, 'chineseConverter': chineseConverter, 'preDownloadCount': preDownloadCount,
     'showTimeBattery': showTimeBattery,
     'customHeaderEnabled': customHeaderEnabled, 'customFooterEnabled': customFooterEnabled,
+    // ===== 补齐字段序列化 =====
+    'showReadTitleAddition': showReadTitleAddition,
+    'readBarStyleFollowPage': readBarStyleFollowPage,
+    'autoChangeSource': autoChangeSource,
+    'clickImgWay': clickImgWay,
+    'optimizeRender': optimizeRender,
+    'adaptSpecialStyle': adaptSpecialStyle,
+    'readBodyToLh': readBodyToLh,
+    'doubleHorizontalPage': doubleHorizontalPage,
+    'paddingDisplayCutouts': paddingDisplayCutouts,
+    'noAnimScrollPage': noAnimScrollPage,
+    'volumeKeyPageOnPlay': volumeKeyPageOnPlay,
+    'pageTouchSlop': pageTouchSlop,
+    'disableReturnKey': disableReturnKey,
+    'keyPageOnLongPress': keyPageOnLongPress,
+    'customPageKey': customPageKey,
+    'readAloudByPage': readAloudByPage,
+    'pauseReadAloudWhilePhoneCalls': pauseReadAloudWhilePhoneCalls,
+    'mediaButtonPerNext': mediaButtonPerNext,
+    'streamReadAloudAudio': streamReadAloudAudio,
+    'sysTtsConfig': sysTtsConfig,
+    'ttsFlowSys': ttsFlowSys,
   };
 
   factory ReadConfig.fromJson(Map<String, dynamic> json) => ReadConfig(
@@ -272,6 +346,28 @@ class ReadConfig {
     showTimeBattery: json['showTimeBattery'] ?? true,
     customHeaderEnabled: json['customHeaderEnabled'] ?? false,
     customFooterEnabled: json['customFooterEnabled'] ?? false,
+    // ===== 补齐字段反序列化（旧配置缺省时用默认值）=====
+    showReadTitleAddition: json['showReadTitleAddition'] ?? true,
+    readBarStyleFollowPage: json['readBarStyleFollowPage'] ?? false,
+    autoChangeSource: json['autoChangeSource'] ?? true,
+    clickImgWay: json['clickImgWay'] ?? 0,
+    optimizeRender: json['optimizeRender'] ?? false,
+    adaptSpecialStyle: json['adaptSpecialStyle'] ?? true,
+    readBodyToLh: json['readBodyToLh'] ?? true,
+    doubleHorizontalPage: json['doubleHorizontalPage'] ?? 0,
+    paddingDisplayCutouts: json['paddingDisplayCutouts'] ?? false,
+    noAnimScrollPage: json['noAnimScrollPage'] ?? false,
+    volumeKeyPageOnPlay: json['volumeKeyPageOnPlay'] ?? false,
+    pageTouchSlop: json['pageTouchSlop'] ?? 0,
+    disableReturnKey: json['disableReturnKey'] ?? false,
+    keyPageOnLongPress: json['keyPageOnLongPress'] ?? false,
+    customPageKey: json['customPageKey'],
+    readAloudByPage: json['readAloudByPage'] ?? false,
+    pauseReadAloudWhilePhoneCalls: json['pauseReadAloudWhilePhoneCalls'] ?? false,
+    mediaButtonPerNext: json['mediaButtonPerNext'] ?? false,
+    streamReadAloudAudio: json['streamReadAloudAudio'] ?? false,
+    sysTtsConfig: json['sysTtsConfig'] ?? false,
+    ttsFlowSys: json['ttsFlowSys'] ?? true,
   );
 
   String toJsonString() => jsonEncode(toJson());

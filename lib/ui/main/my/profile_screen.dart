@@ -1,5 +1,5 @@
 
-
+import 'dart:io';
 
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
@@ -30,8 +30,16 @@ import 'package:legado_md3/ui/rss/rule_subscription_screen.dart';
 import 'package:legado_md3/ui/stats/reading_stats_screen.dart';
 import 'package:legado_md3/ui/stats/read_record_screen.dart';
 import 'package:legado_md3/ui/cache/download_manage_screen.dart';
+import 'package:package_info_plus/package_info_plus.dart';
+import 'package:share_plus/share_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
+
+/// 本项目 GitHub 仓库
+const _kRepoUrl = 'https://github.com/ReTyne/legado-Klys';
+/// 最新 release 查询接口（GitHub API）
+const _kReleasesLatestApi =
+    'https://api.github.com/repos/ReTyne/legado-Klys/releases/latest';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -44,6 +52,22 @@ class _ProfileScreenState extends State<ProfileScreen> {
   final WebService _webService = WebService();
   static const _wakeChannel = MethodChannel('legado/wakelock');
   bool _webServiceRunning = false;
+  /// 动态版本号（package_info_plus），形如 "3.30.0 (2)"
+  String _versionLabel = '';
+
+  @override
+  void initState() {
+    super.initState();
+    _loadVersion();
+  }
+
+  Future<void> _loadVersion() async {
+    try {
+      final info = await PackageInfo.fromPlatform();
+      if (!mounted) return;
+      setState(() => _versionLabel = '${info.version} (${info.buildNumber})');
+    } catch (_) {}
+  }
 
   @override
   void dispose() {
@@ -133,7 +157,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
             ),
 
           const SizedBox(height: 24),
-          const Center(child: Text('Legado MD3 v3.30.0', style: TextStyle(color: Colors.grey, fontSize: 12))),
+          Center(
+            child: Text(
+              _versionLabel.isEmpty ? 'Legado MD3' : 'Legado MD3 v$_versionLabel',
+              style: const TextStyle(color: Colors.grey, fontSize: 12),
+            ),
+          ),
           const SizedBox(height: 16),
         ],
       ),
@@ -144,13 +173,15 @@ class _ProfileScreenState extends State<ProfileScreen> {
     final messenger = ScaffoldMessenger.of(context);
     messenger.showSnackBar(const SnackBar(content: Text('正在检查更新...')));
     try {
+      // 当前版本用 package_info_plus 动态获取，不再写死
+      final info = await PackageInfo.fromPlatform();
+      final cur = _parseVersion(info.version);
       final dio = Dio(BaseOptions(connectTimeout: const Duration(seconds: 10), receiveTimeout: const Duration(seconds: 15)));
-      final resp = await dio.get('https://api.github.com/repos/stwy0716/legado-K/releases/latest');
+      final resp = await dio.get(_kReleasesLatestApi);
       final tag = (resp.data['tag_name'] ?? '').toString();
       final body = (resp.data['body'] ?? '').toString();
-      final htmlUrl = (resp.data['html_url'] ?? 'https://github.com/stwy0716/legado-K/releases').toString();
-      final latest = tag.replaceAll(RegExp(r'[^0-9.]'), '').split('.').map((e) => int.tryParse(e) ?? 0).toList();
-      final cur = [3, 29, 0];
+      final htmlUrl = (resp.data['html_url'] ?? _kRepoUrl).toString();
+      final latest = _parseVersion(tag);
       bool hasNew = false;
       for (var i = 0; i < 3; i++) {
         final l = i < latest.length ? latest[i] : 0;
@@ -175,13 +206,108 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
   }
 
+  static List<int> _parseVersion(String v) => v
+      .replaceAll(RegExp(r'[^0-9.]'), '')
+      .split('.')
+      .map((e) => int.tryParse(e) ?? 0)
+      .toList();
+
+  /// 内置更新日志（本项目已完成的主要功能）
+  static const _changelog = <String>[
+    '全新 Material 3 界面，书架支持列表/网格/封面流多种布局与封面样式配置',
+    '书架分组管理：分组页签、折叠/平铺分组样式、待更新数量与批量移动分组',
+    'URL 添加书籍：粘贴书籍链接自动匹配书源，抓取详情与目录后加入书架',
+    '书架导入导出：JSON 格式导出/导入书架（含分组、书源、目录与阅读进度）',
+    '书源管理：规则编辑、书源调试、导入导出、OPDS 书源与网络导入',
+    '阅读引擎：JS 规则解析正文，支持替换净化、TXT 目录规则与正文朗读 TTS',
+    '阅读体验：主题管理、阅读页精细设置、书签、书籍标记与章节缓存管理',
+    '发现与 RSS：首页模块自定义、RSS 订阅源管理与文章阅读',
+    '备份与同步：WebDAV 云同步、本地备份恢复与 WebDAV 远程书籍导入',
+    '阅读统计：阅读时长/天数统计、连续阅读打卡与近 30 天阅读趋势图',
+  ];
+
+  void _showChangelog() {
+    showDialog(context: context, builder: (context) => AlertDialog(
+      title: const Text('更新日志'),
+      content: SizedBox(
+        width: double.maxFinite,
+        child: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              for (var i = 0; i < _changelog.length; i++)
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 10),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text('${i + 1}. ',
+                          style: const TextStyle(fontWeight: FontWeight.bold)),
+                      Expanded(child: Text(_changelog[i])),
+                    ],
+                  ),
+                ),
+            ],
+          ),
+        ),
+      ),
+      actions: [
+        TextButton(onPressed: () => Navigator.pop(context), child: const Text('关闭')),
+      ],
+    ));
+  }
+
+  /// 保存日志：读取崩溃日志并通过 share_plus 分享
+  Future<void> _saveCrashLog() async {
+    final logs = await CrashLogHelper.instance.readLogs();
+    if (!mounted) return;
+    if (logs.trim().isEmpty) {
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('暂无崩溃日志')));
+      return;
+    }
+    try {
+      final file = File('${Directory.systemTemp.path}/crash_log.txt');
+      await file.writeAsString(logs, flush: true);
+      await Share.shareXFiles([XFile(file.path)], text: 'Legado MD3 崩溃日志');
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('保存日志失败: $e')));
+      }
+    }
+  }
+
+  /// 分享应用：应用名 + GitHub 仓库链接
+  Future<void> _shareApp() async {
+    await Share.share('Legado MD3 —— Material 3 风格的跨平台开源阅读器\n$_kRepoUrl',
+        subject: 'Legado MD3');
+  }
+
+  /// 评分：跳转 GitHub 仓库页面
+  Future<void> _rateApp() async {
+    try {
+      final ok = await launchUrl(Uri.parse(_kRepoUrl), mode: LaunchMode.externalApplication);
+      if (!ok && mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(const SnackBar(content: Text('无法打开页面')));
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('打开失败: $e')));
+      }
+    }
+  }
+
   void _showAbout(BuildContext context) {
     showDialog(context: context, builder: (context) => AlertDialog(
       title: const Text('关于'),
       content: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
         const Text('Legado MD3', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
         const SizedBox(height: 8),
-        const Text('版本: 3.30.0'),
+        Text('版本: ${_versionLabel.isEmpty ? '加载中...' : _versionLabel}'),
         const SizedBox(height: 4),
         const Text('基于Legado MD3风格的跨平台阅读应用，支持Android和iOS'),
         const Divider(height: 24),
@@ -190,12 +316,24 @@ class _ProfileScreenState extends State<ProfileScreen> {
           onTap: () { Navigator.pop(context); _checkUpdate(); },
         ),
         ListTile(
+          dense: true, leading: const Icon(Icons.history, size: 20), title: const Text('更新日志'),
+          onTap: () { Navigator.pop(context); _showChangelog(); },
+        ),
+        ListTile(
           dense: true, leading: const Icon(Icons.code, size: 20), title: const Text('GitHub项目'),
-          onTap: () { Navigator.pop(context); launchUrl(Uri.parse('https://github.com/stwy0716/legado-K'), mode: LaunchMode.externalApplication); },
+          onTap: () { Navigator.pop(context); launchUrl(Uri.parse(_kRepoUrl), mode: LaunchMode.externalApplication); },
         ),
         ListTile(
           dense: true, leading: const Icon(Icons.people_outline, size: 20), title: const Text('贡献者'),
           onTap: () { Navigator.pop(context); showDialog(context: context, builder: (c) => const AlertDialog(title: Text('贡献者'), content: Text('Legado开源社区\n\n感谢所有贡献者的支持'))); },
+        ),
+        ListTile(
+          dense: true, leading: const Icon(Icons.share, size: 20), title: const Text('分享应用'),
+          onTap: () { Navigator.pop(context); _shareApp(); },
+        ),
+        ListTile(
+          dense: true, leading: const Icon(Icons.star_outline, size: 20), title: const Text('评分'),
+          onTap: () { Navigator.pop(context); _rateApp(); },
         ),
         ListTile(
           dense: true, leading: const Icon(Icons.privacy_tip_outlined, size: 20), title: const Text('隐私政策'),
@@ -208,6 +346,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
         ListTile(
           dense: true, leading: const Icon(Icons.warning_amber_outlined, size: 20), title: const Text('免责声明'),
           onTap: () { Navigator.pop(context); showDialog(context: context, builder: (c) => const AlertDialog(title: Text('免责声明'), content: Text('本应用仅供学习交流使用，不提供任何书籍内容，所有书源均由用户自行添加。'))); },
+        ),
+        ListTile(
+          dense: true, leading: const Icon(Icons.save_alt, size: 20), title: const Text('保存日志'),
+          onTap: () { Navigator.pop(context); _saveCrashLog(); },
         ),
         ListTile(
           dense: true, leading: const Icon(Icons.bug_report, size: 20), title: const Text('崩溃日志'),
