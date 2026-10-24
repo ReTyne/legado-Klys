@@ -7,6 +7,7 @@ import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
 import org.apache.commons.compress.archivers.sevenz.SevenZArchiveEntry
 import org.apache.commons.compress.archivers.sevenz.SevenZFile
+import org.apache.commons.compress.utils.SeekableInMemoryByteChannel
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.util.Base64
@@ -94,7 +95,7 @@ class ArchivePlugin : FlutterPlugin {
     // ---------- 7z ----------
 
     private fun read7zEntry(bytes: ByteArray, entry: String): ByteArray? {
-        SevenZFile(ByteArrayInputStream(bytes)).use { z ->
+        SevenZFile(SeekableInMemoryByteChannel(bytes)).use { z ->
             var e: SevenZArchiveEntry? = z.nextEntry
             while (e != null) {
                 if (!e.isDirectory && (e.name == entry || e.name.endsWith("/$entry"))) {
@@ -109,7 +110,7 @@ class ArchivePlugin : FlutterPlugin {
     private fun read7zAll(bytes: ByteArray): List<Map<String, String>> {
         val out = ArrayList<Map<String, String>>()
         var total = 0L
-        SevenZFile(ByteArrayInputStream(bytes)).use { z ->
+        SevenZFile(SeekableInMemoryByteChannel(bytes)).use { z ->
             var e: SevenZArchiveEntry? = z.nextEntry
             while (e != null && out.size < MAX_ENTRIES && total < MAX_TOTAL_BYTES) {
                 if (!e.isDirectory) {
