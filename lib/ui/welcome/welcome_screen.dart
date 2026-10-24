@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:legado_md3/common/app_name.dart';
 import 'package:legado_md3/ui/main/main_screen.dart';
 
 /// 首次启动欢迎与隐私引导（对齐原版启动协议页）
@@ -18,8 +19,9 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
   int _page = 0;
   bool _agreed = false;
 
-  static const _pages = [
-    _Intro(icon: Icons.menu_book, title: '欢迎使用阅读 MD3', desc: '开源网络文学阅读器，Material Design 3 风格，支持自定义书源、发现、订阅与本地导入。'),
+  // 首页标题带应用显示名（随系统语言切换），故用 getter 而非 const
+  List<_Intro> get _pages => [
+    _Intro(icon: Icons.menu_book, title: '欢迎使用$appDisplayName', desc: '开源网络文学阅读器，Material Design 3 风格，支持自定义书源、发现、订阅与本地导入。'),
     _Intro(icon: Icons.travel_explore, title: '书源与发现', desc: '导入书源后即可聚合搜索、发现书目；多书源并发搜索、换源、目录解析、正文清洗一应俱全。'),
     _Intro(icon: Icons.security, title: '隐私说明', desc: '书架、书源、阅读记录等数据仅保存在本机；网络请求仅发生在你主动使用书源/翻译/TTS 等功能时，应用不收集任何个人信息。'),
   ];

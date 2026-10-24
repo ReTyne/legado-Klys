@@ -12,7 +12,7 @@ class OpdsEngine {
   OpdsEngine({required this.baseUrl, this.userAgent});
 
   Map<String, String> get _headers => {
-        'User-Agent': userAgent ?? 'Mozilla/5.0 (Linux; Android 13) LegadoMD3',
+        'User-Agent': userAgent ?? 'Mozilla/5.0 (Linux; Android 13) legado',
         'Accept': 'application/atom+xml,application/xml',
       };
 

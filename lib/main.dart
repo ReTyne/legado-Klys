@@ -12,11 +12,12 @@ import 'package:legado_md3/help/storage/backup_service.dart';
 import 'package:legado_md3/help/web/web_service.dart';
 import 'package:legado_md3/data/local/app_database.dart';
 import 'package:legado_md3/common/app_navigator.dart';
+import 'package:legado_md3/common/app_name.dart';
 import 'package:legado_md3/common/deep_link_service.dart';
 import 'package:legado_md3/ui/book/reader_router.dart';
 
 /// 应用语言（oc_language：0 跟随系统 / 1 简体中文 / 2 English）
-Locale? appLocale;
+/// 定义见 common/app_name.dart，显示名随生效语言切换（中文 -> 阅读，其他 -> legado）
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -136,7 +137,7 @@ class _LockScreenState extends State<LockScreen> {
               children: [
                 Icon(Icons.lock_outline, size: 56, color: theme.colorScheme.primary),
                 const SizedBox(height: 16),
-                const Text('阅读 MD3', style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+                Text(appDisplayName, style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
                 const SizedBox(height: 32),
                 TextField(
                   controller: _controller,
@@ -177,7 +178,7 @@ class LegadoApp extends StatelessWidget {
         builder: (context, appTheme, _) {
           return MaterialApp(
             navigatorKey: appNavigatorKey,
-            title: '阅读 MD3',
+            title: appDisplayName,
             debugShowCheckedModeBanner: false,
             theme: appTheme.lightTheme,
             darkTheme: appTheme.darkTheme,

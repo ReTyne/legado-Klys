@@ -29,7 +29,7 @@ class AiChatService {
     this.baseUrl,
     this.apiKey,
     this.model = 'gpt-4o-mini',
-    this.systemPrompt = '你是“阅读 MD3”内置的读书助手，回答简洁、有条理，可帮助理解书籍、整理人物关系、总结章节、解释生词。',
+    this.systemPrompt = '你是"阅读"内置的读书助手，回答简洁、有条理，可帮助理解书籍、整理人物关系、总结章节、解释生词。',
   });
 
   bool get isConfigured => baseUrl != null && baseUrl!.trim().isNotEmpty;

@@ -5,6 +5,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:legado_md3/help/config/app_config.dart';
+import 'package:legado_md3/common/app_name.dart';
 import 'package:legado_md3/help/storage/crash_log_helper.dart';
 import 'package:legado_md3/help/web/web_service.dart';
 import 'package:legado_md3/ui/ai/ai_chat_screen.dart';
@@ -65,7 +66,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
     try {
       final info = await PackageInfo.fromPlatform();
       if (!mounted) return;
-      setState(() => _versionLabel = '${info.version} (${info.buildNumber})');
+      setState(() {
+        // pubspec 版本为规范三段式，展示层归一掉无意义的尾缀 .0（1.0.0 -> 1.0）
+        final v = info.version.replaceFirst(RegExp(r'\.0$'), '');
+        _versionLabel = '$v (${info.buildNumber})';
+      });
     } catch (_) {}
   }
 
@@ -160,7 +165,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           const SizedBox(height: 24),
           Center(
             child:             Text(
-              _versionLabel.isEmpty ? 'Legado MD3' : 'Legado MD3 v$_versionLabel',
+              _versionLabel.isEmpty ? appDisplayName : '$appDisplayName v$_versionLabel',
               style: TextStyle(color: cs.onSurfaceVariant, fontSize: 12),
             ),
           ),
@@ -271,7 +276,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     try {
       final file = File('${Directory.systemTemp.path}/crash_log.txt');
       await file.writeAsString(logs, flush: true);
-      await Share.shareXFiles([XFile(file.path)], text: 'Legado MD3 崩溃日志');
+      await Share.shareXFiles([XFile(file.path)], text: '$appDisplayName 崩溃日志');
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context)
@@ -282,8 +287,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   /// 分享应用：应用名 + GitHub 仓库链接
   Future<void> _shareApp() async {
-    await Share.share('Legado MD3 —— Material 3 风格的跨平台开源阅读器\n$_kRepoUrl',
-        subject: 'Legado MD3');
+    await Share.share('$appDisplayName —— Material 3 风格的跨平台开源阅读器\n$_kRepoUrl',
+        subject: appDisplayName);
   }
 
   /// 评分：跳转 GitHub 仓库页面
@@ -306,11 +311,11 @@ class _ProfileScreenState extends State<ProfileScreen> {
     showDialog(context: context, builder: (context) => AlertDialog(
       title: const Text('关于'),
       content: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-        const Text('Legado MD3', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+        Text(appDisplayName, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
         const SizedBox(height: 8),
         Text('版本: ${_versionLabel.isEmpty ? '加载中...' : _versionLabel}'),
         const SizedBox(height: 4),
-        const Text('基于Legado MD3风格的跨平台阅读应用，支持Android和iOS'),
+        const Text('基于 legado 的 Material Design 3 跨平台阅读应用，支持Android和iOS'),
         const Divider(height: 24),
         ListTile(
           dense: true, leading: const Icon(Icons.update, size: 20), title: const Text('检查更新'),

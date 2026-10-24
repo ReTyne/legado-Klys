@@ -4,6 +4,8 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:package_info_plus/package_info_plus.dart';
+import 'package:legado_md3/common/app_name.dart';
 import 'package:legado_md3/constant/app_theme.dart';
 import 'package:legado_md3/data/local/app_database.dart';
 import 'package:legado_md3/data/model/book.dart';
@@ -1324,17 +1326,21 @@ class _SettingsScreenState extends State<SettingsScreen> {
     Navigator.push(context, MaterialPageRoute(builder: (_) => const HomepageManageScreen()));
   }
 
-  void _showAboutDialog() {
+  void _showAboutDialog() async {
+    final info = await PackageInfo.fromPlatform();
+    if (!mounted) return;
+    // pubspec 版本为规范三段式，展示层归一掉无意义的尾缀 .0（1.0.0 -> 1.0）
+    final version = info.version.replaceFirst(RegExp(r'\.0$'), '');
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('关于阅读 MD3'),
-        content: const Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text('版本: 3.30.0'),
-          SizedBox(height: 8),
-          Text('基于Legado MD3风格的跨平台阅读应用'),
-          SizedBox(height: 8),
-          Text('支持Android和iOS'),
+        title: Text('关于$appDisplayName'),
+        content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
+          Text('版本: $version'),
+          const SizedBox(height: 8),
+          const Text('基于 legado 的 Material Design 3 跨平台阅读应用'),
+          const SizedBox(height: 8),
+          const Text('支持Android和iOS'),
         ]),
         actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('确定'))],
       ),
