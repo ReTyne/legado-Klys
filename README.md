@@ -293,3 +293,4 @@ flutter build ios --release
 - 静态检查：`dart analyze` 保持 0 error / 0 warning
 - 单元/Widget 测试：`flutter test`（83 例，覆盖密码学标准向量、书源规则全链路编排、URL 选项解析、备份 zip、EPUB 导出、书架/发现 UI、返回键行为等）
 - CI（`.github/workflows/build.yml`）：每次 push 自动执行 analyze → test → 构建 universal/arm64 Release APK 并发布 Prerelease
+- 应用图标：母图与各密度资源由 `tools/gen_launcher_icons.py` 程序化绘制生成（钢蓝渐变底 + 白色打开的书 + 琥珀书签，含 Android 自适应图标与 monochrome  themed 图标）；调整设计后运行 `python3 tools/gen_launcher_icons.py` 重新生成
