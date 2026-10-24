@@ -360,7 +360,12 @@ class _SourceEditScreenState extends State<SourceEditScreen> with SingleTickerPr
   Future<void> _saveAndSearch() async {
     final ok = await _save(pop: false);
     if (ok && mounted) {
-      Navigator.push(context, MaterialPageRoute(builder: (_) => const SearchScreen()));
+      final saved = await _db.getSource(_c['bookSourceUrl']!.text.trim());
+      if (saved != null && mounted) {
+        Navigator.push(context, MaterialPageRoute(
+            builder: (_) => SearchScreen(
+                searchScope: '${saved.bookSourceName.replaceAll(':', '')}::${saved.bookSourceUrl}')));
+      }
     }
   }
 

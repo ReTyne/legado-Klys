@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:legado_md3/data/model/book.dart';
 import 'package:legado_md3/data/model/book_chapter.dart';
 import 'package:legado_md3/data/local/app_database.dart';
+import 'package:legado_md3/help/storage/import_book_service.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class ChapterListScreen extends StatefulWidget {
@@ -23,6 +24,7 @@ class _ChapterListScreenState extends State<ChapterListScreen> {
   bool _isLoading = true;
   bool _reverse = false;
   bool _countWords = false;
+  bool _tocChanged = false; // 本次会话是否重排过目录（通知阅读页重载）
   Map<int, int> _wordCounts = {};
   late ScrollController _scrollController;
 
@@ -111,6 +113,46 @@ class _ChapterListScreenState extends State<ChapterListScreen> {
     if (value) await _loadWordCounts();
   }
 
+  /// 是否本地 TXT（长章节拆分仅对此生效，对齐 E isLocalTxt 判断）
+  bool get _isLocalTxt =>
+      widget.book != null &&
+      widget.book!.local &&
+      (widget.book!.fileName?.toLowerCase().endsWith('.txt') ?? false);
+
+  /// 切换长章节拆分（E: TocActivity menu_split_long_chapter）：
+  /// 重新解析目录入库 → 刷新列表 → 以 (index, tocChanged) 通知阅读页重载目录。
+  Future<void> _toggleSplitLongChapter() async {
+    final book = widget.book;
+    if (book == null || !_isLocalTxt) return;
+    final next = !book.splitLongChapter;
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const Center(child: Card(child: Padding(padding: EdgeInsets.all(24), child: Column(mainAxisSize: MainAxisSize.min, children: [CircularProgressIndicator(), SizedBox(height: 12), Text('正在重新解析目录...')])))),
+    );
+    try {
+      await ImportBookService.toggleSplitLongChapter(book, _db);
+      final chapters = await _db.getChapters(book.name, book.author);
+      if (!mounted) return;
+      setState(() {
+        _allChapters = chapters;
+        _filteredChapters = chapters;
+        _tocChanged = true;
+      });
+      if (_countWords) await _loadWordCounts();
+      // E: need_more_time_load_content
+      if (next) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('已重新解析目录')));
+      } else {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('正文过长时加载可能需要更多时间')));
+      }
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('重新解析失败: $e')));
+    } finally {
+      if (mounted) Navigator.pop(context); // 关闭忙碌对话框
+    }
+  }
+
   static String _formatCount(int n) {
     if (n >= 10000) return '${(n / 10000).toStringAsFixed(1)}万字';
     return '$n字';
@@ -148,6 +190,14 @@ class _ChapterListScreenState extends State<ChapterListScreen> {
                 onTap: () => _toggleCountWords(!_countWords),
                 child: const Text('显示章节字数'),
               ),
+              // 长章节拆分开关（E: menu_split_long_chapter，仅本地 TXT 可见）
+              if (_isLocalTxt)
+                CheckedPopupMenuItem<String>(
+                  value: 'splitLongChapter',
+                  checked: widget.book!.splitLongChapter,
+                  onTap: () => _toggleSplitLongChapter(),
+                  child: const Text('长章节拆分'),
+                ),
             ],
           ),
         ],
@@ -205,7 +255,8 @@ class _ChapterListScreenState extends State<ChapterListScreen> {
                             )
                           : null,
                       onTap: () {
-                        Navigator.pop(context, realIndex);
+                        // (章索引, 目录是否被重排)：阅读页据此决定是否重载目录
+                        Navigator.pop(context, (realIndex, _tocChanged));
                       },
                     );
                   },

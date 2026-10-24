@@ -2,12 +2,16 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:share_plus/share_plus.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:legado_md3/constant/app_theme.dart';
 import 'package:legado_md3/data/model/book.dart';
 import 'package:legado_md3/data/model/book_chapter.dart';
 import 'package:legado_md3/di/book_provider.dart';
 import 'package:legado_md3/data/local/app_database.dart';
+import 'package:legado_md3/help/net/network_monitor.dart';
 import 'package:legado_md3/help/source/source_engine.dart';
+import 'package:legado_md3/help/storage/import_book_service.dart';
+import 'package:legado_md3/help/storage/webdav_service.dart';
 import 'package:legado_md3/ui/book/reader_router.dart';
 import 'package:legado_md3/ui/book/chapter/chapter_list_screen.dart';
 import 'package:legado_md3/ui/book/knowledge/character_list_screen.dart';
@@ -201,6 +205,105 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
     if (mounted) { Navigator.pop(context); ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('缓存完成: 成功$ok章${fail > 0 ? ', 失败$fail章' : ''}'))); }
   }
 
+  /// 是否本地 TXT（长章节拆分仅对此生效，对齐 E isLocalTxt 判断）
+  bool get _isLocalTxt =>
+      widget.book.local &&
+      (widget.book.fileName?.toLowerCase().endsWith('.txt') ?? false);
+
+  /// 切换长章节拆分（E: BookInfoActivity menu_split_long_chapter）：
+  /// 重新解析目录入库并迁移阅读进度；关闭时提示加载可能变慢。
+  Future<void> _toggleSplitLongChapter() async {
+    final book = widget.book;
+    if (!_isLocalTxt) return;
+    final next = !book.splitLongChapter;
+    // 忙碌提示（E: upLoading(true)）
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const Center(child: Card(child: Padding(padding: EdgeInsets.all(24), child: Column(mainAxisSize: MainAxisSize.min, children: [CircularProgressIndicator(), SizedBox(height: 12), Text('正在重新解析目录...')])))),
+    );
+    try {
+      await ImportBookService.toggleSplitLongChapter(book, _db);
+      await _loadChapters();
+      // 进度随章节重排变化，同步详情页展示
+      _readChapterIndex = book.durChapterIndex;
+      if (mounted) {
+        setState(() {});
+        // E: need_more_time_load_content
+        if (!next) {
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('正文过长时加载可能需要更多时间')));
+        } else {
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('已重新解析目录')));
+        }
+      }
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('重新解析失败: $e')));
+    } finally {
+      if (mounted) Navigator.pop(context); // 关闭忙碌对话框
+    }
+  }
+
+  /// 上传本地书籍到 WebDAV 远程书库（E: BookInfoActivity.menu_upload /
+  /// RemoteBookWebDav.upload）：PUT 到 `<webdav_url>/<书库目录>/<文件名>`，
+  /// 成功后把 origin 标记为 `webDav::<远程地址>` 并刷新最后检查时间。
+  Future<void> _uploadBook() async {
+    final book = widget.book;
+    final localPath = book.fileName;
+    if (localPath == null || localPath.isEmpty) return;
+    // 已上传过的书籍：E 会先弹确认（远程链接已存在，是否继续）
+    if ((book.origin ?? '').startsWith('webDav::')) {
+      final ok = await showDialog<bool>(
+        context: context,
+        builder: (_) => AlertDialog(
+          title: const Text('上传书籍'),
+          content: const Text('远程 WebDAV 链接已存在，是否继续（将覆盖远程文件）？'),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('取消')),
+            FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('继续')),
+          ],
+        ),
+      );
+      if (ok != true) return;
+    }
+    final prefs = await SharedPreferences.getInstance();
+    final url = prefs.getString('webdav_url');
+    final user = prefs.getString('webdav_user');
+    final pass = prefs.getString('webdav_pass');
+    final bookDir = prefs.getString('webdav_book_dir') ?? '书籍';
+    if (url == null || url.trim().isEmpty) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('请先在「远程书库」页面配置 WebDAV 服务器')));
+      return;
+    }
+    // 离线快速失败（E: NetworkUtils.isAvailable）
+    if (!await NetworkMonitor.instance.isOnline) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('网络不可用，请检查网络后重试')));
+      return;
+    }
+    // 忙碌提示（E: waitDialog）
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const Center(child: Card(child: Padding(padding: EdgeInsets.all(24), child: Column(mainAxisSize: MainAxisSize.min, children: [CircularProgressIndicator(), SizedBox(height: 12), Text('上传中...')])))),
+    );
+    try {
+      final dav = WebDavService()
+        ..configure(baseUrl: url.trim(), username: user, password: pass);
+      final ok = await dav.uploadBook(localPath, bookDir: bookDir);
+      if (!ok) throw '上传失败（请检查网络与 WebDAV 配置）';
+      // 标记远程地址，使远程书库/同步可知该书已上传（E: BookType.webDavTag）
+      book.origin = WebDavService.remoteBookUrl(url.trim(), bookDir, localPath.split('/').last);
+      // 让本地最后检查时间新于远程，便于后续同步判断
+      book.lastCheckTime = DateTime.now().millisecondsSinceEpoch;
+      await _db.updateBook(book);
+      if (mounted) setState(() {});
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('上传成功')));
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('上传失败: $e')));
+    } finally {
+      if (mounted) Navigator.pop(context); // 关闭忙碌对话框
+    }
+  }
+
   void _showMoreMenu() {
     showModalBottomSheet(
       context: context,
@@ -218,6 +321,24 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
               title: const Text('缓存全部'),
               onTap: () { Navigator.pop(context); _downloadAll(); },
             ),
+            // 长章节拆分开关（E: menu_split_long_chapter，仅本地 TXT 可见）
+            if (_isLocalTxt)
+              ListTile(
+                leading: Icon(widget.book.splitLongChapter
+                    ? Icons.check_box
+                    : Icons.check_box_outline_blank),
+                title: const Text('长章节拆分'),
+                subtitle: const Text('正文超过 100KB 的章节自动拆分，提升翻页流畅度'),
+                onTap: () { Navigator.pop(context); _toggleSplitLongChapter(); },
+              ),
+            // 上传书籍到远程书库（E: menu_upload，仅本地书籍可见）
+            if (widget.book.local && (widget.book.fileName?.isNotEmpty ?? false))
+              ListTile(
+                leading: const Icon(Icons.cloud_upload_outlined),
+                title: const Text('上传书籍'),
+                subtitle: const Text('上传到 WebDAV 远程书库'),
+                onTap: () { Navigator.pop(context); _uploadBook(); },
+              ),
             ListTile(
               leading: const Icon(Icons.swap_horiz),
               title: const Text('换源'),

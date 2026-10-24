@@ -36,6 +36,13 @@ class WebService {
   int port = 1122;
   bool get isRunning => _server != null;
 
+  /// 全局单例：磁贴/通知栏等系统入口与 UI 共享同一服务实例。
+  static final WebService instance = WebService._internal();
+
+  factory WebService() => instance;
+
+  WebService._internal();
+
   /// SSE 调试日志广播流（broadcast，支持多个 /debug/stream 连接）
   static final StreamController<String> _debugController =
       StreamController<String>.broadcast();

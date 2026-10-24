@@ -1044,8 +1044,89 @@ class BookSourceEngine {
   /// 解析发现页分类列表（exploreUrl 配置）
   /// 返回 [{title, url}]，兼容三冒号/两冒号、多行、&&& 多选项
   List<Map<String, String>> getExploreKinds(BookSource source) {
+    return _parseExploreKindsText(source.exploreUrl?.trim() ?? '');
+  }
+
+  /// 异步版：额外支持 legado-E 的两种动态 exploreUrl 形式
+  ///  - `@js:` / `<js>`：执行 JS 生成分类（结果可为文本格式或 JSON 数组）
+  ///  - JSON 数组：`[{"title":"..","url":".."}]`（E 的 ExploreKind 列表）
+  /// 带 SharedPreferences 缓存（对齐 E 的 ACache exploreKindsKey）。
+  Future<List<Map<String, String>>> getExploreKindsAsync(BookSource source) async {
     final raw = source.exploreUrl?.trim() ?? '';
-    if (raw.isEmpty) return [];
+    if (raw.isEmpty) return const [];
+    final low = raw.toLowerCase();
+    if (low.startsWith('@js:') || low.startsWith('<js>')) {
+      final js = low.startsWith('<js>')
+          ? raw.substring(4, raw.lastIndexOf('<'))
+          : raw.substring(4);
+      final prefs = await SharedPreferences.getInstance();
+      final cacheKey = 'exploreKinds_${source.bookSourceUrl}';
+      final cached = prefs.getString(cacheKey);
+      if (cached != null && cached.isNotEmpty) {
+        final kinds = _parseExploreKindsAny(cached);
+        if (kinds.isNotEmpty) return kinds;
+      }
+      final out = await _evalJs(source, js, baseUrl: source.bookSourceUrl);
+      if (out != null && out.trim().isNotEmpty) {
+        await prefs.setString(cacheKey, out.trim());
+        final kinds = _parseExploreKindsAny(out.trim());
+        if (kinds.isNotEmpty) return kinds;
+      }
+      return const [];
+    }
+    if (raw.startsWith('[')) {
+      try {
+        final arr = jsonDecode(raw);
+        if (arr is List) {
+          final kinds = <Map<String, String>>[];
+          for (final e in arr) {
+            if (e is Map) {
+              final title = (e['title'] ?? e['name'] ?? '').toString();
+              final url = (e['url'] ?? e['link'] ?? '').toString();
+              if (url.isNotEmpty) kinds.add({'title': title, 'url': url});
+            }
+          }
+          if (kinds.isNotEmpty) return kinds;
+        }
+      } catch (_) {}
+      return const [];
+    }
+    return _parseExploreKindsText(raw);
+  }
+
+  /// 清理某书源的发现分类缓存（书源刷新发现时调用，对齐 E clearExploreKindsCache）。
+  Future<void> clearExploreKindsCache(BookSource source) async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove('exploreKinds_${source.bookSourceUrl}');
+  }
+
+  static List<Map<String, String>> _parseExploreKindsAny(String raw) {
+    final t = raw.trim();
+    if (t.startsWith('[')) {
+      try {
+        final arr = jsonDecode(t);
+        if (arr is List) {
+          final kinds = <Map<String, String>>[];
+          for (final e in arr) {
+            if (e is Map) {
+              final url = (e['url'] ?? e['link'] ?? '').toString();
+              if (url.isNotEmpty) {
+                kinds.add({
+                  'title': (e['title'] ?? e['name'] ?? url).toString(),
+                  'url': url,
+                });
+              }
+            }
+          }
+          if (kinds.isNotEmpty) return kinds;
+        }
+      } catch (_) {}
+    }
+    return _parseExploreKindsText(t);
+  }
+
+  static List<Map<String, String>> _parseExploreKindsText(String raw) {
+    if (raw.isEmpty) return const [];
     final kinds = <Map<String, String>>[];
     for (final line in raw.split('\n')) {
       final l = line.trim();

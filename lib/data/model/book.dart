@@ -40,6 +40,11 @@ class Book {
   String? customCoverUrl;
   String? bookComment;
 
+  /// 长章节拆分开关（对齐 legado-E `Book.ReadConfig.splitLongChapter`，默认 true）：
+  /// 仅对本地 TXT 生效——正文超过 100KB 的章节自动按 ~10KB 在换行处拆成子章节，
+  /// 原章节转为卷标。导入时与目录页/详情页切换时按此标志重新解析目录。
+  bool splitLongChapter;
+
   Book({
     required this.name,
     required this.author,
@@ -72,6 +77,7 @@ class Book {
     this.fileName,
     this.customCoverUrl,
     this.bookComment,
+    this.splitLongChapter = true,
   });
 
   String get uniqueKey => '${origin ?? ''}_$name';
@@ -125,6 +131,7 @@ class Book {
     'fileName': fileName,
     'customCoverUrl': customCoverUrl,
     'bookComment': bookComment,
+    'splitLongChapter': splitLongChapter ? 1 : 0,
   };
 
   factory Book.fromMap(Map<String, dynamic> map) => Book(
@@ -159,6 +166,8 @@ class Book {
     fileName: map['fileName'] as String?,
     customCoverUrl: map['customCoverUrl'] as String?,
     bookComment: map['bookComment'] as String?,
+    // 旧库/旧备份无此列时默认开启（对齐 E 默认 true）
+    splitLongChapter: (map['splitLongChapter'] as int? ?? 1) == 1,
   );
 
   Map<String, dynamic> toJson() => toMap();

@@ -14,6 +14,7 @@ import 'package:legado_md3/data/model/rss_source.dart';
 import 'package:legado_md3/data/model/txt_toc_rule.dart';
 import 'package:legado_md3/data/model/db_models.dart';
 import 'package:legado_md3/data/local/app_database.dart';
+import 'package:legado_md3/help/storage/import_old_data.dart';
 import 'package:legado_md3/help/storage/backup_zip.dart';
 
 /// 备份恢复服务（支持 zip + 轻量加密，兼容旧版纯 JSON 备份）
@@ -546,12 +547,19 @@ class BackupService {
   }) async {
     bool want(BackupType t) => only == null || only.contains(t);
 
-    // 恢复书籍
+    // 恢复书籍（旧版 myBookShelf.json 格式回退：noteUrl + bookInfoBean，E: Restore.kt）
     if (want(BackupType.books) &&
         backup.containsKey('books') && backup['books'] is List) {
       for (final bookMap in backup['books']) {
+        final map = Map<String, dynamic>.from(bookMap);
         try {
-          final book = Book.fromMap(Map<String, dynamic>.from(bookMap));
+          final book = map.containsKey('bookInfoBean') && !map.containsKey('bookUrl')
+              ? ImportOldData.bookFromOldMap(map)
+              : Book.fromMap(map);
+          if (book == null) {
+            result.booksFailed++;
+            continue;
+          }
           await _db.insertBook(book);
           result.booksRestored++;
         } catch (_) {
@@ -560,12 +568,19 @@ class BackupService {
       }
     }
 
-    // 恢复书源
+    // 恢复书源（旧版 ruleSearchUrl 等字段回退，E: Restore.kt ImportOldData）
     if (want(BackupType.bookSources) &&
         backup.containsKey('bookSources') && backup['bookSources'] is List) {
       for (final sourceMap in backup['bookSources']) {
+        final map = Map<String, dynamic>.from(sourceMap);
         try {
-          final source = BookSource.fromJson(Map<String, dynamic>.from(sourceMap));
+          final source = ImportOldData.isOldSourceMap(map)
+              ? ImportOldData.fromOldBookSource(map)
+              : BookSource.fromJson(map);
+          if (source == null) {
+            result.sourcesFailed++;
+            continue;
+          }
           await _db.insertSource(source);
           result.sourcesRestored++;
         } catch (_) {

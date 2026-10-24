@@ -1,13 +1,7 @@
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
-import 'package:legado_md3/data/model/book.dart';
-import 'package:legado_md3/data/model/book_chapter.dart';
-import 'package:legado_md3/data/local/app_database.dart';
-import 'package:legado_md3/help/source/txt_parser.dart';
-import 'package:legado_md3/help/storage/epub_parser.dart';
-import 'package:legado_md3/help/storage/umd_parser.dart';
-import 'package:legado_md3/help/storage/mobi_parser.dart';
+import 'package:legado_md3/help/storage/import_book_service.dart';
 import 'package:legado_md3/ui/book/import/remote_book_screen.dart';
 
 class LocalImportScreen extends StatefulWidget {
@@ -18,8 +12,7 @@ class LocalImportScreen extends StatefulWidget {
 }
 
 class _LocalImportScreenState extends State<LocalImportScreen> {
-  final _db = DatabaseService();
-  final _parser = TxtParserService();
+  final ImportBookService _importService = ImportBookService();
   final List<File> _selectedFiles = [];
   bool _isImporting = false;
   double _progress = 0;
@@ -28,7 +21,11 @@ class _LocalImportScreenState extends State<LocalImportScreen> {
     try {
       final result = await FilePicker.platform.pickFiles(
         type: FileType.custom,
-        allowedExtensions: ['txt', 'TXT', 'epub', 'EPUB', 'umd', 'UMD', 'mobi', 'MOBI', 'azw', 'AZW'],
+        // 对齐 legado-E：txt/epub/umd/pdf/mobi/azw3/azw + zip 压缩包
+        allowedExtensions: [
+          'txt', 'TXT', 'epub', 'EPUB', 'umd', 'UMD', 'mobi', 'MOBI',
+          'azw', 'AZW', 'azw3', 'AZW3', 'pdf', 'PDF', 'zip', 'ZIP',
+        ],
         allowMultiple: true,
       );
       if (result != null && result.files.isNotEmpty) {
@@ -58,77 +55,17 @@ class _LocalImportScreenState extends State<LocalImportScreen> {
     });
 
     int successCount = 0;
+    int totalBooks = 0;
+    String? lastError;
     for (var i = 0; i < _selectedFiles.length; i++) {
       try {
         final file = _selectedFiles[i];
-        final fileName = file.uri.pathSegments.last;
-        final lower = fileName.toLowerCase();
-        Book book;
-        List<BookChapter> chapters;
-        if (lower.endsWith('.epub')) {
-          // EPUB：走专用解析器，逐章读取正文入库
-          final parsed = await EpubParser.parse(file.path);
-          if (parsed == null) throw 'EPUB 解析失败';
-          book = parsed
-            ..origin = 'local'
-            ..originName = '本地书籍'
-            ..noteUrl = 'local://${file.path}'
-            ..bookUrl = 'local://${file.path}'
-            ..local = true
-            ..fileName = file.path;
-          final toc = await EpubParser.parseToc(file.path);
-          chapters = <BookChapter>[];
-          for (final ch in toc) {
-            final body = await EpubParser.parseChapterContent(file.path, ch.url);
-            chapters.add(BookChapter(
-              index: ch.index, title: ch.title, url: ch.url,
-              isVolume: ch.isVolume, content: body,
-            ));
-          }
-          if (chapters.isEmpty) chapters = [BookChapter(index: 0, title: '正文', url: '', content: await EpubParser.parseChapterContent(file.path, '') ?? '')];
-          book.lastChapter = chapters.isNotEmpty ? chapters.last.title : null;
-        } else if (lower.endsWith('.umd')) {
-          final res = await UmdParser.parse(file.path);
-          if (res == null) throw 'UMD 解析失败';
-          book = res.book
-            ..origin = 'local' ..originName = '本地书籍'
-            ..noteUrl = 'local://${file.path}' ..bookUrl = 'local://${file.path}'
-            ..local = true ..fileName = file.path;
-          chapters = res.chapters;
-          book.lastChapter = chapters.isNotEmpty ? chapters.last.title : null;
-        } else if (lower.endsWith('.mobi') || lower.endsWith('.azw')) {
-          final res = await MobiParser.parse(file.path);
-          if (res == null) throw 'MOBI 解析失败（仅支持 KF7/PalmDOC）';
-          book = res.book
-            ..local = true
-            ..fileName = file.path;
-          chapters = res.chapters;
-          book.lastChapter = chapters.isNotEmpty ? chapters.last.title : null;
-        } else {
-          // TXT（自动识别编码，支持 GBK/UTF-16/BOM）
-          final content = await TxtParserService.readFileAutoDetect(file);
-          final info = _parser.extractBookInfo(content, fileName);
-          chapters = _parser.parseChapters(content);
-          book = Book(
-            name: info['name'] ?? fileName,
-            author: info['author'] ?? '未知',
-            intro: info['intro'],
-            origin: 'local',
-            originName: '本地书籍',
-            noteUrl: 'local://${file.path}',
-            bookUrl: 'local://${file.path}',
-            type: 1,
-            local: true,
-            fileName: file.path,
-            lastChapter: chapters.isNotEmpty ? chapters.last.title : null,
-            wordCount: content.length,
-          );
-        }
-
-        await _db.insertBook(book);
-        await _db.saveChapters(book.name, book.author, chapters);
+        // 统一走导入服务：TXT/EPUB/UMD/MOBI/PDF/ZIP 全格式（对齐 legado-E）
+        final res = await _importService.importPath(file.path);
         successCount++;
+        totalBooks += res.totalBooks;
       } catch (e) {
+        lastError = e.toString();
         debugPrint('导入失败: $e');
       }
       setState(() => _progress = (i + 1) / _selectedFiles.length);
@@ -136,8 +73,11 @@ class _LocalImportScreenState extends State<LocalImportScreen> {
 
     setState(() => _isImporting = false);
     if (mounted) {
+      final msg = successCount == _selectedFiles.length
+          ? (totalBooks > successCount ? '成功导入 $totalBooks 本书' : '成功导入 $successCount 本书')
+          : '成功导入 $successCount/${_selectedFiles.length} 个文件${lastError != null ? '（最后一个错误: $lastError）' : ''}';
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('成功导入 $successCount 本书')),
+        SnackBar(content: Text(msg)),
       );
       Navigator.pop(context, true);
     }
@@ -172,7 +112,8 @@ class _LocalImportScreenState extends State<LocalImportScreen> {
                         const SizedBox(height: 16),
                         const Text('还没有选择文件', style: TextStyle(color: Colors.grey)),
                         const SizedBox(height: 8),
-                        const Text('支持TXT格式', style: TextStyle(color: Colors.grey, fontSize: 12)),
+                        const Text('支持TXT / EPUB / UMD / MOBI / PDF / ZIP',
+                            style: TextStyle(color: Colors.grey, fontSize: 12)),
                       ],
                     ),
                   )

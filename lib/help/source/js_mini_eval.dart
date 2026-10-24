@@ -49,11 +49,23 @@ class JsMiniEvaluator {
       if (decl != null) {
         vars[decl.group(1)!] = _evalExpr(decl.group(2)!.trim());
         last = vars[decl.group(1)!];
-      } else if (assign != null && !_isComparison(stmt)) {
+      } else if (assign != null && !_isComparison(stmt) && _splitComparison(stmt) == null) {
         vars[assign.group(1)!] = _evalExpr(assign.group(2)!.trim());
         last = vars[assign.group(1)!];
       } else {
-        last = _evalExpr(stmt);
+        // if (cond) expr else expr 紧凑写法（legado 书源/直链规则常见）
+        final ifStmt = _splitIfElse(stmt);
+        if (ifStmt != null) {
+          final c = _evalExpr(ifStmt.$1);
+          final truthy = c is bool ? c : (_toStr(c).isNotEmpty && c != 'false' && c != '0');
+          final branch = truthy ? ifStmt.$2 : ifStmt.$3;
+          final v = (branch == null || branch.trim().isEmpty) ? null : _evalExpr(branch);
+          // 表达式语句的产出即脚本返回值（覆盖初始 result）
+          if (v != null) vars['result'] = v;
+          last = v;
+        } else {
+          last = _evalExpr(stmt);
+        }
       }
     }
     // 优先返回 result
@@ -126,6 +138,14 @@ class JsMiniEvaluator {
       final c = _evalExpr(triple.$1);
       final truthy = c is bool ? c : (_toStr(c).isNotEmpty && c != 'false' && c != '0');
       return _evalExpr(truthy ? triple.$2 : triple.$3);
+    }
+
+    // 比较运算 == === != !== >= <= > <（顶层；两侧各自递归求值）
+    final cmp = _splitComparison(expr);
+    if (cmp != null) {
+      final l = _evalExpr(cmp.$1);
+      final r = _evalExpr(cmp.$3);
+      return _compareValues(l, cmp.$2, r);
     }
 
     // 字符串拼接 a + b + ...
@@ -422,6 +442,169 @@ class JsMiniEvaluator {
         return String.fromCharCode(int.parse(m.group(2)!, radix: 16));
       });
     } catch (_) { return s; }
+  }
+
+  /// 切分顶层比较运算（`==` `===` `!=` `!==` `>=` `<=` `>` `<`）。
+  /// 引号/正则/括号感知；两侧各自递归求值（+ 优先级高于比较时由递归处理）。
+  /// 返回 (left, op, right)；无比较符返回 null。
+  (String, String, String)? _splitComparison(String expr) {
+    String? q;
+    var depth = 0;
+    for (var i = 0; i < expr.length; i++) {
+      final ch = expr[i];
+      if (q != null) {
+        if (ch == '\\') { i++; continue; }
+        if (ch == q) q = null;
+        continue;
+      }
+      if (ch == "'" || ch == '"' || ch == '`') { q = ch; continue; }
+      if (ch == '/' && i + 1 < expr.length && expr[i + 1] != '/' && expr[i + 1] != '*') {
+        final re = _scanRegex(expr, i);
+        if (re != null) { i = re - 1; continue; }
+      }
+      if (ch == '(' || ch == '[' || ch == '{') { depth++; continue; }
+      if (ch == ')' || ch == ']' || ch == '}') { depth--; continue; }
+      if (depth != 0) continue;
+      // 排除 => 箭头与 => 前的 =
+      if (ch == '=' && i + 1 < expr.length && expr[i + 1] == '>') { i++; continue; }
+      if (ch == '=' && expr.startsWith('==', i)) {
+        // 兼容 ===
+        var end = i + 2;
+        if (end < expr.length && expr[end] == '=') end++;
+        return (expr.substring(0, i).trim(), expr.substring(i, end),
+            expr.substring(end).trim());
+      }
+      if (ch == '!' && expr.startsWith('!=', i)) {
+        var end = i + 2;
+        if (end < expr.length && expr[end] == '=') end++;
+        return (expr.substring(0, i).trim(), expr.substring(i, end),
+            expr.substring(end).trim());
+      }
+      if (ch == '>' || ch == '<') {
+        var end = i + 1;
+        if (end < expr.length && expr[end] == '=') end++;
+        return (expr.substring(0, i).trim(), expr.substring(i, end),
+            expr.substring(end).trim());
+      }
+    }
+    return null;
+  }
+
+  /// JS 比较语义（宽松近似）：数值优先，其余转字符串。
+  bool _compareValues(dynamic l, String op, dynamic r) {
+    bool looseEq() {
+      if (l == null || r == null) return l == null && r == null;
+      if (l is num && r is num) return l == r;
+      if (l is bool || r is bool) {
+        final lb = l is bool ? l : _toStr(l) == 'true';
+        final rb = r is bool ? r : _toStr(r) == 'true';
+        return lb == rb;
+      }
+      return _toStr(l) == _toStr(r);
+    }
+
+    switch (op) {
+      case '==':
+        return looseEq();
+      case '===':
+        if (l is num && r is num) return l == r;
+        if (l is String && r is String) return l == r;
+        if (l is bool && r is bool) return l == r;
+        return l == null && r == null;
+      case '!=':
+        return !looseEq();
+      case '!==':
+        return !(_compareValues(l, '===', r));
+      default:
+        // > < >= <=
+        final ln = l is num ? l : num.tryParse(_toStr(l));
+        final rn = r is num ? r : num.tryParse(_toStr(r));
+        if (ln != null && rn != null) {
+          switch (op) {
+            case '>':
+              return ln > rn;
+            case '<':
+              return ln < rn;
+            case '>=':
+              return ln >= rn;
+            case '<=':
+              return ln <= rn;
+          }
+        }
+        final ls = _toStr(l);
+        final rs = _toStr(r);
+        switch (op) {
+          case '>':
+            return ls.compareTo(rs) > 0;
+          case '<':
+            return ls.compareTo(rs) < 0;
+          case '>=':
+            return ls.compareTo(rs) >= 0;
+          case '<=':
+            return ls.compareTo(rs) <= 0;
+        }
+        return false;
+    }
+  }
+
+  /// 解析 `if (cond) thenExpr else elseExpr` 紧凑写法（legado 书源/直链
+  /// 上传规则常见；else 可省略）。引号/正则/括号感知；非 if 语句返回 null。
+  (String, String, String?)? _splitIfElse(String stmt) {
+    final s = stmt.trim();
+    if (!RegExp(r'^if\b').hasMatch(s)) return null;
+    var i = 2;
+    while (i < s.length && (s[i] == ' ' || s[i] == '\t' || s[i] == '\n' || s[i] == '\r')) {
+      i++;
+    }
+    if (i >= s.length || s[i] != '(') return null;
+    // 括号+引号感知：定位 cond 的结束 ')'
+    var depth = 0;
+    String? q;
+    var condEnd = -1;
+    for (var j = i; j < s.length; j++) {
+      final ch = s[j];
+      if (q != null) {
+        if (ch == '\\') { j++; continue; }
+        if (ch == q) q = null;
+        continue;
+      }
+      if (ch == "'" || ch == '"' || ch == '`') { q = ch; continue; }
+      if (ch == '/' && j + 1 < s.length && s[j + 1] != '/' && s[j + 1] != '*') {
+        final re = _scanRegex(s, j);
+        if (re != null) { j = re - 1; continue; }
+      }
+      if (ch == '(') depth++;
+      if (ch == ')') { depth--; if (depth == 0) { condEnd = j; break; } }
+    }
+    if (condEnd < 0) return null;
+    final cond = s.substring(i + 1, condEnd);
+    final rest = s.substring(condEnd + 1).trim();
+    // 顶层 else（引号/正则/括号感知）
+    depth = 0;
+    q = null;
+    for (var j = 0; j < rest.length; j++) {
+      final ch = rest[j];
+      if (q != null) {
+        if (ch == '\\') { j++; continue; }
+        if (ch == q) q = null;
+        continue;
+      }
+      if (ch == "'" || ch == '"' || ch == '`') { q = ch; continue; }
+      if (ch == '/' && j + 1 < rest.length && rest[j + 1] != '/' && rest[j + 1] != '*') {
+        final re = _scanRegex(rest, j);
+        if (re != null) { j = re - 1; continue; }
+      }
+      if (ch == '(' || ch == '[' || ch == '{') depth++;
+      if (ch == ')' || ch == ']' || ch == '}') depth--;
+      if (depth == 0 && (ch == 'e' || ch == 'E')) {
+        if (RegExp(r'^else\b').hasMatch(rest.substring(j))) {
+          final thenExpr = rest.substring(0, j).trim();
+          final elseExpr = rest.substring(j + 4).trim();
+          return (cond, thenExpr, elseExpr.isEmpty ? null : elseExpr);
+        }
+      }
+    }
+    return (cond, rest, null);
   }
 
   /// 切分顶层三元 cond ? a : b；忽略字符串/正则/括号；无 ? 返回 null

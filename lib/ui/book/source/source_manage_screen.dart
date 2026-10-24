@@ -6,9 +6,11 @@ import 'package:dio/dio.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:legado_md3/common/deep_link_service.dart';
 import 'package:legado_md3/data/local/app_database.dart';
 import 'package:legado_md3/data/model/book_source.dart';
-import 'package:legado_md3/help/source/source_engine.dart';
+import 'package:legado_md3/help/config/app_config.dart';
+import 'package:legado_md3/help/source/check_source_service.dart';
 import 'package:legado_md3/ui/book/source/source_debug_screen.dart';
 import 'package:legado_md3/ui/book/source/source_edit_screen.dart';
 import 'package:legado_md3/ui/book/source/source_login_screen.dart';
@@ -25,6 +27,7 @@ class SourceManageScreen extends StatefulWidget {
 
 class _SourceManageScreenState extends State<SourceManageScreen> {
   final DatabaseService _db = DatabaseService();
+  final CheckSourceService _checkService = CheckSourceService();
   List<BookSource> _sources = [];
   bool _isLoading = true;
   String _searchQuery = '';
@@ -40,6 +43,12 @@ class _SourceManageScreenState extends State<SourceManageScreen> {
   void initState() {
     super.initState();
     _loadSources();
+  }
+
+  @override
+  void dispose() {
+    _checkService.dispose();
+    super.dispose();
   }
 
   Future<void> _loadSources() async {
@@ -181,10 +190,19 @@ class _SourceManageScreenState extends State<SourceManageScreen> {
             ListTile(
               leading: const Icon(Icons.verified_outlined),
               title: const Text('书源校验'),
-              subtitle: const Text('校验所有书源可用性'),
+              subtitle: Text(CheckSourceConfig.summary),
               onTap: () {
                 Navigator.pop(context);
                 _validateSources();
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.tune),
+              title: const Text('校验设置'),
+              subtitle: const Text('超时时间与校验项'),
+              onTap: () {
+                Navigator.pop(context);
+                _showCheckSourceConfigDialog();
               },
             ),
             ListTile(
@@ -201,7 +219,7 @@ class _SourceManageScreenState extends State<SourceManageScreen> {
     );
   }
 
-  Future<void> _importFromUrl(String url) async {
+  Future<void> _importFromUrl(String url, {String? type}) async {
     try {
       final dio = Dio(BaseOptions(
         connectTimeout: const Duration(seconds: 30),
@@ -217,11 +235,16 @@ class _SourceManageScreenState extends State<SourceManageScreen> {
       } else {
         body = utf8.decode(bytes);
       }
-      final count = await _importSourcesFromString(body);
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(count > 0 ? '成功导入 $count 个书源' : '未识别到有效书源')),
-        );
+      if (type != null) {
+        // 指定类型：走统一导入分派
+        await DeepLinkService.instance.importRaw(body, type: type);
+      } else {
+        final count = await _importSourcesFromString(body);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text(count > 0 ? '成功导入 $count 个书源' : '未识别到有效书源')),
+          );
+        }
       }
       _loadSources();
     } catch (e) {
@@ -368,27 +391,57 @@ class _SourceManageScreenState extends State<SourceManageScreen> {
     return count;
   }
 
+  /// 网络导入（对齐 legado-E OnLineImport：书源/RSS/替换规则/TXT目录/在线TTS/字典/主题）
   void _showImportDialog() {
     final controller = TextEditingController();
+    var importType = 'auto'; // auto=按内容推断
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('网络导入书源'),
-        content: TextField(
-          controller: controller,
-          decoration: const InputDecoration(hintText: '输入书源URL（JSON格式）'),
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('取消')),
-          FilledButton(
-            onPressed: () {
-              final url = controller.text.trim();
-              Navigator.pop(context);
-              if (url.isNotEmpty) _importFromUrl(url);
-            },
-            child: const Text('导入'),
+      builder: (context) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          title: const Text('网络导入'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              DropdownButtonFormField<String>(
+                value: importType,
+                decoration: const InputDecoration(labelText: '导入类型'),
+                items: const [
+                  DropdownMenuItem(value: 'auto', child: Text('自动识别')),
+                  DropdownMenuItem(value: 'bookSource', child: Text('书源')),
+                  DropdownMenuItem(value: 'rss', child: Text('订阅源(RSS)')),
+                  DropdownMenuItem(value: 'replaceRule', child: Text('替换规则')),
+                  DropdownMenuItem(value: 'txtRule', child: Text('TXT目录规则')),
+                  DropdownMenuItem(value: 'httpTts', child: Text('在线TTS')),
+                  DropdownMenuItem(value: 'dictRule', child: Text('字典规则')),
+                  DropdownMenuItem(value: 'theme', child: Text('主题')),
+                ],
+                onChanged: (v) => setDialogState(() => importType = v ?? 'auto'),
+              ),
+              const SizedBox(height: 8),
+              TextField(
+                controller: controller,
+                decoration: const InputDecoration(hintText: '输入 JSON / legado://import 链接'),
+              ),
+            ],
           ),
-        ],
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(context), child: const Text('取消')),
+            FilledButton(
+              onPressed: () {
+                final url = controller.text.trim();
+                Navigator.pop(context);
+                if (url.isEmpty) return;
+                if (url.startsWith('legado://') || url.startsWith('share://')) {
+                  DeepLinkService.instance.handleLink(url);
+                  return;
+                }
+                _importFromUrl(url, type: importType == 'auto' ? null : importType);
+              },
+              child: const Text('导入'),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -730,55 +783,225 @@ class _SourceManageScreenState extends State<SourceManageScreen> {
     );
   }
 
+  /// 书源校验（对齐 legado-E CheckSourceService：七项校验 + 失效分组 + 响应时间）
   Future<void> _validateSources([List<BookSource>? targets]) async {
     final sources = targets ?? await _db.getAllSources();
     if (sources.isEmpty) return;
-    final engine = BookSourceEngine();
-    int valid = 0, invalid = 0, done = 0;
-    showDialog(context: context, barrierDismissible: false, builder: (c) => StatefulBuilder(builder: (c, setS) {
-      void upd() { if (c.mounted) setS(() {}); }
-      upd();
-      return AlertDialog(title: const Text('书源校验'), content: Column(mainAxisSize: MainAxisSize.min, children: [
-        LinearProgressIndicator(value: sources.isEmpty ? 0 : done / sources.length),
-        const SizedBox(height: 12),
-        Text('进度 $done/${sources.length}  有效$valid 无效$invalid'),
-      ]), actions: [TextButton(onPressed: () => Navigator.pop(c), child: const Text('后台运行'))]);
-    }));
-    const concurrency = 6;
-    int cursor = 0;
-    Future<void> worker() async {
-      while (cursor < sources.length) {
-        final s = sources[cursor++];
-        try {
-          // 真实校验：有搜索地址则执行搜索，能解析出书籍列表才算有效；空结果视为失效
-          bool ok = false;
-          if ((s.searchUrl ?? '').isNotEmpty) {
-            final keyword = (s.checkKeyWord ?? '').isNotEmpty ? s.checkKeyWord! : '的';
-            final r = await engine.search(s, keyword, page: 1).timeout(const Duration(seconds: 15), onTimeout: () => []);
-            ok = r.isNotEmpty; // 搜索必须返回有效书籍列表
-          } else if ((s.exploreUrl ?? '').isNotEmpty) {
-            // 无搜索但有发现：尝试拉取第一个发现分类
-            final kinds = engine.getExploreKinds(s);
-            if (kinds.isNotEmpty) {
-              final r = await engine.exploreByUrl(s, kinds.first['url'] ?? '', page: 1).timeout(const Duration(seconds: 15), onTimeout: () => []);
-              ok = r.isNotEmpty;
-            }
-          } else {
-            final client = HttpClient();
-            try {
-              final req = await client.getUrl(Uri.parse(s.bookSourceUrl)).timeout(const Duration(seconds: 8));
-              final resp = await req.close().timeout(const Duration(seconds: 8));
-              ok = resp.statusCode < 400;
-            } finally { client.close(); }
-          }
-          ok ? valid++ : invalid++;
-        } catch (_) { invalid++; }
-        done++;
-        if (mounted) setState(() {});
-      }
+    if (_checkService.isRunning) {
+      ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('已有书源在校验，等完成后再试')));
+      return;
     }
-    await Future.wait(List.generate(concurrency.clamp(1, sources.length), (_) => worker()));
-    if (mounted) { Navigator.of(context).pop(); ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('校验完成: 有效$valid个, 无效$invalid个'))); }
+    int done = 0, valid = 0, invalid = 0;
+    String current = '';
+    final sub = _checkService.progressStream.listen((p) {
+      if (!mounted) return;
+      setState(() {
+        done = p.done;
+        valid = p.validCount;
+        invalid = p.invalidCount;
+        current = p.currentName;
+      });
+    });
+    if (!mounted) { sub.cancel(); return; }
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (c) => StatefulBuilder(builder: (c, setS) {
+        void upd() { if (c.mounted) setS(() {}); }
+        upd();
+        return AlertDialog(
+          title: const Text('书源校验'),
+          content: Column(mainAxisSize: MainAxisSize.min, children: [
+            LinearProgressIndicator(value: sources.isEmpty ? 0 : done / sources.length),
+            const SizedBox(height: 12),
+            Text('进度 $done/${sources.length}  有效 $valid  无效 $invalid'),
+            if (current.isNotEmpty) ...[
+              const SizedBox(height: 4),
+              Text('正在校验：$current',
+                  maxLines: 1, overflow: TextOverflow.ellipsis,
+                  style: TextStyle(color: Colors.grey[600], fontSize: 12)),
+            ],
+          ]),
+          actions: [
+            TextButton(
+              onPressed: () { _checkService.cancel(); Navigator.pop(c); },
+              child: const Text('取消校验'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(c),
+              child: const Text('后台运行'),
+            ),
+          ],
+        );
+      }),
+    );
+    final summary = await _checkService.start(sources);
+    await sub.cancel();
+    if (!mounted) return;
+    Navigator.of(context).pop(); // 关闭进度对话框
+    await _loadSources();
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text(summary.errorMessage.isNotEmpty
+          ? summary.errorMessage
+          : summary.canceled
+              ? '校验已取消：有效 $valid 个，无效 $invalid 个'
+              : '校验完成：有效 ${summary.valid} 个，无效 ${summary.invalid} 个'),
+    ));
+  }
+
+  /// 校验设置对话框（对齐 legado-E ui/config/CheckSourceConfig.kt）
+  void _showCheckSourceConfigDialog() {
+    var timeoutCtrl =
+        TextEditingController(text: '${AppPrefs.checkSourceTimeout ~/ 1000}');
+    var wSourceComment = AppPrefs.wSourceComment;
+    var checkDomain = AppPrefs.checkDomain;
+    var checkSearch = AppPrefs.checkSearch;
+    var checkDiscovery = AppPrefs.checkDiscovery;
+    var checkInfo = AppPrefs.checkInfo;
+    var checkCategory = AppPrefs.checkCategory;
+    var checkContent = AppPrefs.checkContent;
+
+    showDialog(
+      context: context,
+      builder: (c) => StatefulBuilder(builder: (c, setS) {
+        // 选项依赖关系（对齐 E 的 enable/disable 联动）
+        void onSearchOrDiscoveryChanged() {
+          if (!checkSearch && !checkDiscovery) {
+            checkInfo = false;
+            checkCategory = false;
+            checkContent = false;
+          }
+        }
+        void onInfoChanged() {
+          if (!checkInfo) {
+            checkCategory = false;
+            checkContent = false;
+          }
+        }
+        void onCategoryChanged() {
+          if (!checkCategory) checkContent = false;
+        }
+        final infoEnabled = checkSearch || checkDiscovery;
+        final categoryEnabled = infoEnabled && checkInfo;
+        final contentEnabled = categoryEnabled && checkCategory;
+
+        return AlertDialog(
+          title: const Text('校验设置'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                TextField(
+                  controller: timeoutCtrl,
+                  keyboardType: TextInputType.number,
+                  decoration: const InputDecoration(
+                    labelText: '超时（秒）',
+                    helperText: '单个书源校验的总超时时间',
+                  ),
+                ),
+                const SizedBox(height: 8),
+                SwitchListTile(
+                  title: const Text('写入错误注释'),
+                  subtitle: const Text('校验失败时把错误信息写入书源注释'),
+                  value: wSourceComment,
+                  onChanged: (v) => setS(() => wSourceComment = v),
+                ),
+                const Divider(),
+                CheckboxListTile(
+                  title: const Text('源地址'),
+                  subtitle: const Text('Socket 探测源地址可达性'),
+                  value: checkDomain,
+                  onChanged: (v) => setS(() {
+                    checkDomain = v ?? false;
+                    if (!checkSearch && !checkDiscovery && !checkDomain) {
+                      checkSearch = true;
+                    }
+                  }),
+                ),
+                CheckboxListTile(
+                  title: const Text('搜索'),
+                  value: checkSearch,
+                  onChanged: (v) => setS(() {
+                    checkSearch = v ?? false;
+                    onSearchOrDiscoveryChanged();
+                    if (!checkSearch && !checkDiscovery && !checkDomain) {
+                      checkDiscovery = true;
+                    }
+                  }),
+                ),
+                CheckboxListTile(
+                  title: const Text('发现'),
+                  value: checkDiscovery,
+                  onChanged: (v) => setS(() {
+                    checkDiscovery = v ?? false;
+                    onSearchOrDiscoveryChanged();
+                    if (!checkSearch && !checkDiscovery && !checkDomain) {
+                      checkSearch = true;
+                    }
+                  }),
+                ),
+                CheckboxListTile(
+                  title: const Text('详情'),
+                  value: checkInfo,
+                  onChanged: infoEnabled
+                      ? (v) => setS(() {
+                            checkInfo = v ?? false;
+                            onInfoChanged();
+                          })
+                      : null,
+                ),
+                CheckboxListTile(
+                  title: const Text('目录'),
+                  value: checkCategory,
+                  onChanged: categoryEnabled
+                      ? (v) => setS(() {
+                            checkCategory = v ?? false;
+                            onCategoryChanged();
+                          })
+                      : null,
+                ),
+                CheckboxListTile(
+                  title: const Text('正文'),
+                  value: checkContent,
+                  onChanged: contentEnabled
+                      ? (v) => setS(() => checkContent = v ?? false)
+                      : null,
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(c), child: const Text('取消')),
+            TextButton(
+              onPressed: () {
+                final text = timeoutCtrl.text.trim();
+                final secs = int.tryParse(text);
+                if (secs == null || secs <= 0) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('超时时间不能为空且必须大于 0 秒')));
+                  return;
+                }
+                AppPrefs.checkSourceTimeout = secs * 1000;
+                AppPrefs.wSourceComment = wSourceComment;
+                AppPrefs.checkDomain = checkDomain;
+                AppPrefs.checkSearch = checkSearch;
+                AppPrefs.checkDiscovery = checkDiscovery;
+                AppPrefs.checkInfo = checkInfo;
+                AppPrefs.checkCategory = checkCategory;
+                AppPrefs.checkContent = checkContent;
+                Navigator.pop(c);
+                ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text('已保存：${CheckSourceConfig.summary}')));
+              },
+              child: const Text('确定'),
+            ),
+          ],
+        );
+      }),
+    );
   }
 
   void _showSourceOptions(BookSource source) {

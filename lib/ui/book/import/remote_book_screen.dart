@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -100,7 +101,7 @@ class _RemoteBookScreenState extends State<RemoteBookScreen> {
         return;
       }
       Book book;
-      List<BookChapter> chapters;
+      late List<BookChapter> chapters;
       if (lower.endsWith('.epub')) {
         final parsed = await EpubParser.parse(local.path);
         if (parsed == null) throw 'EPUB 解析失败';
@@ -115,10 +116,18 @@ class _RemoteBookScreenState extends State<RemoteBookScreen> {
         if (chapters.isEmpty) chapters = [BookChapter(index: 0, title: '正文', url: '', content: await EpubParser.parseChapterContent(local.path, '') ?? '')];
         book.lastChapter = chapters.isNotEmpty ? chapters.last.title : null;
       } else if (lower.endsWith('.txt')) {
-        final content = await local.readAsString();
+        // 与 ImportBookService/读取侧保持同一套编码识别与长章节拆分
+        final content = await TxtParserService.readFileAutoDetect(local);
         final info = _parser.extractBookInfo(content, file);
-        chapters = _parser.parseChapters(content);
-        book = Book(name: info['name'] ?? file, author: info['author'] ?? '未知', intro: info['intro'], origin: 'local', originName: '本地书籍', noteUrl: 'local://${local.path}', bookUrl: 'local://${local.path}', type: 1, lastChapter: chapters.isNotEmpty ? chapters.last.title : null, wordCount: content.length);
+        var chapters = _parser.parseChapters(content);
+        book = Book(name: info['name'] ?? file, author: info['author'] ?? '未知', intro: info['intro'], origin: 'local', originName: '本地书籍', noteUrl: 'local://${local.path}', bookUrl: 'local://${local.path}', type: 1, local: true, fileName: local.path, lastChapter: chapters.isNotEmpty ? chapters.last.title : null, wordCount: content.length);
+        if (book.splitLongChapter) {
+          chapters = TxtParserService.splitLongChapters(
+            chapters,
+            fullText: const LineSplitter().convert(content).join('\n'),
+          );
+          book.lastChapter = chapters.isNotEmpty ? chapters.last.title : null;
+        }
       } else {
         if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('《$file》已保存到 books 目录（压缩包请解压后导入）')));
         return;

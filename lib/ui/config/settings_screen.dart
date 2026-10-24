@@ -12,6 +12,7 @@ import 'package:legado_md3/data/model/book.dart';
 import 'package:legado_md3/data/model/read_config.dart';
 import 'package:legado_md3/di/book_provider.dart';
 import 'package:legado_md3/help/web/web_service.dart';
+import 'package:legado_md3/help/web/web_tile_channel.dart';
 import 'package:legado_md3/ui/backup/backup_screen.dart';
 import 'package:legado_md3/ui/book/detail/book_detail_screen.dart';
 import 'package:legado_md3/ui/book/manga/manga_config_screen.dart';
@@ -279,7 +280,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     // Web 服务开关与「其他设置-Web服务自动启动」共用同一键 oc_webAutoStart（main.dart 启动时消费）
     if (p.getBool('oc_webAutoStart') ?? false) {
       _webServiceEnabled = true;
-      _webService.start().catchError((_) {});
+      _webService.start().then((_) => WebTileChannel.syncFromUi()).catchError((_) {});
     }
     if (mounted) setState(() {});
   }
@@ -291,9 +292,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
       if (v) {
         final port = (await SharedPreferences.getInstance()).getInt('oc_webPort') ?? 1122;
         await _webService.start(port: port);
+        await WebTileChannel.syncFromUi();
         if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Web服务已启动 http://$_lanIp:$port')));
       } else {
         await _webService.stop();
+        await WebTileChannel.syncFromUi();
       }
     } catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Web服务操作失败: $e')));

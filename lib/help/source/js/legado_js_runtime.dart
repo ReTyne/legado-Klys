@@ -7,6 +7,8 @@ import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart' as iw;
+import 'package:crypto/crypto.dart';
+import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -17,7 +19,9 @@ import 'package:legado_md3/data/local/app_database.dart';
 import 'package:legado_md3/data/model/book_source.dart';
 import 'package:legado_md3/data/model/rss_source.dart';
 import 'package:legado_md3/help/http/cookie_manager.dart';
+import 'package:legado_md3/help/source/archive_native.dart';
 import 'package:legado_md3/help/source/ttf_parser.dart';
+import 'package:legado_md3/ui/book/source/verification_code_screen.dart';
 import 'package:legado_md3/ui/browser/browser_screen.dart';
 import 'legado_bridge_js.dart';
 import 'aes_js_lib.dart';
@@ -245,6 +249,10 @@ class WebViewLegadoJs implements LegadoJs {
         _controller = controller;
         controller.addJavaScriptHandler(
             handlerName: 'legadoBrowser', callback: _onBrowserRequest);
+        // 验证码识别：书源 JS 的 getVerificationCode(imageUrl) 返回 Promise，
+        // 此处弹人工输入界面，用户提交后回传结果 resolve Promise。
+        controller.addJavaScriptHandler(
+            handlerName: 'legadoVerification', callback: _onVerificationRequest);
       },
       onLoadStop: (controller, url) async {
         try {
@@ -360,6 +368,36 @@ class WebViewLegadoJs implements LegadoJs {
     return null;
   }
 
+  /// JS→原生：验证码识别请求（getVerificationCode）。
+  /// 弹出人工输入界面，用户提交的字符回传给 JS resolve Promise；
+  /// 取消/无 Navigator 时回传空串。
+  Future<dynamic> _onVerificationRequest(List<dynamic> args) async {
+    try {
+      final m = jsonDecode(args.first.toString()) as Map<String, dynamic>;
+      final id = m['id']?.toString() ?? '';
+      final imageUrl = m['imageUrl']?.toString() ?? '';
+      final nav = appNavigatorKey.currentState;
+      String code = '';
+      if (nav != null && imageUrl.isNotEmpty) {
+        final result = await nav.push<String>(MaterialPageRoute(
+            builder: (_) => VerificationCodeScreen(
+                imageUrl: imageUrl, sourceName: source.jsName)));
+        code = result ?? '';
+      }
+      await _controller?.evaluateJavascript(
+          source: '__resolveVerification(${_js(id)}, ${_js(code)});');
+    } catch (_) {
+      // 异常时也要 resolve，避免 JS Promise 永久挂起
+      try {
+        final m = jsonDecode(args.first.toString()) as Map<String, dynamic>;
+        final id = m['id']?.toString() ?? '';
+        await _controller?.evaluateJavascript(
+            source: '__resolveVerification(${_js(id)}, "");');
+      } catch (_) {}
+    }
+    return null;
+  }
+
   /// 原生接管书源 JS 发起的所有 XHR（绕过 CORS、统一 Cookie/编码）。
   Future<iw.WebResourceResponse?> _intercept(iw.WebResourceRequest request) async {
     final uri = request.url;
@@ -455,17 +493,45 @@ class WebViewLegadoJs implements LegadoJs {
     }
   }
 
-  /// legado://zip 协议：下载 zip 并解压出指定文件内容（书源 java.getZipStringContent/unzipFile）。
+  /// legado://zip 协议：zip 内取文件内容 / 整包解压（书源 java.getZipStringContent/unzipFile）。
+  /// kind=7z|rar 时转交 Android 原生解压（commons-compress / junrar），见 ArchiveNative。
   Future<iw.WebResourceResponse> _handleZip(iw.WebUri uri) async {
     try {
+      final kind = (uri.queryParameters['kind'] ?? 'zip').toLowerCase();
+      final op = uri.queryParameters['op'] ?? '';
       final zipUrl = uri.queryParameters['url'] ?? '';
       final path = uri.queryParameters['path'] ?? '';
       if (zipUrl.isEmpty) return _textResponse('zip url 为空', 400);
-      final resp = await _dio.get<List<int>>(zipUrl,
-          options: Options(responseType: ResponseType.bytes));
-      final bytes = resp.data ?? const <int>[];
-      if (bytes.isEmpty) return _textResponse('zip 下载为空', 502);
+      final bytes = await _fetchBytes(zipUrl);
+      if (bytes.isEmpty) return _textResponse('压缩包下载为空', 502);
+
+      // 7z / rar：原生解压通道（Dart 无 7z/rar 解码器）
+      if (kind == '7z' || kind == 'rar') {
+        if (op == 'unarchive') {
+          final dir = await ArchiveNative.extractAll(bytes, kind);
+          if (dir == null) return _textResponse('$kind 解压失败（原生通道不可用）', 502);
+          return _textResponse(dir, 200);
+        }
+        final content = await ArchiveNative.extractEntry(bytes, kind, path);
+        if (content == null) return _textResponse('$kind 内未找到文件: $path', 404);
+        return _textResponse(content, 200);
+      }
+
       final archive = ZipDecoder().decodeBytes(bytes);
+      if (op == 'unarchive') {
+        // 整包解压到 legado_files/unzip/<md5(名)>，返回相对目录（对齐 E unArchiveFile）
+        final dir = await _unzipDir(zipUrl);
+        for (final f in archive.files) {
+          if (!f.isFile) continue;
+          final name = f.name.split('/').last;
+          if (name.isEmpty) continue;
+          final out = File('$dir/$name');
+          if (!out.parent.existsSync()) out.parent.createSync(recursive: true);
+          final data = f.content;
+          await out.writeAsBytes(data is List<int> ? data : const <int>[]);
+        }
+        return _textResponse(p.relative(dir, from: (await _filesBase()).path), 200);
+      }
       for (final f in archive.files) {
         if (!f.isFile) continue;
         if (path.isNotEmpty && f.name != path && !f.name.endsWith('/$path')) {
@@ -492,6 +558,34 @@ class WebViewLegadoJs implements LegadoJs {
     } catch (e) {
       return _textResponse('zip 解压失败: $e', 502);
     }
+  }
+
+  /// 下载 URL / 读取 legado://file 相对路径对应字节（zip 协议的数据来源）。
+  Future<Uint8List> _fetchBytes(String urlOrPath) async {
+    if (urlOrPath.startsWith('http')) {
+      final resp = await _dio.get<List<int>>(urlOrPath,
+          options: Options(responseType: ResponseType.bytes));
+      return resp.data == null ? Uint8List(0) : Uint8List.fromList(resp.data!);
+    }
+    final base = await _filesBase();
+    final f = File('${base.path}/$urlOrPath');
+    if (!f.existsSync()) return Uint8List(0);
+    return f.readAsBytesSync();
+  }
+
+  Future<Directory> _filesBase() async {
+    final dir = await getApplicationDocumentsDirectory();
+    final base = Directory('${dir.path}/legado_files');
+    if (!base.existsSync()) base.createSync(recursive: true);
+    return base;
+  }
+
+  Future<String> _unzipDir(String zipUrl) async {
+    final base = await _filesBase();
+    final key = md5.convert(utf8.encode(zipUrl)).toString();
+    final dir = Directory('${base.path}/unzip/$key');
+    if (!dir.existsSync()) dir.createSync(recursive: true);
+    return dir.path;
   }
 
   /// legado://ttf 协议：解析字体反爬映射（java.queryTTF）。请求体为 base64 字体数据。
@@ -559,8 +653,8 @@ class WebViewLegadoJs implements LegadoJs {
     }
   }
 
-  /// legado://file 协议：本地文件读写（java.readTxtFile/importScript/cacheFile/deleteFile）。
-  /// 路径限定在应用文档目录 legado_files 内。
+  /// legado://file 协议：本地文件读写（java.readTxtFile/importScript/cacheFile/deleteFile/
+  /// downloadFile/getTxtInFolder）。路径限定在应用文档目录 legado_files 内。
   Future<iw.WebResourceResponse> _handleFile(iw.WebUri uri) async {
     try {
       final op = uri.queryParameters['op'] ?? '';
@@ -588,10 +682,67 @@ class WebViewLegadoJs implements LegadoJs {
         await f.writeAsBytes(resp.data ?? const <int>[]);
         return _textResponse(f.path, 200);
       }
+      if (op == 'download' || op == 'writehex') {
+        // java.downloadFile：下载/写入文件到 legado_files/<md5(url)>.<type>，
+        // 返回相对文件名（可被 readTxtFile 直接读取，对齐 E 的缓存相对路径语义）。
+        Uint8List bytes;
+        String nameKey;
+        if (op == 'writehex') {
+          final hex = uri.queryParameters['hex'] ?? '';
+          bytes = _hexToBytes(hex);
+          nameKey = url;
+        } else {
+          final resp = await _dio.get<List<int>>(url,
+              options: Options(responseType: ResponseType.bytes));
+          bytes = Uint8List.fromList(resp.data ?? const <int>[]);
+          nameKey = url;
+        }
+        if (bytes.isEmpty) return _textResponse('', 200);
+        var type = Uri.parse(nameKey).queryParameters['type'];
+        if (type == null || type.isEmpty) {
+          final seg = nameKey.split('/').last.split('?').first;
+          type = seg.contains('.') ? seg.split('.').last : 'bin';
+        }
+        final name = '${md5.convert(utf8.encode(nameKey)).toString()}.$type';
+        final f = File('${base.path}/$name');
+        await f.writeAsBytes(bytes);
+        return _textResponse(name, 200);
+      }
+      if (op == 'list') {
+        // java.getTxtInFolder：拼接文件夹内全部文本内容（对齐 E，读后删除目录）
+        final folder = Directory('${base.path}/$path');
+        if (!folder.existsSync()) return _textResponse('[]', 200);
+        final files = folder
+            .listSync()
+            .whereType<File>()
+            .where((f) => f.path.toLowerCase().endsWith('.txt'))
+            .toList()
+          ..sort((a, b) => a.path.compareTo(b.path));
+        final contents = <String>[];
+        for (final f in files) {
+          try {
+            contents.add(f.readAsStringSync());
+          } catch (_) {}
+        }
+        try {
+          folder.deleteSync(recursive: true);
+        } catch (_) {}
+        return _textResponse(jsonEncode(contents), 200);
+      }
       return _textResponse('unknown op', 400);
     } catch (e) {
       return _textResponse('file 操作失败: $e', 502);
     }
+  }
+
+  static Uint8List _hexToBytes(String hex) {
+    final clean = hex.replaceAll(RegExp(r'\s'), '');
+    if (clean.length % 2 != 0) return Uint8List(0);
+    final out = Uint8List(clean.length ~/ 2);
+    for (var i = 0; i < out.length; i++) {
+      out[i] = int.parse(clean.substring(i * 2, i * 2 + 2), radix: 16);
+    }
+    return out;
   }
 
   /// legado://webview 协议：用第二个无头 WebView 加载网页、等 JS 渲染后取渲染 HTML

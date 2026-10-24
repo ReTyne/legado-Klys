@@ -1,6 +1,9 @@
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:legado_md3/help/config/app_config.dart';
+import 'package:legado_md3/help/storage/import_old_data.dart';
+import 'package:legado_md3/ui/config/direct_link_upload_config.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 /// 其他设置 - 对齐原版OtherConfigScreen
@@ -213,6 +216,10 @@ class _OtherConfigScreenState extends State<OtherConfigScreen> {
             setState(() => AppPrefs.defaultBookTreeUri = v);
           },
         ),
+        ListTile(dense: true, leading: const Icon(Icons.cloud_upload_outlined), title: const Text('上传规则'),
+          subtitle: const Text('书籍/备份分享到网盘的直链上传规则（uploadRule）', style: TextStyle(fontSize: 11)),
+          trailing: const Icon(Icons.chevron_right),
+          onTap: () => DirectLinkUploadConfigDialog.show(context)),
         _appSlider('并发线程数', AppPrefs.threadCount, 1, 128, 127,
           (v) => setState(() => AppPrefs.threadCount = v.toInt()),
           sub: '搜索/目录/正文的并发上限（threadCount）'),
@@ -253,6 +260,10 @@ class _OtherConfigScreenState extends State<OtherConfigScreen> {
             setState(() => _prefs['webPort'] = port);
             await (await SharedPreferences.getInstance()).setInt('oc_webPort', port);
           }),
+        ListTile(dense: true, leading: const Icon(Icons.history), title: const Text('导入旧版数据'),
+          subtitle: const Text('导入 legado 3.x 旧版导出的书架/书源/替换规则（选择含 myBookShelf.json 等的目录）', style: TextStyle(fontSize: 11)),
+          trailing: const Icon(Icons.chevron_right),
+          onTap: _importOldData),
         ListTile(dense: true, leading: const Icon(Icons.cleaning_services_outlined), title: const Text('清理WebView数据'),
           onTap: () async {
             try {
@@ -268,9 +279,17 @@ class _OtherConfigScreenState extends State<OtherConfigScreen> {
           dense: true,
           contentPadding: const EdgeInsets.symmetric(horizontal: 16),
           title: const Text('系统文本菜单入口', style: TextStyle(fontSize: 14)),
-          subtitle: const Text('将本应用加入系统文本选择菜单（process_text）。Flutter 版暂不支持注册该入口，仅保存设置', style: TextStyle(fontSize: 11)),
+          subtitle: Text(
+            AppPrefs.processText ? '已注册：在任意应用中选中文本后可通过「阅读」菜单导入' : '将本应用加入系统文本选择菜单（PROCESS_TEXT），保存后重启生效',
+            style: const TextStyle(fontSize: 11)),
           value: AppPrefs.processText,
-          onChanged: (v) => setState(() => AppPrefs.processText = v),
+          onChanged: (v) async {
+            setState(() => AppPrefs.processText = v);
+            if (!mounted) return;
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text(v ? '已开启文本菜单入口（重启应用后生效）' : '已关闭文本菜单入口（重启应用后生效）')),
+            );
+          },
         ),
         SwitchListTile(
           dense: true,
@@ -293,6 +312,32 @@ class _OtherConfigScreenState extends State<OtherConfigScreen> {
         return '不检查更新';
       default:
         return '正式版';
+    }
+  }
+
+  /// 导入 legado 3.x 旧版数据（E: ImportOldData.importUri）
+  Future<void> _importOldData() async {
+    final dir = await FilePicker.platform.getDirectoryPath();
+    if (dir == null || !mounted) return;
+    // 忙碌提示
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const Center(child: Card(child: Padding(padding: EdgeInsets.all(24), child: Column(mainAxisSize: MainAxisSize.min, children: [CircularProgressIndicator(), SizedBox(height: 12), Text('正在导入旧版数据...')])))),
+    );
+    try {
+      final result = await ImportOldData.importDir(dir);
+      if (!mounted) return;
+      Navigator.pop(context);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text(result.summary())),
+      );
+    } catch (e) {
+      if (!mounted) return;
+      Navigator.pop(context);
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('导入失败: $e')),
+      );
     }
   }
 }

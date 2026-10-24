@@ -7,14 +7,21 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:legado_md3/constant/app_theme.dart';
 import 'package:legado_md3/data/model/search_book.dart';
 import 'package:legado_md3/data/model/book.dart';
+import 'package:legado_md3/data/model/book_source.dart';
 import 'package:legado_md3/ui/book/detail/change_source_screen.dart';
 import 'package:legado_md3/di/book_provider.dart';
 import 'package:legado_md3/data/local/app_database.dart';
+import 'package:legado_md3/help/config/app_config.dart';
+import 'package:legado_md3/help/net/network_monitor.dart';
+import 'package:legado_md3/help/source/search_scope.dart';
 import 'package:legado_md3/help/source/source_engine.dart';
 import 'package:legado_md3/ui/book/detail/book_detail_screen.dart';
 
 class SearchScreen extends StatefulWidget {
-  const SearchScreen({super.key});
+  /// 初始搜索范围（单书源 `名称::url`，来自书源编辑页的「保存并搜索」等入口）
+  final String? searchScope;
+
+  const SearchScreen({super.key, this.searchScope});
 
   @override
   State<SearchScreen> createState() => _SearchScreenState();
@@ -30,8 +37,11 @@ class _SearchScreenState extends State<SearchScreen> {
   String? _searchKeyword;
   int _searchedSources = 0;
   int _totalSources = 0;
-  Set<String> _selectedSources = {};
   bool _groupBySource = false;
+
+  /// 搜索范围（对齐 legado-E SearchScope：全部 / 分组多选 / 单书源）
+  late final SearchScope _scope = SearchScope(
+      widget.searchScope ?? AppPrefs.searchScope);
 
   /// 搜索范围：0=全部 1=书名 2=作者（对齐 legado-E SearchScope）
   int _searchScope = 0;
@@ -113,6 +123,14 @@ class _SearchScreenState extends State<SearchScreen> {
 
   Future<void> _search(String keyword) async {
     if (keyword.trim().isEmpty) return;
+    // 离线快速失败（E: NetworkUtils.isAvailable 守卫），避免逐源干等超时
+    if (!await NetworkMonitor.instance.isOnline) {
+      if (mounted) {
+        setState(() => _isSearching = false);
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('网络不可用，请检查网络后重试')));
+      }
+      return;
+    }
     _controller.text = keyword;
     _searchKeyword = keyword;
     _saveHistory(keyword);
@@ -122,18 +140,16 @@ class _SearchScreenState extends State<SearchScreen> {
       _searchedSources = 0;
     });
 
-    final sources = await _db.getAllSources(enabled: true);
+    final sources = await _scope.getBookSourceParts(_db);
     if (sources.isEmpty) {
       if (mounted) {
         setState(() => _isSearching = false);
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('没有启用的书源，请先在「书源管理」中导入并启用书源')));
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('搜索范围内没有启用的书源，请调整「搜索范围」或到「书源管理」启用书源')));
       }
       return;
     }
     _totalSources = sources.length;
-    final selectedSources = _selectedSources.isEmpty
-        ? sources
-        : sources.where((s) => _selectedSources.contains(s.bookSourceUrl)).toList();
+    final selectedSources = sources;
 
     // 并发池搜索所有启用书源（限制同时 8 个，避免源过多时连接耗尽），结果到达即刷新
     const concurrency = 8;
@@ -193,60 +209,176 @@ class _SearchScreenState extends State<SearchScreen> {
     }
   }
 
-  void _showSourceFilter() {
-    showModalBottomSheet(
+  /// 搜索范围对话框（对齐 legado-E ui/book/search/SearchScopeDialog.kt）
+  ///  - 全部书源
+  ///  - 按分组（多选，来自启用书源的分组）
+  ///  - 按书源（单选，名称::url，不缓存）
+  void _showSearchScopeDialog() {
+    // 0=按分组 1=按书源
+    var mode = _scope.isSource ? 1 : 0;
+    final selectedGroups = <String>{};
+    if (!_scope.isSource && !_scope.isAll) {
+      selectedGroups.addAll(_scope.scope
+          .split(',')
+          .map((e) => e.trim())
+          .where((e) => e.isNotEmpty));
+    }
+    String? selectedSourceUrl =
+        _scope.isSource ? _scope.scope.substring(_scope.scope.indexOf('::') + 2) : null;
+    var filterText = '';
+
+    showDialog(
       context: context,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setSheetState) => SafeArea(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Padding(padding: EdgeInsets.all(16), child: Text('选择书源', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold))),
-              Expanded(
-                child: FutureBuilder(
-                  future: _db.getAllSources(enabled: true),
-                  builder: (context, snapshot) {
-                    if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
-                    final sources = snapshot.data!;
-                    return ListView.builder(
-                      itemCount: sources.length,
-                      itemBuilder: (context, index) {
-                        final source = sources[index];
-                        final selected = _selectedSources.contains(source.bookSourceUrl);
-                        return CheckboxListTile(
-                          title: Text(source.bookSourceName, maxLines: 1, overflow: TextOverflow.ellipsis),
-                          subtitle: Text(source.bookSourceGroup ?? '默认', style: const TextStyle(fontSize: 11)),
-                          value: selected,
-                          onChanged: (v) => setSheetState(() {
-                            if (v == true) _selectedSources.add(source.bookSourceUrl);
-                            else _selectedSources.remove(source.bookSourceUrl);
-                          }),
-                        );
-                      },
-                    );
-                  },
-                ),
-              ),
-              Padding(
-                padding: const EdgeInsets.all(16),
-                child: Row(
-                  children: [
-                    TextButton(onPressed: () async {
-                      final all = await _db.getAllSources(enabled: true);
-                      setSheetState(() {
-                        _selectedSources.addAll(all.map((s) => s.bookSourceUrl));
-                      });
-                    }, child: const Text('全选')),
-                    TextButton(onPressed: () => setSheetState(() => _selectedSources.clear()), child: const Text('重置')),
-                    const Spacer(),
-                    FilledButton(onPressed: () => Navigator.pop(context), child: Text(_selectedSources.isEmpty ? '确定(全部源)' : '确定(${_selectedSources.length})')),
+      builder: (c) => StatefulBuilder(builder: (c, setS) {
+        Future<List<BookSource>> loadSources() async {
+          final all = await _db.getAllSources();
+          final kw = filterText.trim().toLowerCase();
+          if (kw.isEmpty) return all;
+          return all
+              .where((s) =>
+                  s.bookSourceName.toLowerCase().contains(kw) ||
+                  s.bookSourceUrl.toLowerCase().contains(kw))
+              .toList();
+        }
+
+        return AlertDialog(
+          title: const Text('搜索范围'),
+          content: SizedBox(
+            width: double.maxFinite,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                SegmentedButton<int>(
+                  segments: const [
+                    ButtonSegment(value: 0, label: Text('按分组')),
+                    ButtonSegment(value: 1, label: Text('按书源')),
                   ],
+                  selected: {mode},
+                  onSelectionChanged: (v) => setS(() => mode = v.first),
                 ),
-              ),
-            ],
+                const SizedBox(height: 8),
+                if (mode == 1)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    child: TextField(
+                      decoration: const InputDecoration(
+                        prefixIcon: Icon(Icons.search),
+                        hintText: '过滤书源名称/网址',
+                        isDense: true,
+                      ),
+                      onChanged: (v) => setS(() => filterText = v),
+                    ),
+                  ),
+                Flexible(
+                  child: mode == 0
+                      ? FutureBuilder<List<String>>(
+                          future: _db
+                              .getAllSources(enabled: true)
+                              .then((list) => list
+                                  .map((s) => s.bookSourceGroup ?? '')
+                                  .where((g) => g.isNotEmpty)
+                                  .toSet()
+                                  .toList()
+                                ..sort()),
+                          builder: (c, snapshot) {
+                            if (!snapshot.hasData) {
+                              return const Center(child: CircularProgressIndicator());
+                            }
+                            final groups = snapshot.data!;
+                            if (groups.isEmpty) {
+                              return const Center(child: Text('启用书源均未分组'));
+                            }
+                            return ListView.builder(
+                              itemCount: groups.length,
+                              itemBuilder: (c, i) {
+                                final g = groups[i];
+                                return CheckboxListTile(
+                                  dense: true,
+                                  title: Text(g),
+                                  value: selectedGroups.contains(g),
+                                  onChanged: (v) => setS(() {
+                                    if (v == true) {
+                                      selectedGroups.add(g);
+                                    } else {
+                                      selectedGroups.remove(g);
+                                    }
+                                  }),
+                                );
+                              },
+                            );
+                          },
+                        )
+                      : FutureBuilder<List<BookSource>>(
+                          future: loadSources(),
+                          builder: (c, snapshot) {
+                            if (!snapshot.hasData) {
+                              return const Center(child: CircularProgressIndicator());
+                            }
+                            final sources = snapshot.data!;
+                            return ListView.builder(
+                              itemCount: sources.length,
+                              itemBuilder: (c, i) {
+                                final s = sources[i];
+                                return RadioListTile<String>(
+                                  dense: true,
+                                  title: Text(s.bookSourceName,
+                                      maxLines: 1, overflow: TextOverflow.ellipsis),
+                                  subtitle: Text(s.bookSourceGroup ?? '默认',
+                                      style: const TextStyle(fontSize: 11)),
+                                  value: s.bookSourceUrl,
+                                  groupValue: selectedSourceUrl,
+                                  onChanged: (v) => setS(() => selectedSourceUrl = v),
+                                );
+                              },
+                            );
+                          },
+                        ),
+                ),
+              ],
+            ),
           ),
-        ),
-      ),
+          actions: [
+            TextButton(
+              onPressed: () {
+                _scope.update(''); // 全部书源
+                Navigator.pop(c);
+                setState(() {});
+              },
+              child: const Text('全部书源'),
+            ),
+            TextButton(onPressed: () => Navigator.pop(c), child: const Text('取消')),
+            TextButton(
+              onPressed: () async {
+                if (mode == 0) {
+                  if (selectedGroups.isEmpty) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('请至少选择一个分组')));
+                    return;
+                  }
+                  _scope.updateGroups(selectedGroups.toList());
+                } else {
+                  if (selectedSourceUrl == null) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('请选择一个书源')));
+                    return;
+                  }
+                  final src = await _db.getSource(selectedSourceUrl!);
+                  if (src == null) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('书源不存在')));
+                    return;
+                  }
+                  // 单书源范围（名称::url），不缓存
+                  _scope.update(SearchScope.fromSource(src).scope, save: false);
+                }
+                if (c.mounted) Navigator.pop(c);
+                setState(() {});
+              },
+              child: const Text('确定'),
+            ),
+          ],
+        );
+      }),
     );
   }
 
@@ -268,7 +400,11 @@ class _SearchScreenState extends State<SearchScreen> {
         ),
         actions: [
           IconButton(icon: const Icon(Icons.search), onPressed: () => _search(_controller.text)),
-          IconButton(icon: const Icon(Icons.filter_list), onPressed: _showSourceFilter),
+          IconButton(
+            icon: const Icon(Icons.filter_list),
+            tooltip: '搜索范围：${_scope.display}',
+            onPressed: _showSearchScopeDialog,
+          ),
         ],
       ),
       body: _searchKeyword == null
@@ -363,7 +499,12 @@ class _SearchScreenState extends State<SearchScreen> {
           child: Row(
             children: [
               Text('共找到 ${display.length} 条', style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
-              const Spacer(),
+              TextButton.icon(
+                style: ButtonStyle(visualDensity: VisualDensity.compact),
+                icon: const Icon(Icons.filter_list, size: 14),
+                label: Text(_scope.display, style: const TextStyle(fontSize: 12)),
+                onPressed: _showSearchScopeDialog,
+              ),
               Text('$_searchedSources/$_totalSources 源', style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
               IconButton(
                 visualDensity: VisualDensity.compact,

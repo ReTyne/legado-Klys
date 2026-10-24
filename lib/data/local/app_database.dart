@@ -18,7 +18,7 @@ class DatabaseService {
   DatabaseService._internal();
 
   Database? _db;
-  static const int _dbVersion = 11;
+  static const int _dbVersion = 12;
 
   Future<Database> get database async {
     if (_db != null) return _db!;
@@ -120,6 +120,13 @@ class DatabaseService {
         'ruleGet TEXT',
       ]);
     }
+    if (oldVersion < 12) {
+      // v12：books 补长章节拆分开关列（对齐 E Book.ReadConfig.splitLongChapter，
+      // 仅本地 TXT 有意义；旧数据默认 1=开启）。逐列 ADD 可重入。
+      await _addColumnsIfMissing(db, 'books', const [
+        'splitLongChapter INTEGER DEFAULT 1',
+      ]);
+    }
     await _onCreate(db, newVersion);
   }
 
@@ -135,7 +142,7 @@ class DatabaseService {
   }
 
   Future<void> _onCreate(Database db, int version) async {
-    await db.execute('CREATE TABLE IF NOT EXISTS books (name TEXT NOT NULL, author TEXT NOT NULL, coverUrl TEXT, intro TEXT, kind TEXT, lastChapter TEXT, lastChapterIndex INTEGER, durChapterIndex INTEGER, durChapterPos INTEGER, durChapterTime INTEGER, noteUrl TEXT, bookUrl TEXT, origin TEXT, originName TEXT, tag TEXT, wordCount INTEGER, canUpdate INTEGER DEFAULT 1, local INTEGER DEFAULT 0, type INTEGER DEFAULT 0, group_name TEXT, order_num INTEGER, latestChapterTime INTEGER, lastCheckTime INTEGER, infoHtml TEXT, tocHtml TEXT, variable TEXT, customOrder INTEGER, allowUpdate INTEGER DEFAULT 1, fileName TEXT, customCoverUrl TEXT, bookComment TEXT, latestChapterTitle TEXT, lastChapterTime INTEGER, updateTime INTEGER, "order" INTEGER, groupId INTEGER, PRIMARY KEY (name, author))');
+    await db.execute('CREATE TABLE IF NOT EXISTS books (name TEXT NOT NULL, author TEXT NOT NULL, coverUrl TEXT, intro TEXT, kind TEXT, lastChapter TEXT, lastChapterIndex INTEGER, durChapterIndex INTEGER, durChapterPos INTEGER, durChapterTime INTEGER, noteUrl TEXT, bookUrl TEXT, origin TEXT, originName TEXT, tag TEXT, wordCount INTEGER, canUpdate INTEGER DEFAULT 1, local INTEGER DEFAULT 0, type INTEGER DEFAULT 0, group_name TEXT, order_num INTEGER, latestChapterTime INTEGER, lastCheckTime INTEGER, infoHtml TEXT, tocHtml TEXT, variable TEXT, customOrder INTEGER, allowUpdate INTEGER DEFAULT 1, fileName TEXT, customCoverUrl TEXT, bookComment TEXT, splitLongChapter INTEGER DEFAULT 1, latestChapterTitle TEXT, lastChapterTime INTEGER, updateTime INTEGER, "order" INTEGER, groupId INTEGER, PRIMARY KEY (name, author))');
     await db.execute('CREATE TABLE IF NOT EXISTS book_chapters (bookName TEXT NOT NULL, bookAuthor TEXT NOT NULL, chapter_index INTEGER NOT NULL, title TEXT, url TEXT, baseUrl TEXT, isVolume INTEGER DEFAULT 0, isPay INTEGER DEFAULT 0, tag TEXT, resourceUrl TEXT, content TEXT, start_pos INTEGER, end_pos INTEGER, variable TEXT, PRIMARY KEY (bookName, bookAuthor, chapter_index))');
     await db.execute('CREATE TABLE IF NOT EXISTS book_sources (bookSourceUrl TEXT PRIMARY KEY, bookSourceName TEXT, bookSourceGroup TEXT, bookSourceType INTEGER, bookSourceComment TEXT, lastUpdateTime INTEGER, enabled INTEGER DEFAULT 1, enabledExplore INTEGER DEFAULT 1, customOrder INTEGER, respondTime INTEGER, weight INTEGER, header TEXT, loginUrl TEXT, loginUi TEXT, loginCheckJs TEXT, bookUrlPattern TEXT, charset TEXT, coverDecodeJs TEXT, eventListener INTEGER DEFAULT 0, customButton INTEGER DEFAULT 0, enabledCookieJar INTEGER DEFAULT 0, concurrentRate TEXT, homepageModules TEXT, searchUrl TEXT, checkKeyWord TEXT, exploreUrl TEXT, exploreScreen TEXT, ruleSearch TEXT, ruleExplore TEXT, ruleBookInfo TEXT, ruleToc TEXT, ruleContent TEXT, ruleReview TEXT, ruleImage TEXT, variableComment TEXT, jsLib TEXT, variable TEXT, rulePut TEXT, ruleGet TEXT)');
     await db.execute('CREATE TABLE IF NOT EXISTS book_groups (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, "order" INTEGER, show INTEGER DEFAULT 1, cover TEXT)');

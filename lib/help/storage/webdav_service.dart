@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 import 'package:dio/dio.dart';
 import 'package:legado_md3/data/model/book.dart';
 import 'package:legado_md3/data/model/book_source.dart';
@@ -147,6 +148,42 @@ class WebDavService {
     } catch (e) {
       return null;
     }
+  }
+
+  /// 上传书籍文件到远程书库（对齐 E `RemoteBookWebDav.upload`）：
+  /// 目标为 `<baseUrl>/<bookDir>/<fileName>`，先 MKCOL 确保目录存在。
+  /// 返回是否上传成功；调用方负责标记 book.origin（`webDav::<putUrl>`）。
+  Future<bool> uploadBook(String localPath, {String bookDir = '书籍'}) async {
+    try {
+      if (_baseUrl == null) return false;
+      final file = File(localPath);
+      if (!await file.exists()) return false;
+      var d = bookDir.trim();
+      if (d.isEmpty) d = '书籍';
+      if (!d.endsWith('/')) d = '$d/';
+      if (d.startsWith('/')) d = d.substring(1);
+      final name = file.uri.pathSegments.last;
+      // 确保目录存在（已存在时服务端返回 405，忽略）
+      try {
+        await _dio.request('$_baseUrl$d', options: Options(method: 'MKCOL'));
+      } catch (_) {}
+      final response = await _dio.put('$_baseUrl$d$name', data: await file.readAsBytes());
+      return response.statusCode == 200 ||
+          response.statusCode == 201 ||
+          response.statusCode == 204;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  /// 组装远程书籍地址（E: `webDav::` + putUrl），用于标记书籍已上传。
+  static String remoteBookUrl(String baseUrl, String bookDir, String fileName) {
+    var root = baseUrl.endsWith('/') ? baseUrl : '$baseUrl/';
+    var d = bookDir.trim();
+    if (d.isEmpty) d = '书籍';
+    if (!d.endsWith('/')) d = '$d/';
+    if (d.startsWith('/')) d = d.substring(1);
+    return 'webDav::$root$d$fileName';
   }
 
   /// 上传阅读进度

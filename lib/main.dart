@@ -10,10 +10,12 @@ import 'package:legado_md3/help/storage/crash_log_helper.dart';
 import 'package:legado_md3/help/storage/auto_sync_service.dart';
 import 'package:legado_md3/help/storage/backup_service.dart';
 import 'package:legado_md3/help/web/web_service.dart';
+import 'package:legado_md3/help/web/web_tile_channel.dart';
 import 'package:legado_md3/data/local/app_database.dart';
 import 'package:legado_md3/common/app_navigator.dart';
 import 'package:legado_md3/common/app_name.dart';
 import 'package:legado_md3/common/deep_link_service.dart';
+import 'package:legado_md3/help/net/network_monitor.dart';
 import 'package:legado_md3/ui/book/reader_router.dart';
 
 /// 应用语言（oc_language：0 跟随系统 / 1 简体中文 / 2 English）
@@ -41,13 +43,17 @@ void main() async {
     // 记录日志开关已在前；以下均为可延后的后台 IO / 网络
     AutoSyncService.syncOnOpen();
     BackupService.scheduleAutoBackup();
+    // 网络状态监听：搜索/校验/上传前的快速离线判断（E: NetworkUtils.isAvailable）
+    NetworkMonitor.instance.start();
     if (prefs.getBool('oc_autoClearExpired') ?? false) {
       DatabaseService().clearExpiredChapterContent().catchError((_) => 0);
     }
     if (prefs.getBool('oc_webAutoStart') ?? false) {
       final port = prefs.getInt('oc_webPort') ?? 1122;
-      WebService().start(port: port).catchError((_) {});
+      WebService().start(port: port).then((_) => WebTileChannel.syncFromUi()).catchError((_) {});
     }
+    // Web 服务快捷磁贴（Android N+ 下拉磁贴，D3）
+    WebTileChannel.register();
     // legado:// 深链与系统分享导入：监听并分派
     DeepLinkService.instance.init();
     DeepLinkService.instance.links.listen(

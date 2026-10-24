@@ -8,6 +8,7 @@ import 'package:legado_md3/help/config/app_config.dart';
 import 'package:legado_md3/common/app_name.dart';
 import 'package:legado_md3/help/storage/crash_log_helper.dart';
 import 'package:legado_md3/help/web/web_service.dart';
+import 'package:legado_md3/help/web/web_tile_channel.dart';
 import 'package:legado_md3/ui/ai/ai_chat_screen.dart';
 import 'package:legado_md3/ui/backup/backup_screen.dart';
 import 'package:legado_md3/ui/book/source/opds_screen.dart';
@@ -88,6 +89,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
       final port = prefs.getInt('oc_webPort') ?? 1122;
       await _webService.start(port: port);
       setState(() => _webServiceRunning = true);
+      await WebTileChannel.syncFromUi();
       // Web 服务唤醒锁（oc_webWakeLock）
       if (prefs.getBool('oc_webWakeLock') ?? false) {
         try { await _wakeChannel.invokeMethod('enable'); } catch (_) {}
@@ -99,6 +101,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     } else {
       await _webService.stop();
       setState(() => _webServiceRunning = false);
+      await WebTileChannel.syncFromUi();
       try { await _wakeChannel.invokeMethod('disable'); } catch (_) {}
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Web服务已停止')));

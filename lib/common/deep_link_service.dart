@@ -8,7 +8,10 @@ import 'package:flutter/services.dart';
 import 'package:legado_md3/common/app_navigator.dart';
 import 'package:legado_md3/data/local/app_database.dart';
 import 'package:legado_md3/data/model/book_source.dart';
+import 'package:legado_md3/data/model/db_models.dart';
+import 'package:legado_md3/data/model/replace_rule.dart';
 import 'package:legado_md3/data/model/rss_source.dart';
+import 'package:legado_md3/data/model/txt_toc_rule.dart';
 import 'package:legado_md3/help/config/theme_share.dart';
 
 /// legado:// 深链 / 系统分享文本 的统一接收与导入服务（对齐 legado-E 的 OnLineImportActivity）。
@@ -68,7 +71,10 @@ class DeepLinkService {
 
   /// 处理一条链接（供订阅 [links] 后调用，也可直接调用）。
   /// 支持：
-  ///  - `legado://import?url=<编码后的JSON地址>[&type=bookSource|rssSource|theme]`
+  ///  - `legado://import/{path}?src={url}`（对齐 legado-E OnLineImportActivity：
+  ///    bookSource / rssSource / replaceRule / textTocRule / httpTTS / dictRule /
+  ///    theme / readConfig / importonline/{type}）
+  ///  - `legado://import?url=<编码后的JSON地址>[&type=...]`（本项目早期格式）
   ///  - `legado://import?type=bookSource&json=<编码后的JSON>`
   ///  - `share://text?content=<编码后的URL或JSON>`
   Future<void> handleLink(String link) async {
@@ -91,19 +97,81 @@ class DeepLinkService {
     }
   }
 
-  /// legado://import：url 参数拉取远端内容，json 参数直接取内容
+  /// legado://import：兼容 E 的路径格式与本项目早期的查询参数格式
   Future<void> _handleLegadoUri(Uri uri) async {
+    // ---- E 格式：legado://import/{path}?src={url} ----
+    final src = uri.queryParameters['src'] ?? uri.queryParameters['url'];
+    final segments = uri.pathSegments;
+    // importonline/{type}（E 的 host 形式：legado://importonline/booksource?src=）
+    if (segments.isNotEmpty && segments.first == 'importonline') {
+      final type = segments.length > 1 ? segments[1] : '';
+      if (src == null || src.trim().isEmpty) {
+        _tip('链接缺少 src 参数');
+        return;
+      }
+      await _importByType(_normalizeType(type) ?? 'bookSource', src.trim());
+      return;
+    }
+    if (segments.isNotEmpty && segments.first == 'import' && segments.length > 1) {
+      final path = segments[1];
+      if (src == null || src.trim().isEmpty) {
+        _tip('链接缺少 src 参数');
+        return;
+      }
+      switch (path) {
+        case 'bookSource':
+          await _importByType('bookSource', src.trim());
+        case 'rssSource':
+          await _importByType('rss', src.trim());
+        case 'replaceRule':
+          await _importByType('replaceRule', src.trim());
+        case 'textTocRule':
+          await _importByType('txtRule', src.trim());
+        case 'httpTTS':
+          await _importByType('httpTts', src.trim());
+        case 'dictRule':
+          await _importByType('dictRule', src.trim());
+        case 'theme':
+          await _importByType('theme', src.trim());
+        case 'readConfig':
+          _tip('暂不支持在线导入阅读配置包（readConfig）');
+        case 'addToBookshelf':
+          _tip('暂不支持通过链接添加书籍到书架');
+        default:
+          // 未知路径：按内容推断类型（E 的 determineType）
+          await _determineType(src.trim());
+      }
+      return;
+    }
+
+    // ---- 本项目早期格式：legado://import?url=&json=&type= ----
     final url = uri.queryParameters['url'];
     final json = uri.queryParameters['json'];
     final type = uri.queryParameters['type'];
     if (url != null && url.trim().isNotEmpty) {
       final body = await _fetchText(url.trim());
-      await _importRaw(body, type: type);
+      await importRaw(body, type: type);
     } else if (json != null && json.trim().isNotEmpty) {
-      await _importRaw(json, type: type);
+      await importRaw(json, type: type);
+    } else if (src != null && src.trim().isNotEmpty) {
+      await importRaw(src.trim(), type: type);
     } else {
-      _tip('链接缺少 url / json 参数');
+      _tip('链接缺少 url / json / src 参数');
     }
+  }
+
+  /// 按显式类型导入（src 为 URL 时先拉取）
+  Future<void> _importByType(String kind, String src) async {
+    final body =
+        src.startsWith('http://') || src.startsWith('https://') ? await _fetchText(src) : src;
+    await importRaw(body, type: kind);
+  }
+
+  /// 未知类型时按内容推断（对齐 E BaseAssociationViewModel.importJson）：
+  /// 拉取远端内容，JSON 则按特征键判断类型。
+  Future<void> _determineType(String url) async {
+    final body = await _fetchText(url);
+    await importRaw(body);
   }
 
   /// share://text?content=...：系统分享的文本（URL 或 JSON）
@@ -113,11 +181,11 @@ class DeepLinkService {
       _tip('分享内容为空');
       return;
     }
-    await _importRaw(content);
+    await importRaw(content);
   }
 
-  /// 导入原始内容：URL 先抓取，再按 JSON 解析并分派类型
-  Future<void> _importRaw(String raw, {String? type}) async {
+  /// 导入原始内容：URL 先抓取，再按 JSON 解析并分派类型（公开供 UI 层调用）
+  Future<void> importRaw(String raw, {String? type}) async {
     var text = raw.trim();
     if (text.isEmpty) {
       _tip('导入内容为空');
@@ -145,6 +213,20 @@ class DeepLinkService {
       case 'theme':
         final theme = await ThemeShare.importThemeJson(jsonEncode(data));
         _tip(theme != null ? '已导入主题「${theme.name}」' : '主题解析失败');
+      case 'replaceRule':
+        final n = await _importReplaceRules(data);
+        _tip(n > 0 ? '成功导入 $n 条替换规则' : '未识别到有效替换规则');
+      case 'dictRule':
+        final n = await _importDictRules(data);
+        _tip(n > 0 ? '成功导入 $n 条字典规则' : '未识别到有效字典规则');
+      case 'txtRule':
+        final n = await _importTxtTocRules(data);
+        _tip(n > 0 ? '成功导入 $n 条 TXT目录规则' : '未识别到有效TXT目录规则');
+      case 'httpTts':
+        final n = await _importHttpTts(data);
+        _tip(n > 0 ? '成功导入 $n 个在线TTS' : '未识别到有效在线TTS');
+      default:
+        _tip('不支持的导入类型：$kind');
     }
   }
 
@@ -225,7 +307,7 @@ class DeepLinkService {
     return count;
   }
 
-  /// 归一化显式 type 参数（bookSource / rssSource / theme）
+  /// 归一化显式 type 参数（含 E OnLineImport 的全部路径名）
   String? _normalizeType(String? type) {
     switch (type?.toLowerCase()) {
       case 'booksource':
@@ -238,12 +320,29 @@ class DeepLinkService {
         return 'rss';
       case 'theme':
         return 'theme';
+      case 'replacerule':
+      case 'replace_rule':
+      case 'replace':
+        return 'replaceRule';
+      case 'dictrule':
+      case 'dict_rule':
+      case 'dict':
+        return 'dictRule';
+      case 'texttocrule':
+      case 'txttocrule':
+      case 'txt_rule':
+      case 'txtrule':
+        return 'txtRule';
+      case 'httptts':
+      case 'http_tts':
+      case 'tts':
+        return 'httpTts';
       default:
         return null;
     }
   }
 
-  /// 无显式 type 时按 JSON 结构推断（取数组首元素 / 单对象判断）
+  /// 无显式 type 时按 JSON 结构推断（对齐 E importJson 的特征键顺序）
   String? _detectType(dynamic data) {
     final first = data is List && data.isNotEmpty ? data.first : data;
     if (first is Map) {
@@ -253,13 +352,84 @@ class DeepLinkService {
           first.containsKey('sortUrl')) {
         return 'rss';
       }
+      if (first.containsKey('pattern')) return 'replaceRule';
       if (first.containsKey('themeName') ||
           first.containsKey('colorPrimary') ||
           first.containsKey('primaryColor')) {
         return 'theme';
       }
+      if (first.containsKey('showRule')) return 'dictRule';
+      if (first.containsKey('name') && first.containsKey('rule')) return 'txtRule';
+      if (first.containsKey('name') && first.containsKey('url')) return 'httpTts';
     }
     return null;
+  }
+
+  /// 导入替换规则（E: ImportReplaceRuleDialog）
+  Future<int> _importReplaceRules(dynamic data) async {
+    final list = data is List ? data : [data];
+    var count = 0;
+    for (final item in list) {
+      if (item is! Map) continue;
+      try {
+        await _db.insertReplaceRule(
+            ReplaceRule.fromMap(Map<String, dynamic>.from(item)));
+        count++;
+      } catch (_) {}
+    }
+    return count;
+  }
+
+  /// 导入字典规则（E: ImportDictRuleDialog）
+  Future<int> _importDictRules(dynamic data) async {
+    final list = data is List ? data : [data];
+    var count = 0;
+    for (final item in list) {
+      if (item is! Map) continue;
+      try {
+        await _db.insertDictRule(
+            DictRule.fromMap(Map<String, dynamic>.from(item)));
+        count++;
+      } catch (_) {}
+    }
+    return count;
+  }
+
+  /// 导入 TXT 目录规则（E: ImportTxtTocRuleDialog，JSON 键 `rule` → chapterRule）
+  Future<int> _importTxtTocRules(dynamic data) async {
+    final list = data is List ? data : [data];
+    var count = 0;
+    for (final item in list) {
+      if (item is! Map) continue;
+      try {
+        final m = Map<String, dynamic>.from(item);
+        // E 的键名 rule/replacement 映射到 Klys 的 chapterRule/volumeRule
+        if (m.containsKey('rule') && !m.containsKey('chapterRule')) {
+          m['chapterRule'] = m['rule'];
+        }
+        if (m.containsKey('replacement') && !m.containsKey('volumeRule')) {
+          m['volumeRule'] = m['replacement'];
+        }
+        await _db.insertTxtTocRule(TxtTocRule.fromMap(m));
+        count++;
+      } catch (_) {}
+    }
+    return count;
+  }
+
+  /// 导入在线 TTS（E: ImportHttpTtsDialog）
+  Future<int> _importHttpTts(dynamic data) async {
+    final list = data is List ? data : [data];
+    var count = 0;
+    for (final item in list) {
+      if (item is! Map) continue;
+      try {
+        await _db.insertHttpTTS(
+            HttpTTS.fromMap(Map<String, dynamic>.from(item)));
+        count++;
+      } catch (_) {}
+    }
+    return count;
   }
 
   /// GET 拉取文本（兼容无 Content-Encoding 头的 gzip 响应）

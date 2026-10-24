@@ -3,17 +3,42 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:archive/archive.dart';
+import 'package:enough_convert/enough_convert.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:legado_md3/data/model/book.dart';
 import 'package:legado_md3/data/model/book_chapter.dart';
+import 'package:legado_md3/data/model/replace_rule.dart';
+import 'package:legado_md3/help/source/replace_rule_service.dart';
+
+/// 书籍导出选项（对齐 legado-E ExportBookService / pref_config_export.xml）
+class ExportOptions {
+  /// 导出编码：UTF-8 / GBK
+  final String charset;
+  /// 不添加章节名（正文直接相连）
+  final bool noChapterName;
+  /// 导出时应用替换净化规则
+  final bool useReplace;
+  /// 应用到此书的替换规则（useReplace 为 true 时生效）
+  final List<ReplaceRule> replaceRules;
+
+  const ExportOptions({
+    this.charset = 'UTF-8',
+    this.noChapterName = false,
+    this.useReplace = true,
+    this.replaceRules = const [],
+  });
+}
 
 /// 书籍导出服务（对齐 legado-E ExportBookService）：导出正文为 txt / epub 文件。
 class ExportBookService {
   ExportBookService._();
 
+  static final ReplaceRuleService _replaceService = ReplaceRuleService();
+
   /// 导出为 TXT 文件，返回文件路径。
-  static Future<String> exportToTxt(Book book, List<BookChapter> chapters) async {
+  static Future<String> exportToTxt(Book book, List<BookChapter> chapters,
+      {ExportOptions options = const ExportOptions()}) async {
     final buffer = StringBuffer();
     buffer.writeln('《${book.name}》');
     buffer.writeln('作者: ${book.author}');
@@ -26,11 +51,19 @@ class ExportBookService {
         buffer.writeln('【${ch.title}】');
         continue;
       }
-      buffer.writeln('${ch.title}');
-      buffer.writeln(ch.content ?? '');
+      var content = ch.content ?? '';
+      if (options.useReplace && options.replaceRules.isNotEmpty) {
+        content = _replaceService.applyRules(content, options.replaceRules,
+            scope: book.origin ?? 'all');
+      }
+      if (!options.noChapterName) {
+        buffer.writeln('${ch.title}');
+      }
+      buffer.writeln(content);
       buffer.writeln();
     }
-    final file = await _writeFile(book, 'txt', buffer.toString());
+    final text = buffer.toString();
+    final file = await _writeFile(book, 'txt', text, charset: options.charset);
     return file.path;
   }
 
@@ -43,13 +76,21 @@ class ExportBookService {
   ///   OEBPS/toc.ncx
   ///   OEBPS/style.css
   ///   OEBPS/chapters/c0.xhtml ...
-  static Future<String> exportToEpub(Book book, List<BookChapter> chapters) async {
+  static Future<String> exportToEpub(Book book, List<BookChapter> chapters,
+      {ExportOptions options = const ExportOptions()}) async {
     final usable = chapters.where((c) => !c.isVolume).toList();
+    var contents = usable.map((c) => c.content ?? '').toList();
+    if (options.useReplace && options.replaceRules.isNotEmpty) {
+      contents = contents
+          .map((c) => _replaceService.applyRules(c, options.replaceRules,
+              scope: book.origin ?? 'all'))
+          .toList();
+    }
     final bytes = buildEpub(
       name: book.name,
       author: book.author,
       titles: usable.map((c) => c.title).toList(growable: false),
-      contents: usable.map((c) => c.content ?? '').toList(growable: false),
+      contents: contents,
     );
     final dir = await getApplicationDocumentsDirectory();
     final exportDir = Directory('${dir.path}/export');
@@ -216,12 +257,18 @@ p { text-indent: 2em; margin: 0 0 0.4em; }
       .replaceAll('>', '&gt;')
       .replaceAll('"', '&quot;');
 
-  static Future<File> _writeFile(Book book, String ext, String content) async {
+  static Future<File> _writeFile(Book book, String ext, String content,
+      {String charset = 'UTF-8'}) async {
     final dir = await getApplicationDocumentsDirectory();
     final exportDir = Directory('${dir.path}/export');
     if (!exportDir.existsSync()) exportDir.createSync(recursive: true);
     final file = File('${exportDir.path}/${await _safeName(book, ext)}');
-    await file.writeAsString(content);
+    final upper = charset.toUpperCase();
+    if (upper == 'GBK' || upper == 'GB2312' || upper == 'GB18030') {
+      await file.writeAsBytes(GbkCodec().encode(content));
+    } else {
+      await file.writeAsString(content);
+    }
     return file;
   }
 }

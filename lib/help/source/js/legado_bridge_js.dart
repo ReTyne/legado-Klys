@@ -11,6 +11,10 @@
 ///   * cache / java.put / java.get 跨阶段键值
 ///   * 编码：base64、hex；时间格式化；deviceID/androidId；UA
 ///   * startBrowser* / showBrowser* / reLoginView —— 走原生可见 WebView 交互登录
+///   * 文件：readTxtFile / deleteFile / downloadFile（含 hex 兼容签名）/
+///     importScript / cacheFile / getTxtInFolder
+///   * 压缩包：getZipStringContent / get7zStringContent / getRarStringContent /
+///     unzipFile / un7zFile / unrarFile / unArchiveFile（7z/rar 走 Android 原生解压）
 ///
 /// 该脚本在每个书源的无头 WebView 创建后于「全局作用域」执行一次；
 /// 书源的 jsLib / loginUrl 随后也在全局作用域执行（定义全局函数）。
@@ -675,6 +679,10 @@ class LegadoBridgeJs {
   globalThis.__cancelBrowser = function (id) {
     if (__pendings[id]) { var r = __pendings[id]; delete __pendings[id]; r(""); }
   };
+  // 验证码结果回传（人工输入界面提交/取消时由 Dart 调用）
+  globalThis.__resolveVerification = function (id, code) {
+    if (__pendings[id]) { var r = __pendings[id]; delete __pendings[id]; r(String(code == null ? "" : code)); }
+  };
 
   // ============================ MD5（纯 JS 实现）============================
   function __md5(str) {
@@ -1092,6 +1100,19 @@ class LegadoBridgeJs {
       try { __doXhr("legado://file?op=delete&path=" + encodeURIComponent(path), { method: "GET" }); return true; }
       catch (e) { return false; }
     },
+    // 下载文件到缓存目录，返回相对路径（对齐 legado-E JsExtensions.downloadFile）。
+    // 兼容旧签名 downloadFile(hexContent, url)：第二参存在且首参为合法 hex 时按 hex 写入。
+    downloadFile: function (url, url2) {
+      try {
+        if (url2 != null) {
+          var hex = String(url == null ? "" : url);
+          if (hex.length > 0 && hex.length % 2 === 0 && /^[0-9a-fA-F]+$/.test(hex)) {
+            return __doXhr("legado://file?op=writehex&url=" + encodeURIComponent(url2) + "&hex=" + encodeURIComponent(hex), { method: "GET" });
+          }
+        }
+        return __doXhr("legado://file?op=download&url=" + encodeURIComponent(url), { method: "GET" });
+      } catch (e) { return ""; }
+    },
 
     // 源信息
     getSource: function () { return source; },
@@ -1125,8 +1146,27 @@ class LegadoBridgeJs {
       } catch (e) { return ""; }
     },
     webViewGetOverrideUrl: function (html, url, js, overrideUrlRegex, cacheFirst, delayTime) { return url || ""; },
-    // 验证码识别：纯 OCR 不可靠，需打码平台/人工，保留回退
-    getVerificationCode: function (imageUrl) { return ""; },
+    // 验证码识别：弹出人工输入界面（对齐 E SourceVerificationHelp.getVerificationResult），
+    // 返回 Promise，用户提交后 resolve 输入的字符；未提交/取消 resolve 空串。
+    getVerificationCode: function (imageUrl) {
+      return new Promise(function (resolve) {
+        var id = "v" + Date.now() + Math.floor(Math.random() * 10000);
+        __pendings[id] = resolve;
+        try {
+          if (window.flutter_inappwebview && window.flutter_inappwebview.callHandler) {
+            window.flutter_inappwebview.callHandler("legadoVerification", JSON.stringify({
+              id: id, imageUrl: String(imageUrl == null ? "" : imageUrl)
+            }));
+          } else {
+            delete __pendings[id]; resolve("");
+          }
+        } catch (e) { delete __pendings[id]; resolve(""); }
+        // 5 分钟无输入自动按空处理，避免 Promise 永久挂起
+        setTimeout(function () {
+          if (__pendings[id]) { delete __pendings[id]; resolve(""); }
+        }, 300000);
+      });
+    },
 
     // 字体反爬（占位）
     queryTTF: function (data, useCache) {
@@ -1150,19 +1190,35 @@ class LegadoBridgeJs {
         return __doXhr("legado://zip?url=" + encodeURIComponent(url) + "&path=" + encodeURIComponent(path || ""), { method: "GET" });
       } catch (e) { return ""; }
     },
+    get7zStringContent: function (url, path, charset) {
+      try {
+        return __doXhr("legado://zip?kind=7z&url=" + encodeURIComponent(url) + "&path=" + encodeURIComponent(path || ""), { method: "GET" });
+      } catch (e) { return ""; }
+    },
+    getRarStringContent: function (url, path, charset) {
+      try {
+        return __doXhr("legado://zip?kind=rar&url=" + encodeURIComponent(url) + "&path=" + encodeURIComponent(path || ""), { method: "GET" });
+      } catch (e) { return ""; }
+    },
     unzipFile: function (zipPath) {
       try {
-        return __doXhr("legado://zip?url=" + encodeURIComponent(zipPath) + "&path=", { method: "GET" });
+        // 整包解压到 legado_files/unzip/<md5(名)>，返回相对目录（对齐 E：后续配 getTxtInFolder 使用）
+        return __doXhr("legado://zip?op=unarchive&url=" + encodeURIComponent(zipPath), { method: "GET" });
       } catch (e) { return ""; }
     },
-    unArchiveFile: function (zipPath) {
+    unArchiveFile: function (zipPath) { return this.unzipFile(zipPath); },
+    // 7z/rar 整包解压：Android 端走原生 libarchive 兼容实现（commons-compress/junrar），
+    // 其余平台抛错让书源 try/catch 走回退分支。
+    un7zFile: function (path) {
       try {
-        return __doXhr("legado://zip?url=" + encodeURIComponent(zipPath) + "&path=", { method: "GET" });
-      } catch (e) { return ""; }
+        return __doXhr("legado://zip?kind=7z&op=unarchive&url=" + encodeURIComponent(path), { method: "GET" });
+      } catch (e) { throw new Error("un7zFile 失败: " + e); }
     },
-    // 7z/rar 解压：依赖 libarchive，暂不支持（抛错让书源 try/catch 走回退分支）
-    un7zFile: function (path) { throw new Error("un7zFile 依赖 libarchive，暂不支持"); },
-    unrarFile: function (path) { throw new Error("unrarFile 依赖 libarchive，暂不支持"); },
+    unrarFile: function (path) {
+      try {
+        return __doXhr("legado://zip?kind=rar&op=unarchive&url=" + encodeURIComponent(path), { method: "GET" });
+      } catch (e) { throw new Error("unrarFile 失败: " + e); }
+    },
 
     // ===== 阅读/主题/媒体接口（对齐 legado-E JsExtensions）=====
     // 无头 WebView 内无法直接读取 App 状态，原生在求值前种子注入

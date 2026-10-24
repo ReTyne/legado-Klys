@@ -84,6 +84,18 @@ class AppPrefs {
   static const String keyExportPictureFile = 'exportPictureFile';
   static const String keyExportToWebDav = 'exportToWebDav';
   static const String keyParallelExportBook = 'parallelExportBook';
+  // 书源校验（legado-E CheckSourceConfig：checkSourceTimeout/wSourceComment/checkDomain/...）
+  static const String keyCheckSourceTimeout = 'checkSourceTimeout';
+  static const String keyWSourceComment = 'wSourceComment';
+  static const String keyCheckDomain = 'checkDomain';
+  static const String keyCheckSearch = 'checkSearch';
+  static const String keyCheckDiscovery = 'checkDiscovery';
+  static const String keyCheckInfo = 'checkInfo';
+  static const String keyCheckCategory = 'checkCategory';
+  static const String keyCheckContent = 'checkContent';
+  // 搜索范围（legado-E AppConfig.searchScope / searchGroup）
+  static const String keySearchScope = 'searchScope';
+  static const String keySearchGroup = 'searchGroup';
   // 封面（沿用本项目已有键，bookshelf_screen 直接消费，勿改键名）
   static const String keyUseDefaultCover = 'cover_useDefault';
   static const String keyCoverShowName = 'cover_showName';
@@ -116,6 +128,16 @@ class AppPrefs {
   static bool _exportPictureFile = false;
   static bool _exportToWebDav = false;
   static bool _parallelExportBook = false;
+  static int _checkSourceTimeout = 180000; // 毫秒
+  static bool _wSourceComment = true;
+  static bool _checkDomain = false;
+  static bool _checkSearch = true;
+  static bool _checkDiscovery = true;
+  static bool _checkInfo = true;
+  static bool _checkCategory = true;
+  static bool _checkContent = true;
+  static String _searchScope = '';
+  static String _searchGroup = '';
   static bool _useDefaultCover = false;
   static bool _coverShowName = true;
   static bool _coverShowAuthor = true;
@@ -163,6 +185,26 @@ class AppPrefs {
   static bool get exportToWebDav => _exportToWebDav;
   /// 并发导出多本书
   static bool get parallelExportBook => _parallelExportBook;
+  /// 书源校验超时（毫秒），默认 180 秒
+  static int get checkSourceTimeout => _checkSourceTimeout;
+  /// 校验失败时把错误信息写入书源注释
+  static bool get wSourceComment => _wSourceComment;
+  /// 校验源地址可访问性（Socket 探测）
+  static bool get checkDomain => _checkDomain;
+  /// 校验搜索
+  static bool get checkSearch => _checkSearch;
+  /// 校验发现
+  static bool get checkDiscovery => _checkDiscovery;
+  /// 校验详情
+  static bool get checkInfo => _checkInfo;
+  /// 校验目录
+  static bool get checkCategory => _checkCategory;
+  /// 校验正文
+  static bool get checkContent => _checkContent;
+  /// 搜索范围原文：空=全部；`分组1,分组2`；`名称::url`=单书源
+  static String get searchScope => _searchScope;
+  /// 单选分组时的分组名（E: searchGroup）
+  static String get searchGroup => _searchGroup;
   /// 无封面时使用默认封面（bookshelf_screen 消费）
   static bool get useDefaultCover => _useDefaultCover;
   /// 封面显示书名（bookshelf_screen 消费）
@@ -281,6 +323,56 @@ class AppPrefs {
     _save(keyParallelExportBook, _parallelExportBook);
   }
 
+  static set checkSourceTimeout(int v) {
+    _checkSourceTimeout = v.clamp(1000, 600000);
+    _save(keyCheckSourceTimeout, _checkSourceTimeout);
+  }
+
+  static set wSourceComment(bool v) {
+    _wSourceComment = v;
+    _save(keyWSourceComment, _wSourceComment);
+  }
+
+  static set checkDomain(bool v) {
+    _checkDomain = v;
+    _save(keyCheckDomain, _checkDomain);
+  }
+
+  static set checkSearch(bool v) {
+    _checkSearch = v;
+    _save(keyCheckSearch, _checkSearch);
+  }
+
+  static set checkDiscovery(bool v) {
+    _checkDiscovery = v;
+    _save(keyCheckDiscovery, _checkDiscovery);
+  }
+
+  static set checkInfo(bool v) {
+    _checkInfo = v;
+    _save(keyCheckInfo, _checkInfo);
+  }
+
+  static set checkCategory(bool v) {
+    _checkCategory = v;
+    _save(keyCheckCategory, _checkCategory);
+  }
+
+  static set checkContent(bool v) {
+    _checkContent = v;
+    _save(keyCheckContent, _checkContent);
+  }
+
+  static set searchScope(String v) {
+    _searchScope = v;
+    _save(keySearchScope, _searchScope);
+  }
+
+  static set searchGroup(String v) {
+    _searchGroup = v;
+    _save(keySearchGroup, _searchGroup);
+  }
+
   static set useDefaultCover(bool v) {
     _useDefaultCover = v;
     _save(keyUseDefaultCover, _useDefaultCover);
@@ -373,6 +465,16 @@ class AppPrefs {
     _exportPictureFile = p.getBool(keyExportPictureFile) ?? false;
     _exportToWebDav = p.getBool(keyExportToWebDav) ?? false;
     _parallelExportBook = p.getBool(keyParallelExportBook) ?? false;
+    _checkSourceTimeout = (p.getInt(keyCheckSourceTimeout) ?? 180000).clamp(1000, 600000);
+    _wSourceComment = p.getBool(keyWSourceComment) ?? true;
+    _checkDomain = p.getBool(keyCheckDomain) ?? false;
+    _checkSearch = p.getBool(keyCheckSearch) ?? true;
+    _checkDiscovery = p.getBool(keyCheckDiscovery) ?? true;
+    _checkInfo = p.getBool(keyCheckInfo) ?? true;
+    _checkCategory = p.getBool(keyCheckCategory) ?? true;
+    _checkContent = p.getBool(keyCheckContent) ?? true;
+    _searchScope = p.getString(keySearchScope) ?? '';
+    _searchGroup = p.getString(keySearchGroup) ?? '';
     _useDefaultCover = p.getBool(keyUseDefaultCover) ?? false;
     _coverShowName = p.getBool(keyCoverShowName) ?? true;
     _coverShowAuthor = p.getBool(keyCoverShowAuthor) ?? true;

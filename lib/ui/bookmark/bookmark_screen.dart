@@ -1,4 +1,9 @@
+import 'dart:convert';
+import 'dart:io';
+
 import 'package:flutter/material.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:share_plus/share_plus.dart';
 import 'package:legado_md3/data/model/bookmark.dart';
 import 'package:legado_md3/data/local/app_database.dart';
 
@@ -49,11 +54,85 @@ class _BookmarkScreenState extends State<BookmarkScreen> {
     }
   }
 
+  /// 导出书签（对齐 legado-E TocViewModel.saveBookmark / saveBookmarkMd）：
+  /// JSON 为全字段列表；Markdown 为 `## 书名 作者` + 每条 `#### 章节`/`###### 原文`/`###### 摘要`。
+  Future<void> _exportBookmarks({required bool markdown}) async {
+    if (_bookmarks.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('暂无书签可导出')));
+      return;
+    }
+    try {
+      final name = widget.bookName ?? '全部书签';
+      final author = widget.bookAuthor ?? '';
+      final fileName =
+          'bookmark-$name${author.isNotEmpty ? ' $author' : ''}.${markdown ? 'md' : 'json'}';
+      String content;
+      if (markdown) {
+        final buffer = StringBuffer();
+        buffer.writeln('## $name $author');
+        buffer.writeln();
+        for (final b in _bookmarks) {
+          buffer.writeln('#### ${b.chapterTitle}');
+          buffer.writeln();
+          buffer.writeln('###### 原文');
+          buffer.writeln(' ${b.content ?? ''}');
+          buffer.writeln();
+          buffer.writeln('###### 摘要');
+          buffer.writeln(' ');
+          buffer.writeln();
+        }
+        content = buffer.toString();
+      } else {
+        content = const JsonEncoder.withIndent('  ')
+            .convert(_bookmarks.map((b) => b.toMap()).toList());
+      }
+      final dir = await getApplicationDocumentsDirectory();
+      final exportDir = Directory('${dir.path}/export');
+      if (!exportDir.existsSync()) exportDir.createSync(recursive: true);
+      final safeName = fileName.replaceAll(RegExp(r'[\\/:*?"<>|]'), '_');
+      final file = File('${exportDir.path}/$safeName');
+      await file.writeAsString(content);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text('已导出: ${file.path}'),
+        action: SnackBarAction(
+          label: '分享',
+          onPressed: () => Share.shareXFiles([XFile(file.path)],
+              subject: '书签导出'),
+        ),
+      ));
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('导出失败: $e')));
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
         title: Text(widget.bookName != null ? '《${widget.bookName}》书签' : '全部书签'),
+        actions: [
+          PopupMenuButton<String>(
+            tooltip: '导出书签',
+            icon: const Icon(Icons.more_vert),
+            onSelected: (v) {
+              switch (v) {
+                case 'json':
+                  _exportBookmarks(markdown: false);
+                case 'md':
+                  _exportBookmarks(markdown: true);
+              }
+            },
+            itemBuilder: (c) => const [
+              PopupMenuItem(value: 'json', child: Text('导出为 JSON')),
+              PopupMenuItem(value: 'md', child: Text('导出为 Markdown')),
+            ],
+          ),
+        ],
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())

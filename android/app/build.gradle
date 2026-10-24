@@ -58,6 +58,10 @@ android {
 dependencies {
     // 媒体通知栏样式（NotificationCompat.MediaStyle），minSdk 19
     implementation "androidx.media:media:1.7.0"
+    // 7z 解压（对齐 legado-E 的 libarchive 能力，纯 Java 实现）
+    implementation "org.apache.commons:commons-compress:1.26.0"
+    // rar 解压
+    implementation "com.github.junrar:junrar:7.5.5"
 }
 
 flutter {

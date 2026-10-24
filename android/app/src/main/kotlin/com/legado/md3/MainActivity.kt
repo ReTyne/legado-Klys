@@ -39,6 +39,8 @@ class MainActivity : FlutterActivity() {
 
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+        // 7z/rar 原生解压（Dart 侧 ArchiveNative，书源 java.un7zFile/unrarFile 等）
+        flutterEngine.plugins.add(ArchivePlugin())
         pendingPath = resolveIntent(intent)
         pendingLink = handleDeepLinkIntent(intent)
         channel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, channelName)
@@ -174,6 +176,16 @@ class MainActivity : FlutterActivity() {
                 Intent.ACTION_SEND -> {
                     if (intent.type?.startsWith("text/plain") != true) return null
                     val text = intent.getStringExtra(Intent.EXTRA_TEXT)?.trim()
+                    if (text.isNullOrEmpty()) {
+                        null
+                    } else {
+                        "share://text?content=${Uri.encode(text)}"
+                    }
+                }
+                // 系统文本选择菜单（选中文本后弹出本应用入口，对齐 E process_text）
+                Intent.ACTION_PROCESS_TEXT -> {
+                    if (intent.type?.startsWith("text/plain") != true) return null
+                    val text = intent.getStringExtra(Intent.EXTRA_PROCESS_TEXT)?.trim()
                     if (text.isNullOrEmpty()) {
                         null
                     } else {

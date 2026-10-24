@@ -1262,8 +1262,15 @@ class _ReadingScreenState extends State<ReadingScreen> with SingleTickerProvider
                   ),
                 ),
               );
-              if (result != null && result is int) {
-                _loadChapterContent(result);
+              if (result != null) {
+                final (index, tocChanged) = result;
+                // 目录被重排（长章节拆分切换）后按新目录重载，索引才能对上
+                if (tocChanged) {
+                  _chapters = await _db.getChapters(widget.book.name, widget.book.author);
+                }
+                if (index >= 0 && index < _chapters.length) {
+                  _loadChapterContent(index);
+                }
               }
             },
           ),
@@ -2058,9 +2065,16 @@ class _ReadingScreenState extends State<ReadingScreen> with SingleTickerProvider
   }
 
   Future<void> _showChapterList() async {
-    final index = await Navigator.push<int>(context, MaterialPageRoute(builder: (_) => ChapterListScreen(book: widget.book, chapters: _chapters, currentIndex: _currentChapterIndex)));
-    if (index != null && index >= 0 && index < _chapters.length) {
-      _loadChapterContent(index);
+    final result = await Navigator.push<(int, bool)>(context, MaterialPageRoute(builder: (_) => ChapterListScreen(book: widget.book, chapters: _chapters, currentIndex: _currentChapterIndex)));
+    if (result != null) {
+      final (index, tocChanged) = result;
+      // 目录被重排（长章节拆分切换）后按新目录重载，索引才能对上
+      if (tocChanged) {
+        _chapters = await _db.getChapters(widget.book.name, widget.book.author);
+      }
+      if (index >= 0 && index < _chapters.length) {
+        _loadChapterContent(index);
+      }
     }
   }
 

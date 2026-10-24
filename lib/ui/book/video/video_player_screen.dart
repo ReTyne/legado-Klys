@@ -9,6 +9,7 @@ import 'package:legado_md3/data/model/book.dart';
 import 'package:legado_md3/data/model/book_chapter.dart';
 import 'package:legado_md3/data/model/book_source.dart';
 import 'package:legado_md3/data/local/app_database.dart';
+import 'package:legado_md3/help/config/video_play_config.dart';
 import 'package:legado_md3/help/source/source_engine.dart';
 
 /// 视频播放器（对齐 legado-E 的视频播放能力，含弹幕基础支持）。
@@ -68,6 +69,9 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   Duration? _seekPreview;
   Duration _seekBase = Duration.zero;
 
+  // 长按倍速（E: VideoPlayer.onLongPress -> setVideoSpeed，松手恢复）
+  bool _longPressing = false;
+
   // 进度条拖动中锁定，避免被 100ms 轮询覆盖造成抖动
   bool _seeking = false;
   double _seekValue = 0;
@@ -116,6 +120,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     try {
       final p = await SharedPreferences.getInstance();
       _dim = (p.getDouble(_prefDim) ?? 0.0).clamp(0.0, _maxDim).toDouble();
+      await VideoPlayConfig.load();
     } catch (_) {}
   }
 
@@ -268,13 +273,24 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       if (startAt != null && startAt > Duration.zero && startAt < c.value.duration) {
         await c.seekTo(startAt);
       }
-      await c.play();
+      // 自动播放（E: VideoPlay.autoPlay）：关闭时初始化后保持暂停
+      if (VideoPlayConfig.autoPlay) {
+        await c.play();
+      } else {
+        await c.pause();
+      }
       if (!mounted) return;
       setState(() {
         _loading = false;
-        _playing = true;
+        _playing = c.value.isPlaying;
       });
       _scheduleHideControls();
+      // 直接全屏（E: VideoPlay.startFull && autoPlay && !isFullScreen）
+      if (VideoPlayConfig.startFull &&
+          VideoPlayConfig.autoPlay &&
+          !_isFullscreen) {
+        await _setFullscreen(true);
+      }
     } catch (e) {
       if (!mounted) return;
       setState(() {
@@ -361,6 +377,102 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
           ]),
         ),
       ),
+    );
+  }
+
+  // ==================== 长按倍速（E: VideoPlayer.kt） ====================
+
+  /// 长按：切到配置的倍速并显示浮层提示（E: onLongPress → setVideoSpeed）
+  void _onLongPressSpeed() {
+    if (_locked || _pip) return;
+    final c = _controller;
+    if (c == null || !c.value.isInitialized || !c.value.isPlaying) return;
+    final speed = VideoPlayConfig.longPressSpeedTenths / 10.0;
+    _longPressing = true;
+    unawaited(c.setPlaybackSpeed(speed).catchError((_) {}));
+    setState(() {});
+  }
+
+  /// 松手/手势取消：恢复正常倍速并清除提示（E: touchSurfaceUp → 恢复 playSpeed）
+  void _onLongPressSpeedEnd() {
+    if (!_longPressing) return;
+    _longPressing = false;
+    final c = _controller;
+    if (c != null && c.value.isInitialized) {
+      unawaited(c.setPlaybackSpeed(_rate).catchError((_) {}));
+    }
+    setState(() {});
+  }
+
+  // ==================== 播放设置（E: ui/video/config/SettingsDialog） ====================
+
+  Future<void> _showVideoSettingsDialog() async {
+    var autoPlay = VideoPlayConfig.autoPlay;
+    var startFull = VideoPlayConfig.startFull;
+    var fullBottom = VideoPlayConfig.fullBottomProgressBar;
+    await showDialog<void>(
+      context: context,
+      builder: (c) => StatefulBuilder(builder: (c, setS) {
+        return AlertDialog(
+          title: const Text('播放设置'),
+          content: SingleChildScrollView(
+            child: Column(mainAxisSize: MainAxisSize.min, children: [
+              SwitchListTile(
+                contentPadding: EdgeInsets.zero,
+                title: const Text('自动播放'),
+                value: autoPlay,
+                onChanged: (v) => setS(() {
+                  autoPlay = v;
+                  // 与 E 联动：关闭自动播放时不允许直接全屏
+                  if (!v) startFull = false;
+                }),
+              ),
+              SwitchListTile(
+                contentPadding: EdgeInsets.zero,
+                title: const Text('直接全屏'),
+                subtitle: const Text('需先启用自动播放'),
+                value: startFull,
+                onChanged: autoPlay ? (v) => setS(() => startFull = v) : null,
+              ),
+              SwitchListTile(
+                contentPadding: EdgeInsets.zero,
+                title: const Text('全屏底部进度条'),
+                value: fullBottom,
+                onChanged: (v) => setS(() => fullBottom = v),
+              ),
+              const Divider(),
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                title: const Text('长按倍速'),
+                subtitle: Text('${(VideoPlayConfig.longPressSpeedTenths / 10).toStringAsFixed(1)}x'),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () async {
+                  final picked = await showDialog<int>(
+                    context: c,
+                    builder: (dc) => _LongPressSpeedPickerDialog(
+                      initial: VideoPlayConfig.longPressSpeedTenths,
+                    ),
+                  );
+                  if (picked != null) setS(() {});
+                },
+              ),
+            ]),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(c), child: const Text('取消')),
+            FilledButton(
+              onPressed: () async {
+                await VideoPlayConfig.setAutoPlay(autoPlay);
+                await VideoPlayConfig.setStartFull(startFull);
+                await VideoPlayConfig.setFullBottomProgressBar(fullBottom);
+                if (mounted) setState(() {});
+                if (c.mounted) Navigator.pop(c);
+              },
+              child: const Text('保存'),
+            ),
+          ],
+        );
+      }),
     );
   }
 
@@ -548,6 +660,9 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     return Stack(fit: StackFit.expand, children: [
       Center(child: AspectRatio(aspectRatio: ar, child: _buildSurface())),
       ..._buildOverlays(),
+      // 全屏底部细进度条（E: fullBottomProgressBar），控制栏隐藏时可见
+      if (VideoPlayConfig.fullBottomProgressBar && !_showControls && !_locked)
+        Positioned(left: 0, right: 0, bottom: 0, child: _FullscreenBottomProgress(c)),
     ]);
   }
 
@@ -584,6 +699,10 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
           if (_locked) return;
           _togglePlay();
         },
+        // 长按倍速（E: VideoPlayer.onLongPress → setVideoSpeed）
+        onLongPress: _onLongPressSpeed,
+        onLongPressEnd: (_) => _onLongPressSpeedEnd(),
+        onLongPressCancel: _onLongPressSpeedEnd,
         onHorizontalDragStart: (_) => _onHorizontalDragStart(cons),
         onHorizontalDragUpdate: (d) => _onHorizontalDragUpdate(d.delta.dx, cons.maxWidth),
         onHorizontalDragEnd: (_) => _onHorizontalDragEnd(),
@@ -636,6 +755,19 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   List<Widget> _buildOverlays() {
     final c = _controller;
     return [
+      // 长按倍速提示（E: showOverlayTip "${speed}倍速播放中"）
+      if (_longPressing)
+        Center(
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            decoration: BoxDecoration(
+                color: Colors.black54, borderRadius: BorderRadius.circular(8)),
+            child: Text(
+              '${VideoPlayConfig.longPressSpeedLabel}倍速播放中',
+              style: const TextStyle(color: Colors.white, fontSize: 16),
+            ),
+          ),
+        ),
       if (_seekPreview != null)
         Center(
           child: Container(
@@ -714,6 +846,11 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
               color: Colors.white),
           tooltip: '全屏',
           onPressed: () => unawaited(_setFullscreen(!_isFullscreen)),
+        ),
+        IconButton(
+          icon: const Icon(Icons.tune, color: Colors.white),
+          tooltip: '播放设置',
+          onPressed: _showVideoSettingsDialog,
         ),
       ]),
     );
@@ -1051,6 +1188,126 @@ class _DanmakuTextState extends State<_DanmakuText> with SingleTickerProviderSta
                   shadows: [Shadow(color: Colors.black, blurRadius: 2)])),
         );
       },
+    );
+  }
+}
+
+/// 长按倍速选择对话框（对齐 E SettingsDialog 的 NumberPickerDialog：
+/// 取值 0.5x–6.0x，步进 0.1x，默认 3.0x，可一键恢复默认）。
+class _LongPressSpeedPickerDialog extends StatefulWidget {
+  final int initial;
+  const _LongPressSpeedPickerDialog({required this.initial});
+
+  @override
+  State<_LongPressSpeedPickerDialog> createState() =>
+      _LongPressSpeedPickerDialogState();
+}
+
+class _LongPressSpeedPickerDialogState
+    extends State<_LongPressSpeedPickerDialog> {
+  late int _value = widget.initial
+      .clamp(VideoPlayConfig.minSpeedTenths, VideoPlayConfig.maxSpeedTenths);
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      title: const Text('长按倍速'),
+      content: Column(mainAxisSize: MainAxisSize.min, children: [
+        Text('${(_value / 10).toStringAsFixed(1)}x',
+            style: const TextStyle(fontSize: 28, fontWeight: FontWeight.bold)),
+        Slider(
+          min: VideoPlayConfig.minSpeedTenths.toDouble(),
+          max: VideoPlayConfig.maxSpeedTenths.toDouble(),
+          divisions: VideoPlayConfig.maxSpeedTenths - VideoPlayConfig.minSpeedTenths,
+          value: _value.toDouble(),
+          label: '${(_value / 10).toStringAsFixed(1)}x',
+          onChanged: (v) => setState(() => _value = v.round()),
+        ),
+        Text('取值范围 0.5x – 6.0x',
+            style: TextStyle(fontSize: 12, color: Colors.grey[600])),
+      ]),
+      actions: [
+        TextButton(
+          onPressed: () async {
+            await VideoPlayConfig.setLongPressSpeed(
+                VideoPlayConfig.defaultSpeedTenths);
+            if (context.mounted) Navigator.pop(context, VideoPlayConfig.defaultSpeedTenths);
+          },
+          child: const Text('恢复默认'),
+        ),
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('取消'),
+        ),
+        FilledButton(
+          onPressed: () async {
+            await VideoPlayConfig.setLongPressSpeed(_value);
+            if (context.mounted) Navigator.pop(context, _value);
+          },
+          child: const Text('确定'),
+        ),
+      ],
+    );
+  }
+}
+
+/// 全屏底部细进度条（E: GSY fullBottomProgressBar）：
+/// 自监听控制器位置变化局部刷新，避免整页重建。
+class _FullscreenBottomProgress extends StatefulWidget {
+  final VideoPlayerController? controller;
+  const _FullscreenBottomProgress(this.controller);
+
+  @override
+  State<_FullscreenBottomProgress> createState() =>
+      _FullscreenBottomProgressState();
+}
+
+class _FullscreenBottomProgressState
+    extends State<_FullscreenBottomProgress> {
+  VideoPlayerController? _bound;
+  double _value = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _bind();
+  }
+
+  @override
+  void didUpdateWidget(covariant _FullscreenBottomProgress oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.controller != widget.controller) _bind();
+  }
+
+  void _bind() {
+    _bound?.removeListener(_onUpdate);
+    _bound = widget.controller;
+    _bound?.addListener(_onUpdate);
+    _onUpdate();
+  }
+
+  void _onUpdate() {
+    final c = _bound;
+    if (c == null || !c.value.isInitialized) return;
+    final dur = c.value.duration.inMilliseconds;
+    final pos = c.value.position.inMilliseconds;
+    final v = dur > 0 ? (pos / dur).clamp(0.0, 1.0) : 0.0;
+    if ((v - _value).abs() > 0.001 && mounted) setState(() => _value = v);
+  }
+
+  @override
+  void dispose() {
+    _bound?.removeListener(_onUpdate);
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return LinearProgressIndicator(
+      value: _value,
+      minHeight: 2,
+      backgroundColor: Colors.transparent,
+      color: Colors.white70,
     );
   }
 }

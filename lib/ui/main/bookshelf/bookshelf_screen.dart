@@ -9,10 +9,13 @@ import 'package:provider/provider.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:legado_md3/data/model/book.dart';
+import 'package:legado_md3/data/model/book_chapter.dart';
 import 'package:legado_md3/data/model/book_source.dart';
 import 'package:legado_md3/data/model/bookmark.dart';
+import 'package:legado_md3/data/model/replace_rule.dart';
 import 'package:legado_md3/di/book_provider.dart';
 import 'package:legado_md3/data/local/app_database.dart';
+import 'package:legado_md3/help/net/network_monitor.dart';
 import 'package:legado_md3/help/source/source_engine.dart';
 import 'package:legado_md3/help/storage/export_book_service.dart';
 import 'package:legado_md3/ui/book/detail/book_detail_screen.dart';
@@ -925,14 +928,7 @@ class _BookshelfScreenState extends State<BookshelfScreen> {
               ListTile(leading: const Icon(Icons.info_outline), title: const Text('书籍详情'), onTap: () { Navigator.pop(context); Navigator.push(context, MaterialPageRoute(builder: (_) => BookDetailScreen(book: book))); }),
               ListTile(leading: const Icon(Icons.ios_share_outlined), title: const Text('导出书籍'), onTap: () async {
                 Navigator.pop(context);
-                final chapters = await _db.getChapters(book.name, book.author);
-                if (chapters.isEmpty) { ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('暂无章节可导出'))); return; }
-                try {
-                  final path = await ExportBookService.exportToTxt(book, chapters);
-                  if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('已导出: $path')));
-                } catch (e) {
-                  if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('导出失败: $e')));
-                }
+                _showExportDialog(book);
               }),
               const Divider(),
               ListTile(leading: const Icon(Icons.refresh_outlined), title: const Text('更新目录'), onTap: () async {
@@ -987,6 +983,219 @@ class _BookshelfScreenState extends State<BookshelfScreen> {
         );
       },
     );
+  }
+
+  /// 导出书籍对话框（对齐 legado-E CacheActivity 导出选项：格式/编码/章节名/替换规则/范围）
+  Future<void> _showExportDialog(Book book) async {
+    final chapters = await _db.getChapters(book.name, book.author);
+    if (chapters.isEmpty) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('暂无章节可导出')));
+      }
+      return;
+    }
+    var format = 'txt';
+    var charset = 'UTF-8';
+    var noChapterName = false;
+    var useReplace = true;
+    var rangeAll = true; // false=仅已缓存正文 / 自定义在 rangeAll 内由 cachedOnly 表达
+    var cachedOnly = false;
+    var customRange = false;
+    final startCtrl = TextEditingController(text: '1');
+    final endCtrl = TextEditingController(text: '${chapters.length}');
+
+    if (!mounted) return;
+    showDialog(
+      context: context,
+      builder: (c) => StatefulBuilder(builder: (c, setS) {
+        return AlertDialog(
+          title: const Text('导出书籍'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Wrap(
+                  spacing: 8,
+                  children: [
+                    ChoiceChip(
+                      label: const Text('TXT'),
+                      selected: format == 'txt',
+                      onSelected: (_) => setS(() => format = 'txt'),
+                    ),
+                    ChoiceChip(
+                      label: const Text('EPUB'),
+                      selected: format == 'epub',
+                      onSelected: (_) => setS(() => format = 'epub'),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 4),
+                Wrap(
+                  spacing: 8,
+                  children: [
+                    ChoiceChip(
+                      label: const Text('UTF-8'),
+                      selected: charset == 'UTF-8',
+                      onSelected: (_) => setS(() => charset = 'UTF-8'),
+                    ),
+                    ChoiceChip(
+                      label: const Text('GBK'),
+                      selected: charset == 'GBK',
+                      onSelected: (_) => setS(() => charset = 'GBK'),
+                    ),
+                  ],
+                ),
+                const Divider(),
+                SwitchListTile(
+                  dense: true,
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('不添加章节名'),
+                  value: noChapterName,
+                  onChanged: (v) => setS(() => noChapterName = v),
+                ),
+                SwitchListTile(
+                  dense: true,
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('应用替换规则'),
+                  subtitle: const Text('导出时对正文执行已启用的替换净化', style: TextStyle(fontSize: 11)),
+                  value: useReplace,
+                  onChanged: (v) => setS(() => useReplace = v),
+                ),
+                const Divider(),
+                RadioListTile<bool>(
+                  dense: true,
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('全部章节'),
+                  value: true,
+                  groupValue: rangeAll,
+                  onChanged: (v) => setS(() => rangeAll = v ?? true),
+                ),
+                RadioListTile<bool>(
+                  dense: true,
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('仅已缓存的章节'),
+                  value: false,
+                  groupValue: rangeAll,
+                  onChanged: (v) => setS(() {
+                    rangeAll = v ?? true;
+                    cachedOnly = true;
+                  }),
+                ),
+                RadioListTile<bool>(
+                  dense: true,
+                  contentPadding: EdgeInsets.zero,
+                  title: const Text('自定义范围'),
+                  value: false,
+                  groupValue: rangeAll,
+                  onChanged: (v) => setS(() {
+                    rangeAll = v ?? true;
+                    customRange = true;
+                  }),
+                ),
+                if (customRange)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 4),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: TextField(
+                            controller: startCtrl,
+                            keyboardType: TextInputType.number,
+                            decoration: const InputDecoration(labelText: '起始章', isDense: true),
+                          ),
+                        ),
+                        const Padding(
+                          padding: EdgeInsets.symmetric(horizontal: 8),
+                          child: Text('至'),
+                        ),
+                        Expanded(
+                          child: TextField(
+                            controller: endCtrl,
+                            keyboardType: TextInputType.number,
+                            decoration: const InputDecoration(labelText: '结束章', isDense: true),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(c), child: const Text('取消')),
+            FilledButton(
+              onPressed: () async {
+                Navigator.pop(c);
+                await _doExport(book, chapters,
+                    format: format,
+                    charset: charset,
+                    noChapterName: noChapterName,
+                    useReplace: useReplace,
+                    cachedOnly: cachedOnly && !rangeAll,
+                    customRange: customRange && !rangeAll,
+                    start: int.tryParse(startCtrl.text.trim()),
+                    end: int.tryParse(endCtrl.text.trim()));
+              },
+              child: const Text('导出'),
+            ),
+          ],
+        );
+      }),
+    );
+  }
+
+  Future<void> _doExport(Book book, List<BookChapter> allChapters,
+      {required String format,
+      required String charset,
+      required bool noChapterName,
+      required bool useReplace,
+      bool cachedOnly = false,
+      bool customRange = false,
+      int? start,
+      int? end}) async {
+    var chapters = allChapters;
+    if (cachedOnly) {
+      chapters = chapters.where((c) => (c.content ?? '').isNotEmpty).toList();
+    } else if (customRange) {
+      final s = ((start ?? 1) - 1).clamp(0, chapters.length - 1);
+      final e = ((end ?? chapters.length) - 1).clamp(s, chapters.length - 1);
+      chapters = chapters.sublist(s, e + 1);
+    }
+    if (chapters.isEmpty) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('所选范围内没有可导出的章节')));
+      }
+      return;
+    }
+    List<ReplaceRule> rules = const [];
+    if (useReplace) {
+      try {
+        rules = await _db.getReplaceRules();
+      } catch (_) {}
+    }
+    try {
+      final options = ExportOptions(
+        charset: charset,
+        noChapterName: noChapterName,
+        useReplace: useReplace,
+        replaceRules: rules,
+      );
+      final path = format == 'epub'
+          ? await ExportBookService.exportToEpub(book, chapters, options: options)
+          : await ExportBookService.exportToTxt(book, chapters, options: options);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('已导出到: $path')));
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('导出失败: $e')));
+      }
+    }
   }
 
   /// 在当前阅读进度处添加书签
@@ -1117,8 +1326,24 @@ class _BookshelfScreenState extends State<BookshelfScreen> {
             IconButton(icon: const Icon(Icons.select_all), tooltip: '全选', onPressed: () => setState(() { _selectedBooks..clear()..addAll(books); })),
             IconButton(icon: const Icon(Icons.flip), tooltip: '反选', onPressed: () => setState(() { final all = books.toSet(); final inverted = all.difference(_selectedBooks); _selectedBooks..clear()..addAll(inverted); })),
             IconButton(icon: const Icon(Icons.close), onPressed: () => setState(() { _selectMode = false; _selectedBooks.clear(); })),
-          ] else
+          ] else ...[
+            // 离线提示（E: NetworkUtils.isAvailable 的 UI 侧体现）
+            ValueListenableBuilder<bool>(
+              valueListenable: NetworkMonitor.instance.online,
+              builder: (context, online, _) => online
+                  ? const SizedBox.shrink()
+                  : Padding(
+                      padding: const EdgeInsets.only(right: 4),
+                      child: Chip(
+                        visualDensity: VisualDensity.compact,
+                        avatar: const Icon(Icons.cloud_off, size: 16),
+                        label: const Text('离线', style: TextStyle(fontSize: 12)),
+                        backgroundColor: Theme.of(context).colorScheme.errorContainer,
+                      ),
+                    ),
+            ),
             IconButton(icon: const Icon(Icons.more_vert), onPressed: _showMoreMenu),
+          ],
         ],
         bottom: (_cfg.showTabMenu && !_selectMode)
             ? PreferredSize(

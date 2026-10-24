@@ -231,14 +231,29 @@ class LocalBookParser {
     return null;
   }
 
-  /// 读取TXT章节内容
+  /// 读取TXT章节内容。
+  /// 优先按 startPos/endPos（规范化文本 `LineSplitter.convert(content).join('\n')`
+  /// 的字符区间）直取——长章节拆分后的子章节标题为 `原标题(n)`，标题匹配会失效；
+  /// 无位置信息时回退按标题匹配（兼容旧库数据）。
   static Future<String?> readTxtChapter(String filePath, int chapterIndex, List<BookChapter> chapters) async {
     try {
       final file = File(filePath);
       final content = await TxtParserService.readFileAutoDetect(file);
-      final lines = content.split('\n');
       if (chapterIndex >= chapters.length) return null;
       final chapter = chapters[chapterIndex];
+      // 位置优先：拆分前后的章节均带区间，直接切片（读取侧做同一规范化，保证偏移可复现）
+      if (chapter.startPos != null && chapter.endPos != null) {
+        final normalized = const LineSplitter().convert(content).join('\n');
+        var s = chapter.startPos!.clamp(0, normalized.length);
+        var e = chapter.endPos!.clamp(0, normalized.length);
+        if (s > e) {
+          final t = s;
+          s = e;
+          e = t;
+        }
+        return normalized.substring(s, e).trim();
+      }
+      final lines = content.split('\n');
       final title = chapter.title;
       var startIdx = -1;
       for (var i = 0; i < lines.length; i++) {
