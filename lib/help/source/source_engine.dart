@@ -112,6 +112,10 @@ class BookSourceEngine {
         userAgent: headers['User-Agent'],
         timeoutMs: 15000,
       );
+      if (rendered.isNotEmpty) {
+        lastRawResponse = rendered;
+        lastRequestUrl = url;
+      }
       return rendered.isEmpty ? null : rendered;
     } catch (_) {
       return null;
@@ -203,6 +207,13 @@ class BookSourceEngine {
     if (debugLog.length > 120) debugLog.removeAt(0);
   }
   void clearDebugLog() => debugLog.clear();
+
+  /// 最近一次请求返回的「原始响应源码」（供书源调试页查看 search/book/toc/content
+  /// 各阶段的原始 HTML/JSON）。每次 [_fetch] / WebView 渲染成功后更新。
+  String? lastRawResponse;
+
+  /// 最近一次请求的最终 URL（供调试页展示与二次抓取）。
+  String? lastRequestUrl;
 
   // ==================== URL / 请求 ====================
 
@@ -439,6 +450,8 @@ class BookSourceEngine {
     final text = _decodeBytes(response.data ?? [], response.headers.map);
     forcedCharset = originalForced;
     _log('解码完成，文本 ${text.length} 字符');
+    lastRawResponse = text;
+    lastRequestUrl = finalUrl;
     return text;
   }
 

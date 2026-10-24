@@ -686,96 +686,8 @@ class LegadoBridgeJs {
 
   // ============================ MD5（纯 JS 实现）============================
   function __md5(str) {
-    function rotl(n, s) { return (n << s) | (n >>> (32 - s)); }
-    function toHex(num) {
-      var s = "";
-      for (var j = 0; j < 4; j++) s += ((num >> (j * 8 + 4)) & 0x0F).toString(16) + ((num >> (j * 8)) & 0x0F).toString(16);
-      return s;
-    }
-    var msg = unescape(encodeURIComponent(str));
-    var len = msg.length;
-    var wordCount = (((len + 8) >> 6) + 1) * 16;
-    var words = new Array(wordCount - 1);
-    for (var i = 0; i < len; i++) words[i >> 2] |= msg.charCodeAt(i) << ((i % 4) * 8);
-    words[i >> 2] |= 0x80 << ((i % 4) * 8);
-    words[wordCount - 2] = len * 8;
-    var a = 1732584193, b = -271733879, c = -1732584194, d = 271733878;
-    for (var i = 0; i < words.length; i += 16) {
-      var oa = a, ob = b, oc = c, od = d;
-      a = __md5ff(a, b, c, d, words[i + 0], 7, -680876936);
-      d = __md5ff(d, a, b, c, words[i + 1], 12, -389564586);
-      c = __md5ff(c, d, a, b, words[i + 2], 17, 606105819);
-      b = __md5ff(b, c, d, a, words[i + 3], 22, -1044525330);
-      a = __md5ff(a, b, c, d, words[i + 4], 7, -176418897);
-      d = __md5ff(d, a, b, c, words[i + 5], 12, 1200080426);
-      c = __md5ff(c, d, a, b, words[i + 6], 17, -1473231341);
-      b = __md5ff(b, c, d, a, words[i + 7], 22, -45705983);
-      a = __md5ff(a, b, c, d, words[i + 8], 7, 1770035416);
-      d = __md5ff(d, a, b, c, words[i + 9], 12, -1958414417);
-      c = __md5ff(c, d, a, b, words[i + 10], 17, -42063);
-      b = __md5ff(b, c, d, a, words[i + 11], 22, -1990404162);
-      a = __md5ff(a, b, c, d, words[i + 12], 7, 1804603682);
-      d = __md5ff(d, a, b, c, words[i + 13], 12, -40341101);
-      c = __md5ff(c, d, a, b, words[i + 14], 17, -1502002290);
-      b = __md5ff(b, c, d, a, words[i + 15], 22, 1236535329);
-      a = __md5gg(a, b, c, d, words[i + 1], 5, -165796510);
-      d = __md5gg(d, a, b, c, words[i + 6], 9, -1069501632);
-      c = __md5gg(c, d, a, b, words[i + 11], 14, 643717713);
-      b = __md5gg(b, c, d, a, words[i + 0], 20, -373897302);
-      a = __md5gg(a, b, c, d, words[i + 5], 5, -701558691);
-      d = __md5gg(d, a, b, c, words[i + 10], 9, 38016083);
-      c = __md5gg(c, d, a, b, words[i + 15], 14, -660478335);
-      b = __md5gg(b, c, d, a, words[i + 4], 20, -405537848);
-      a = __md5gg(a, b, c, d, words[i + 9], 5, 568446438);
-      d = __md5gg(d, a, b, c, words[i + 14], 9, -1019803690);
-      c = __md5gg(c, d, a, b, words[i + 3], 14, -187363961);
-      b = __md5gg(b, c, d, a, words[i + 8], 20, 1163531501);
-      a = __md5gg(a, b, c, d, words[i + 13], 5, -1444681467);
-      d = __md5gg(d, a, b, c, words[i + 2], 9, -51403784);
-      c = __md5gg(c, d, a, b, words[i + 7], 14, 1735328473);
-      b = __md5gg(b, c, d, a, words[i + 12], 20, -1926607734);
-      a = __md5hh(a, b, c, d, words[i + 5], 4, -378558);
-      d = __md5hh(d, a, b, c, words[i + 8], 11, -2022574463);
-      c = __md5hh(c, d, a, b, words[i + 11], 16, 1839030562);
-      b = __md5hh(b, c, d, a, words[i + 14], 23, -35309556);
-      a = __md5hh(a, b, c, d, words[i + 1], 4, -1530992060);
-      d = __md5hh(d, a, b, c, words[i + 4], 11, 1272893353);
-      c = __md5hh(c, d, a, b, words[i + 7], 16, -155497632);
-      b = __md5hh(b, c, d, a, words[i + 10], 23, -1094730640);
-      a = __md5hh(a, b, c, d, words[i + 13], 4, 681279174);
-      d = __md5hh(d, a, b, c, words[i + 0], 11, -358537222);
-      c = __md5hh(c, d, a, b, words[i + 3], 16, -722521979);
-      b = __md5hh(b, c, d, a, words[i + 6], 23, 76029189);
-      a = __md5hh(a, b, c, d, words[i + 9], 4, -640364487);
-      d = __md5hh(d, a, b, c, words[i + 12], 11, -421815835);
-      c = __md5hh(c, d, a, b, words[i + 15], 16, 530742525);
-      b = __md5hh(b, c, d, a, words[i + 2], 23, -995338651);
-      a = __md5ii(a, b, c, d, words[i + 0], 6, -198630844);
-      d = __md5ii(d, a, b, c, words[i + 7], 10, 1126891415);
-      c = __md5ii(c, d, a, b, words[i + 14], 15, -1416354905);
-      b = __md5ii(b, c, d, a, words[i + 5], 21, -57434055);
-      a = __md5ii(a, b, c, d, words[i + 12], 6, 1700485571);
-      d = __md5ii(d, a, b, c, words[i + 3], 10, -1894986606);
-      c = __md5ii(c, d, a, b, words[i + 10], 15, -1051523);
-      b = __md5ii(b, c, d, a, words[i + 1], 21, -2054922799);
-      a = __md5ii(a, b, c, d, words[i + 8], 6, 1873313359);
-      d = __md5ii(d, a, b, c, words[i + 15], 10, -30611744);
-      c = __md5ii(c, d, a, b, words[i + 6], 15, -1560198380);
-      b = __md5ii(b, c, d, a, words[i + 13], 21, 1309151649);
-      a = __md5ii(a, b, c, d, words[i + 4], 6, -145523070);
-      d = __md5ii(d, a, b, c, words[i + 11], 10, -1120210379);
-      c = __md5ii(c, d, a, b, words[i + 2], 15, 718787259);
-      b = __md5ii(b, c, d, a, words[i + 9], 21, -343485551);
-      a = (a + oa) | 0; b = (b + ob) | 0; c = (c + oc) | 0; d = (d + od) | 0;
-    }
-    return toHex(a) + toHex(b) + toHex(c) + toHex(d);
+    return __bsToHex(__md5bs(__bsFromUtf8(str)));
   }
-  function __md5cmn(q, a, b, x, s, t) { return __md5add(rotl(__md5add(__md5add(a, q), __md5add(x, t)), s), b); }
-  function __md5ff(a, b, c, d, x, s, t) { return __md5cmn((b & c) | ((~b) & d), a, b, x, s, t); }
-  function __md5gg(a, b, c, d, x, s, t) { return __md5cmn((b & d) | (c & (~d)), a, b, x, s, t); }
-  function __md5hh(a, b, c, d, x, s, t) { return __md5cmn(b ^ c ^ d, a, b, x, s, t); }
-  function __md5ii(a, b, c, d, x, s, t) { return __md5cmn(c ^ (b | (~d)), a, b, x, s, t); }
-  function __md5add(a, b) { var x = (a & 0xFFFF) + (b & 0xFFFF); var y = (a >> 16) + (b >> 16) + (x >> 16); return (y << 16) | (x & 0xFFFF); }
 
   // ============================ SHA1（纯 JS 实现）============================
   function __sha1(str) {
@@ -867,6 +779,158 @@ class LegadoBridgeJs {
     return toHex(h0) + toHex(h1) + toHex(h2) + toHex(h3) + toHex(h4) + toHex(h5) + toHex(h6) + toHex(h7);
   }
 
+  // ============================ 字节级哈希 / HMAC ============================
+  // 对齐 legado JsEncodeUtils 的 digestHex / digestBase64Str / HMacHex / HMacBase64。
+  // 书源 JS 的 java.xxx() 是同步调用，不能用异步的 WebCrypto，故这里用纯 JS 实现。
+  function __bsFromUtf8(s) {
+    return __bytesToStr(new TextEncoder().encode(String(s == null ? "" : s)));
+  }
+  function __bytesToStr(bytes) {
+    var s = "";
+    for (var i = 0; i < bytes.length; i++) s += String.fromCharCode(bytes[i] & 0xFF);
+    return s;
+  }
+  function __bsToHex(bs) {
+    var s = "";
+    for (var i = 0; i < bs.length; i++) s += ("0" + (bs.charCodeAt(i) & 0xFF).toString(16)).slice(-2);
+    return s;
+  }
+  function __le32(n) {
+    return String.fromCharCode(n & 0xFF, (n >>> 8) & 0xFF, (n >>> 16) & 0xFF, (n >>> 24) & 0xFF);
+  }
+  function __be32(n) {
+    return String.fromCharCode((n >>> 24) & 0xFF, (n >>> 16) & 0xFF, (n >>> 8) & 0xFF, n & 0xFF);
+  }
+  // MD5 字节级实现：msg 为字节串（每字符 0-255），返回 little-endian 字节串。
+  // 循环式标准实现（RFC 1321），按 512-bit 块逐块做 64 轮。
+  function __md5bs(msg) {
+    var len = msg.length;
+    var wordCount = (((len + 8) >> 6) + 1) * 16;
+    var M = new Array(wordCount);
+    for (var i = 0; i < wordCount; i++) M[i] = 0;
+    for (var i = 0; i < len; i++) M[i >> 2] |= msg.charCodeAt(i) << ((i % 4) * 8);
+    M[len >> 2] |= 0x80 << ((len % 4) * 8);
+    M[wordCount - 2] = len * 8;
+    var K = [0xd76aa478,0xe8c7b756,0x242070db,0xc1bdceee,0xf57c0faf,0x4787c62a,0xa8304613,0xfd469501,0x698098d8,0x8b44f7af,0xffff5bb1,0x895cd7be,0x6b901122,0xfd987193,0xa679438e,0x49b40821,0xf61e2562,0xc040b340,0x265e5a51,0xe9b6c7aa,0xd62f105d,0x02441453,0xd8a1e681,0xe7d3fbc8,0x21e1cde6,0xc33707d6,0xf4d50d87,0x455a14ed,0xa9e3e905,0xfcefa3f8,0x676f02d9,0x8d2a4c8a,0xfffa3942,0x8771f681,0x6d9d6122,0xfde5380c,0xa4beea44,0x4bdecfa9,0xf6bb4b60,0xbebfbc70,0x289b7ec6,0xeaa127fa,0xd4ef3085,0x04881d05,0xd9d4d039,0xe6db99e5,0x1fa27cf8,0xc4ac5665,0xf4292244,0x432aff97,0xab9423a7,0xfc93a039,0x655b59c3,0x8f0ccc92,0xffeff47d,0x85845dd1,0x6fa87e4f,0xfe2ce6e0,0xa3014314,0x4e0811a1,0xf7537e82,0xbd3af235,0x2ad7d2bb,0xeb86d391];
+    var S = [7,12,17,22,7,12,17,22,7,12,17,22,7,12,17,22,5,9,14,20,5,9,14,20,5,9,14,20,5,9,14,20,4,11,16,23,4,11,16,23,4,11,16,23,4,11,16,23,6,10,15,21,6,10,15,21,6,10,15,21,6,10,15,21];
+    var a = 0x67452301, b = 0xefcdab89, c = 0x98badcfe, d = 0x10325476;
+    for (var off = 0; off < wordCount; off += 16) {
+      var A = a, B = b, C = c, D = d;
+      for (var i = 0; i < 64; i++) {
+        var f, g;
+        if (i < 16) { f = (B & C) | ((~B) & D); g = i; }
+        else if (i < 32) { f = (B & D) | (C & (~D)); g = (5 * i + 1) % 16; }
+        else if (i < 48) { f = B ^ C ^ D; g = (3 * i + 5) % 16; }
+        else { f = C ^ (B | (~D)); g = (7 * i) % 16; }
+        f = (f + A + K[i] + M[off + g]) | 0;
+        var tmp = (B + ((f << S[i]) | (f >>> (32 - S[i])))) | 0;
+        var ob = B, oc = C, od = D;
+        A = od; B = tmp; C = ob; D = oc;
+      }
+      a = (a + A) | 0; b = (b + B) | 0; c = (c + C) | 0; d = (d + D) | 0;
+    }
+    return __le32(a) + __le32(b) + __le32(c) + __le32(d);
+  }
+  // SHA-1 字节级实现：msg 为字节串，返回 big-endian 字节串。
+  function __sha1bs(msg) {
+    var len = msg.length;
+    var bitLen = len * 8;
+    var wordCount = (((len + 8) >> 6) + 1) * 16;
+    var words = new Array(wordCount);
+    for (var i = 0; i < wordCount; i++) words[i] = 0;
+    for (var i = 0; i < len; i++) words[i >> 2] |= msg.charCodeAt(i) << ((3 - (i % 4)) * 8);
+    words[len >> 2] |= 0x80 << ((3 - (len % 4)) * 8);
+    words[wordCount - 2] = Math.floor(bitLen / 0x100000000);
+    words[wordCount - 1] = bitLen & 0xFFFFFFFF;
+    function rotl(n, s) { return (n << s) | (n >>> (32 - s)); }
+    var h0 = 0x67452301, h1 = 0xEFCDAB89, h2 = 0x98BADCFE, h3 = 0x10325476, h4 = 0xC3D2E1F0;
+    for (var i = 0; i < wordCount; i += 16) {
+      var w = new Array(80);
+      for (var j = 0; j < 16; j++) w[j] = words[i + j];
+      for (var j = 16; j < 80; j++) w[j] = rotl(w[j - 3] ^ w[j - 8] ^ w[j - 14] ^ w[j - 16], 1);
+      var a = h0, b = h1, c = h2, d = h3, e = h4;
+      for (var j = 0; j < 80; j++) {
+        var f, k;
+        if (j < 20) { f = (b & c) | ((~b) & d); k = 0x5A827999; }
+        else if (j < 40) { f = b ^ c ^ d; k = 0x6ED9EBA1; }
+        else if (j < 60) { f = (b & c) | (b & d) | (c & d); k = 0x8F1BBCDC; }
+        else { f = b ^ c ^ d; k = 0xCA62C1D6; }
+        var temp = (rotl(a, 5) + f + e + k + w[j]) | 0;
+        e = d; d = c; c = rotl(b, 30); b = a; a = temp;
+      }
+      h0 = (h0 + a) | 0; h1 = (h1 + b) | 0; h2 = (h2 + c) | 0; h3 = (h3 + d) | 0; h4 = (h4 + e) | 0;
+    }
+    return __be32(h0) + __be32(h1) + __be32(h2) + __be32(h3) + __be32(h4);
+  }
+  // SHA-256 字节级实现：msg 为字节串，返回 big-endian 字节串。
+  function __sha256bs(msg) {
+    var K = [
+      0x428A2F98, 0x71374491, 0xB5C0FBCF, 0xE9B5DBA5, 0x3956C25B, 0x59F111F1, 0x923F82A4, 0xAB1C5ED5,
+      0xD807AA98, 0x12835B01, 0x243185BE, 0x550C7DC3, 0x72BE5D74, 0x80DEB1FE, 0x9BDC06A7, 0xC19BF174,
+      0xE49B69C1, 0xEFBE4786, 0x0FC19DC6, 0x240CA1CC, 0x2DE92C6F, 0x4A7484AA, 0x5CB0A9DC, 0x76F988DA,
+      0x983E5152, 0xA831C66D, 0xB00327C8, 0xBF597FC7, 0xC6E00BF3, 0xD5A79147, 0x06CA6351, 0x14292967,
+      0x27B70A85, 0x2E1B2138, 0x4D2C6DFC, 0x53380D13, 0x650A7354, 0x766A0ABB, 0x81C2C92E, 0x92722C85,
+      0xA2BFE8A1, 0xA81A664B, 0xC24B8B70, 0xC76C51A3, 0xD192E819, 0xD6990624, 0xF40E3585, 0x106AA070,
+      0x19A4C116, 0x1E376C08, 0x2748774C, 0x34B0BCB5, 0x391C0CB3, 0x4ED8AA4A, 0x5B9CCA4F, 0x682E6FF3,
+      0x748F82EE, 0x78A5636F, 0x84C87814, 0x8CC70208, 0x90BEFFFA, 0xA4506CEB, 0xBEF9A3F7, 0xC67178F2
+    ];
+    var len = msg.length;
+    var bitLen = len * 8;
+    var wordCount = (((len + 8) >> 6) + 1) * 16;
+    var words = new Array(wordCount);
+    for (var i = 0; i < wordCount; i++) words[i] = 0;
+    for (var i = 0; i < len; i++) words[i >> 2] |= msg.charCodeAt(i) << ((3 - (i % 4)) * 8);
+    words[len >> 2] |= 0x80 << ((3 - (len % 4)) * 8);
+    words[wordCount - 2] = Math.floor(bitLen / 0x100000000);
+    words[wordCount - 1] = bitLen & 0xFFFFFFFF;
+    function rotr(n, s) { return (n >>> s) | (n << (32 - s)); }
+    var h0 = 0x6A09E667, h1 = 0xBB67AE85, h2 = 0x3C6EF372, h3 = 0xA54FF53A;
+    var h4 = 0x510E527F, h5 = 0x9B05688C, h6 = 0x1F83D9AB, h7 = 0x5BE0CD19;
+    for (var i = 0; i < wordCount; i += 16) {
+      var w = new Array(64);
+      for (var j = 0; j < 16; j++) w[j] = words[i + j];
+      for (var j = 16; j < 64; j++) {
+        var s0 = rotr(w[j - 15], 7) ^ rotr(w[j - 15], 18) ^ (w[j - 15] >>> 3);
+        var s1 = rotr(w[j - 2], 17) ^ rotr(w[j - 2], 19) ^ (w[j - 2] >>> 10);
+        w[j] = (w[j - 16] + s0 + w[j - 7] + s1) | 0;
+      }
+      var a = h0, b = h1, c = h2, d = h3, e = h4, f = h5, g = h6, h = h7;
+      for (var j = 0; j < 64; j++) {
+        var S1 = rotr(e, 6) ^ rotr(e, 11) ^ rotr(e, 25);
+        var ch = (e & f) ^ ((~e) & g);
+        var temp1 = (h + S1 + ch + K[j] + w[j]) | 0;
+        var S0 = rotr(a, 2) ^ rotr(a, 13) ^ rotr(a, 22);
+        var maj = (a & b) ^ (a & c) ^ (b & c);
+        var temp2 = (S0 + maj) | 0;
+        h = g; g = f; f = e; e = (d + temp1) | 0;
+        d = c; c = b; b = a; a = (temp1 + temp2) | 0;
+      }
+      h0 = (h0 + a) | 0; h1 = (h1 + b) | 0; h2 = (h2 + c) | 0; h3 = (h3 + d) | 0;
+      h4 = (h4 + e) | 0; h5 = (h5 + f) | 0; h6 = (h6 + g) | 0; h7 = (h7 + h) | 0;
+    }
+    return __be32(h0) + __be32(h1) + __be32(h2) + __be32(h3) + __be32(h4) + __be32(h5) + __be32(h6) + __be32(h7);
+  }
+  function __digestBs(data, algorithm) {
+    var a = String(algorithm || "MD5").toUpperCase().replace(/[-_]/g, "");
+    var msg = __bsFromUtf8(data);
+    if (a === "SHA1") return __sha1bs(msg);
+    if (a === "SHA256") return __sha256bs(msg);
+    return __md5bs(msg);
+  }
+  function __hmacBs(data, algorithm, key) {
+    var a = String(algorithm || "MD5").toUpperCase().replace(/[-_]/g, "");
+    var fn = a === "SHA1" ? __sha1bs : (a === "SHA256" ? __sha256bs : __md5bs);
+    var k = __bsFromUtf8(key);
+    if (k.length > 64) k = fn(k);
+    var ikey = "", okey = "";
+    for (var i = 0; i < 64; i++) {
+      var kc = i < k.length ? k.charCodeAt(i) : 0;
+      ikey += String.fromCharCode(kc ^ 0x36);
+      okey += String.fromCharCode(kc ^ 0x5c);
+    }
+    return fn(okey + fn(ikey + __bsFromUtf8(data)));
+  }
+
   // ============================ java ============================
   function __argString(args) {
     return Array.prototype.map.call(args, function (a) {
@@ -928,9 +992,22 @@ class LegadoBridgeJs {
     },
     hexEncodeToString: function (str) { return __bytesToHex(new TextEncoder().encode(str)); },
     stringToHex: function (str) { return __bytesToHex(new TextEncoder().encode(str)); },
+    base64DecodeToByteArray: function (str) {
+      try { return Array.from(__b64ToBytes(String(str == null ? "" : str))); } catch (e) { return []; }
+    },
+    hexDecodeToByteArray: function (hex) {
+      try { return Array.from(__hexToBytes(String(hex == null ? "" : hex))); } catch (e) { return []; }
+    },
     md5Encode: function (str) { return __md5(String(str == null ? "" : str)); },
+    md5Encode16: function (str) { return __md5(String(str == null ? "" : str)).substring(8, 24); },
     sha1Encode: function (str) { return __sha1(String(str == null ? "" : str)); },
     sha256Encode: function (str) { return __sha256(String(str == null ? "" : str)); },
+    // 摘要：java.digestHex(str, "MD5"|"SHA-1"|"SHA-256") / digestBase64Str
+    digestHex: function (data, algorithm) { return __bsToHex(__digestBs(data, algorithm)); },
+    digestBase64Str: function (data, algorithm) { return btoa(__digestBs(data, algorithm)); },
+    // HMAC：java.HMacHex(data, algorithm, key) / HMacBase64(data, algorithm, key)
+    HMacHex: function (data, algorithm, key) { return __bsToHex(__hmacBs(data, algorithm, key)); },
+    HMacBase64: function (data, algorithm, key) { return btoa(__hmacBs(data, algorithm, key)); },
 
     // AES 对称加解密（同步；对齐 legado JsExtensions）
     aesBase64DecodeToString: function (data, key, transformation, iv) {
@@ -1259,6 +1336,12 @@ class LegadoBridgeJs {
       if (m === 0 || m === 1 || m === 2) return m;
       return 0;
     },
+    getReadBookConfigMap: function () {
+      try { return JSON.parse(java.getReadBookConfig()); } catch (e) { return {}; }
+    },
+    getThemeConfigMap: function () {
+      try { return JSON.parse(java.getThemeConfig()); } catch (e) { return {}; }
+    },
     getTxtInFolder: function (path) {
       // 列目录内 .txt 文件；原生 legado://file 暂无 list 能力（未知 op 返回 400），
       // 失败返回 [] 让书源走回退分支，不抛异常。
@@ -1277,37 +1360,104 @@ class LegadoBridgeJs {
       } catch (e) { return false; }
     },
 
-    // 对称加密：返回 encrypt/decrypt 对象（对齐 legado JsExtensions.createSymmetricCrypto）
-    createSymmetricCrypto: function (transformation, key) {
+    // 对称加密：对齐 legado JsExtensions.createSymmetricCrypto(transformation, key, iv)
+    // 返回 {encrypt, encryptBase64, encryptHex, decrypt, decryptStr}
+    createSymmetricCrypto: function (transformation, key, iv) {
       var kb = __aesKeyBytes(key);
+      var ivb = __aesIv(iv);
       var mode = String(transformation || "AES").toUpperCase();
       var useCbc = mode.indexOf("CBC") >= 0;
+      function encryptBytes(data) {
+        var text = (typeof data === "string") ? data : String(data);
+        var dataBytes = __utf8ToBytes(text);
+        var pad = 16 - (dataBytes.length % 16);
+        var padded = new Uint8Array(dataBytes.length + pad);
+        padded.set(dataBytes);
+        for (var i = dataBytes.length; i < padded.length; i++) padded[i] = pad;
+        if (useCbc) {
+          return new aesjs.ModeOfOperation.cbc(kb, ivb).encrypt(padded);
+        }
+        return new aesjs.ModeOfOperation.ecb(kb).encrypt(padded);
+      }
+      function decryptBytes(bytes) {
+        var data = (bytes instanceof Uint8Array) ? bytes : Uint8Array.from(bytes || []);
+        var dec;
+        if (useCbc) {
+          dec = new aesjs.ModeOfOperation.cbc(kb, ivb).decrypt(data);
+        } else {
+          dec = new aesjs.ModeOfOperation.ecb(kb).decrypt(data);
+        }
+        return __unpadPkcs7(dec);
+      }
+      function bytesToB64(b) {
+        var s = "";
+        for (var i = 0; i < b.length; i++) s += String.fromCharCode(b[i]);
+        return btoa(s);
+      }
       return {
+        encrypt: function (data) { return Array.from(encryptBytes(data)); },
+        encryptBase64: function (data) { return bytesToB64(encryptBytes(data)); },
+        encryptHex: function (data) { return __bytesToHex(encryptBytes(data)); },
+        decrypt: function (bytes) { return Array.from(decryptBytes(bytes)); },
+        decryptStr: function (str) {
+          var s = String(str == null ? "" : str);
+          var bytes;
+          if (/^[0-9a-fA-F]+$/.test(s) && s.length % 2 === 0) {
+            bytes = __hexToBytes(s);
+          } else {
+            bytes = __b64ToBytes(s);
+          }
+          return __bytesToUtf8(decryptBytes(bytes));
+        }
+      };
+    },
+
+    // 非对称加密：对齐 legado JsExtensions.createAsymmetricCrypto(transformation)
+    // 返回 {setPublicKey, setPrivateKey, encrypt, encryptBase64, decrypt, decryptStr}
+    createAsymmetricCrypto: function (transformation) {
+      var pubKey = "", priKey = "";
+      return {
+        setPublicKey: function (key) { pubKey = __normalizePem(key); return this; },
+        setPrivateKey: function (key) { priKey = __normalizePem(key); return this; },
         encrypt: function (data) {
-          var text = (typeof data === "string") ? data : String(data);
-          var dataBytes = __utf8ToBytes(text);
-          var pad = 16 - (dataBytes.length % 16);
-          var padded = new Uint8Array(dataBytes.length + pad);
-          padded.set(dataBytes);
-          for (var i = dataBytes.length; i < padded.length; i++) padded[i] = pad;
-          var enc;
-          if (useCbc) {
-            enc = new aesjs.ModeOfOperation.cbc(kb, __aesIv(null)).encrypt(padded);
-          } else {
-            enc = new aesjs.ModeOfOperation.ecb(kb).encrypt(padded);
-          }
-          return Array.from(enc);
+          try {
+            var crypt = new JSEncrypt();
+            crypt.setPublicKey(pubKey);
+            return crypt.encrypt(String(data == null ? "" : data)) || "";
+          } catch (e) { return ""; }
         },
-        decrypt: function (bytes) {
-          var data = (bytes instanceof Uint8Array) ? bytes : Uint8Array.from(bytes || []);
-          var dec;
-          if (useCbc) {
-            dec = new aesjs.ModeOfOperation.cbc(kb, __aesIv(null)).decrypt(data);
-          } else {
-            dec = new aesjs.ModeOfOperation.ecb(kb).decrypt(data);
-          }
-          dec = __unpadPkcs7(dec);
-          return __bytesToUtf8(dec);
+        encryptBase64: function (data) { return this.encrypt(data); },
+        decrypt: function (data) {
+          try {
+            var crypt = new JSEncrypt();
+            crypt.setPrivateKey(priKey);
+            return crypt.decrypt(String(data == null ? "" : data)) || "";
+          } catch (e) { return ""; }
+        },
+        decryptStr: function (data) { return this.decrypt(data); }
+      };
+    },
+
+    // 签名：对齐 legado JsExtensions.createSign(algorithm)
+    // 返回 {setPublicKey, setPrivateKey, sign, signHex}
+    createSign: function (algorithm) {
+      var pubKey = "", priKey = "";
+      return {
+        setPublicKey: function (key) { pubKey = __normalizePem(key); return this; },
+        setPrivateKey: function (key) { priKey = __normalizePem(key); return this; },
+        sign: function (data) {
+          try {
+            var crypt = new JSEncrypt();
+            crypt.setPrivateKey(priKey);
+            return crypt.sign(String(data == null ? "" : data), function (s) { return s; }, "sha256") || "";
+          } catch (e) { return ""; }
+        },
+        signHex: function (data) {
+          try {
+            var crypt = new JSEncrypt();
+            crypt.setPrivateKey(priKey);
+            return crypt.sign(String(data == null ? "" : data), function (s) { return s; }, "sha256") || "";
+          } catch (e) { return ""; }
         }
       };
     },

@@ -27,7 +27,13 @@ class _SourceDebugScreenState extends State<SourceDebugScreen>
   bool _running = false;
   double _progress = 0;
 
-  // 分步调试：两个页签（一键调试 / 分步调试）
+  // 各阶段原始源码（对齐 legado 调试页「查看源码」）
+  String? _searchSrc;
+  String? _bookSrc;
+  String? _tocSrc;
+  String? _contentSrc;
+
+  // 分步调试：三个页签（一键调试 / 分步调试 / 原始源码）
   late final TabController _tabController;
   // 分步调试各步骤状态
   final List<_DebugStep> _steps = [];
@@ -41,7 +47,7 @@ class _SourceDebugScreenState extends State<SourceDebugScreen>
   void initState() {
     super.initState();
     _keywordController.text = '我的';
-    _tabController = TabController(length: 2, vsync: this);
+    _tabController = TabController(length: 3, vsync: this);
     _initSteps();
   }
 
@@ -76,118 +82,252 @@ class _SourceDebugScreenState extends State<SourceDebugScreen>
     _engine.clearDebugLog();
   }
 
+  /// 解析调试输入，路由到对应阶段（对齐 legado Debug.startDebug）：
+  ///  - `++url`      目录调试
+  ///  - `--url`      正文调试
+  ///  - `名称::url`   发现调试
+  ///  - 绝对 URL     详情调试
+  ///  - 其他         搜索调试
+  ({String target, String url}) _parseDebugTarget(String input) {
+    final t = input.trim();
+    if (t.startsWith('++')) return (target: 'toc', url: t.substring(2).trim());
+    if (t.startsWith('--')) return (target: 'content', url: t.substring(2).trim());
+    final dc = t.indexOf('::');
+    if (dc > 0) return (target: 'explore', url: t.substring(dc + 2).trim());
+    if (RegExp(r'^https?://').hasMatch(t)) return (target: 'info', url: t);
+    return (target: 'search', url: '');
+  }
+
   Future<void> _runAll() async {
-    final keyword = _keywordController.text.trim();
-    if (keyword.isEmpty) {
-      _log('请输入搜索关键词', level: _LogLevel.error);
+    final input = _keywordController.text.trim();
+    if (input.isEmpty) {
+      _log('请输入 搜索词 / 详情URL / ++目录URL / --正文URL / 发现::URL', level: _LogLevel.error);
       return;
     }
     setState(() {
       _running = true;
       _logs.clear();
+      _searchSrc = null;
+      _bookSrc = null;
+      _tocSrc = null;
+      _contentSrc = null;
       _progress = 0;
     });
     final source = widget.source;
+    final parsed = _parseDebugTarget(input);
     _log('===== 开始调试：${source.bookSourceName} =====', level: _LogLevel.stage);
     _log('书源地址: ${source.bookSourceUrl}');
+    _log('调试目标: ${parsed.target}${parsed.url.isNotEmpty ? '  ${parsed.url}' : ''}');
 
-    SearchBook? firstBook;
     try {
-      // 1) 搜索
-      _progress = 0.1;
-      _log('【1/4】搜索「$keyword」…', level: _LogLevel.stage);
-      final results = await _engine.search(source, keyword);
-      _dumpEngineLog();
-      if (results.isEmpty) {
-        _log('搜索结果为空（请检查 searchUrl / 登录 / 规则）', level: _LogLevel.error);
-        _finish(false);
-        return;
+      switch (parsed.target) {
+        case 'search':
+          await _debugSearch(source, input);
+          break;
+        case 'explore':
+          await _debugExplore(source, parsed.url);
+          break;
+        case 'info':
+          await _debugInfo(source, parsed.url);
+          break;
+        case 'toc':
+          await _debugToc(source, parsed.url);
+          break;
+        case 'content':
+          await _debugContent(source, parsed.url);
+          break;
       }
-      _log('搜索到 ${results.length} 本，前 3 本：', level: _LogLevel.ok);
-      for (var i = 0; i < results.length && i < 3; i++) {
-        final b = results[i];
-        _log('  ${i + 1}. ${b.name} / ${b.author}  bookUrl=${b.bookUrl}');
-      }
-      firstBook = results.first;
-      _progress = 0.35;
-
-      // 2) 详情
-      final detailUrl = firstBook.bookUrl;
-      if (detailUrl == null || detailUrl.isEmpty) {
-        _log('首本书缺少 bookUrl', level: _LogLevel.error);
-        _finish(false);
-        return;
-      }
-      _log('【2/4】获取书籍详情：${firstBook.name}', level: _LogLevel.stage);
-      final info = await _engine.getBookInfo(source, detailUrl,
-          presetName: firstBook.name, presetAuthor: firstBook.author);
-      _dumpEngineLog();
-      if (info == null) {
-        _log('详情解析失败（ruleBookInfo）', level: _LogLevel.error);
-        _finish(false);
-        return;
-      }
-      _log('书名: ${info.name}  作者: ${info.author}', level: _LogLevel.ok);
-      _log('分类: ${info.kind}  最新: ${info.lastChapter}');
-      _log('目录地址: ${info.noteUrl}');
-      _progress = 0.6;
-
-      // 3) 目录
-      final tocUrl = info.noteUrl ?? detailUrl;
-      _log('【3/4】获取目录…', level: _LogLevel.stage);
-      final chapters = await _engine.getToc(source, tocUrl, bookInfo: {
-        'bookUrl': info.bookUrl ?? detailUrl,
-        'name': info.name,
-        'author': info.author,
-        'tocUrl': tocUrl,
-        'durChapterIndex': 0,
-      });
-      _dumpEngineLog();
-      if (chapters.isEmpty) {
-        _log('目录为空（ruleToc.chapterList）', level: _LogLevel.error);
-        _finish(false);
-        return;
-      }
-      _log('目录共 ${chapters.length} 章，前 3 章：', level: _LogLevel.ok);
-      for (var i = 0; i < chapters.length && i < 3; i++) {
-        _log('  ${i + 1}. ${chapters[i].title} -> ${chapters[i].url}');
-      }
-      _progress = 0.8;
-
-      // 4) 第一章正文
-      final firstChapter = chapters.firstWhere((c) => c.url.isNotEmpty && !c.isVolume,
-          orElse: () => chapters.first);
-      _log('【4/4】获取正文：${firstChapter.title}', level: _LogLevel.stage);
-      final content = await _engine.getContent(source, firstChapter.url, bookInfo: {
-        'bookUrl': info.bookUrl,
-        'name': info.name,
-        'author': info.author,
-        'tocUrl': info.noteUrl,
-        'durChapterIndex': firstChapter.index,
-      }, chapter: {
-        'index': firstChapter.index,
-        'title': firstChapter.title,
-        'url': firstChapter.url,
-        'bookUrl': info.bookUrl,
-      });
-      _dumpEngineLog();
-      if (content == null || content.trim().isEmpty) {
-        _log('正文为空（ruleContent.content）', level: _LogLevel.error);
-        _finish(false);
-        return;
-      }
-      final preview = content.length > 300 ? content.substring(0, 300) : content;
-      _log('正文长度 ${content.length} 字符，预览：', level: _LogLevel.ok);
-      _log(preview, level: _LogLevel.detail);
-
       _progress = 1;
-      _log('===== 全链路调试通过 ✓ =====', level: _LogLevel.stage);
+      _log('===== 调试完成 =====', level: _LogLevel.stage);
       _finish(true);
     } catch (e) {
       _dumpEngineLog();
       _log('调试异常: $e', level: _LogLevel.error);
       _finish(false);
     }
+  }
+
+  /// 搜索 → 详情 → 目录 → 正文（全链路）
+  Future<void> _debugSearch(BookSource source, String keyword) async {
+    _progress = 0.1;
+    _log('【搜索】「$keyword」…', level: _LogLevel.stage);
+    final results = await _engine.search(source, keyword);
+    _dumpEngineLog();
+    _searchSrc = _engine.lastRawResponse;
+    if (results.isEmpty) {
+      _log('搜索结果为空（请检查 searchUrl / 登录 / 规则）', level: _LogLevel.error);
+      return;
+    }
+    _log('搜索到 ${results.length} 本，前 3 本：', level: _LogLevel.ok);
+    for (var i = 0; i < results.length && i < 3; i++) {
+      final b = results[i];
+      _log('  ${i + 1}. ${b.name} / ${b.author}  bookUrl=${b.bookUrl}');
+    }
+    final first = results.first;
+    final detailUrl = first.bookUrl;
+    if (detailUrl == null || detailUrl.isEmpty) {
+      _log('首本书缺少 bookUrl', level: _LogLevel.error);
+      return;
+    }
+    await _debugInfoInternal(source, detailUrl,
+        presetName: first.name, presetAuthor: first.author);
+  }
+
+  /// 发现 → 详情 → 目录 → 正文
+  Future<void> _debugExplore(BookSource source, String exploreUrl) async {
+    _progress = 0.1;
+    _log('【发现】$exploreUrl', level: _LogLevel.stage);
+    final results = await _engine.exploreByUrl(source, exploreUrl);
+    _dumpEngineLog();
+    _searchSrc = _engine.lastRawResponse;
+    if (results.isEmpty) {
+      _log('发现结果为空（请检查 exploreUrl / ruleExplore）', level: _LogLevel.error);
+      return;
+    }
+    _log('发现 ${results.length} 本，前 3 本：', level: _LogLevel.ok);
+    for (var i = 0; i < results.length && i < 3; i++) {
+      final b = results[i];
+      _log('  ${i + 1}. ${b.name} / ${b.author}  bookUrl=${b.bookUrl}');
+    }
+    final first = results.first;
+    final detailUrl = first.bookUrl;
+    if (detailUrl == null || detailUrl.isEmpty) {
+      _log('首本书缺少 bookUrl', level: _LogLevel.error);
+      return;
+    }
+    await _debugInfoInternal(source, detailUrl,
+        presetName: first.name, presetAuthor: first.author);
+  }
+
+  /// 详情（绝对 URL）→ 目录 → 正文
+  Future<void> _debugInfo(BookSource source, String bookUrl) async {
+    await _debugInfoInternal(source, bookUrl);
+  }
+
+  Future<void> _debugInfoInternal(BookSource source, String detailUrl,
+      {String? presetName, String? presetAuthor}) async {
+    _progress = 0.35;
+    _log('【详情】$detailUrl', level: _LogLevel.stage);
+    final info = await _engine.getBookInfo(source, detailUrl,
+        presetName: presetName, presetAuthor: presetAuthor);
+    _dumpEngineLog();
+    _bookSrc = _engine.lastRawResponse;
+    if (info == null) {
+      _log('详情解析失败（ruleBookInfo）', level: _LogLevel.error);
+      return;
+    }
+    _log('书名: ${info.name}  作者: ${info.author}', level: _LogLevel.ok);
+    _log('分类: ${info.kind}  最新: ${info.lastChapter}');
+    _log('目录地址: ${info.noteUrl}');
+    await _debugTocInternal(source, info, detailUrl);
+  }
+
+  /// 目录（++url）→ 正文
+  Future<void> _debugToc(BookSource source, String tocUrl) async {
+    _progress = 0.6;
+    _log('【目录】$tocUrl', level: _LogLevel.stage);
+    final chapters = await _engine.getToc(source, tocUrl, bookInfo: {
+      'bookUrl': tocUrl,
+      'name': source.bookSourceName,
+      'author': '',
+      'tocUrl': tocUrl,
+      'durChapterIndex': 0,
+    });
+    _dumpEngineLog();
+    _tocSrc = _engine.lastRawResponse;
+    if (chapters.isEmpty) {
+      _log('目录为空（ruleToc.chapterList）', level: _LogLevel.error);
+      return;
+    }
+    _log('目录共 ${chapters.length} 章，前 3 章：', level: _LogLevel.ok);
+    for (var i = 0; i < chapters.length && i < 3; i++) {
+      _log('  ${i + 1}. ${chapters[i].title} -> ${chapters[i].url}');
+    }
+    final firstChapter = chapters.firstWhere(
+        (c) => c.url.isNotEmpty && !c.isVolume,
+        orElse: () => chapters.first);
+    await _debugContentInternal(source, firstChapter.url, {
+      'bookUrl': tocUrl,
+      'name': source.bookSourceName,
+      'tocUrl': tocUrl,
+      'durChapterIndex': firstChapter.index,
+    }, {
+      'index': firstChapter.index,
+      'title': firstChapter.title,
+      'url': firstChapter.url,
+      'bookUrl': tocUrl,
+    });
+  }
+
+  /// 目录（详情之后）→ 正文
+  Future<void> _debugTocInternal(BookSource source, Book info, String detailUrl) async {
+    final tocUrl = info.noteUrl ?? detailUrl;
+    _progress = 0.6;
+    _log('【目录】$tocUrl', level: _LogLevel.stage);
+    final chapters = await _engine.getToc(source, tocUrl, bookInfo: {
+      'bookUrl': info.bookUrl ?? detailUrl,
+      'name': info.name,
+      'author': info.author,
+      'tocUrl': tocUrl,
+      'durChapterIndex': 0,
+    });
+    _dumpEngineLog();
+    _tocSrc = _engine.lastRawResponse;
+    if (chapters.isEmpty) {
+      _log('目录为空（ruleToc.chapterList）', level: _LogLevel.error);
+      return;
+    }
+    _log('目录共 ${chapters.length} 章，前 3 章：', level: _LogLevel.ok);
+    for (var i = 0; i < chapters.length && i < 3; i++) {
+      _log('  ${i + 1}. ${chapters[i].title} -> ${chapters[i].url}');
+    }
+    final firstChapter = chapters.firstWhere(
+        (c) => c.url.isNotEmpty && !c.isVolume,
+        orElse: () => chapters.first);
+    await _debugContentInternal(source, firstChapter.url, {
+      'bookUrl': info.bookUrl,
+      'name': info.name,
+      'author': info.author,
+      'tocUrl': info.noteUrl,
+      'durChapterIndex': firstChapter.index,
+    }, {
+      'index': firstChapter.index,
+      'title': firstChapter.title,
+      'url': firstChapter.url,
+      'bookUrl': info.bookUrl,
+    });
+  }
+
+  /// 正文（--url）
+  Future<void> _debugContent(BookSource source, String contentUrl) async {
+    await _debugContentInternal(source, contentUrl, {
+      'bookUrl': contentUrl,
+      'name': source.bookSourceName,
+      'tocUrl': '',
+      'durChapterIndex': 0,
+    }, {
+      'index': 0,
+      'title': '',
+      'url': contentUrl,
+      'bookUrl': contentUrl,
+    });
+  }
+
+  Future<void> _debugContentInternal(BookSource source, String contentUrl,
+      Map<String, dynamic> bookInfo, Map<String, dynamic> chapter) async {
+    _progress = 0.8;
+    _log('【正文】$contentUrl', level: _LogLevel.stage);
+    final content = await _engine.getContent(source, contentUrl,
+        bookInfo: bookInfo, chapter: chapter);
+    _dumpEngineLog();
+    _contentSrc = _engine.lastRawResponse;
+    if (content == null || content.trim().isEmpty) {
+      _log('正文为空（ruleContent.content）', level: _LogLevel.error);
+      return;
+    }
+    final preview = content.length > 300 ? content.substring(0, 300) : content;
+    _log('正文长度 ${content.length} 字符，预览：', level: _LogLevel.ok);
+    _log(preview, level: _LogLevel.detail);
   }
 
   void _finish(bool ok) {
@@ -469,6 +609,62 @@ class _SourceDebugScreenState extends State<SourceDebugScreen>
     );
   }
 
+  /// 原始源码页签：查看搜索/详情/目录/正文各阶段抓到的原始 HTML/JSON。
+  Widget _buildSourceView() {
+    final items = <(String, String?)>[
+      ('搜索源码', _searchSrc),
+      ('详情源码', _bookSrc),
+      ('目录源码', _tocSrc),
+      ('正文源码', _contentSrc),
+    ];
+    final any = items.any((e) => e.$2 != null && e.$2!.isNotEmpty);
+    if (!any) {
+      return Center(
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Text(
+            '尚未抓取到源码。\n执行「一键调试」后，这里会展示各阶段的原始 HTML/JSON。',
+            textAlign: TextAlign.center,
+            style: TextStyle(color: Colors.grey.shade600, fontSize: 13, height: 1.6),
+          ),
+        ),
+      );
+    }
+    return ListView(
+      padding: const EdgeInsets.symmetric(vertical: 8),
+      children: [
+        for (final e in items)
+          if (e.$2 != null && e.$2!.isNotEmpty)
+            Card(
+              margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              clipBehavior: Clip.antiAlias,
+              child: ExpansionTile(
+                leading: const Icon(Icons.code, size: 20),
+                title: Text('${e.$1}（${e.$2!.length} 字符）',
+                    style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+                children: [
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(8),
+                    color: Colors.black.withOpacity(0.04),
+                    child: SelectableText(
+                      e.$2!.length > 20000
+                          ? '${e.$2!.substring(0, 20000)}\n…（已截断，共 ${e.$2!.length} 字符）'
+                          : e.$2!,
+                      style: const TextStyle(
+                          fontSize: 10.5,
+                          height: 1.35,
+                          fontFamily: 'monospace',
+                          color: Color(0xFF333333)),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+      ],
+    );
+  }
+
   /// 步骤详情字段（标签 + 等宽文本）
   Widget _stepField(String label, String value, {bool error = false}) {
     return Column(
@@ -536,6 +732,10 @@ class _SourceDebugScreenState extends State<SourceDebugScreen>
                 : () => setState(() {
                       _logs.clear();
                       _resetSteps();
+                      _searchSrc = null;
+                      _bookSrc = null;
+                      _tocSrc = null;
+                      _contentSrc = null;
                     }),
           ),
         ],
@@ -553,8 +753,8 @@ class _SourceDebugScreenState extends State<SourceDebugScreen>
                     textInputAction: TextInputAction.search,
                     onSubmitted: (_) => _runAll(),
                     decoration: const InputDecoration(
-                      labelText: '搜索内容',
-                      hintText: '输入书名/作者，一键调试搜索→详情→目录→正文',
+                      labelText: '调试目标',
+                      hintText: '搜索词 / 详情URL / ++目录URL / --正文URL / 发现::URL',
                       border: OutlineInputBorder(),
                       isDense: true,
                       prefixIcon: Icon(Icons.search),
@@ -578,6 +778,7 @@ class _SourceDebugScreenState extends State<SourceDebugScreen>
             tabs: const [
               Tab(text: '一键调试'),
               Tab(text: '分步调试'),
+              Tab(text: '原始源码'),
             ],
           ),
           Expanded(
@@ -613,6 +814,8 @@ class _SourceDebugScreenState extends State<SourceDebugScreen>
                 ),
                 // 分步调试：每步单独执行 + 耗时 + URL/摘要
                 _buildStepView(),
+                // 原始源码：查看各阶段抓到的 HTML/JSON 原文
+                _buildSourceView(),
               ],
             ),
           ),
