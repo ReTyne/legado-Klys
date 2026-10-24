@@ -1,5 +1,4 @@
 import 'dart:convert';
-import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -137,9 +136,41 @@ class _FakeLegadoJs implements LegadoJs {
   Future<void> dispose() async {}
 }
 
+/// 内联示例书源（替代原先依赖作者本机文件的 sample_source.json）。
+///
+/// 该源的所有规则都由下方 [_FakeLegadoJs] 的桩响应驱动：URL/字段规则写成
+/// `<js>java.xxx(...)</js>` 形式以触发桩运行时，`{{$.x}}` mustache 由
+/// RulePipeline 的内置变量替换完成，data: 书址携带跨步骤上下文。
+const sampleJson = r'''[{
+  "bookSourceName": "示例源",
+  "bookSourceUrl": "https://example.com",
+  "bookSourceType": 0,
+  "searchUrl": "<js>java.qsearch(src, key)</js>",
+  "ruleSearch": {
+    "bookList": "$.data",
+    "name": "$.book_name",
+    "author": "$.author",
+    "kind": "{{$.status}},{{$.score}},{{$.tags}},{{$.last_chapter_update_time}}",
+    "lastChapter": "{{$.source}} {{$.last_chapter_title}}",
+    "bookUrl": "<js>java.qtdetail(src)</js>"
+  },
+  "ruleBookInfo": {
+    "init": "<js>java.qtinit(src, '/detail?book_id=b1')</js>",
+    "name": "$.data.book_name",
+    "author": "$.data.author",
+    "tocUrl": "<js>java.qttoc('qingtian2')</js>"
+  },
+  "ruleToc": {
+    "chapterList": "<js>java.qtcatalog('/catalog?book_id=b1')</js>$.data",
+    "chapterName": "$.title",
+    "chapterUrl": "<js>java.qtchapter('qingtian3', item.item_id)</js>"
+  },
+  "ruleContent": {
+    "content": "<js>java.qtcontent('online_video')</js>"
+  }
+}]''';
+
 void main() {
-  const samplePath =
-      '/home/user/Doubao/chats/38441367341963522/sample_source.json';
 
   group('RulePipeline 字段拆分/后处理', () {
     final p = RulePipeline();
@@ -177,8 +208,7 @@ void main() {
     setUp(() async {
       fake = _FakeLegadoJs();
       JsRuntimeManager.instance.factoryOverride = (_) => fake;
-      final raw = File(samplePath).readAsStringSync();
-      source = BookSource.fromJson((jsonDecode(raw) as List).first);
+      source = BookSource.fromJson((jsonDecode(sampleJson) as List).first);
     });
 
     tearDown(() async {

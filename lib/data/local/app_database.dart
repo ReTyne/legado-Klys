@@ -202,6 +202,28 @@ class DatabaseService {
     return maps.map((m) => BookChapter.fromMap(m)).toList();
   }
 
+  /// 单章查询：按主键只取一行（保留 content），避免「读一章 = 读全书正文」。
+  /// 章节不存在时返回 null。
+  Future<BookChapter?> getChapter(String bookName, String bookAuthor, int chapterIndex) async {
+    final db = await database;
+    final maps = await db.query(
+      'book_chapters',
+      where: 'bookName = ? AND bookAuthor = ? AND chapter_index = ?',
+      whereArgs: [bookName, bookAuthor, chapterIndex],
+    );
+    return maps.isNotEmpty ? BookChapter.fromMap(maps.first) : null;
+  }
+
+  /// 已缓存正文总字符数（SUM(LENGTH(content))），供设置页缓存体积估算，
+  /// 避免遍历所有书 × 章节在内存中累加 content.length。
+  Future<int> getCachedContentLength() async {
+    final db = await database;
+    final rows = await db.rawQuery(
+        "SELECT SUM(LENGTH(content)) AS total FROM book_chapters WHERE content IS NOT NULL AND content != ''");
+    final total = rows.isNotEmpty ? rows.first['total'] : null;
+    return total is num ? total.toInt() : 0;
+  }
+
   Future<void> insertChapters(String bookName, String bookAuthor, List<BookChapter> chapters) async {
     final db = await database;
     final batch = db.batch();

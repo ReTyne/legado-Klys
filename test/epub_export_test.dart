@@ -77,7 +77,8 @@ void main() {
           archive.findFile('OEBPS/toc.ncx')!.content as List<int>);
       final opf = utf8.decode(
           archive.findFile('OEBPS/content.opf')!.content as List<int>);
-      expect('navPoint'.allMatches(ncx).length, 2);
+      // 每章 navPoint 出现 3 次（开标签 id 值 + 开标签 + 闭标签），共 2 章
+      expect('navPoint'.allMatches(ncx).length, 6);
       expect('itemref'.allMatches(opf).length, 2);
     });
   });

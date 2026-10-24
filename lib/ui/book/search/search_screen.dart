@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import 'package:collection/collection.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:legado_md3/constant/app_theme.dart';
 import 'package:legado_md3/data/model/search_book.dart';
 import 'package:legado_md3/data/model/book.dart';
 import 'package:legado_md3/ui/book/detail/change_source_screen.dart';
@@ -319,13 +320,16 @@ class _SearchScreenState extends State<SearchScreen> {
       ]));
     }
     if (_results.isEmpty) {
+      final cs = Theme.of(context).colorScheme;
       return Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
+        // 装饰性大图标保留 grey，弱化视觉权重
         Icon(Icons.search_off, size: 64, color: Colors.grey[400]),
         const SizedBox(height: 16),
-        Text('未找到"$_searchKeyword"相关结果', style: TextStyle(color: Colors.grey[600])),
+        Text('未找到"$_searchKeyword"相关结果', style: TextStyle(color: cs.onSurfaceVariant)),
       ]));
     }
     final display = _displayResults;
+    final cs = Theme.of(context).colorScheme;
     return Column(
       children: [
         if (_isSearching) LinearProgressIndicator(value: _totalSources > 0 ? _searchedSources / _totalSources : 0),
@@ -358,14 +362,14 @@ class _SearchScreenState extends State<SearchScreen> {
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
           child: Row(
             children: [
-              Text('共找到 ${display.length} 条', style: const TextStyle(fontSize: 12, color: Colors.grey)),
+              Text('共找到 ${display.length} 条', style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
               const Spacer(),
-              Text('$_searchedSources/$_totalSources 源', style: const TextStyle(fontSize: 12, color: Colors.grey)),
+              Text('$_searchedSources/$_totalSources 源', style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
               IconButton(
                 visualDensity: VisualDensity.compact,
                 iconSize: 18,
                 padding: EdgeInsets.zero,
-                icon: Icon(_groupBySource ? Icons.view_agenda : Icons.sort, color: Theme.of(context).colorScheme.primary),
+                icon: Icon(_groupBySource ? Icons.view_agenda : Icons.sort, color: cs.primary),
                 tooltip: _groupBySource ? '按时间排序' : '按书源分组',
                 onPressed: () => setState(() => _groupBySource = !_groupBySource),
               ),
@@ -373,7 +377,7 @@ class _SearchScreenState extends State<SearchScreen> {
           ),
         ),
         Expanded(child: display.isEmpty
-            ? Center(child: Text('当前范围/精准条件下无结果', style: TextStyle(color: Colors.grey[600])))
+            ? Center(child: Text('当前范围/精准条件下无结果', style: TextStyle(color: cs.onSurfaceVariant)))
             : (_groupBySource ? _buildGroupedList(display) : _buildFlatList(display))),
       ],
     );
@@ -416,7 +420,7 @@ class _SearchScreenState extends State<SearchScreen> {
         Text('${book.author} · ${book.kind ?? ''}', maxLines: 1, style: const TextStyle(fontSize: 12)),
         const SizedBox(height: 2),
         Text(book.lastChapter ?? '', maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 11, color: Theme.of(context).colorScheme.primary)),
-        if ((book.originName ?? '').isNotEmpty) Text('来源: ${book.originName}', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 10, color: Colors.grey)),
+        if ((book.originName ?? '').isNotEmpty) Text('来源: ${book.originName}', maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 10, color: Theme.of(context).colorScheme.onSurfaceVariant)),
       ],
     ),
     trailing: IconButton(icon: const Icon(Icons.add), onPressed: () => _addToShelf(book), tooltip: '加入书架'),
@@ -425,8 +429,7 @@ class _SearchScreenState extends State<SearchScreen> {
   );
 
   Widget _buildDefaultCover(String name) {
-    final colors = [Colors.blueGrey, Colors.brown, Colors.teal, Colors.indigo, Colors.deepOrange, Colors.purple];
-    final color = colors[name.hashCode.abs() % colors.length];
+    final color = defaultCoverPalette[name.hashCode.abs() % defaultCoverPalette.length];
     return Container(width: 50, height: 70, decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(4)), child: Center(child: Padding(padding: const EdgeInsets.all(4), child: Text(name, maxLines: 3, textAlign: TextAlign.center, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold)))));
   }
 

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:legado_md3/constant/app_theme.dart';
 import 'package:legado_md3/ui/book/source/source_manage_screen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:legado_md3/data/model/book.dart';
@@ -11,6 +12,11 @@ import 'package:legado_md3/data/model/homepage_module.dart';
 import 'package:legado_md3/ui/main/homepage/homepage_manage_screen.dart';
 import 'package:legado_md3/ui/main/discover/explore_books_screen.dart';
 import 'package:legado_md3/ui/stats/read_record_screen.dart';
+import 'package:legado_md3/ui/book/local_import_screen.dart';
+import 'package:legado_md3/ui/backup/backup_screen.dart';
+import 'package:legado_md3/ui/cache/cache_manage_screen.dart';
+import 'package:legado_md3/ui/bookmark/bookmark_screen.dart';
+import 'package:legado_md3/ui/config/replace_rule_screen.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});
@@ -130,19 +136,20 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildSearchBar() {
+    final cs = Theme.of(context).colorScheme;
     return GestureDetector(
       onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const SearchScreen())),
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         decoration: BoxDecoration(
-          color: Theme.of(context).colorScheme.surfaceContainerHighest,
+          color: cs.surfaceContainerHighest,
           borderRadius: BorderRadius.circular(28),
         ),
         child: Row(
           children: [
-            Icon(Icons.search, color: Colors.grey[600]),
+            Icon(Icons.search, color: cs.onSurfaceVariant),
             const SizedBox(width: 12),
-            Text('搜索书籍、作者...', style: TextStyle(color: Colors.grey[600])),
+            Text('搜索书籍、作者...', style: TextStyle(color: cs.onSurfaceVariant)),
           ],
         ),
       ),
@@ -150,6 +157,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildReadingGoalCard() {
+    final cs = Theme.of(context).colorScheme;
     final progress = _dailyGoal > 0 ? (_todayMinutes / _dailyGoal).clamp(0.0, 1.0) : 0.0;
     return Card(
       child: Padding(
@@ -161,7 +169,7 @@ class _HomeScreenState extends State<HomeScreen> {
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
                 const Text('今日阅读', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-                Text('$_todayMinutes / $_dailyGoal 分钟', style: TextStyle(fontSize: 13, color: Colors.grey[600])),
+                Text('$_todayMinutes / $_dailyGoal 分钟', style: TextStyle(fontSize: 13, color: cs.onSurfaceVariant)),
               ],
             ),
             const SizedBox(height: 12),
@@ -170,13 +178,13 @@ class _HomeScreenState extends State<HomeScreen> {
               child: LinearProgressIndicator(
                 value: progress,
                 minHeight: 8,
-                backgroundColor: Theme.of(context).colorScheme.surfaceContainerHighest,
+                backgroundColor: cs.surfaceContainerHighest,
               ),
             ),
             const SizedBox(height: 8),
             Text(
               progress >= 1.0 ? '已完成今日目标！' : '还差 ${_dailyGoal - _todayMinutes} 分钟完成目标',
-              style: TextStyle(fontSize: 12, color: progress >= 1.0 ? Colors.green : Colors.grey[600]),
+              style: TextStyle(fontSize: 12, color: progress >= 1.0 ? cs.primary : cs.onSurfaceVariant),
             ),
           ],
         ),
@@ -246,20 +254,21 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Widget _buildModuleCard(HomepageModule module) {
     IconData icon;
-    Color color;
     switch (module.type) {
-      case HomepageModuleType.banner: icon = Icons.image; color = Colors.blue; break;
-      case HomepageModuleType.buttonGroup: icon = Icons.smart_button; color = Colors.green; break;
-      case HomepageModuleType.card: icon = Icons.credit_card; color = Colors.orange; break;
-      case HomepageModuleType.grid: icon = Icons.grid_view; color = Colors.purple; break;
-      case HomepageModuleType.gridRanking: icon = Icons.grid_on; color = Colors.teal; break;
-      case HomepageModuleType.ranking: icon = Icons.emoji_events; color = Colors.amber; break;
-      case HomepageModuleType.waterfall: icon = Icons.view_stream; color = Colors.pink; break;
-      case HomepageModuleType.custom: icon = Icons.settings; color = Colors.grey; break;
+      case HomepageModuleType.banner: icon = Icons.image; break;
+      case HomepageModuleType.buttonGroup: icon = Icons.smart_button; break;
+      case HomepageModuleType.card: icon = Icons.credit_card; break;
+      case HomepageModuleType.grid: icon = Icons.grid_view; break;
+      case HomepageModuleType.gridRanking: icon = Icons.grid_on; break;
+      case HomepageModuleType.ranking: icon = Icons.emoji_events; break;
+      case HomepageModuleType.waterfall: icon = Icons.view_stream; break;
+      case HomepageModuleType.custom: icon = Icons.settings; break;
     }
+    // 模块图标统一 primary 系（primaryContainer 底 + onPrimaryContainer 图标），去掉彩虹色
+    final cs = Theme.of(context).colorScheme;
     return Card(
       child: ListTile(
-        leading: CircleAvatar(backgroundColor: color.withOpacity(0.1), child: Icon(icon, color: color)),
+        leading: CircleAvatar(backgroundColor: cs.primaryContainer, child: Icon(icon, color: cs.onPrimaryContainer)),
         title: Text(module.name),
         subtitle: Text(module.sourceUrl ?? '点击配置书源'),
         trailing: const Icon(Icons.chevron_right),
@@ -302,8 +311,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildDefaultCover(Book book) {
-    final colors = [Colors.blueGrey, Colors.brown, Colors.teal, Colors.indigo, Colors.deepOrange, Colors.purple];
-    final color = colors[book.name.hashCode.abs() % colors.length];
+    final color = defaultCoverPalette[book.name.hashCode.abs() % defaultCoverPalette.length];
     return Container(
       width: 100,
       height: 130,
@@ -329,25 +337,28 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Widget _buildStatItem(String label, String value, IconData icon) {
+    final cs = Theme.of(context).colorScheme;
     return Column(
       children: [
-        Icon(icon, size: 24, color: Theme.of(context).colorScheme.primary),
+        Icon(icon, size: 24, color: cs.primary),
         const SizedBox(height: 4),
         Text(value, style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
-        Text(label, style: TextStyle(fontSize: 11, color: Colors.grey[600])),
+        Text(label, style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant)),
       ],
     );
   }
 
   Widget _buildQuickActions() {
     final actions = [
-      {'icon': Icons.folder_open, 'label': '本地导入', 'color': Colors.blue},
-      {'icon': Icons.cloud_download, 'label': '网络导入', 'color': Colors.green},
-      {'icon': Icons.backup_outlined, 'label': '备份恢复', 'color': Colors.orange},
-      {'icon': Icons.cleaning_services_outlined, 'label': '缓存管理', 'color': Colors.purple},
-      {'icon': Icons.bookmark_border, 'label': '书签管理', 'color': Colors.red},
-      {'icon': Icons.find_replace_outlined, 'label': '替换净化', 'color': Colors.teal},
+      {'icon': Icons.folder_open, 'label': '本地导入'},
+      {'icon': Icons.cloud_download, 'label': '网络导入'},
+      {'icon': Icons.backup_outlined, 'label': '备份恢复'},
+      {'icon': Icons.cleaning_services_outlined, 'label': '缓存管理'},
+      {'icon': Icons.bookmark_border, 'label': '书签管理'},
+      {'icon': Icons.find_replace_outlined, 'label': '替换净化'},
     ];
+    // 快捷功能统一 primary 系圆底（primaryContainer + onPrimaryContainer）
+    final cs = Theme.of(context).colorScheme;
     return Card(
       child: Padding(
         padding: const EdgeInsets.all(16),
@@ -365,8 +376,8 @@ class _HomeScreenState extends State<HomeScreen> {
                   Container(
                     width: 48,
                     height: 48,
-                    decoration: BoxDecoration(color: (action['color'] as Color).withOpacity(0.15), borderRadius: BorderRadius.circular(12)),
-                    child: Icon(action['icon'] as IconData, color: action['color'] as Color),
+                    decoration: BoxDecoration(color: cs.primaryContainer, borderRadius: BorderRadius.circular(12)),
+                    child: Icon(action['icon'] as IconData, color: cs.onPrimaryContainer),
                   ),
                   const SizedBox(height: 6),
                   Text(action['label'] as String, style: const TextStyle(fontSize: 12)),
@@ -382,22 +393,22 @@ class _HomeScreenState extends State<HomeScreen> {
   void _handleQuickAction(String label) {
     switch (label) {
       case '本地导入':
-        Navigator.pushNamed(context, '/local_import');
+        Navigator.push(context, MaterialPageRoute(builder: (_) => const LocalImportScreen()));
         break;
       case '网络导入':
         Navigator.push(context, MaterialPageRoute(builder: (_) => const SourceManageScreen()));
         break;
       case '备份恢复':
-        Navigator.pushNamed(context, '/backup');
+        Navigator.push(context, MaterialPageRoute(builder: (_) => const BackupScreen()));
         break;
       case '缓存管理':
-        Navigator.pushNamed(context, '/cache');
+        Navigator.push(context, MaterialPageRoute(builder: (_) => const CacheManageScreen()));
         break;
       case '书签管理':
-        Navigator.pushNamed(context, '/bookmark');
+        Navigator.push(context, MaterialPageRoute(builder: (_) => const BookmarkScreen()));
         break;
       case '替换净化':
-        Navigator.pushNamed(context, '/replace');
+        Navigator.push(context, MaterialPageRoute(builder: (_) => const ReplaceRuleScreen()));
         break;
     }
   }

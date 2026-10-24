@@ -12,6 +12,7 @@ import 'package:legado_md3/help/storage/backup_service.dart';
 import 'package:legado_md3/help/web/web_service.dart';
 import 'package:legado_md3/data/local/app_database.dart';
 import 'package:legado_md3/common/app_navigator.dart';
+import 'package:legado_md3/common/deep_link_service.dart';
 import 'package:legado_md3/ui/book/reader_router.dart';
 
 /// 应用语言（oc_language：0 跟随系统 / 1 简体中文 / 2 English）
@@ -24,10 +25,6 @@ void main() async {
   if (prefs.getBool('oc_recordLog') ?? false) {
     CrashLogHelper.instance.install();
   }
-  // 实验室：打开应用时自动 WebDAV 同步（开关关闭则立即返回，不影响启动）
-  AutoSyncService.syncOnOpen();
-  // 自动备份：到点则在后台做一次 zip 备份（auto_backup_hours <= 0 直接返回）
-  BackupService.scheduleAutoBackup();
   // 漫画界面开关（oc_showMangaUi）
   showMangaUi = prefs.getBool('oc_showMangaUi') ?? true;
   // 语言设置（oc_language）
@@ -37,16 +34,25 @@ void main() async {
       : lang == 2
           ? const Locale('en')
           : null;
-  // Web 服务自动启动（oc_webAutoStart）
-  if (prefs.getBool('oc_webAutoStart') ?? false) {
-    final port = prefs.getInt('oc_webPort') ?? 1122;
-    WebService().start(port: port).catchError((_) {});
-  }
-  // 自动清理过期内容（oc_autoClearExpired）
-  if (prefs.getBool('oc_autoClearExpired') ?? false) {
-    DatabaseService().clearExpiredChapterContent().catchError((_) => 0);
-  }
   runApp(const LegadoApp());
+  // 首帧后的收尾启动任务：全部移到 postFrameCallback，启动不再卡顿
+  WidgetsBinding.instance.addPostFrameCallback((_) {
+    // 记录日志开关已在前；以下均为可延后的后台 IO / 网络
+    AutoSyncService.syncOnOpen();
+    BackupService.scheduleAutoBackup();
+    if (prefs.getBool('oc_autoClearExpired') ?? false) {
+      DatabaseService().clearExpiredChapterContent().catchError((_) => 0);
+    }
+    if (prefs.getBool('oc_webAutoStart') ?? false) {
+      final port = prefs.getInt('oc_webPort') ?? 1122;
+      WebService().start(port: port).catchError((_) {});
+    }
+    // legado:// 深链与系统分享导入：监听并分派
+    DeepLinkService.instance.init();
+    DeepLinkService.instance.links.listen(
+      (link) => DeepLinkService.instance.handleLink(link),
+    );
+  });
 }
 
 /// 启动根：首次进入显示欢迎/隐私引导，之后直接进主界面

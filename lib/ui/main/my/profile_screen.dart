@@ -103,6 +103,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return Scaffold(
       appBar: AppBar(title: const Text('我的')),
       body: ListView(
@@ -153,14 +154,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
           if (_webServiceRunning)
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: Text('在浏览器中打开上述地址即可管理书架、书源、RSS等', style: TextStyle(fontSize: 12, color: Colors.grey[600])),
+              child: Text('在浏览器中打开上述地址即可管理书架、书源、RSS等', style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
             ),
 
           const SizedBox(height: 24),
           Center(
-            child: Text(
+            child:             Text(
               _versionLabel.isEmpty ? 'Legado MD3' : 'Legado MD3 v$_versionLabel',
-              style: const TextStyle(color: Colors.grey, fontSize: 12),
+              style: TextStyle(color: cs.onSurfaceVariant, fontSize: 12),
             ),
           ),
           const SizedBox(height: 16),
@@ -363,12 +364,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Future<void> _showCrashLog() async {
     final logs = await CrashLogHelper.instance.readLogs();
     if (!mounted) return;
+    final cs = Theme.of(context).colorScheme;
     showDialog(context: context, builder: (c) => AlertDialog(
       title: const Text('崩溃日志'),
       content: SizedBox(
         width: double.maxFinite,
         child: logs.trim().isEmpty
-            ? const Text('暂无崩溃日志', style: TextStyle(color: Colors.grey))
+            ? Text('暂无崩溃日志', style: TextStyle(color: cs.onSurfaceVariant))
             : SingleChildScrollView(child: SelectableText(logs, style: const TextStyle(fontSize: 11, fontFamily: 'monospace'))),
       ),
       actions: [
@@ -433,6 +435,7 @@ class _LabConfigScreenState extends State<LabConfigScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return Scaffold(
       appBar: AppBar(title: const Text('实验室')),
       body: ListView(children: [
@@ -459,7 +462,7 @@ class _LabConfigScreenState extends State<LabConfigScreen> {
         SwitchListTile(dense: true, title: const Text('打开应用时自动WebDAV同步'),
           value: _webDavSyncOnOpen, onChanged: _labEnabled ? (v) { setState(() => _webDavSyncOnOpen = v); _set('lab_webdavOpen', v); } : null),
         const SizedBox(height: 24),
-        const Center(child: Text('实验性功能可能随时变更或移除', style: TextStyle(fontSize: 11, color: Colors.grey))),
+        Center(child: Text('实验性功能可能随时变更或移除', style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant))),
       ]),
     );
   }

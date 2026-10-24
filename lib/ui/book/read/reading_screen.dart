@@ -88,6 +88,12 @@ class _ReadingScreenState extends State<ReadingScreen> with SingleTickerProvider
   // 替换净化开关（点击区域/菜单可切换，默认跟随 oc_replaceDefault）
   bool _purifyEnabled = true;
   List<String> _pages = [];
+  // 重排防抖：连续触发（布局变化等）时 100ms 内只做最后一次
+  Timer? _repaginateTimer;
+  // 章节进度滑块拖动中的局部下标（null 表示未在拖动，跟随 _currentChapterIndex）
+  int? _dragChapterIndex;
+  // 正文搜索命中其他章时的章内偏移：章节加载分页完成后按此定位页码
+  int? _pendingPosInChapter;
   List<String> _toolbarOrder = List.of(ReadMenuConfig.defaultToolBar);
   List<String> _moreMenuOrder = List.of(ReadMenuConfig.defaultMoreMenu);
   List<String> _selectMenuOrder = List.of(ReadMenuConfig.defaultSelectMenu);
@@ -177,7 +183,6 @@ class _ReadingScreenState extends State<ReadingScreen> with SingleTickerProvider
   /// 后台预缓存当前章之后的 [_preDownload] 章，失败静默，不影响阅读
   Future<void> _prefetch(int fromIndex) async {
     if (_preDownload <= 0) return;
-    final cached = await _db.getChapters(widget.book.name, widget.book.author);
     List<BookSource> sources = [];
     try {
       sources = await _db.getAllSources(enabled: true);
@@ -203,7 +208,9 @@ class _ReadingScreenState extends State<ReadingScreen> with SingleTickerProvider
 
     final todo = <int>[];
     for (int i = fromIndex + 1; i <= fromIndex + _preDownload && i < _chapters.length; i++) {
-      final already = i < cached.length && cached[i].content != null;
+      // 单章查询判断是否已缓存，避免把全书正文读进内存
+      final cached = await _db.getChapter(widget.book.name, widget.book.author, i);
+      final already = cached != null && cached.content != null && cached.content!.isNotEmpty;
       if (already || _prefetching.contains(i)) continue;
       if (_chapters[i].url.isEmpty) continue;
       todo.add(i);
@@ -303,6 +310,7 @@ class _ReadingScreenState extends State<ReadingScreen> with SingleTickerProvider
   void dispose() {
     _autoReadTimer?.cancel();
     _clockTimer?.cancel();
+    _repaginateTimer?.cancel();
     _menuController.dispose();
     _pageController.dispose();
     _recordService.endSession(
@@ -387,11 +395,12 @@ class _ReadingScreenState extends State<ReadingScreen> with SingleTickerProvider
 
     final chapter = _chapters[index];
     // 先尝试从数据库读取缓存（换源时缓存属于旧源，必须跳过强制走网络）
-    final cachedChapters = forceSource == null
-        ? await _db.getChapters(widget.book.name, widget.book.author)
-        : <BookChapter>[];
-    if (index < cachedChapters.length && cachedChapters[index].content != null && cachedChapters[index].content!.isNotEmpty) {
-      _content = cachedChapters[index].content;
+    // 单章查询：只取当前章一行，避免「读一章 = getChapters 读全书」
+    final cached = forceSource == null
+        ? await _db.getChapter(widget.book.name, widget.book.author, index)
+        : null;
+    if (cached != null && cached.content != null && cached.content!.isNotEmpty) {
+      _content = cached.content;
     } else if (widget.book.local && widget.book.fileName != null) {
       // 本地书：从文件读取章节内容
       try {
@@ -458,7 +467,12 @@ class _ReadingScreenState extends State<ReadingScreen> with SingleTickerProvider
     _paginateContent();
     _currentChapterIndex = index;
     // 跳转到指定页码（书签跳转或恢复阅读进度）
-    if (targetPage != null && targetPage >= 0 && targetPage < _pages.length) {
+    final pendingPos = _pendingPosInChapter;
+    if (pendingPos != null) {
+      // 正文搜索跳转：按章内字符偏移定位到具体页
+      _pendingPosInChapter = null;
+      _currentPage = _pageForOffset(pendingPos);
+    } else if (targetPage != null && targetPage >= 0 && targetPage < _pages.length) {
       _currentPage = targetPage;
     } else if (widget.initialChapter == null && index == widget.book.durChapterIndex) {
       // 恢复上次阅读页码（仅首次加载时）
@@ -955,7 +969,14 @@ class _ReadingScreenState extends State<ReadingScreen> with SingleTickerProvider
     if (pw != null && ph != null && (pw - w).abs() < 0.5 && (ph - h).abs() < 0.5) return;
     _pageW = w;
     _pageH = h;
-    WidgetsBinding.instance.addPostFrameCallback((_) {
+    // 重排防抖：连续布局变化只做最后一次，避免逐帧/逐次全文测量
+    _scheduleRepaginate();
+  }
+
+  /// 防抖重排：取消待执行的重排，100ms 静默后执行（dispose 时 cancel）
+  void _scheduleRepaginate() {
+    _repaginateTimer?.cancel();
+    _repaginateTimer = Timer(const Duration(milliseconds: 100), () {
       if (!mounted) return;
       _paginateContent();
       if (mounted) setState(() {});
@@ -1000,88 +1021,61 @@ class _ReadingScreenState extends State<ReadingScreen> with SingleTickerProvider
     final lockGesture = noAnim || (_disableHorizontalSwipe && !isVertical);
     final physics =
         lockGesture ? const NeverScrollableScrollPhysics() : const PageScrollPhysics();
-    final base = PageView.builder(
+    // MediaQuery 在动画外只取一次，翻页每帧不再重复读取
+    final mq = MediaQuery.of(context);
+    final advance = isVertical ? mq.size.height : mq.size.width;
+    // 静态 PageView：不再整体包进 AnimatedBuilder，每帧不重建整棵页面树
+    return PageView.builder(
       controller: _pageController,
       scrollDirection: isVertical ? Axis.vertical : Axis.horizontal,
       physics: physics,
       itemCount: _pages.length,
       onPageChanged: (page) => setState(() => _currentPage = page),
-      itemBuilder: (context, index) => _pageItem(config, index),
-    );
-    if (!cover && !simulate) return base;
-    // 覆盖 / 仿真：用 AnimatedBuilder 实时读取翻页偏移做叠层位移
-    return AnimatedBuilder(
-      animation: _pageController,
-      builder: (ctx, child) {
-        final page = _pageController.position.haveDimensions ? (_pageController.page ?? _currentPage.toDouble()) : _currentPage.toDouble();
-        final screenW = MediaQuery.of(ctx).size.width;
-        final screenH = MediaQuery.of(ctx).size.height;
-        return PageView.builder(
+      itemBuilder: (context, index) {
+        final item = _pageItem(config, index);
+        // 覆盖 / 仿真：动画层只包住当前页项，静态页内容作为 child 不参与每帧重建
+        if (!cover && !simulate) return item;
+        return _PageAnimLayer(
           controller: _pageController,
-          scrollDirection: isVertical ? Axis.vertical : Axis.horizontal,
-          physics: physics,
-          itemCount: _pages.length,
-          onPageChanged: (p) => setState(() => _currentPage = p),
-          itemBuilder: (context, index) {
-            final diff = (index - page).clamp(0.0, 1.0);
-            final advance = isVertical ? screenH : screenW;
-            var widget = _pageItem(config, index);
-            if (simulate) {
-              // 仿真：下层页轻微缩放 + 阴影折角，上层页滑入覆盖
-              final scale = 1.0 - (1.0 - diff) * 0.04;
-              widget = Transform.scale(scale: scale, child: widget);
-              if (diff > 0.01) {
-                widget = DecoratedBox(
-                  decoration: BoxDecoration(boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.18 * diff), blurRadius: 12, spreadRadius: 1)]),
-                  child: widget,
-                );
-              }
-            }
-            return Transform.translate(
-              offset: isVertical ? Offset(0, diff * advance) : Offset(diff * advance, 0),
-              child: widget,
-            );
-          },
+          fallbackPage: _currentPage,
+          index: index,
+          advance: advance,
+          vertical: isVertical,
+          simulate: simulate,
+          child: item,
         );
       },
     );
   }
 
-  /// 单页内容（含长按选择）
+  /// 单页内容（含长按选择）；最外层 RepaintBoundary 隔离翻页时的逐页重绘
   Widget _pageItem(ReadConfig config, int index) {
     final child = _pageText(config, index);
-    if (!(_textSelectable && config.longPressSelect)) {
-      return SingleChildScrollView(
+    return RepaintBoundary(
+      child: SingleChildScrollView(
         padding: EdgeInsets.fromLTRB(
           config.paddingLeft.toDouble(),
           config.paddingTop.toDouble(),
           config.paddingRight.toDouble(),
           config.paddingBottom.toDouble(),
         ),
-        child: child,
-      );
-    }
-    return SingleChildScrollView(
-      padding: EdgeInsets.fromLTRB(
-        config.paddingLeft.toDouble(),
-        config.paddingTop.toDouble(),
-        config.paddingRight.toDouble(),
-        config.paddingBottom.toDouble(),
-      ),
-      child: SelectionArea(
-        contextMenuBuilder: (context, state) {
-          Future<String> grab() async {
-            state.copySelection(SelectionChangedCause.toolbar);
-            await Future.delayed(const Duration(milliseconds: 30));
-            final d = await Clipboard.getData(Clipboard.kTextPlain);
-            return d?.text ?? '';
-          }
-          return AdaptiveTextSelectionToolbar(
-            anchors: state.contextMenuAnchors,
-            children: _buildSelectMenuChildren(state, grab),
-          );
-        },
-        child: child,
+        child: (_textSelectable && config.longPressSelect)
+            ? SelectionArea(
+                contextMenuBuilder: (context, state) {
+                  Future<String> grab() async {
+                    state.copySelection(SelectionChangedCause.toolbar);
+                    await Future.delayed(const Duration(milliseconds: 30));
+                    final d = await Clipboard.getData(Clipboard.kTextPlain);
+                    return d?.text ?? '';
+                  }
+                  return AdaptiveTextSelectionToolbar(
+                    anchors: state.contextMenuAnchors,
+                    children: _buildSelectMenuChildren(state, grab),
+                  );
+                },
+                child: child,
+              )
+            : child,
       ),
     );
   }
@@ -1330,12 +1324,25 @@ class _ReadingScreenState extends State<ReadingScreen> with SingleTickerProvider
                   ),
                   Expanded(
                     child: Slider(
-                      value: _chapters.length <= 1 ? 0 : _currentChapterIndex / (_chapters.length - 1),
+                      value: _chapters.length <= 1 ? 0 : (_dragChapterIndex ?? _currentChapterIndex) / (_chapters.length - 1),
+                      // 拖动中只更新局部状态，不触发章节加载/落库/重排
                       onChanged: _chapters.length <= 1
                           ? null
                           : (value) {
                               final index = (value * (_chapters.length - 1)).round();
-                              _loadChapterContent(index);
+                              if (index != (_dragChapterIndex ?? _currentChapterIndex)) {
+                                setState(() => _dragChapterIndex = index);
+                              }
+                            },
+                      // 松手才加载章节（加载内部完成进度保存与重排）
+                      onChangeEnd: _chapters.length <= 1
+                          ? null
+                          : (value) {
+                              final index = (value * (_chapters.length - 1)).round();
+                              setState(() => _dragChapterIndex = index);
+                              _loadChapterContent(index).whenComplete(() {
+                                if (mounted) setState(() => _dragChapterIndex = null);
+                              });
                             },
                     ),
                   ),
@@ -1864,9 +1871,9 @@ class _ReadingScreenState extends State<ReadingScreen> with SingleTickerProvider
     int cached = 0;
     for (int i = start; i <= end && i < _chapters.length; i++) {
       final chapter = _chapters[i];
-      // 检查是否已有缓存
-      final cachedChapters = await _db.getChapters(widget.book.name, widget.book.author);
-      if (i < cachedChapters.length && cachedChapters[i].content != null && cachedChapters[i].content!.isNotEmpty) {
+      // 检查是否已有缓存（单章查询，避免每轮都读全书正文）
+      final cachedChapter = await _db.getChapter(widget.book.name, widget.book.author, i);
+      if (cachedChapter != null && cachedChapter.content != null && cachedChapter.content!.isNotEmpty) {
         cached++;
         continue;
       }
@@ -2026,16 +2033,23 @@ class _ReadingScreenState extends State<ReadingScreen> with SingleTickerProvider
 
   void _showBrightnessSlider() {
     final readProvider = context.read<ReadProvider>();
+    // 拖动中的局部亮度值：只更新局部状态，不写盘/不通知
+    var dragging = readProvider.brightness;
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('亮度调节'),
         content: StatefulBuilder(
           builder: (context, setState) => Slider(
-            value: readProvider.brightness,
+            value: dragging,
+            // 拖动中仅局部刷新滑块，不写 SharedPreferences、不 notify
             onChanged: (value) {
-              readProvider.setBrightness(value);
+              dragging = value;
               setState(() {});
+            },
+            // 松手才持久化并通知阅读界面生效
+            onChangeEnd: (value) {
+              readProvider.setBrightness(value);
             },
           ),
         ),
@@ -2051,8 +2065,41 @@ class _ReadingScreenState extends State<ReadingScreen> with SingleTickerProvider
   }
 
   Future<void> _showSearchInBook({String? initialKeyword}) async {
-    final chapterIndex = await Navigator.push<int>(context, MaterialPageRoute(builder: (_) => SearchContentScreen(book: widget.book, initialKeyword: initialKeyword)));
-    if (chapterIndex != null) _loadChapterContent(chapterIndex);
+    final hit = await Navigator.push<ContentSearchHit>(
+        context, MaterialPageRoute(builder: (_) => SearchContentScreen(book: widget.book, initialKeyword: initialKeyword)));
+    if (hit == null) return;
+    if (hit.chapterIndex != _currentChapterIndex) {
+      // 命中其他章：记录章内偏移，章节加载分页完成后按偏移定位到具体页
+      _pendingPosInChapter = hit.posInChapter;
+      _loadChapterContent(hit.chapterIndex);
+    } else {
+      // 命中当前章：直接按偏移定位页码
+      _jumpToPosInChapter(hit.posInChapter);
+    }
+  }
+
+  /// 线性查找字符偏移所在的页（_pages 为按序拼接的分页文本）
+  int _pageForOffset(int pos) {
+    if (_pages.isEmpty || pos <= 0) return 0;
+    var acc = 0;
+    for (var i = 0; i < _pages.length; i++) {
+      final len = _pages[i].length;
+      if (pos < acc + len) return i;
+      acc += len;
+    }
+    return _pages.length - 1;
+  }
+
+  /// 按章内字符偏移定位并跳转到对应页（正文搜索命中当前章时使用）
+  void _jumpToPosInChapter(int pos) {
+    final page = _pageForOffset(pos);
+    if (page >= _pages.length) return;
+    _currentPage = page;
+    if (_pageController.hasClients) {
+      _pageController.jumpToPage(page);
+    }
+    _saveCurrentProgress();
+    if (mounted) setState(() {});
   }
 
   Future<void> _showTranslateDialog() async {
@@ -2217,8 +2264,68 @@ class _ReadingScreenState extends State<ReadingScreen> with SingleTickerProvider
     )));
   }
 }
-/* ===== 由 change_chapter_source_sheet.dart 合并 ===== */
 
+/// 翻页动画包装层（覆盖 / 仿真）。
+/// 监听 [_PageAnimLayer.controller]，每帧只重建 Transform 包装；
+/// 静态页内容通过 child 传入，不参与每帧重建。MediaQuery 由调用方在动画外只取一次。
+class _PageAnimLayer extends StatelessWidget {
+  final PageController controller;
+  /// 控制器尚无尺寸时的回退页码
+  final int fallbackPage;
+  final int index;
+  /// 单页位移距离（横排取屏宽，竖排取屏高）
+  final double advance;
+  final bool vertical;
+  final bool simulate;
+  final Widget child;
+
+  const _PageAnimLayer({
+    required this.controller,
+    required this.fallbackPage,
+    required this.index,
+    required this.advance,
+    required this.vertical,
+    required this.simulate,
+    required this.child,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: controller,
+      child: child,
+      builder: (ctx, staticChild) {
+        final page = (controller.hasClients && controller.position.haveDimensions)
+            ? (controller.page ?? fallbackPage.toDouble())
+            : fallbackPage.toDouble();
+        final diff = (index - page).clamp(0.0, 1.0);
+        var widget = staticChild!;
+        if (simulate) {
+          // 仿真：下层页轻微缩放 + 阴影折角，上层页滑入覆盖
+          final scale = 1.0 - (1.0 - diff) * 0.04;
+          widget = Transform.scale(scale: scale, child: widget);
+          if (diff > 0.01) {
+            widget = DecoratedBox(
+              decoration: BoxDecoration(boxShadow: [
+                BoxShadow(
+                    color: Colors.black.withOpacity(0.18 * diff),
+                    blurRadius: 12,
+                    spreadRadius: 1)
+              ]),
+              child: widget,
+            );
+          }
+        }
+        return Transform.translate(
+          offset: vertical ? Offset(0, diff * advance) : Offset(diff * advance, 0),
+          child: widget,
+        );
+      },
+    );
+  }
+}
+
+/* ===== 由 change_chapter_source_sheet.dart 合并 ===== */
 /// 章节换源 - 对齐原版ChangeChapterSourceSheet
 /// 列出可用书源，选择后用指定源重新加载章节
 class ChangeChapterSourceSheet extends StatefulWidget {

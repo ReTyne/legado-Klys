@@ -1,5 +1,16 @@
 # 更新日志
 
+## v3.31.0（返回键修复 / UI 配色与流畅度重构 / PDF 阅读 / 深链导入）
+- **修复系统返回键直接退回桌面（致命体验 bug）**：根因是 `MainScreen` 在 build 中自建了一层内层 `Navigator`，子页面全部 push 进内层栈，而 Android 返回键经 `FlutterActivity -> navigationChannel.popRoute()` 只会送达 `WidgetsApp` 的根 Navigator；根栈仅剩 LaunchGate（`popDisposition=bubble`）无人消费，framework 遂调 `SystemNavigator.pop()` 直接 finish Activity。现删除内层 Navigator，所有子页面统一 push 到根 Navigator，返回键逐级回退；首页栈底仍保留「再按 N 次退出」确认。新增 `test/widget/back_button_test.dart` 用最小复现固化该行为（旧结构复现 bug / 新结构逐级回退 / 栈底不崩）。
+- **配色体系重构**：默认 seed 由 M3 基线紫 `#6750A4` 换为低饱和「松烟墨蓝」`#3F5A72`；14 个主题预设全部低饱和化（黛青/黛绿/暖杏棕等）；深色模式前景不透明度默认 0→0.18（输入框/Card/Chip 边界回归，原 AMOLED 下纯黑无层次）；阅读页眉/脚默认色 `#999999`→`#6B6B6B`（对比度 2.7→5.4，解决「页脚看不清」）；默认封面 6 色改低饱和深底（白字对比 >4.5）；首页彩虹图标、快捷功能六色统一 primary 系；删除/清空/未读角标等语义色全部走 `colorScheme.error`；约 60 处 `Colors.grey` 文字改 `onSurfaceVariant`（深色模式可读性）。
+- **流畅度**：翻页保存进度不再触发整书架重建（新增 `BookProvider.readingRevision` 细粒度通知，只重建未读角标/进度小部件）；切章不再读全书正文（新增 `DatabaseService.getChapter` 单章查询，阅读/预缓存/换源判断全部改单章）；书架过滤排序结果缓存 + 搜索 150ms 防抖 + 分组计数预计算；封面统一 `CachedNetworkImage` 降采样（memCacheWidth）；平铺分组列表与书架列表改 builder 懒加载；启动期 DB/网络 IO（自动同步/自动备份/自动清理/Web 服务/深链监听）全部延后到首帧后；翻页动画改为每页轻量动画层，不再每帧重建整棵 PageView；滑块拖动松手才落盘 + 重排防抖；书架 grid item 与阅读页项加 `RepaintBoundary`；设置页缓存体积改 SQL `SUM(LENGTH(content))`、网卡枚举异步化。
+- **PDF 阅读**：接入 `pdfx`，新增独立 PDF 阅读页（翻页/跳页/缩放/亮度/护眼遮罩/进度保存，进度与文本阅读共用同一通道），本地书打开时按 `.pdf` 路由。
+- **legado:// 深链与分享导入**：Android manifest 增加 `legado://import` scheme 与 `ACTION_SEND` 文本接收；`MainActivity` 冷启动/运行中双路径解析，经 `legado/deep_link` 通道交 `DeepLinkService` 分派书源/RSS 源/主题导入（URL 抓取或 JSON 直解），全程 SnackBar 反馈不崩。
+- **主题导入导出分享**：主题管理页新增「粘贴 JSON 导入 / 复制 JSON / 二维码分享」（`ThemeShare`，二维码复用内置 QrEncoder）。
+- **URL 选项解析补齐**：修复 `{{key=value}}` 被 `,{json}` 分支误吞（含 JSON 与 `{{}}` 组合时 JSON 后的选项被整体截断）、`header.X=Y` 被 knownOptions 误拦三个 bug；legado 标准 URL 选项语法（换域名/UA/编码/POST 表单/动态头）现在完整可用。
+- **其他功能补齐**：JS 桥补 `getReadBookConfig/getThemeConfig/getThemeMode/getTxtInFolder/openVideoPlayer`（7z/rar 明确标注不支持）；导出文件名模板 `{name}/{author}/{group}`；txt/epub 本地书字数统计与 EPUB 内嵌封面提取；目录页章节字数（开关）；RSS 文章时间排序；键盘助手配置页 + 书源编辑规则输入快捷工具条；正文搜索章内精确定位跳转。
+- **测试**：修复 3 处预存失败（url_option 8 例暴露真实解析 bug 已修；epub 导出测试期望值笔误；js 编排测试硬编码作者本机路径改为内联示例书源），全量套件 83/83 通过；CI 增加 `flutter analyze --no-fatal-infos` 与 `flutter test` 门禁。
+
 ## v3.30.0（真实 JS 引擎 / 书源全链路打通 / 一键调试 / Web 服务）
 - **真实 JavaScript 引擎（核心）**：新增基于无头 WebView(V8) 的 legado 兼容运行时与桥接层，支持现代 JS（模板字符串、let/const、解构、async/Promise、`with(JavaImporter)`、jsLib、loginUrl），并实现 `java.ajax`（同步 XHR，原生接管绕过跨域）、`java.put/get`、`java.base64/hexEncode/Decode`、`java.startBrowser(Await)` 网页登录回收 Cookie、`source.getVariable/setVariable/getLoginInfo(Map)`、`cookie.getCookie/getKey/setCookie/removeCookie`、`cache`、设备号/UA 等；书源变量、登录信息、跨阶段 KV、Cookie 全部持久化。旧迷你求值器作为不可用平台的回退保留。
 - **书源能力对齐原版**：searchUrl/exploreUrl/ruleBookInfo(init)/ruleToc/ruleContent 全阶段支持完整 `<js>`、“前置 `<js>` + 后缀 JSONPath/CSS”、`{{$.x}}` mustache、`@js:`、`URL,{options}`、`data:;base64,<状态>,{选项}` 书址（如大灰狼融合 VIP5.0 的 qingtian/qingtian2/qingtian3）、十六进制响应（非 hex 明文安全原样返回）、图片正文(imageStyle=full)。修复“搜索一搜就空”——根因是 URL 阶段此前完全不执行 JS，把 `<js>` 字面量当网址请求。

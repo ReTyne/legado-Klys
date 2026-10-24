@@ -1,3 +1,4 @@
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -46,6 +47,8 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
   String? _error;
 
   String _searchQuery = '';
+  /// 发现书源 chips 是否全部展开（默认限量展示，避免全量构建）
+  bool _allSourceChips = false;
   // 0 默认 1 名称 2 作者 3 最新章节
   int _sortMode = 0;
   // 搜索/过滤匹配的字段
@@ -302,9 +305,12 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
           content: SizedBox(
             width: double.maxFinite,
             child: Column(mainAxisSize: MainAxisSize.min, children: [
-              const Padding(
-                padding: EdgeInsets.only(bottom: 8),
-                child: Text('勾选要在发现页显示的分类，取消勾选则隐藏', style: TextStyle(fontSize: 12, color: Colors.grey)),
+              Padding(
+                padding: const EdgeInsets.only(bottom: 8),
+                child: Text('勾选要在发现页显示的分类，取消勾选则隐藏',
+                    style: TextStyle(
+                        fontSize: 12,
+                        color: Theme.of(context).colorScheme.onSurfaceVariant)),
               ),
               Flexible(
                 child: ListView(
@@ -387,7 +393,7 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
         children: List.generate(names.length, (i) => SimpleDialogOption(
           child: Row(children: [
             Icon(i == _sortMode ? Icons.radio_button_checked : Icons.radio_button_off, size: 18,
-                color: i == _sortMode ? Theme.of(context).colorScheme.primary : Colors.grey),
+                color: i == _sortMode ? Theme.of(context).colorScheme.primary : Theme.of(context).colorScheme.onSurfaceVariant),
             const SizedBox(width: 12),
             Text(names[i]),
           ]),
@@ -457,6 +463,26 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
         ),
       );
     }
+    // 书源 chips 限量构建：默认最多 12 个，超出部分由「展开更多」按需展示
+    const maxChips = 12;
+    final shown = _allSourceChips ? _sources : _sources.take(maxChips).toList();
+    final chips = <Widget>[
+      ...shown.map((source) => ActionChip(
+            avatar: const Icon(Icons.rss_feed, size: 16),
+            label: Text(source.bookSourceName),
+            onPressed: () => _selectSource(source),
+          )),
+    ];
+    if (_sources.length > maxChips) {
+      chips.add(TextButton.icon(
+        onPressed: () => setState(() => _allSourceChips = !_allSourceChips),
+        icon: Icon(_allSourceChips ? Icons.expand_less : Icons.expand_more,
+            size: 18),
+        label: Text(_allSourceChips
+            ? '收起'
+            : '展开更多（${_sources.length - maxChips}）'),
+      ));
+    }
     return RefreshIndicator(
       onRefresh: _loadSources,
       child: ListView(
@@ -467,11 +493,7 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
           Wrap(
             spacing: 8,
             runSpacing: 8,
-            children: _sources.map((source) => ActionChip(
-              avatar: const Icon(Icons.rss_feed, size: 16),
-              label: Text(source.bookSourceName),
-              onPressed: () => _selectSource(source),
-            )).toList(),
+            children: chips,
           ),
         ],
       ),
@@ -579,7 +601,7 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
             if (book.lastChapter != null && book.lastChapter!.isNotEmpty)
               Text('最新: ${book.lastChapter}', maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 11, color: Theme.of(context).colorScheme.primary)),
             if (book.intro != null && book.intro!.isNotEmpty)
-              Text(book.intro!, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 11, color: Colors.grey)),
+              Text(book.intro!, maxLines: 2, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 11, color: Theme.of(context).colorScheme.onSurfaceVariant)),
           ],
         ),
         trailing: IconButton(
@@ -600,17 +622,28 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
 
   Widget _buildCover(SearchBook book) {
     if (book.coverUrl != null && book.coverUrl!.isNotEmpty) {
+      // CachedNetworkImage：磁盘 + 内存缓存，并按设备像素比限制解码尺寸
+      final dpr = MediaQuery.of(context).devicePixelRatio;
       return ClipRRect(
         borderRadius: BorderRadius.circular(4),
-        child: Image.network(book.coverUrl!, width: 48, height: 66, fit: BoxFit.cover,
-          errorBuilder: (_, __, ___) => _defaultCover(book.name)),
+        child: CachedNetworkImage(
+          imageUrl: book.coverUrl!,
+          width: 48,
+          height: 66,
+          fit: BoxFit.cover,
+          memCacheWidth: (100 * dpr).round(),
+          memCacheHeight: (133 * dpr).round(),
+          placeholder: (_, __) => _defaultCover(book.name),
+          errorWidget: (_, __, ___) => _defaultCover(book.name),
+        ),
       );
     }
     return _defaultCover(book.name);
   }
 
   Widget _defaultCover(String name) {
-    const colors = [Colors.blueGrey, Colors.brown, Colors.teal, Colors.indigo, Colors.deepOrange, Colors.purple];
+    // 默认占位色板：低饱和深色（与 Material 3 on-surface 体系协调）
+    const colors = [Color(0xFF5B6B76), Color(0xFF6E5F56), Color(0xFF4F6B5E), Color(0xFF575F7E), Color(0xFF7E5B57), Color(0xFF6B5B7E)];
     final color = colors[name.hashCode.abs() % colors.length];
     return Container(
       width: 48, height: 66,

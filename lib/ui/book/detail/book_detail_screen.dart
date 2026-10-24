@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:share_plus/share_plus.dart';
+import 'package:legado_md3/constant/app_theme.dart';
 import 'package:legado_md3/data/model/book.dart';
 import 'package:legado_md3/data/model/book_chapter.dart';
 import 'package:legado_md3/di/book_provider.dart';
@@ -293,8 +294,8 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
             ),
             const Divider(),
             ListTile(
-              leading: const Icon(Icons.delete_outline, color: Colors.red),
-              title: const Text('从书架移除', style: TextStyle(color: Colors.red)),
+              leading: Icon(Icons.delete_outline, color: Theme.of(context).colorScheme.error),
+              title: Text('从书架移除', style: TextStyle(color: Theme.of(context).colorScheme.error)),
               onTap: () async {
                 Navigator.pop(context);
                 final confirmed = await showDialog<bool>(
@@ -304,7 +305,15 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
                     content: Text('确定要从书架移除《${widget.book.name}》吗？'),
                     actions: [
                       TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('取消')),
-                      FilledButton(style: FilledButton.styleFrom(backgroundColor: Colors.red), onPressed: () => Navigator.pop(context, true), child: const Text('移除')),
+                      // 危险操作用 colorScheme.error 底 + onError 前景，替代硬编码 Colors.red
+                      FilledButton(
+                        style: FilledButton.styleFrom(
+                          backgroundColor: Theme.of(context).colorScheme.error,
+                          foregroundColor: Theme.of(context).colorScheme.onError,
+                        ),
+                        onPressed: () => Navigator.pop(context, true),
+                        child: const Text('移除'),
+                      ),
                     ],
                   ),
                 );
@@ -324,6 +333,7 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
   @override
   Widget build(BuildContext context) {
     final book = widget.book;
+    final cs = Theme.of(context).colorScheme;
     return Scaffold(
       body: CustomScrollView(
         slivers: [
@@ -355,7 +365,7 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
                           children: [
                             Text(book.name, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold), maxLines: 2),
                             const SizedBox(height: 8),
-                            Text(book.author, style: TextStyle(fontSize: 14, color: Colors.grey[600])),
+                            Text(book.author, style: TextStyle(fontSize: 14, color: cs.onSurfaceVariant)),
                             const SizedBox(height: 8),
                             Wrap(
                               spacing: 8,
@@ -414,7 +424,7 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
                               crossAxisAlignment: CrossAxisAlignment.start,
                               children: [
                                 Text('读到: ${_chapters[_readChapterIndex.clamp(0, _chapters.length - 1)].title}', style: const TextStyle(fontSize: 13), maxLines: 1, overflow: TextOverflow.ellipsis),
-                                Text('进度: ${((_readChapterIndex + 1) / _chapters.length * 100).toStringAsFixed(1)}%', style: TextStyle(fontSize: 11, color: Colors.grey[600])),
+                                Text('进度: ${((_readChapterIndex + 1) / _chapters.length * 100).toStringAsFixed(1)}%', style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant)),
                               ],
                             ),
                           ),
@@ -439,7 +449,7 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
                         onTap: () => setState(() => _introExpanded = !_introExpanded),
                         child: Text(
                           book.intro ?? '暂无简介',
-                          style: TextStyle(fontSize: 14, height: 1.6, color: Colors.grey[700]),
+                          style: TextStyle(fontSize: 14, height: 1.6, color: cs.onSurfaceVariant),
                           maxLines: _introExpanded ? null : 4,
                           overflow: _introExpanded ? TextOverflow.visible : TextOverflow.ellipsis,
                         ),
@@ -520,8 +530,7 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
   }
 
   Widget _buildDefaultCover(Book book, double width, double height) {
-    final colors = [Colors.blueGrey, Colors.brown, Colors.teal, Colors.indigo, Colors.deepOrange, Colors.purple];
-    final color = colors[book.name.hashCode.abs() % colors.length];
+    final color = defaultCoverPalette[book.name.hashCode.abs() % defaultCoverPalette.length];
     return Container(
       width: width,
       height: height,

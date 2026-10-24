@@ -7,6 +7,7 @@ import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:legado_md3/constant/app_theme.dart';
 import 'package:legado_md3/help/config/app_config.dart';
+import 'package:legado_md3/help/config/theme_share.dart';
 
 class CustomTheme {
   final String id;
@@ -43,19 +44,23 @@ class _Preset {
   const _Preset(this.name, this.primary, this.accent);
 }
 
+/// 预设主题色（低饱和方案：松烟墨蓝 0xFF3F5A72 / 黛绿 0xFF38624A /
+/// 暖杏棕 0xFF7A5C4E / 黛青 0xFF2B5C8A 及其同族 muted 衍生色）。
+/// 替换旧版高饱和黄 0xFFF9A825 / 橙红 0xFFE64A19 / 正红 0xFFC62828 等，
+/// 数量与名称结构不变；蓝灰、深灰原值本已低饱和，予以保留。
 const List<_Preset> _presets = [
-  _Preset('默认紫', 0xFF6750A4, 0xFF625B71),
-  _Preset('蓝色', 0xFF1976D2, 0xFF0288D1),
-  _Preset('青色', 0xFF00838F, 0xFF0097A7),
-  _Preset('绿色', 0xFF2E7D32, 0xFF00796B),
-  _Preset('酸橙', 0xFF558B2F, 0xFF689F38),
-  _Preset('黄色', 0xFFF9A825, 0xFFFBC02D),
-  _Preset('橙色', 0xFFE64A19, 0xFFF57C00),
-  _Preset('棕色', 0xFF795548, 0xFF8D6E63),
-  _Preset('红色', 0xFFC62828, 0xFFD32F2F),
-  _Preset('粉色', 0xFFC2185B, 0xFFD81B60),
-  _Preset('紫色', 0xFF6A1B9A, 0xFF8E24AA),
-  _Preset('靛蓝', 0xFF283593, 0xFF3949AB),
+  _Preset('默认紫', 0xFF3F5A72, 0xFF5B7183), // 松烟墨蓝（与 AppTheme 默认 seed 一致）
+  _Preset('蓝色', 0xFF2B5C8A, 0xFF3D6CA3), // 黛青
+  _Preset('青色', 0xFF2F5D5A, 0xFF3F726E), // 黛青衍生青灰
+  _Preset('绿色', 0xFF38624A, 0xFF4C7C60), // 黛绿
+  _Preset('酸橙', 0xFF5C6B3F, 0xFF72844D), // 黛绿衍生橄榄
+  _Preset('黄色', 0xFF8A7A52, 0xFFA3906A), // 暖杏棕衍生暗金
+  _Preset('橙色', 0xFF8A5A3B, 0xFFA26B48), // 暖杏棕衍生赤陶
+  _Preset('棕色', 0xFF7A5C4E, 0xFF92705F), // 暖杏棕
+  _Preset('红色', 0xFF8A4A42, 0xFFA25C52), // 砖红（低饱和）
+  _Preset('粉色', 0xFF8A5560, 0xFFA26A74), // 暗玫瑰
+  _Preset('紫色', 0xFF5E4A6E, 0xFF775C88), // 灰紫
+  _Preset('靛蓝', 0xFF3A3F6B, 0xFF4B5183), // 黛青衍生靛青
   _Preset('蓝灰', 0xFF37474F, 0xFF455A64),
   _Preset('深灰', 0xFF212121, 0xFF424242),
 ];
@@ -68,19 +73,19 @@ class ThemeManageScreen extends StatefulWidget {
 
 class _ThemeManageScreenState extends State<ThemeManageScreen> {
   static final _builtin = [
-    CustomTheme(id: 'default', name: '默认主题', primaryColor: 0xFF6750A4, secondaryColor: 0xFF625B71, backgroundColor: 0xFFFFFBFE, surfaceColor: 0xFFFFFBFE),
-    CustomTheme(id: 'blue', name: '蓝色主题', primaryColor: 0xFF1976D2, secondaryColor: 0xFF0288D1, backgroundColor: 0xFFF5F9FF, surfaceColor: 0xFFFFFFFF),
-    CustomTheme(id: 'green', name: '绿色主题', primaryColor: 0xFF2E7D32, secondaryColor: 0xFF00796B, backgroundColor: 0xFFF1F8E9, surfaceColor: 0xFFFFFFFF),
-    CustomTheme(id: 'orange', name: '橙色主题', primaryColor: 0xFFE64A19, secondaryColor: 0xFFF57C00, backgroundColor: 0xFFFFF3E0, surfaceColor: 0xFFFFFFFF),
+    CustomTheme(id: 'default', name: '默认主题', primaryColor: 0xFF3F5A72, secondaryColor: 0xFF4A6572, backgroundColor: 0xFFFFFBFE, surfaceColor: 0xFFFFFBFE),
+    CustomTheme(id: 'blue', name: '黛青主题', primaryColor: 0xFF2B5C8A, secondaryColor: 0xFF3A6B96, backgroundColor: 0xFFF5F9FF, surfaceColor: 0xFFFFFFFF),
+    CustomTheme(id: 'green', name: '黛绿主题', primaryColor: 0xFF38624A, secondaryColor: 0xFF3F7058, backgroundColor: 0xFFF1F8E9, surfaceColor: 0xFFFFFFFF),
+    CustomTheme(id: 'orange', name: '暖棕主题', primaryColor: 0xFF7A5C4E, secondaryColor: 0xFF8C6F5E, backgroundColor: 0xFFFFF3E0, surfaceColor: 0xFFFFFFFF),
     CustomTheme(id: 'dark', name: '深色主题', primaryColor: 0xFFBB86FC, secondaryColor: 0xFF03DAC6, backgroundColor: 0xFF121212, surfaceColor: 0xFF1E1E1E, isDark: true, amoled: true),
   ];
   final List<CustomTheme> _custom = [];
   String _selectedThemeId = 'default';
 
-  // 补齐项：模式 / AMOLED / 前景不透明度
+  // 补齐项：模式 / AMOLED / 前景不透明度（默认 0.18，与 AppTheme 保持一致）
   ThemeMode _themeMode = ThemeMode.system;
   bool _amoled = false;
-  double _foregroundOpacity = 1.0;
+  double _foregroundOpacity = 0.18;
   bool _loaded = false;
 
   // 补齐项：系统栏沉浸 / 顶栏阴影 / 字体缩放 / 主题分类 / 书架背景
@@ -118,7 +123,7 @@ class _ThemeManageScreenState extends State<ThemeManageScreen> {
         ..addAll(raw.map((s) => CustomTheme.fromJson(jsonDecode(s) as Map<String, dynamic>)));
       _themeMode = ThemeMode.values[modeIdx.clamp(0, ThemeMode.values.length - 1)];
       _amoled = prefs.getBool('theme_amoled') ?? false;
-      _foregroundOpacity = prefs.getDouble('theme_foregroundOpacity') ?? 1.0;
+      _foregroundOpacity = prefs.getDouble('theme_foregroundOpacity') ?? 0.18;
       _fontScale = (prefs.getDouble('fontScale') ?? 1.0).clamp(0.8, 1.4);
       _themeCategory = prefs.getInt(_kThemeCategory) ?? 0;
       _savedDayTheme = dayRaw == null ? null : jsonDecode(dayRaw) as Map<String, dynamic>;
@@ -132,6 +137,72 @@ class _ThemeManageScreenState extends State<ThemeManageScreen> {
   }
 
   /// 应用系统栏沉浸效果（透明状态栏 / 沉浸式导航栏）
+  /// 主题管理页顶栏菜单：导入 / 导出 / 二维码分享（见 ThemeShare）。
+  Future<void> _onThemeMenu(String action) async {
+    final theme = _all.firstWhere((t) => t.id == _selectedThemeId, orElse: () => _all.first);
+    switch (action) {
+      case 'import':
+        final ctrl = TextEditingController();
+        final ok = await showDialog<bool>(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            title: const Text('导入主题 JSON'),
+            content: TextField(
+              controller: ctrl,
+              maxLines: 8,
+              decoration: const InputDecoration(hintText: '粘贴主题 JSON（{"themeName":..,"colorPrimary":..}）'),
+            ),
+            actions: [
+              TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
+              FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('导入')),
+            ],
+          ),
+        );
+        final raw = ctrl.text.trim();
+        if (ok != true || raw.isEmpty) return;
+        final imported = ThemeShare.parseThemeJson(raw);
+        if (imported == null) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('JSON 解析失败')));
+          }
+          return;
+        }
+        setState(() {
+          _custom.removeWhere((t) => t.id == imported.id);
+          _custom.add(imported);
+        });
+        await _persistCustom();
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('已导入主题「${imported.name}」')));
+        }
+        return;
+      case 'export':
+        final json = ThemeShare.exportThemeJson(theme);
+        await Clipboard.setData(ClipboardData(text: json));
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('已复制「${theme.name}」JSON 到剪贴板')));
+        }
+        return;
+      case 'qr':
+        final dataUri = await ThemeShare.exportThemeQrDataUri(theme);
+        if (!mounted) return;
+        if (dataUri == null) {
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('二维码生成失败（内容过大）')));
+          return;
+        }
+        final bytes = base64Decode(dataUri.substring(dataUri.indexOf(',') + 1));
+        showDialog<void>(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            title: Text('分享「${theme.name}」'),
+            content: Image.memory(bytes, width: 260, height: 260, fit: BoxFit.contain),
+            actions: [TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('关闭'))],
+          ),
+        );
+        return;
+    }
+  }
+
   void _applySystemUi() {
     SystemChrome.setSystemUIOverlayStyle(SystemUiOverlayStyle(
       statusBarColor: AppPrefs.transparentStatusBar ? Colors.transparent : null,
@@ -229,12 +300,12 @@ class _ThemeManageScreenState extends State<ThemeManageScreen> {
     final appTheme = context.read<AppTheme>();
     await appTheme.setSeedColor(Color((snap['seed'] as int?) ?? 0xFF6750A4));
     await appTheme.setAmoled(snap['amoled'] == true);
-    await appTheme.setForegroundOpacity((snap['opacity'] as num?)?.toDouble() ?? 0.0);
+    await appTheme.setForegroundOpacity((snap['opacity'] as num?)?.toDouble() ?? 0.18);
     await appTheme.setFontScale((snap['fontScale'] as num?)?.toDouble() ?? 1.0);
     if (!mounted) return;
     setState(() {
       _amoled = snap['amoled'] == true;
-      _foregroundOpacity = (snap['opacity'] as num?)?.toDouble() ?? 0.0;
+      _foregroundOpacity = (snap['opacity'] as num?)?.toDouble() ?? 0.18;
       _fontScale = ((snap['fontScale'] as num?)?.toDouble() ?? 1.0).clamp(0.8, 1.4);
     });
   }
@@ -463,7 +534,22 @@ class _ThemeManageScreenState extends State<ThemeManageScreen> {
     final visibleThemes = _all.where(_themeMatchesCategory).toList();
     return Scaffold(
       // 顶栏阴影实时反映 barElevation 配置
-      appBar: AppBar(title: const Text('主题管理'), elevation: AppPrefs.barElevation.toDouble()),
+      appBar: AppBar(
+        title: const Text('主题管理'),
+        elevation: AppPrefs.barElevation.toDouble(),
+        actions: [
+          PopupMenuButton<String>(
+            tooltip: '主题导入导出',
+            icon: const Icon(Icons.more_vert),
+            onSelected: _onThemeMenu,
+            itemBuilder: (_) => const [
+              PopupMenuItem(value: 'import', child: ListTile(leading: Icon(Icons.content_paste), title: Text('粘贴 JSON 导入'))),
+              PopupMenuItem(value: 'export', child: ListTile(leading: Icon(Icons.copy_all), title: Text('复制选中主题 JSON'))),
+              PopupMenuItem(value: 'qr', child: ListTile(leading: Icon(Icons.qr_code_2), title: Text('二维码分享'))),
+            ],
+          ),
+        ],
+      ),
       body: ListView(children: [
         _buildAppearanceSection(cs),
         _buildBookshelfBackgroundSection(cs),
@@ -548,7 +634,7 @@ class _ThemeManageScreenState extends State<ThemeManageScreen> {
         title: Text('前景不透明度: ${(_foregroundOpacity * 100).round()}%'),
         subtitle: Slider(
           value: _foregroundOpacity,
-          min: 0.3, max: 1.0, divisions: 14,
+          min: 0.0, max: 1.0, divisions: 20,
           label: '${(_foregroundOpacity * 100).round()}%',
           onChanged: _setForegroundOpacity,
         ),

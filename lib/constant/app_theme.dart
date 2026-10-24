@@ -5,6 +5,17 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+/// 默认封面色表（低饱和深底，白字对比 >4.5:1）。
+/// 书架/详情/搜索等处的封面占位统一引用此表，替换旧彩虹色。
+const List<Color> defaultCoverPalette = [
+  Color(0xFF5B6B76),
+  Color(0xFF6E5F56),
+  Color(0xFF4F6B5E),
+  Color(0xFF575F7E),
+  Color(0xFF7E5B57),
+  Color(0xFF6B5B7E),
+];
+
 class AppTheme extends ChangeNotifier {
   static const String _keyThemeMode = 'theme_mode';
   static const String _keySeedColor = 'seed_color';
@@ -22,12 +33,13 @@ class AppTheme extends ChangeNotifier {
   static const Set<String> _loadedFonts = <String>{};
 
   ThemeMode _themeMode = ThemeMode.system;
-  Color _seedColor = const Color(0xFF6750A4);
+  // 默认 seed：松烟墨蓝（低饱和冷灰），替代旧的高饱和默认紫
+  Color _seedColor = const Color(0xFF3F5A72);
   bool _dynamicColor = true;
   String _fontFamily = '';
   double _fontScale = 1.0;
   bool _amoled = false;
-  double _foregroundOpacity = 0.0;
+  double _foregroundOpacity = 0.18;
   // 实验室：墨水屏(E-ink)优化——去除页面切换动画、提高对比度
   bool _eink = false;
   bool get eink => _eink;
@@ -43,7 +55,7 @@ class AppTheme extends ChangeNotifier {
   Future<void> load() async {
     final prefs = await SharedPreferences.getInstance();
     _themeMode = ThemeMode.values[prefs.getInt(_keyThemeMode) ?? 0];
-    _seedColor = Color(prefs.getInt(_keySeedColor) ?? 0xFF6750A4);
+    _seedColor = Color(prefs.getInt(_keySeedColor) ?? 0xFF3F5A72);
     _dynamicColor = prefs.getBool(_keyDynamicColor) ?? true;
     _fontScale = (prefs.getDouble(_keyFontScale) ?? 1.0).clamp(0.5, 3.0);
     final fontPath = prefs.getString(_keyFontPath) ?? '';
@@ -53,7 +65,7 @@ class AppTheme extends ChangeNotifier {
       _fontFamily = prefs.getString(_keyFontFamily) ?? '';
     }
     _amoled = prefs.getBool(_keyAmoled) ?? false;
-    _foregroundOpacity = (prefs.getDouble(_keyForegroundOpacity) ?? 0.0).clamp(0.0, 1.0);
+    _foregroundOpacity = (prefs.getDouble(_keyForegroundOpacity) ?? 0.18).clamp(0.0, 1.0);
     final labOn = prefs.getBool('lab_enabled') ?? false;
     _eink = labOn && (prefs.getBool('lab_eink') ?? false);
     notifyListeners();
@@ -141,7 +153,8 @@ class AppTheme extends ChangeNotifier {
   ThemeData get lightTheme => _buildTheme(Brightness.light);
   ThemeData get darkTheme => _buildTheme(Brightness.dark);
 
-  /// AMOLED 下容器背景的灰度。opacity=0 → 纯黑；=1 → 标准深灰(#121212 附近)
+  /// AMOLED 下容器背景的灰度。opacity=0 → 纯黑；=1 → 标准深灰(#121212 附近)。
+  /// 默认 0.18：深色模式下各类 surface/输入框/Chip 与纯黑背景有可感知层次。
   Color _elevatedSurface() {
     final v = (11 + 11 * _foregroundOpacity).round();
     return Color.fromARGB(255, v, v, v);

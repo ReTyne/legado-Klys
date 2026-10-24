@@ -4,6 +4,7 @@ import 'dart:typed_data';
 
 import 'package:archive/archive.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:legado_md3/data/model/book.dart';
 import 'package:legado_md3/data/model/book_chapter.dart';
 
@@ -53,7 +54,7 @@ class ExportBookService {
     final dir = await getApplicationDocumentsDirectory();
     final exportDir = Directory('${dir.path}/export');
     if (!exportDir.existsSync()) exportDir.createSync(recursive: true);
-    final file = File('${exportDir.path}/${_safeName(book, 'epub')}');
+    final file = File('${exportDir.path}/${await _safeName(book, 'epub')}');
     await file.writeAsBytes(bytes);
     return file.path;
   }
@@ -188,11 +189,25 @@ p { text-indent: 2em; margin: 0 0 0.4em; }
     return encoded as Uint8List;
   }
 
-  static String _safeName(Book book, String ext) {
-    final safe = '${book.name}_${book.author}'
-        .replaceAll(RegExp(r'[\\/:*?"<>|]'), '_')
-        .trim();
-    return '$safe.$ext';
+  /// 导出文件名（不含目录）。
+  ///
+  /// 支持模板：读 SharedPreferences `bookExportFileName`（默认 `{name}`），
+  /// 可用变量 `{name}` 书名 / `{author}` 作者 / `{group}` 分组；
+  /// 非法字符 `/ \ : * ? " < > |` 替换为 `_`；结果为空时回退书名。
+  static Future<String> _safeName(Book book, String ext) async {
+    final prefs = await SharedPreferences.getInstance();
+    final template = prefs.getString('bookExportFileName')?.trim();
+    final tpl = (template == null || template.isEmpty) ? '{name}' : template;
+    var name = tpl
+        .replaceAll('{name}', book.name)
+        .replaceAll('{author}', book.author)
+        .replaceAll('{group}', (book.group ?? '').trim());
+    name = name.replaceAll(RegExp(r'[\\/:*?"<>|]'), '_').trim();
+    if (name.isEmpty) {
+      name = book.name.replaceAll(RegExp(r'[\\/:*?"<>|]'), '_').trim();
+    }
+    if (name.isEmpty) name = 'book';
+    return '$name.$ext';
   }
 
   static String _xml(String s) => s
@@ -205,7 +220,7 @@ p { text-indent: 2em; margin: 0 0 0.4em; }
     final dir = await getApplicationDocumentsDirectory();
     final exportDir = Directory('${dir.path}/export');
     if (!exportDir.existsSync()) exportDir.createSync(recursive: true);
-    final file = File('${exportDir.path}/${_safeName(book, ext)}');
+    final file = File('${exportDir.path}/${await _safeName(book, ext)}');
     await file.writeAsString(content);
     return file;
   }

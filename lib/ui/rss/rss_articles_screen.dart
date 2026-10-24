@@ -25,6 +25,7 @@ class _RssArticlesScreenState extends State<RssArticlesScreen> {
   List<RssArticle> _articles = [];
   bool _loading = true;
   String? _error;
+  bool _sortDesc = true;
 
   @override
   void initState() {
@@ -32,6 +33,17 @@ class _RssArticlesScreenState extends State<RssArticlesScreen> {
     source = widget.source;
     _categories = _service.parseCategories(source);
     _load();
+  }
+
+  /// 按发布时间排序（pubDate 毫秒时间戳，null 按 0 处理）。
+  List<RssArticle> _sorted(List<RssArticle> list) {
+    final sorted = List<RssArticle>.of(list);
+    sorted.sort((a, b) {
+      final ta = a.pubDate ?? 0;
+      final tb = b.pubDate ?? 0;
+      return _sortDesc ? tb.compareTo(ta) : ta.compareTo(tb);
+    });
+    return sorted;
   }
 
   Future<void> _load() async {
@@ -48,7 +60,7 @@ class _RssArticlesScreenState extends State<RssArticlesScreen> {
       }
       if (mounted) {
         setState(() {
-          _articles = list;
+          _articles = _sorted(list);
           _loading = false;
         });
       }
@@ -130,6 +142,39 @@ class _RssArticlesScreenState extends State<RssArticlesScreen> {
           IconButton(
             icon: const Icon(Icons.refresh),
             onPressed: _load,
+          ),
+          PopupMenuButton<String>(
+            tooltip: '排序',
+            icon: const Icon(Icons.sort),
+            onSelected: (value) {
+              final desc = value == 'desc';
+              if (desc != _sortDesc) {
+                setState(() {
+                  _sortDesc = desc;
+                  _articles = _sorted(_articles);
+                });
+              }
+            },
+            itemBuilder: (context) => [
+              PopupMenuItem<String>(
+                value: 'desc',
+                child: ListTile(
+                  dense: true,
+                  leading: const Icon(Icons.arrow_downward),
+                  title: const Text('时间倒序'),
+                  trailing: _sortDesc ? const Icon(Icons.check) : null,
+                ),
+              ),
+              PopupMenuItem<String>(
+                value: 'asc',
+                child: ListTile(
+                  dense: true,
+                  leading: const Icon(Icons.arrow_upward),
+                  title: const Text('时间正序'),
+                  trailing: !_sortDesc ? const Icon(Icons.check) : null,
+                ),
+              ),
+            ],
           ),
         ],
       ),

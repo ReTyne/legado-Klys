@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'package:cached_network_image/cached_network_image.dart';
 import 'package:dio/dio.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
@@ -197,6 +198,16 @@ class _BookshelfScreenState extends State<BookshelfScreen> {
   int _sortBy = 3;
   bool _sortAsc = false;
 
+  /// _filteredBooks 缓存：key（搜索词+分组+排序+书籍集合版本）未变时直接复用，
+  /// 避免每次 build 全量过滤 + 排序。
+  List<Book>? _filteredCache;
+  String _filteredKey = '';
+  /// 搜索输入防抖（150ms），避免每敲一个字符全量重排
+  Timer? _searchDebounce;
+  /// 分组页签「待更新」数量缓存（数据版本变化时才重算）
+  Map<String, int>? _waitUpdateCache;
+  int _waitUpdateKey = -1;
+
   @override
   void initState() {
     super.initState();
@@ -205,9 +216,7 @@ class _BookshelfScreenState extends State<BookshelfScreen> {
       try {
         await provider.loadViewPrefs();
       } catch (_) {}
-      try {
-        await provider.loadBooks();
-      } catch (_) {}
+      // 书籍列表由 MainScreen 首帧统一 loadBooks，此处不再重复全量 DB 读
       if (mounted) await _reloadCfg();
       // 进入自动刷新（oc_autoRefresh）
       try {
@@ -227,11 +236,15 @@ class _BookshelfScreenState extends State<BookshelfScreen> {
       _coverCfg = coverCfg;
       _sortBy = _ViewCfg.sortMap[cfg.sortType.clamp(0, 4)];
       _sortAsc = cfg.sortAscending;
+      // 配置可能影响过滤条件，作废 _filteredBooks 缓存
+      _filteredCache = null;
+      _filteredKey = '';
     });
   }
 
   @override
   void dispose() {
+    _searchDebounce?.cancel();
     _searchController.dispose();
     _scrollController.dispose();
     super.dispose();
@@ -245,6 +258,12 @@ class _BookshelfScreenState extends State<BookshelfScreen> {
 
   List<Book> get _filteredBooks {
     final provider = Provider.of<BookProvider>(context, listen: false);
+    // 缓存 key：搜索词 + 当前分组 + 排序 + 影响过滤的配置 + 书籍集合版本
+    // （loadBooks/debugSeed 会重建 List，identityHashCode 随之变化）
+    final key =
+        '$_searchQuery|${provider.currentGroup}|$_sortBy|$_sortAsc|${_cfg.searchFilterFirst}|${_cfg.showLocalBook}|${provider.books.length}|${identityHashCode(provider.books)}';
+    final cached = _filteredCache;
+    if (cached != null && _filteredKey == key) return cached;
     // 搜索优先过滤：开启后搜索时跨全部分组
     var books = (_cfg.searchFilterFirst && _searchQuery.isNotEmpty)
         ? provider.books
@@ -300,6 +319,8 @@ class _BookshelfScreenState extends State<BookshelfScreen> {
           return b.durChapterTime.compareTo(a.durChapterTime);
         });
     }
+    _filteredKey = key;
+    _filteredCache = books;
     return books;
   }
 
@@ -360,7 +381,7 @@ class _BookshelfScreenState extends State<BookshelfScreen> {
               trailing: _sortBy == index
                   ? Icon(
                       _sortAsc ? Icons.arrow_upward : Icons.arrow_downward,
-                      color: Colors.green)
+                      color: Theme.of(context).colorScheme.primary)
                   : null,
               onTap: () async {
                 setState(() {
@@ -388,56 +409,59 @@ class _BookshelfScreenState extends State<BookshelfScreen> {
   void _showMoreMenu() {
     showModalBottomSheet(
       context: context,
-      builder: (context) => SafeArea(
-        child: SingleChildScrollView(
-          child: Column(mainAxisSize: MainAxisSize.min, children: [
-            ListTile(leading: const Icon(Icons.dashboard_outlined), title: const Text('首页模块视图'), onTap: () { Navigator.pop(context); Navigator.push(context, MaterialPageRoute(builder: (_) => const HomeScreen())); }),
-            ListTile(leading: const Icon(Icons.search), title: const Text('搜索书籍'), onTap: () { Navigator.pop(context); Navigator.push(context, MaterialPageRoute(builder: (_) => const SearchScreen())); }),
-            ListTile(leading: const Icon(Icons.refresh), title: const Text('一键更新'), onTap: () { Navigator.pop(context); _updateAllBooks(); }),
-            const Divider(),
-            ListTile(leading: const Icon(Icons.folder_open), title: const Text('本地导入'), onTap: () { Navigator.pop(context); Navigator.push(context, MaterialPageRoute(builder: (_) => const LocalImportScreen())); }),
-            ListTile(leading: const Icon(Icons.cloud_download), title: const Text('书源管理/网络导入'), onTap: () { Navigator.pop(context); Navigator.push(context, MaterialPageRoute(builder: (_) => const SourceManageScreen())); }),
-            ListTile(leading: const Icon(Icons.link), title: const Text('URL添加书籍'), onTap: () { Navigator.pop(context); _showAddBookByUrlDialog(); }),
-            ListTile(leading: const Icon(Icons.cloud_download_outlined), title: const Text('远程书籍'), onTap: () { Navigator.pop(context); Navigator.push(context, MaterialPageRoute(builder: (_) => const RemoteBookScreen())); }),
-            const Divider(),
-            ListTile(leading: const Icon(Icons.ios_share), title: const Text('导出书架'), onTap: () { Navigator.pop(context); _exportBookshelf(); }),
-            ListTile(leading: const Icon(Icons.file_download_outlined), title: const Text('导入书架'), onTap: () { Navigator.pop(context); _showImportBookshelfDialog(); }),
-            const Divider(),
-            ListTile(leading: const Icon(Icons.view_module), title: const Text('布局设置'), onTap: () async {
-              Navigator.pop(context);
-              await Navigator.push(context, MaterialPageRoute(builder: (_) => const BookshelfConfigScreen()));
-              await _reloadCfg();
-            }),
-            ListTile(leading: const Icon(Icons.sort), title: const Text('排序设置'), onTap: () { Navigator.pop(context); _showSortDialog(); }),
-            ListTile(leading: const Icon(Icons.folder_special), title: const Text('分组管理'), onTap: () async {
-              Navigator.pop(context);
-              await Navigator.push(context, MaterialPageRoute(builder: (_) => const GroupManageScreen()));
-              await Provider.of<BookProvider>(context, listen: false).loadBooks();
-            }),
-            ListTile(leading: const Icon(Icons.select_all), title: const Text('多选模式'), onTap: () { Navigator.pop(context); setState(() => _selectMode = true); }),
-            const Divider(),
-            ListTile(leading: const Icon(Icons.bar_chart_outlined), title: const Text('阅读记录'), onTap: () { Navigator.pop(context); Navigator.push(context, MaterialPageRoute(builder: (_) => const ReadRecordScreen())); }),
-            ListTile(leading: const Icon(Icons.settings), title: const Text('设置'), onTap: () async {
-              Navigator.pop(context);
-              // 从设置页返回后重载配置，使 bs_showLocalBook 等开关即时生效
-              await Navigator.push(context, MaterialPageRoute(builder: (_) => const SettingsScreen()));
-              await _reloadCfg();
-            }),
-            const Divider(),
-            ListTile(leading: const Icon(Icons.delete_sweep, color: Colors.red), title: const Text('清空书架', style: TextStyle(color: Colors.red)), onTap: () async {
-              Navigator.pop(context);
-              final confirmed = await showDialog<bool>(context: context, builder: (context) => AlertDialog(title: const Text('清空书架'), content: const Text('确定要清空所有书籍吗？此操作会同时删除已缓存章节。'), actions: [TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('取消')), FilledButton(style: FilledButton.styleFrom(backgroundColor: Colors.red), onPressed: () => Navigator.pop(context, true), child: const Text('清空'))]));
-              if (confirmed == true) {
-                final provider = Provider.of<BookProvider>(context, listen: false);
-                for (final book in provider.books) {
-                  await _db.deleteBook(book.name, book.author);
+      builder: (context) {
+        final cs = Theme.of(context).colorScheme;
+        return SafeArea(
+          child: SingleChildScrollView(
+            child: Column(mainAxisSize: MainAxisSize.min, children: [
+              ListTile(leading: const Icon(Icons.dashboard_outlined), title: const Text('首页模块视图'), onTap: () { Navigator.pop(context); Navigator.push(context, MaterialPageRoute(builder: (_) => const HomeScreen())); }),
+              ListTile(leading: const Icon(Icons.search_outlined), title: const Text('搜索书籍'), onTap: () { Navigator.pop(context); Navigator.push(context, MaterialPageRoute(builder: (_) => const SearchScreen())); }),
+              ListTile(leading: const Icon(Icons.refresh_outlined), title: const Text('一键更新'), onTap: () { Navigator.pop(context); _updateAllBooks(); }),
+              const Divider(),
+              ListTile(leading: const Icon(Icons.folder_open_outlined), title: const Text('本地导入'), onTap: () { Navigator.pop(context); Navigator.push(context, MaterialPageRoute(builder: (_) => const LocalImportScreen())); }),
+              ListTile(leading: const Icon(Icons.cloud_download_outlined), title: const Text('书源管理/网络导入'), onTap: () { Navigator.pop(context); Navigator.push(context, MaterialPageRoute(builder: (_) => const SourceManageScreen())); }),
+              ListTile(leading: const Icon(Icons.link_outlined), title: const Text('URL添加书籍'), onTap: () { Navigator.pop(context); _showAddBookByUrlDialog(); }),
+              ListTile(leading: const Icon(Icons.cloud_download_outlined), title: const Text('远程书籍'), onTap: () { Navigator.pop(context); Navigator.push(context, MaterialPageRoute(builder: (_) => const RemoteBookScreen())); }),
+              const Divider(),
+              ListTile(leading: const Icon(Icons.ios_share_outlined), title: const Text('导出书架'), onTap: () { Navigator.pop(context); _exportBookshelf(); }),
+              ListTile(leading: const Icon(Icons.file_download_outlined), title: const Text('导入书架'), onTap: () { Navigator.pop(context); _showImportBookshelfDialog(); }),
+              const Divider(),
+              ListTile(leading: const Icon(Icons.view_module_outlined), title: const Text('布局设置'), onTap: () async {
+                Navigator.pop(context);
+                await Navigator.push(context, MaterialPageRoute(builder: (_) => const BookshelfConfigScreen()));
+                await _reloadCfg();
+              }),
+              ListTile(leading: const Icon(Icons.sort_outlined), title: const Text('排序设置'), onTap: () { Navigator.pop(context); _showSortDialog(); }),
+              ListTile(leading: const Icon(Icons.folder_special_outlined), title: const Text('分组管理'), onTap: () async {
+                Navigator.pop(context);
+                await Navigator.push(context, MaterialPageRoute(builder: (_) => const GroupManageScreen()));
+                await Provider.of<BookProvider>(context, listen: false).loadBooks();
+              }),
+              ListTile(leading: const Icon(Icons.select_all_outlined), title: const Text('多选模式'), onTap: () { Navigator.pop(context); setState(() => _selectMode = true); }),
+              const Divider(),
+              ListTile(leading: const Icon(Icons.bar_chart_outlined), title: const Text('阅读记录'), onTap: () { Navigator.pop(context); Navigator.push(context, MaterialPageRoute(builder: (_) => const ReadRecordScreen())); }),
+              ListTile(leading: const Icon(Icons.settings_outlined), title: const Text('设置'), onTap: () async {
+                Navigator.pop(context);
+                // 从设置页返回后重载配置，使 bs_showLocalBook 等开关即时生效
+                await Navigator.push(context, MaterialPageRoute(builder: (_) => const SettingsScreen()));
+                await _reloadCfg();
+              }),
+              const Divider(),
+              ListTile(leading: Icon(Icons.delete_sweep_outlined, color: cs.error), title: Text('清空书架', style: TextStyle(color: cs.error)), onTap: () async {
+                Navigator.pop(context);
+                final confirmed = await showDialog<bool>(context: context, builder: (context) => AlertDialog(title: const Text('清空书架'), content: const Text('确定要清空所有书籍吗？此操作会同时删除已缓存章节。'), actions: [TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('取消')), FilledButton(style: FilledButton.styleFrom(backgroundColor: cs.error, foregroundColor: cs.onError), onPressed: () => Navigator.pop(context, true), child: const Text('清空'))]));
+                if (confirmed == true) {
+                  final provider = Provider.of<BookProvider>(context, listen: false);
+                  for (final book in provider.books) {
+                    await _db.deleteBook(book.name, book.author);
+                  }
+                  await provider.loadBooks();
                 }
-                await provider.loadBooks();
-              }
-            }),
-          ]),
-        ),
-      ),
+              }),
+            ]),
+          ),
+        );
+      },
     );
   }
 
@@ -892,73 +916,76 @@ class _BookshelfScreenState extends State<BookshelfScreen> {
   void _showBookMenu(Book book) {
     showModalBottomSheet(
       context: context,
-      builder: (context) => SafeArea(
-        child: SingleChildScrollView(
-          child: Column(mainAxisSize: MainAxisSize.min, children: [
-            ListTile(leading: const Icon(Icons.play_arrow), title: const Text('开始阅读'), onTap: () { Navigator.pop(context); Navigator.push(context, MaterialPageRoute(builder: (_) => readerForBook(book))); }),
-            ListTile(leading: const Icon(Icons.info_outline), title: const Text('书籍详情'), onTap: () { Navigator.pop(context); Navigator.push(context, MaterialPageRoute(builder: (_) => BookDetailScreen(book: book))); }),
-            ListTile(leading: const Icon(Icons.ios_share), title: const Text('导出书籍'), onTap: () async {
-              Navigator.pop(context);
-              final chapters = await _db.getChapters(book.name, book.author);
-              if (chapters.isEmpty) { ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('暂无章节可导出'))); return; }
-              try {
-                final path = await ExportBookService.exportToTxt(book, chapters);
-                if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('已导出: $path')));
-              } catch (e) {
-                if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('导出失败: $e')));
-              }
-            }),
-            const Divider(),
-            ListTile(leading: const Icon(Icons.refresh), title: const Text('更新目录'), onTap: () async {
-              Navigator.pop(context);
-              if (book.local || book.origin == null || book.noteUrl == null) { ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('本地书籍无需更新'))); return; }
-              final sources = await _db.getAllSources(enabled: true);
-              final source = sources.where((s) => s.bookSourceUrl == book.origin).firstOrNull;
-              if (source == null) { ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('未找到对应书源或书源已停用'))); return; }
-              try {
-                final chapters = await _engine.getToc(source, book.noteUrl!,
-                    bookInfo: book.jsContext());
-                await _db.saveChapters(book.name, book.author, chapters);
-                book.lastChapter = chapters.last.title;
-                book.lastChapterIndex = chapters.length - 1;
-                book.lastCheckTime = DateTime.now().millisecondsSinceEpoch;
+      builder: (context) {
+        final cs = Theme.of(context).colorScheme;
+        return SafeArea(
+          child: SingleChildScrollView(
+            child: Column(mainAxisSize: MainAxisSize.min, children: [
+              ListTile(leading: const Icon(Icons.play_arrow_outlined), title: const Text('开始阅读'), onTap: () { Navigator.pop(context); Navigator.push(context, MaterialPageRoute(builder: (_) => readerForBook(book))); }),
+              ListTile(leading: const Icon(Icons.info_outline), title: const Text('书籍详情'), onTap: () { Navigator.pop(context); Navigator.push(context, MaterialPageRoute(builder: (_) => BookDetailScreen(book: book))); }),
+              ListTile(leading: const Icon(Icons.ios_share_outlined), title: const Text('导出书籍'), onTap: () async {
+                Navigator.pop(context);
+                final chapters = await _db.getChapters(book.name, book.author);
+                if (chapters.isEmpty) { ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('暂无章节可导出'))); return; }
+                try {
+                  final path = await ExportBookService.exportToTxt(book, chapters);
+                  if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('已导出: $path')));
+                } catch (e) {
+                  if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('导出失败: $e')));
+                }
+              }),
+              const Divider(),
+              ListTile(leading: const Icon(Icons.refresh_outlined), title: const Text('更新目录'), onTap: () async {
+                Navigator.pop(context);
+                if (book.local || book.origin == null || book.noteUrl == null) { ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('本地书籍无需更新'))); return; }
+                final sources = await _db.getAllSources(enabled: true);
+                final source = sources.where((s) => s.bookSourceUrl == book.origin).firstOrNull;
+                if (source == null) { ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('未找到对应书源或书源已停用'))); return; }
+                try {
+                  final chapters = await _engine.getToc(source, book.noteUrl!,
+                      bookInfo: book.jsContext());
+                  await _db.saveChapters(book.name, book.author, chapters);
+                  book.lastChapter = chapters.last.title;
+                  book.lastChapterIndex = chapters.length - 1;
+                  book.lastCheckTime = DateTime.now().millisecondsSinceEpoch;
+                  await _db.updateBook(book);
+                  await Provider.of<BookProvider>(context, listen: false).loadBooks();
+                  if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('更新完成，共${chapters.length}章')));
+                } catch (e) {
+                  if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('更新失败: $e')));
+                }
+              }),
+              ListTile(leading: const Icon(Icons.swap_horiz_outlined), title: const Text('换源'), onTap: () { Navigator.pop(context); Navigator.push(context, MaterialPageRoute(builder: (_) => ChangeSourceScreen(book: book))); }),
+              ListTile(leading: const Icon(Icons.image_outlined), title: const Text('换封面'), onTap: () { Navigator.pop(context); Navigator.push(context, MaterialPageRoute(builder: (_) => ChangeCoverScreen(book: book))); }),
+              ListTile(leading: const Icon(Icons.download_outlined), title: const Text('缓存全部'), onTap: () { Navigator.pop(context); _cacheOneBook(book); }),
+              ListTile(leading: const Icon(Icons.flag_outlined), title: const Text('书籍标记'), onTap: () { Navigator.pop(context); Navigator.push(context, MaterialPageRoute(builder: (_) => BookMarkingScreen(bookName: book.name, author: book.author))); }),
+              ListTile(leading: const Icon(Icons.bookmark_border), title: const Text('添加书签'), onTap: () { Navigator.pop(context); _addBookmarkAtProgress(book); }),
+              const Divider(),
+              ListTile(leading: const Icon(Icons.move_down_outlined), title: const Text('移动到分组'), onTap: () { Navigator.pop(context); _showMoveGroupDialog(book); }),
+              ListTile(leading: const Icon(Icons.push_pin_outlined), title: Text((book.order ?? 0) < 0 ? '取消置顶' : '置顶'), onTap: () async {
+                Navigator.pop(context);
+                book.order = (book.order ?? 0) < 0 ? 0 : -1;
                 await _db.updateBook(book);
                 await Provider.of<BookProvider>(context, listen: false).loadBooks();
-                if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('更新完成，共${chapters.length}章')));
-              } catch (e) {
-                if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('更新失败: $e')));
-              }
-            }),
-            ListTile(leading: const Icon(Icons.swap_horiz), title: const Text('换源'), onTap: () { Navigator.pop(context); Navigator.push(context, MaterialPageRoute(builder: (_) => ChangeSourceScreen(book: book))); }),
-            ListTile(leading: const Icon(Icons.image_outlined), title: const Text('换封面'), onTap: () { Navigator.pop(context); Navigator.push(context, MaterialPageRoute(builder: (_) => ChangeCoverScreen(book: book))); }),
-            ListTile(leading: const Icon(Icons.download), title: const Text('缓存全部'), onTap: () { Navigator.pop(context); _cacheOneBook(book); }),
-            ListTile(leading: const Icon(Icons.flag_outlined), title: const Text('书籍标记'), onTap: () { Navigator.pop(context); Navigator.push(context, MaterialPageRoute(builder: (_) => BookMarkingScreen(bookName: book.name, author: book.author))); }),
-            ListTile(leading: const Icon(Icons.bookmark_border), title: const Text('添加书签'), onTap: () { Navigator.pop(context); _addBookmarkAtProgress(book); }),
-            const Divider(),
-            ListTile(leading: const Icon(Icons.move_down), title: const Text('移动到分组'), onTap: () { Navigator.pop(context); _showMoveGroupDialog(book); }),
-            ListTile(leading: const Icon(Icons.push_pin_outlined), title: Text((book.order ?? 0) < 0 ? '取消置顶' : '置顶'), onTap: () async {
-              Navigator.pop(context);
-              book.order = (book.order ?? 0) < 0 ? 0 : -1;
-              await _db.updateBook(book);
-              await Provider.of<BookProvider>(context, listen: false).loadBooks();
-              if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text((book.order ?? 0) < 0 ? '已置顶' : '已取消置顶')));
-            }),
-            ListTile(leading: const Icon(Icons.share), title: const Text('分享'), onTap: () async {
-              Navigator.pop(context);
-              await Share.share('《${book.name}》 - ${book.author}\n${book.intro ?? ''}', subject: book.name);
-            }),
-            const Divider(),
-            ListTile(leading: const Icon(Icons.delete_outline, color: Colors.red), title: const Text('删除', style: TextStyle(color: Colors.red)), onTap: () async {
-              Navigator.pop(context);
-              final confirmed = await showDialog<bool>(context: context, builder: (context) => AlertDialog(title: Text('删除《${book.name}》'), content: const Text('确定要删除这本书吗？将同时删除已缓存章节。'), actions: [TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('取消')), FilledButton(style: FilledButton.styleFrom(backgroundColor: Colors.red), onPressed: () => Navigator.pop(context, true), child: const Text('删除'))]));
-              if (confirmed == true) {
-                await _db.deleteBook(book.name, book.author);
-                await Provider.of<BookProvider>(context, listen: false).loadBooks();
-              }
-            }),
-          ]),
-        ),
-      ),
+                if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text((book.order ?? 0) < 0 ? '已置顶' : '已取消置顶')));
+              }),
+              ListTile(leading: const Icon(Icons.share_outlined), title: const Text('分享'), onTap: () async {
+                Navigator.pop(context);
+                await Share.share('《${book.name}》 - ${book.author}\n${book.intro ?? ''}', subject: book.name);
+              }),
+              const Divider(),
+              ListTile(leading: Icon(Icons.delete_outline, color: cs.error), title: Text('删除', style: TextStyle(color: cs.error)), onTap: () async {
+                Navigator.pop(context);
+                final confirmed = await showDialog<bool>(context: context, builder: (context) => AlertDialog(title: Text('删除《${book.name}》'), content: const Text('确定要删除这本书吗？将同时删除已缓存章节。'), actions: [TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('取消')), FilledButton(style: FilledButton.styleFrom(backgroundColor: cs.error, foregroundColor: cs.onError), onPressed: () => Navigator.pop(context, true), child: const Text('删除'))]));
+                if (confirmed == true) {
+                  await _db.deleteBook(book.name, book.author);
+                  await Provider.of<BookProvider>(context, listen: false).loadBooks();
+                }
+              }),
+            ]),
+          ),
+        );
+      },
     );
   }
 
@@ -1060,7 +1087,15 @@ class _BookshelfScreenState extends State<BookshelfScreen> {
                 autofocus: true,
                 decoration: const InputDecoration(
                     hintText: '搜索书名/作者...', border: InputBorder.none),
-                onChanged: (v) => setState(() => _searchQuery = v),
+                onChanged: (v) {
+                  // 150ms 防抖：避免每敲一个字符全量过滤 + 排序
+                  _searchDebounce?.cancel();
+                  _searchDebounce = Timer(
+                      const Duration(milliseconds: 150), () {
+                    if (!mounted) return;
+                    setState(() => _searchQuery = v);
+                  });
+                },
               ),
         actions: [
           if (!_searching)
@@ -1071,6 +1106,7 @@ class _BookshelfScreenState extends State<BookshelfScreen> {
             IconButton(
                 icon: const Icon(Icons.clear),
                 onPressed: () {
+                  _searchDebounce?.cancel();
                   _searchController.clear();
                   setState(() {
                     _searching = false;
@@ -1112,7 +1148,7 @@ class _BookshelfScreenState extends State<BookshelfScreen> {
                 _batchBtn(Icons.file_upload_outlined, '导出', _batchExport),
                 _batchBtn(Icons.delete_sweep_outlined, '删除', _batchDelete, danger: true),
               ]),
-              Padding(padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4), child: Align(alignment: Alignment.centerLeft, child: Text('已选 ${_selectedBooks.length} 本', style: const TextStyle(fontSize: 12, color: Colors.grey)))),
+              Padding(padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4), child: Align(alignment: Alignment.centerLeft, child: Text('已选 ${_selectedBooks.length} 本', style: TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.onSurfaceVariant)))),
             ]))
           : null,
     );
@@ -1130,6 +1166,10 @@ class _BookshelfScreenState extends State<BookshelfScreen> {
           .length;
       groups = groups.where((g) => g == '全部' || visibleOf(g) > 0).toList();
       countOf = visibleOf;
+    }
+    // 待更新数量按数据版本预计算一次，build 只读缓存
+    if (_cfg.showWaitUpdateCount) {
+      _ensureWaitUpdateCache(provider);
     }
     return Container(
       height: 48,
@@ -1154,21 +1194,33 @@ class _BookshelfScreenState extends State<BookshelfScreen> {
   String _chipLabel(String group, int count, BookProvider provider) {
     var label = _cfg.showBookCount ? '$group $count' : group;
     if (_cfg.showWaitUpdateCount) {
-      final wait = _waitUpdateCount(provider, group);
+      final wait = _waitUpdateCache?[group] ?? 0;
       if (wait > 0) label = '$label · 待更新$wait';
     }
     return label;
   }
 
-  /// 待更新数量：可参与“一键更新”的网络书籍数（本地书、禁止更新、缺书源/目录地址的不计）
-  int _waitUpdateCount(BookProvider provider, String group) => provider.books
-      .where((b) =>
-          BookProvider.bookInGroup(b, group) &&
-          !b.local &&
-          b.canUpdate &&
-          b.origin != null &&
-          b.noteUrl != null)
-      .length;
+  /// 待更新数量预计算：可参与“一键更新”的网络书籍数（本地书、禁止更新、缺书源/目录地址的不计）。
+  /// 每本书计入「全部」+ 所属用户分组 + 命中的虚拟分组，与原 bookInGroup 语义一致；
+  /// 仅在书籍集合版本（identityHashCode）变化时重算，避免每次 build 全量遍历。
+  void _ensureWaitUpdateCache(BookProvider provider) {
+    final key = identityHashCode(provider.books);
+    if (_waitUpdateCache != null && _waitUpdateKey == key) return;
+    final map = <String, int>{};
+    for (final b in provider.books) {
+      if (b.local || !b.canUpdate || b.origin == null || b.noteUrl == null) {
+        continue;
+      }
+      void add(String g) => map[g] = (map[g] ?? 0) + 1;
+      add('全部');
+      if (b.group != null && b.group!.isNotEmpty) add(b.group!);
+      for (final vg in BookProvider.virtualGroups) {
+        if (BookProvider.inVirtualGroup(b, vg)) add(vg);
+      }
+    }
+    _waitUpdateCache = map;
+    _waitUpdateKey = key;
+  }
 
   Widget _buildBody(BookProvider provider, List<Book> books, int layout) {
     // 平铺分组：全部视图且未搜索时，按分组分区
@@ -1190,25 +1242,33 @@ class _BookshelfScreenState extends State<BookshelfScreen> {
             books.where((b) => b.group == null || b.group!.isEmpty).toList();
         if (ungrouped.isNotEmpty) sections.add(MapEntry('未分组', ungrouped));
       }
-      return ListView(
+      // 分组 section 级别懒构建：屏幕外分组的书籍项完全不构建
+      return ListView.builder(
         controller: _scrollController,
         padding: const EdgeInsets.only(bottom: 12),
-        children: [
-          for (final sec in sections) ...[
-            ListTile(
-              dense: true,
-              leading: const Icon(Icons.folder_outlined, size: 20),
-              title: Text(sec.key,
-                  style: const TextStyle(fontWeight: FontWeight.bold)),
-              trailing: _cfg.showBookCount
-                  ? Text('${sec.value.length}',
-                      style: TextStyle(color: Colors.grey[600], fontSize: 12))
-                  : null,
-            ),
-            _shrinkLayout(sec.value, layout),
-            const Divider(),
-          ],
-        ],
+        itemCount: sections.length,
+        itemBuilder: (c, i) {
+          final sec = sections[i];
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              ListTile(
+                dense: true,
+                leading: const Icon(Icons.folder_outlined, size: 20),
+                title: Text(sec.key,
+                    style: const TextStyle(fontWeight: FontWeight.bold)),
+                trailing: _cfg.showBookCount
+                    ? Text('${sec.value.length}',
+                        style: TextStyle(
+                            color: Theme.of(c).colorScheme.onSurfaceVariant,
+                            fontSize: 12))
+                    : null,
+              ),
+              _shrinkLayout(sec.value, layout),
+              const Divider(),
+            ],
+          );
+        },
       );
     }
     return _buildBookList(books, layout);
@@ -1239,7 +1299,14 @@ class _BookshelfScreenState extends State<BookshelfScreen> {
               : _buildGridItem(books[i], compact: layout == 3),
         );
       default:
-        return Column(children: [for (final b in books) _buildListItem(b, compact: layout == 1 || _cfg.compactDetails)]);
+        // shrinkWrap 懒构建：替代 Column(children:[for(...)]) 全量构建书籍项
+        return ListView.builder(
+          shrinkWrap: true,
+          physics: const NeverScrollableScrollPhysics(),
+          itemCount: books.length,
+          itemBuilder: (c, i) => _buildListItem(books[i],
+              compact: layout == 1 || _cfg.compactDetails),
+        );
     }
   }
 
@@ -1302,8 +1369,21 @@ class _BookshelfScreenState extends State<BookshelfScreen> {
     }
   }
 
+  /// 阅读进度敏感子树：只监听 BookProvider.readingRevision，
+  /// 翻页保存进度时（readingRevision.value++）仅局部重建该子树
+  /// （未读角标、副标题等），不再触发整书架 notifyListeners 重排。
+  Widget _revAware(Widget child) {
+    final rev = context.read<BookProvider>().readingRevision;
+    return ValueListenableBuilder<int>(
+      valueListenable: rev,
+      builder: (_, __, child) => child!,
+      child: child,
+    );
+  }
+
   Widget _buildListItem(Book book, {bool compact = false}) {
     final selected = _selectedBooks.contains(book);
+    final cs = Theme.of(context).colorScheme;
     final coverW = compact ? 36.0 : (_cfg.coverWidth * 0.5).clamp(42.0, 90.0);
     final coverH = coverW * 1.4;
     final sub = <Widget>[
@@ -1316,28 +1396,28 @@ class _BookshelfScreenState extends State<BookshelfScreen> {
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: TextStyle(
-                fontSize: 11, color: Theme.of(context).colorScheme.primary)));
+                fontSize: 11, color: cs.primary)));
       }
       if (_cfg.showTags && (book.kind ?? '').isNotEmpty) {
         sub.add(const SizedBox(height: 2));
         sub.add(Text(book.kind!,
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
-            style: TextStyle(fontSize: 11, color: Colors.grey[600])));
+            style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant)));
       }
       if (_cfg.showSynopsis && (book.intro ?? '').isNotEmpty) {
         sub.add(const SizedBox(height: 2));
         sub.add(Text(book.intro!,
             maxLines: _cfg.synopsisLines,
             overflow: TextOverflow.ellipsis,
-            style: TextStyle(fontSize: 11, color: Colors.grey[600])));
+            style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant)));
       }
       if (_cfg.showLastUpdateTime) {
         final t = _fmtTime(book.lastCheckTime);
         if (t.isNotEmpty) {
           sub.add(const SizedBox(height: 2));
           sub.add(Text('更新于 $t',
-              style: TextStyle(fontSize: 10, color: Colors.grey[500])));
+              style: TextStyle(fontSize: 10, color: cs.onSurfaceVariant)));
         }
       }
     }
@@ -1347,10 +1427,10 @@ class _BookshelfScreenState extends State<BookshelfScreen> {
           maxLines: _cfg.maxTitleLines.clamp(1, 5),
           overflow: TextOverflow.ellipsis,
           style: const TextStyle(fontWeight: FontWeight.w500)),
-      subtitle: compact
+      subtitle: _revAware(compact
           ? Text('${book.author} · ${_cfg.showLatestChapter ? (book.lastChapter ?? '') : ''}',
               maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 11))
-          : Column(crossAxisAlignment: CrossAxisAlignment.start, children: sub),
+          : Column(crossAxisAlignment: CrossAxisAlignment.start, children: sub)),
       trailing: _selectMode
           ? Checkbox(value: selected, onChanged: (_) => _toggleSelect(book))
           : (compact ? null : const Icon(Icons.chevron_right)),
@@ -1365,53 +1445,57 @@ class _BookshelfScreenState extends State<BookshelfScreen> {
 
   Widget _buildGridItem(Book book, {required bool compact}) {
     final selected = _selectedBooks.contains(book);
-    return GestureDetector(
-      onTap: () => _selectMode
-          ? _toggleSelect(book)
-          : _openBook(book),
-      onLongPress: () =>
-          _selectMode ? _toggleSelect(book) : _showBookMenu(book),
-      child: Container(
-        decoration: selected
-            ? BoxDecoration(
-                border: Border.all(
-                    color: Theme.of(context).colorScheme.primary, width: 2),
-                borderRadius: BorderRadius.circular(8))
-            : null,
-        child: Column(children: [
-          Expanded(child: _buildCover(book, width: double.infinity, height: double.infinity, radius: 8)),
-          Padding(
-            padding: EdgeInsets.all(compact ? 4 : 8),
-            child: Text(book.name,
-                maxLines: _cfg.maxTitleLines.clamp(1, 5),
-                textAlign: _cfg.centerTitle ? TextAlign.center : TextAlign.start,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(fontSize: _cfg.compactTitle ? 11 : (compact ? 11 : 13))),
-          ),
-        ]),
+    return RepaintBoundary(
+      child: GestureDetector(
+        onTap: () => _selectMode
+            ? _toggleSelect(book)
+            : _openBook(book),
+        onLongPress: () =>
+            _selectMode ? _toggleSelect(book) : _showBookMenu(book),
+        child: Container(
+          decoration: selected
+              ? BoxDecoration(
+                  border: Border.all(
+                      color: Theme.of(context).colorScheme.primary, width: 2),
+                  borderRadius: BorderRadius.circular(8))
+              : null,
+          child: Column(children: [
+            Expanded(child: _buildCover(book, width: double.infinity, height: double.infinity, radius: 8)),
+            _revAware(Padding(
+              padding: EdgeInsets.all(compact ? 4 : 8),
+              child: Text(book.name,
+                  maxLines: _cfg.maxTitleLines.clamp(1, 5),
+                  textAlign: _cfg.centerTitle ? TextAlign.center : TextAlign.start,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(fontSize: _cfg.compactTitle ? 11 : (compact ? 11 : 13))),
+            )),
+          ]),
+        ),
       ),
     );
   }
 
   Widget _buildCoverItem(Book book) {
     final selected = _selectedBooks.contains(book);
-    return GestureDetector(
-      onTap: () => _selectMode
-          ? _toggleSelect(book)
-          : _openBook(book),
-      onLongPress: () =>
-          _selectMode ? _toggleSelect(book) : _showBookMenu(book),
-      child: Container(
-        decoration: selected
-            ? BoxDecoration(
-                border: Border.all(
-                    color: Theme.of(context).colorScheme.primary, width: 3),
-                borderRadius: BorderRadius.circular(12))
-            : null,
-        child: ClipRRect(
-          borderRadius: BorderRadius.circular(12),
-          child: _buildCover(book,
-              width: double.infinity, height: double.infinity, radius: 0),
+    return RepaintBoundary(
+      child: GestureDetector(
+        onTap: () => _selectMode
+            ? _toggleSelect(book)
+            : _openBook(book),
+        onLongPress: () =>
+            _selectMode ? _toggleSelect(book) : _showBookMenu(book),
+        child: Container(
+          decoration: selected
+              ? BoxDecoration(
+                  border: Border.all(
+                      color: Theme.of(context).colorScheme.primary, width: 3),
+                  borderRadius: BorderRadius.circular(12))
+              : null,
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(12),
+            child: _buildCover(book,
+                width: double.infinity, height: double.infinity, radius: 0),
+          ),
         ),
       ),
     );
@@ -1436,7 +1520,7 @@ class _BookshelfScreenState extends State<BookshelfScreen> {
               padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
               constraints: const BoxConstraints(minWidth: 18, minHeight: 18),
               decoration: BoxDecoration(
-                  color: Colors.redAccent,
+                  color: const Color(0xFFB3261E),
                   borderRadius: BorderRadius.circular(9)),
               child: Text(unread > 99 ? '99+' : '$unread',
                   textAlign: TextAlign.center,
@@ -1449,7 +1533,7 @@ class _BookshelfScreenState extends State<BookshelfScreen> {
               width: 10,
               height: 10,
               decoration: const BoxDecoration(
-                  color: Colors.redAccent, shape: BoxShape.circle)),
+                  color: Color(0xFFB3261E), shape: BoxShape.circle)),
     );
     final stack = Stack(fit: StackFit.expand, children: [child, badgeWidget]);
     if (width.isFinite && height.isFinite) {
@@ -1467,12 +1551,20 @@ class _BookshelfScreenState extends State<BookshelfScreen> {
     if (url != null && url.isNotEmpty) {
       // 注意：cover_onlyWifi（仅 WiFi 加载封面）已降级为仅记录（见 _CoverCfg.onlyWifi），
       // 不阻断网络封面加载，避免新增依赖。
-      img = Image.network(url,
-          width: width,
-          height: height,
-          fit: BoxFit.cover,
-          errorBuilder: (_, __, ___) =>
-              _buildDefaultCover(book, width, height, radius));
+      // CachedNetworkImage：磁盘 + 内存缓存，并按设备像素比限制解码尺寸，
+      // 避免大图全尺寸解码导致滑动掉帧。
+      final dpr = MediaQuery.of(context).devicePixelRatio;
+      img = CachedNetworkImage(
+        imageUrl: url,
+        width: width,
+        height: height,
+        fit: BoxFit.cover,
+        memCacheWidth: (100 * dpr).round(),
+        memCacheHeight: (133 * dpr).round(),
+        placeholder: (_, __) => _buildDefaultCover(book, width, height, radius),
+        errorWidget: (_, __, ___) =>
+            _buildDefaultCover(book, width, height, radius),
+      );
     } else {
       img = _buildDefaultCover(book, width, height, radius);
     }
@@ -1501,7 +1593,8 @@ class _BookshelfScreenState extends State<BookshelfScreen> {
             child: rounded,
           )
         : rounded;
-    return _withBadge(book, shadowed, width, height);
+    // 未读角标依赖 durChapterIndex（阅读进度），随 readingRevision 局部重建
+    return _revAware(_withBadge(book, shadowed, width, height));
   }
 
   /// 封面底部叠加的文字（书名/作者），受封面配置 cover_showName / cover_showAuthor 控制
@@ -1581,13 +1674,14 @@ class _BookshelfScreenState extends State<BookshelfScreen> {
       }
       return placeholder;
     }
+    // 默认占位色板：低饱和深色（与 Material 3 on-surface 体系协调）
     const colors = [
-      Colors.blueGrey,
-      Colors.brown,
-      Colors.teal,
-      Colors.indigo,
-      Colors.deepOrange,
-      Colors.purple
+      Color(0xFF5B6B76),
+      Color(0xFF6E5F56),
+      Color(0xFF4F6B5E),
+      Color(0xFF575F7E),
+      Color(0xFF7E5B57),
+      Color(0xFF6B5B7E),
     ];
     final color = colors[book.name.hashCode.abs() % colors.length];
     return Container(
@@ -1613,7 +1707,7 @@ class _BookshelfScreenState extends State<BookshelfScreen> {
 
   Widget _batchBtn(IconData icon, String label, VoidCallback onTap,
       {bool danger = false}) {
-    final color = danger ? Colors.red : null;
+    final color = danger ? Theme.of(context).colorScheme.error : null;
     return TextButton.icon(
       onPressed: _selectedBooks.isEmpty ? null : onTap,
       icon: Icon(icon, size: 20, color: color),

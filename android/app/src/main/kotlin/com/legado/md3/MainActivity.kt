@@ -16,9 +16,16 @@ class MainActivity : FlutterActivity() {
 
     /** 音频前台服务控制频道（见 AudioNotifyService） */
     private val audioChannelName = "legado/audio_notify"
+
+    /** legado:// 深链 / 系统分享文本 导入频道 */
+    private val deepLinkChannelName = "legado/deep_link"
     private var pendingPath: String? = null
     private var channel: MethodChannel? = null
     private var wakeLock: PowerManager.WakeLock? = null
+
+    /** 待 Dart 取走的深链/分享链接（Dart 未就绪时缓存） */
+    private var pendingLink: String? = null
+    private var deepLinkChannel: MethodChannel? = null
 
     /**
      * 复用应用级共享引擎：这样播放页关闭后 Dart 侧播放器仍随引擎存活，
@@ -33,12 +40,24 @@ class MainActivity : FlutterActivity() {
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
         pendingPath = resolveIntent(intent)
+        pendingLink = handleDeepLinkIntent(intent)
         channel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, channelName)
         channel?.setMethodCallHandler { call, result ->
             if (call.method == "getInitialFile") {
                 val p = pendingPath
                 pendingPath = null
                 result.success(p)
+            } else {
+                result.notImplemented()
+            }
+        }
+        // legado:// 深链 / 系统分享文本：Dart 主动取初始链接，运行中再经 onLink 推送
+        deepLinkChannel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, deepLinkChannelName)
+        deepLinkChannel?.setMethodCallHandler { call, result ->
+            if (call.method == "getInitialLink") {
+                val link = pendingLink
+                pendingLink = null
+                result.success(link)
             } else {
                 result.notImplemented()
             }
@@ -126,6 +145,45 @@ class MainActivity : FlutterActivity() {
         if (p != null) {
             pendingPath = p
             channel?.invokeMethod("onFileOpened", p)
+        }
+        // 深链/分享：singleTop 复用模式下新 Intent 走这里
+        val link = handleDeepLinkIntent(intent)
+        if (link != null) {
+            pendingLink = link
+            try {
+                deepLinkChannel?.invokeMethod("onLink", link)
+            } catch (_: Exception) {
+                // Dart 侧 handler 未就绪：缓存待 getInitialLink 取走
+            }
+        }
+    }
+
+    /**
+     * 解析深链 / 分享 Intent，返回统一格式的链接字符串（无匹配返回 null）：
+     *  - legado://import?url=... / legado://import?type=bookSource&json=...：原样透传
+     *  - ACTION_SEND 文本（URL 或 JSON）：包装为 share://text?content=<encoded>
+     */
+    private fun handleDeepLinkIntent(intent: Intent?): String? {
+        if (intent == null) return null
+        return try {
+            when (intent.action) {
+                Intent.ACTION_VIEW -> {
+                    val uri: Uri = intent.data ?: return null
+                    if (uri.scheme == "legado") uri.toString() else null
+                }
+                Intent.ACTION_SEND -> {
+                    if (intent.type?.startsWith("text/plain") != true) return null
+                    val text = intent.getStringExtra(Intent.EXTRA_TEXT)?.trim()
+                    if (text.isNullOrEmpty()) {
+                        null
+                    } else {
+                        "share://text?content=${Uri.encode(text)}"
+                    }
+                }
+                else -> null
+            }
+        } catch (e: Exception) {
+            null
         }
     }
 

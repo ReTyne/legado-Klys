@@ -4,6 +4,13 @@ import 'package:legado_md3/data/model/book.dart';
 import 'package:legado_md3/data/model/book_chapter.dart';
 import 'package:legado_md3/help/source/source_engine.dart';
 
+/// 正文搜索结果跳转载体：章节下标 + 章内匹配偏移（正文 indexOf 位置）
+class ContentSearchHit {
+  final int chapterIndex;
+  final int posInChapter;
+  const ContentSearchHit(this.chapterIndex, this.posInChapter);
+}
+
 /// 书内全文搜索 - 对齐原版SearchContentScreen
 class SearchContentScreen extends StatefulWidget {
   final Book book;
@@ -14,10 +21,17 @@ class SearchContentScreen extends StatefulWidget {
   State<SearchContentScreen> createState() => _SearchContentScreenState();
 }
 
+class _Snippet {
+  final String text;
+  /// 该片段命中关键词在章内的字符偏移
+  final int pos;
+  _Snippet(this.text, this.pos);
+}
+
 class _Result {
   final BookChapter chapter;
   final int chapterIndex;
-  final List<String> snippets;
+  final List<_Snippet> snippets;
   _Result(this.chapter, this.chapterIndex, this.snippets);
 }
 
@@ -54,12 +68,12 @@ class _SearchContentScreenState extends State<SearchContentScreen> {
     if (!_history.contains(query)) { _history.insert(0, query); if (_history.length > 20) _history.removeLast(); }
     await Future.delayed(const Duration(milliseconds: 100));
     List<_Result> matchIn(String content, int i) {
-      final snippets = <String>[];
+      final snippets = <_Snippet>[];
       var idx = content.indexOf(query);
       while (idx >= 0 && snippets.length < 3) {
         final start = (idx - 20).clamp(0, content.length);
         final end = (idx + query.length + 20).clamp(0, content.length);
-        snippets.add('...${content.substring(start, end)}...');
+        snippets.add(_Snippet('...${content.substring(start, end)}...', idx));
         idx = content.indexOf(query, idx + query.length);
       }
       return snippets.isNotEmpty ? [_Result(_chapters[i], i, snippets)] : <_Result>[];
@@ -148,8 +162,9 @@ class _SearchContentScreenState extends State<SearchContentScreen> {
           children: r.snippets.map((s) => ListTile(
             dense: true,
             contentPadding: const EdgeInsets.only(left: 56, right: 16),
-            title: Text(s, style: const TextStyle(fontSize: 13), maxLines: 2, overflow: TextOverflow.ellipsis),
-            onTap: () => Navigator.pop(context, r.chapterIndex),
+            title: Text(s.text, style: const TextStyle(fontSize: 13), maxLines: 2, overflow: TextOverflow.ellipsis),
+            // 跳转时带上章内偏移，阅读页可精确定位到所在页
+            onTap: () => Navigator.pop(context, ContentSearchHit(r.chapterIndex, s.pos)),
           )).toList(),
         );
       },

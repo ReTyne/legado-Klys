@@ -20,6 +20,11 @@ class BookProvider extends ChangeNotifier {
   int get bookshelfLayout => _bookshelfLayout;
   String get currentGroup => _currentGroup;
 
+  /// 阅读进度小粒度修订号：翻页等高频保存进度时只 ++ 并通知
+  /// ValueListenableBuilder 监听者（书架角标/副标题局部重建），
+  /// 不再触发 notifyListeners 全量重建书架。
+  final ValueNotifier<int> readingRevision = ValueNotifier<int>(0);
+
   /// 虚拟分组名称（按书籍属性自动计算，不属于用户自定义分组）
   static const String vGroupLocal = '本地';
   static const String vGroupAudio = '音频';
@@ -200,7 +205,21 @@ class BookProvider extends ChangeNotifier {
     book.durChapterIndex = chapterIndex;
     book.durChapterPos = pos;
     book.durChapterTime = DateTime.now().millisecondsSinceEpoch;
-    await updateBook(book);
+    // 同步内存列表对应项（保持同一引用语义），但不 notifyListeners：
+    // 翻页保存进度属高频操作，全量通知会导致整书架重排。
+    final index =
+        _books.indexWhere((b) => b.name == book.name && b.author == book.author);
+    if (index != -1) {
+      _books[index] = book;
+    }
+    await _db.updateBook(book);
+    readingRevision.value++;
+  }
+
+  @override
+  void dispose() {
+    readingRevision.dispose();
+    super.dispose();
   }
 }
 

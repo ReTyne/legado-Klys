@@ -52,11 +52,16 @@ class UrlOptions {
     }
 
     // 1) `url,{json}` —— 从 `,{` 开始做括号配平（body 里可能有逗号）
+    // 注意：`,{{` 是 legado 的 `{{key=value}}` 选项语法而非 JSON，
+    // 必须跳过本分支交给第 3 步处理，否则 JSON 解码失败会把选项吞掉。
     final commaJson = url.indexOf(',{');
     if (commaJson > 0) {
       final optStr = _balancedBrace(url, commaJson + 1);
-      if (optStr != null) {
-        url = url.substring(0, commaJson).trim();
+      if (optStr != null && !optStr.startsWith('{{')) {
+        // 只摘除 JSON 段本身，保留其后的 `{{key=value}}` 选项
+        url = (url.substring(0, commaJson) +
+                url.substring(commaJson + 1 + optStr.length))
+            .trim();
         try {
           final o = jsonDecode(optStr);
           if (o is Map) options.addAll(o.map((k, v) => MapEntry(k.toString(), v)));
@@ -86,7 +91,10 @@ class UrlOptions {
       final expr = mm.group(1)!.trim();
       final eq = expr.indexOf('=');
       final key = (eq < 0 ? expr : expr.substring(0, eq)).trim().toLowerCase();
-      if (!knownOptions.contains(key)) break; // 不是选项：保留（可能是未替换的模板）
+      // `header.X=Y` 前缀不在 knownOptions 表里，需放行
+      if (!knownOptions.contains(key) && !key.startsWith('header.')) {
+        break; // 不是选项：保留（可能是未替换的模板）
+      }
       url = url.replaceRange(mm.start, mm.end, '').trim();
       if (expr.isEmpty) continue;
       if (eq < 0) {

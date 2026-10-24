@@ -1,5 +1,7 @@
+import 'dart:convert';
 import 'dart:io';
 import 'package:archive/archive.dart';
+import 'package:path_provider/path_provider.dart';
 import 'package:legado_md3/data/model/book.dart';
 import 'package:legado_md3/data/model/book_chapter.dart';
 
@@ -114,28 +116,157 @@ class EpubParser {
       if (candidates.isEmpty) candidates = archive.files.where((f) => f.name.endsWith(target) || f.name.contains(chapterUrl.split('#').first)).toList();
       if (candidates.isEmpty) return null;
 
-      var content = String.fromCharCodes(candidates.first.content as List<int>);
+      var content = utf8.decode(candidates.first.content as List<int>, allowMalformed: true);
 
       // 提取正文（去除HTML标签）
-      final bodyMatch = RegExp(r'<body[^>]*>(.*?)</body>', dotAll: true).firstMatch(content);
-      var text = bodyMatch?.group(1) ?? content;
-
-      // 块级标签转换行
-      text = text.replaceAll(RegExp(r'</(p|div|h[1-6]|li|blockquote)>', caseSensitive: false), '\n');
-      text = text.replaceAll(RegExp(r'<br\s*/?>', caseSensitive: false), '\n');
-      // 去除其余HTML标签
-      text = text.replaceAll(RegExp(r'<[^>]+>'), '');
-      // 常见 HTML 实体
-      text = text
-          .replaceAll('&nbsp;', ' ').replaceAll('&amp;', '&').replaceAll('&lt;', '<')
-          .replaceAll('&gt;', '>').replaceAll('&quot;', '"').replaceAll('&#39;', "'")
-          .replaceAll('&hellip;', '…').replaceAll('&mdash;', '—').replaceAll('&ndash;', '–');
-      text = text.replaceAllMapped(RegExp(r'&#(\d+);'), (m) => String.fromCharCode(int.parse(m.group(1)!)));
-      text = text.replaceAll(RegExp(r'\n{3,}'), '\n\n').trim();
-
-      return text;
+      return _extractText(content);
     } catch (e) {
       return null;
     }
+  }
+
+  /// 统计 EPUB 正文字数：遍历 zip 内 xhtml/html 正文文档，
+  /// 累计「去标签文本」长度（跳过 nav/toc/cover 等非正文文档）。
+  static Future<int> getWordCount(String filePath) async {
+    try {
+      final bytes = await File(filePath).readAsBytes();
+      final archive = ZipDecoder().decodeBytes(bytes);
+      var count = 0;
+      for (final f in archive.files) {
+        if (!f.isFile) continue;
+        final name = f.name.toLowerCase();
+        if (!name.endsWith('.xhtml') && !name.endsWith('.xht') && !name.endsWith('.html')) continue;
+        final base = name.split('/').last;
+        // 导航 / 目录 / 封面等非正文文档不计入
+        if (base.startsWith('nav') || base.startsWith('toc') || base.contains('cover')) continue;
+        final raw = utf8.decode(f.content as List<int>, allowMalformed: true);
+        count += _extractText(raw).length;
+      }
+      return count;
+    } catch (e) {
+      return 0;
+    }
+  }
+
+  /// 提取 EPUB 封面图片到缓存目录，返回本地路径；找不到封面时返回 null。
+  ///
+  /// 查找顺序：OPF `<meta name="cover">` 指向的 manifest item →
+  /// manifest 中 href 含 cover 的图片项 → manifest 首个图片项。
+  static Future<String?> getCoverImage(String filePath) async {
+    try {
+      final bytes = await File(filePath).readAsBytes();
+      final archive = ZipDecoder().decodeBytes(bytes);
+
+      // 1. 定位 OPF
+      ArchiveFile? opf;
+      for (final f in archive.files) {
+        if (f.isFile && f.name.toLowerCase().endsWith('.opf')) {
+          opf = f;
+          break;
+        }
+      }
+      if (opf == null) return null;
+      final opfContent = utf8.decode(opf.content as List<int>, allowMalformed: true);
+      final opfDir = opf.name.contains('/')
+          ? opf.name.substring(0, opf.name.lastIndexOf('/') + 1)
+          : '';
+
+      // 2. OPF meta cover → manifest item id
+      String? coverHref;
+      final metaCover = RegExp(r'<meta\s+name="cover"\s+content="([^"]+)"',
+              caseSensitive: false)
+          .firstMatch(opfContent);
+      if (metaCover != null) {
+        final id = RegExp.escape(metaCover.group(1)!);
+        final item = RegExp('<item\\s+[^>]*id="$id"[^>]*href="([^"]+)"',
+                caseSensitive: false)
+            .firstMatch(opfContent) ??
+            RegExp('<item\\s+[^>]*href="([^"]+)"[^>]*id="$id"',
+                caseSensitive: false)
+                .firstMatch(opfContent);
+        if (item != null) coverHref = item.group(1);
+      }
+
+      // 3. 兜底：manifest 中 href 含 cover 的图片项；再兜底取首个图片项
+      if (coverHref == null) {
+        for (final m in RegExp(r'<item\s+[^>]*>', caseSensitive: false)
+            .allMatches(opfContent)) {
+          final tag = m.group(0)!;
+          final href = RegExp(r'href="([^"]+)"').firstMatch(tag)?.group(1);
+          final media =
+              RegExp(r'media-type="([^"]+)"').firstMatch(tag)?.group(1) ?? '';
+          if (href == null || !media.startsWith('image/')) continue;
+          if (href.toLowerCase().contains('cover')) {
+            coverHref = href;
+            break;
+          }
+          coverHref ??= href;
+        }
+      }
+      if (coverHref == null) return null;
+
+      // 4. 在 zip 内定位封面条目（相对 OPF 目录解析）
+      final entryName = _resolveEntry(opfDir, coverHref);
+      ArchiveFile? entry;
+      for (final f in archive.files) {
+        if (f.isFile && (f.name == entryName || f.name.endsWith(coverHref))) {
+          entry = f;
+          break;
+        }
+      }
+      if (entry == null) return null;
+
+      // 5. 写入缓存目录 covers/ 下
+      final tmp = await getTemporaryDirectory();
+      final coverDir = Directory('${tmp.path}/covers');
+      if (!coverDir.existsSync()) coverDir.createSync(recursive: true);
+      final base = entry.name.split('/').last.replaceAll(RegExp(r'[^\w\.\-]'), '_');
+      final out = File('${coverDir.path}/${filePath.hashCode.abs()}_$base');
+      await out.writeAsBytes(entry.content as List<int>);
+      return out.path;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  /// HTML → 纯文本（parseChapterContent 与字数统计共用）。
+  static String _extractText(String html) {
+    final bodyMatch = RegExp(r'<body[^>]*>(.*?)</body>', dotAll: true, caseSensitive: false)
+        .firstMatch(html);
+    var text = bodyMatch?.group(1) ?? html;
+
+    // 块级标签转换行
+    text = text.replaceAll(RegExp(r'</(p|div|h[1-6]|li|blockquote)>', caseSensitive: false), '\n');
+    text = text.replaceAll(RegExp(r'<br\s*/?>', caseSensitive: false), '\n');
+    // 去除其余HTML标签
+    text = text.replaceAll(RegExp(r'<[^>]+>'), '');
+    // 常见 HTML 实体
+    text = text
+        .replaceAll('&nbsp;', ' ').replaceAll('&amp;', '&').replaceAll('&lt;', '<')
+        .replaceAll('&gt;', '>').replaceAll('&quot;', '"').replaceAll('&#39;', "'")
+        .replaceAll('&hellip;', '…').replaceAll('&mdash;', '—').replaceAll('&ndash;', '–');
+    text = text.replaceAllMapped(RegExp(r'&#(\d+);'), (m) => String.fromCharCode(int.parse(m.group(1)!)));
+    text = text.replaceAll(RegExp(r'\n{3,}'), '\n\n').trim();
+    return text;
+  }
+
+  /// 把 OPF 相对 href 解析为 zip 内条目名（处理 ./ ../ 与 URL 编码）。
+  static String _resolveEntry(String opfDir, String href) {
+    var h = href.split('#').first;
+    try {
+      h = Uri.decodeComponent(h);
+    } catch (_) {
+      // 非法编码序列保持原样
+    }
+    final parts = <String>[];
+    for (final seg in '$opfDir$h'.split('/')) {
+      if (seg.isEmpty || seg == '.') continue;
+      if (seg == '..') {
+        if (parts.isNotEmpty) parts.removeLast();
+        continue;
+      }
+      parts.add(seg);
+    }
+    return parts.join('/');
   }
 }

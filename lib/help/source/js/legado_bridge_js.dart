@@ -14,6 +14,20 @@
 ///
 /// 该脚本在每个书源的无头 WebView 创建后于「全局作用域」执行一次；
 /// 书源的 jsLib / loginUrl 随后也在全局作用域执行（定义全局函数）。
+///
+/// 阅读/主题相关接口（java.getReadBookConfig / getThemeConfig / getThemeMode /
+/// getTxtInFolder / openVideoPlayer）在 JS 侧读 `__state` 快照并回退默认值；
+/// 原生需要实时数据时，可用本类的 Dart 静态助手生成 JSON 后种子注入
+/// `__state.readConfig` / `__state.theme` / `__state.themeMode`。
+import 'dart:convert';
+import 'dart:io';
+import 'dart:ui' show Brightness, PlatformDispatcher;
+
+import 'package:flutter/services.dart';
+
+import '../../../constant/app_theme.dart';
+import '../../../data/model/read_config.dart';
+
 class LegadoBridgeJs {
   static const String code = r'''
 (function () {
@@ -1146,6 +1160,66 @@ class LegadoBridgeJs {
         return __doXhr("legado://zip?url=" + encodeURIComponent(zipPath) + "&path=", { method: "GET" });
       } catch (e) { return ""; }
     },
+    // 7z/rar 解压：依赖 libarchive，暂不支持（抛错让书源 try/catch 走回退分支）
+    un7zFile: function (path) { throw new Error("un7zFile 依赖 libarchive，暂不支持"); },
+    unrarFile: function (path) { throw new Error("unrarFile 依赖 libarchive，暂不支持"); },
+
+    // ===== 阅读/主题/媒体接口（对齐 legado-E JsExtensions）=====
+    // 无头 WebView 内无法直接读取 App 状态，原生在求值前种子注入
+    // __state.readConfig / __state.theme / __state.themeMode；
+    // 未注入时回退到与 lib/data/model/read_config.dart、lib/constant/app_theme.dart 一致的默认值。
+    getReadBookConfig: function () {
+      try {
+        var rc = __state.readConfig;
+        if (!rc || typeof rc !== "object") {
+          rc = {
+            textSize: 20, textColor: (0xFF333333 | 0), fontFamily: "", fontWeight: 400,
+            textAlign: 2, lineSpacing: 2, paragraphSpacing: 1,
+            paddingLeft: 16, paddingRight: 16, paddingTop: 8, paddingBottom: 8,
+            bgColor: (0xFFFFF8E1 | 0), pageAnim: 0, chineseConverter: 0
+          };
+        }
+        return JSON.stringify(rc);
+      } catch (e) { return ""; }
+    },
+    getThemeConfig: function () {
+      try {
+        var t = __state.theme;
+        if (!t || typeof t !== "object") {
+          var dark = false;
+          try { dark = !!(window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches); } catch (e2) {}
+          t = {
+            isDark: dark, themeMode: dark ? 2 : 1,
+            seedColor: (0xFF3F5A72 | 0), fontFamily: "", fontScale: 1.0,
+            dynamicColor: false, amoled: false, eink: false, foregroundOpacity: 0.18
+          };
+        }
+        return JSON.stringify(t);
+      } catch (e) { return ""; }
+    },
+    getThemeMode: function () {
+      // 0: 跟随系统 1: 浅色 2: 深色（与 prefs theme_mode 存储一致）
+      var m = __state.themeMode;
+      if (m === 0 || m === 1 || m === 2) return m;
+      return 0;
+    },
+    getTxtInFolder: function (path) {
+      // 列目录内 .txt 文件；原生 legado://file 暂无 list 能力（未知 op 返回 400），
+      // 失败返回 [] 让书源走回退分支，不抛异常。
+      try {
+        var resp = __doXhr("legado://file?op=list&path=" + encodeURIComponent(path || ""), { method: "GET" });
+        var arr = JSON.parse(resp);
+        return Array.isArray(arr) ? arr : [];
+      } catch (e) { return []; }
+    },
+    openVideoPlayer: function (url, title) {
+      // 原生 legado/video 播放通道待实现（MethodChannel('legado/video') Kotlin 侧未接），
+      // 当前经 legado://video 内部协议转交；失败静默返回 false。
+      try {
+        __doXhr("legado://video?url=" + encodeURIComponent(url || "") + "&title=" + encodeURIComponent(title || ""), { method: "GET" });
+        return true;
+      } catch (e) { return false; }
+    },
 
     // 对称加密：返回 encrypt/decrypt 对象（对齐 legado JsExtensions.createSymmetricCrypto）
     createSymmetricCrypto: function (transformation, key) {
@@ -1256,4 +1330,83 @@ class LegadoBridgeJs {
   };
 })();
 ''';
+
+  /// 尝试打开原生视频播放器（对齐 legado-E 视频播放入口）。
+  ///
+  /// 走 MethodChannel('legado/video') 的 invokeMethod('open', ...)；
+  /// Kotlin 侧暂未实现该 channel，调用失败时静默返回 false（不抛异常），
+  /// 由调用方决定回退（如使用内置 video_player_screen）。
+  static Future<bool> openVideoPlayer(String url, String title) async {
+    if (url.trim().isEmpty) return false;
+    try {
+      await const MethodChannel('legado/video')
+          .invokeMethod('open', {'url': url, 'title': title});
+      return true;
+    } catch (e) {
+      // 原生通道未实现 / 调用异常：容错降级
+      return false;
+    }
+  }
+
+  /// 列出 [path] 目录下的 .txt 文件（返回绝对路径，按名称排序）。
+  /// 目录不存在 / 无权限 / IO 异常时返回空列表，不抛异常。
+  static List<String> txtFilesInFolder(String path) {
+    try {
+      final dir = Directory(path);
+      if (!dir.existsSync()) return const [];
+      final files = dir
+          .listSync()
+          .whereType<File>()
+          .where((f) => f.path.toLowerCase().endsWith('.txt'))
+          .map((f) => f.path)
+          .toList()
+        ..sort();
+      return files;
+    } catch (e) {
+      return const [];
+    }
+  }
+
+  /// ReadConfig 关键字段 JSON（对齐 JS 桥 java.getReadBookConfig 的返回结构）。
+  static String readConfigJson(ReadConfig config) {
+    return jsonEncode({
+      'textSize': config.textSize,
+      'textColor': config.textColor,
+      'fontFamily': config.fontFamily ?? '',
+      'fontWeight': config.fontWeight,
+      'textAlign': config.textAlign,
+      'lineSpacing': config.lineSpacing,
+      'paragraphSpacing': config.paragraphSpacing,
+      'paddingLeft': config.paddingLeft,
+      'paddingRight': config.paddingRight,
+      'paddingTop': config.paddingTop,
+      'paddingBottom': config.paddingBottom,
+      'bgColor': config.bgColor,
+      'pageAnim': config.pageAnim,
+      'chineseConverter': config.chineseConverter,
+    });
+  }
+
+  /// 主题配置 JSON（对齐 JS 桥 java.getThemeConfig 的返回结构）。
+  static String themeConfigJson(AppTheme theme) {
+    final modeIndex = theme.themeMode.index;
+    var isDark = modeIndex == 2;
+    if (modeIndex == 0) {
+      isDark = PlatformDispatcher.instance.platformBrightness == Brightness.dark;
+    }
+    return jsonEncode({
+      'isDark': isDark,
+      'themeMode': modeIndex,
+      'seedColor': theme.seedColor.value,
+      'fontFamily': theme.fontFamily,
+      'fontScale': theme.fontScale,
+      'dynamicColor': theme.dynamicColor,
+      'amoled': theme.amoled,
+      'eink': theme.eink,
+      'foregroundOpacity': theme.foregroundOpacity,
+    });
+  }
+
+  /// 主题模式索引：0 跟随系统 / 1 浅色 / 2 深色（与 prefs theme_mode 存储一致）。
+  static int themeModeIndex(AppTheme theme) => theme.themeMode.index;
 }

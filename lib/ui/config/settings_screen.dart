@@ -22,6 +22,7 @@ import 'package:legado_md3/ui/config/dict_rule_screen.dart';
 import 'package:legado_md3/ui/config/download_cache_config_screen.dart';
 import 'package:legado_md3/ui/config/highlight_tag_rule_screen.dart';
 import 'package:legado_md3/ui/config/other_config_screen.dart';
+import 'package:legado_md3/ui/config/keyboard_assist_screen.dart';
 import 'package:legado_md3/ui/config/replace_rule_screen.dart';
 import 'package:legado_md3/ui/config/theme_manage_screen.dart';
 import 'package:legado_md3/ui/config/translation_screen.dart';
@@ -51,6 +52,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
   String _lanIp = 'localhost';
   bool _autoCleanCache = false;
   String _cacheSize = '0 MB';
+  // 阅读辅助：导出文件名模板 / 目录章节字数开关
+  String _exportNameTpl = '{name}';
+  bool _tocCountWords = false;
   bool _autoNextPage = false;
   bool _translateEnabled = false;
   bool _simulateReading = false;
@@ -113,6 +117,43 @@ class _SettingsScreenState extends State<SettingsScreen> {
   static const List<String> _alignNames = ['左对齐', '居中', '两端对齐'];
   static const List<String> _homePageNames = ['书架', '发现', '订阅'];
 
+  /// 导出文件名模板编辑：变量 {name} {author} {group}。
+  Future<void> _showExportNameTplDialog() async {
+    final ctrl = TextEditingController(text: _exportNameTpl);
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('导出文件名模板'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            TextField(
+              controller: ctrl,
+              decoration: const InputDecoration(labelText: '模板', hintText: '{name}'),
+            ),
+            const SizedBox(height: 8),
+            const Text('可用变量：{name} 书名 · {author} 作者 · {group} 分组', style: TextStyle(fontSize: 12)),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('取消')),
+          FilledButton(
+            onPressed: () async {
+              final v = ctrl.text.trim();
+              final p = await SharedPreferences.getInstance();
+              await p.setString('bookExportFileName', v.isEmpty ? '{name}' : v);
+              if (mounted) setState(() => _exportNameTpl = v.isEmpty ? '{name}' : v);
+              if (ctx.mounted) Navigator.pop(ctx);
+            },
+            child: const Text('保存'),
+          ),
+        ],
+      ),
+    );
+    ctrl.dispose();
+  }
+
   @override
   void initState() {
     super.initState();
@@ -148,6 +189,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
       _textIndent = cfg.textIndent;
       _paragraphSpacing = cfg.paragraphSpacing;
       _pageAnim = cfg.pageAnim;
+      _exportNameTpl = _prefs?.getString('bookExportFileName') ?? '{name}';
+      _tocCountWords = _prefs?.getBool('tocCountWords') ?? false;
 
       // 书籍
       _onlyUpdateRead = p.getBool('only_update_read') ?? false;
@@ -208,14 +251,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
   Future<void> _calcCacheSize() async {
     try {
       final db = DatabaseService();
-      int bytes = 0;
-      final books = await db.getAllBooks();
-      for (final b in books) {
-        final chs = await db.getChapters(b.name, b.author);
-        for (final ch in chs) { bytes += (ch.content ?? '').length; }
-      }
+      // SQL 聚合已缓存正文总字符数，避免遍历所有书 × 章节在内存中累加
+      final chars = await db.getCachedContentLength();
       // 中文按 UTF-8 约 3 字节估算
-      bytes = bytes * 2;
+      final bytes = chars * 2;
       String size;
       if (bytes < 1024) { size = '$bytes B'; }
       else if (bytes < 1024 * 1024) { size = '${(bytes / 1024).toStringAsFixed(1)} KB'; }
@@ -226,7 +265,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   Future<void> _restoreWebService() async {
     try {
-      final ifaces = await NetworkInterface.list(type: InternetAddressType.IPv4);
+      // 网卡枚举是同步 IO：包一层 Future 让出执行流，避免阻塞启动
+      final ifaces = await Future(() => NetworkInterface.list(type: InternetAddressType.IPv4));
       for (final ifc in ifaces) {
         for (final a in ifc.addresses) {
           if (!a.isLoopback) { _lanIp = a.address; break; }
@@ -329,6 +369,32 @@ class _SettingsScreenState extends State<SettingsScreen> {
           const Divider(),
 
           // 阅读设置
+          _buildSectionHeader('阅读辅助'),
+          ListTile(
+            leading: const Icon(Icons.keyboard),
+            title: const Text('键盘助手'),
+            subtitle: const Text('规则编辑时快捷插入常用文本'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const KeyboardAssistScreen())),
+          ),
+          ListTile(
+            leading: const Icon(Icons.drive_file_rename_outline),
+            title: const Text('导出文件名模板'),
+            subtitle: Text(_exportNameTpl),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: _showExportNameTplDialog,
+          ),
+          SwitchListTile(
+            secondary: const Icon(Icons.numbers),
+            title: const Text('目录显示章节字数'),
+            subtitle: const Text('在目录列表中显示每章字数'),
+            value: _tocCountWords,
+            onChanged: (v) async {
+              setState(() => _tocCountWords = v);
+              final p = await SharedPreferences.getInstance();
+              await p.setBool('tocCountWords', v);
+            },
+          ),
           _buildSectionHeader('阅读设置'),
           ListTile(
             title: const Text('翻页动画'),

@@ -5,6 +5,7 @@ import 'package:share_plus/share_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:legado_md3/data/model/book_source.dart';
 import 'package:legado_md3/data/local/app_database.dart';
+import 'package:legado_md3/data/model/db_models.dart';
 import 'package:legado_md3/help/http/cookie_manager.dart';
 import 'package:legado_md3/help/source/source_engine.dart';
 import 'package:legado_md3/help/source/js/legado_js_runtime.dart';
@@ -44,6 +45,9 @@ class _SourceEditScreenState extends State<SourceEditScreen> with SingleTickerPr
   };
   int _sourceType = 0;
   bool _dirty = false;
+
+  /// 键盘助手（enabled 且 rule 非空）：规则编辑器聚焦时在键盘上方弹出工具条
+  List<KeyboardAssist> _keyboardAssists = [];
 
   static const List<String> _tabs = ['基础', '搜索', '发现', '主页', '详情', '目录', '正文'];
 
@@ -145,6 +149,20 @@ class _SourceEditScreenState extends State<SourceEditScreen> with SingleTickerPr
     }
     _loadFromSource(widget.source);
     _dirty = false;
+    _loadKeyboardAssists();
+  }
+
+  /// 预载键盘助手（失败不影响编辑，静默降级为无工具条）
+  Future<void> _loadKeyboardAssists() async {
+    try {
+      final list = await _db.getKeyboardAssists();
+      if (!mounted) return;
+      setState(() => _keyboardAssists = list
+          .where((a) => a.enabled == 1 && a.rule.isNotEmpty)
+          .toList());
+    } catch (_) {
+      // 键盘助手数据异常时保持空列表
+    }
   }
 
   void _markDirty() => _dirty = true;
@@ -735,6 +753,29 @@ class _SourceEditScreenState extends State<SourceEditScreen> with SingleTickerPr
                             child: ActionChip(
                               label: Text(t),
                               onPressed: () => _insertAtCursor(editCtrl, t),
+                            ),
+                          ),
+                      ],
+                    ),
+                  ),
+                // 键盘助手工具条：位于输入框（键盘）上方，点击插入到光标处。
+                // 数据来自 keyboard_assists 表（enabled 且 rule 非空）；
+                // sheet 关闭时 editCtrl 已在 _openEditor 尾部 dispose，无残留。
+                if (_keyboardAssists.isNotEmpty)
+                  SizedBox(
+                    height: 40,
+                    child: ListView(
+                      scrollDirection: Axis.horizontal,
+                      padding: const EdgeInsets.symmetric(horizontal: 12),
+                      children: [
+                        for (final a in _keyboardAssists)
+                          Padding(
+                            padding: const EdgeInsets.symmetric(horizontal: 4),
+                            child: ActionChip(
+                              avatar: const Icon(Icons.keyboard, size: 16),
+                              label: Text(a.name.isEmpty ? a.rule : a.name),
+                              tooltip: a.rule,
+                              onPressed: () => _insertAtCursor(editCtrl, a.rule),
                             ),
                           ),
                       ],

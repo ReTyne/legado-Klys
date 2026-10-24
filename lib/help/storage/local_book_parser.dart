@@ -51,6 +51,14 @@ class LocalBookParser {
     try {
       final file = File(filePath);
       final name = file.uri.pathSegments.last.replaceAll('.txt', '');
+      // 统计正文字数（与 import_book_service 的 txt 分支口径一致：全文长度）
+      int? wordCount;
+      try {
+        final content = await TxtParserService.readFileAutoDetect(file);
+        wordCount = content.length;
+      } catch (_) {
+        wordCount = null;
+      }
       return Book(
         name: name,
         author: '未知作者',
@@ -58,6 +66,7 @@ class LocalBookParser {
         type: 1,
         fileName: filePath,
         canUpdate: false,
+        wordCount: wordCount,
       );
     } catch (e) {
       return null;
@@ -95,9 +104,25 @@ class LocalBookParser {
   // ========== EPUB ==========
   static Future<Book?> _parseEpub(String filePath) async {
     try {
-      final file = File(filePath);
-      final name = file.uri.pathSegments.last.replaceAll('.epub', '');
-      return Book(name: name, author: '未知作者', local: true, type: 1, fileName: filePath, canUpdate: false);
+      // 元数据优先取 OPF（书名/作者/简介），失败回退按文件名建 Book
+      final book = await EpubParser.parse(filePath) ??
+          Book(
+            name: File(filePath).uri.pathSegments.last.replaceAll('.epub', ''),
+            author: '未知作者',
+            local: true,
+            type: 1,
+            fileName: filePath,
+            canUpdate: false,
+          );
+      // 字数统计：累计各正文章节文本长度
+      final wordCount = await EpubParser.getWordCount(filePath);
+      if (wordCount > 0) book.wordCount = wordCount;
+      // 封面：仅当 book.coverUrl 为空时写入（避免覆盖已有封面）
+      if (book.coverUrl == null || book.coverUrl!.isEmpty) {
+        final cover = await EpubParser.getCoverImage(filePath);
+        if (cover != null) book.coverUrl = cover;
+      }
+      return book;
     } catch (e) {
       return null;
     }
@@ -111,6 +136,7 @@ class LocalBookParser {
   }
 
   // ========== MOBI ==========
+  // TODO: mobi 仅支持 PalmDOC 正文提取，元数据/封面/字数统计待补
   static Future<Book?> _parseMobi(String filePath) async {
     try {
       final file = File(filePath);
@@ -126,6 +152,7 @@ class LocalBookParser {
   }
 
   // ========== PDF ==========
+  // TODO: pdf 仅支持基础文本流提取，元数据/封面/字数统计待补
   static Future<Book?> _parsePdf(String filePath) async {
     try {
       final file = File(filePath);
@@ -141,6 +168,7 @@ class LocalBookParser {
   }
 
   // ========== UMD ==========
+  // TODO: umd 为漫画格式，需走漫画阅读器，书籍元数据/字数统计待补
   static Future<Book?> _parseUmd(String filePath) async {
     try {
       final file = File(filePath);

@@ -12,7 +12,7 @@
 - 批量管理（多选、删除）
 - 书籍搜索
 - 一键更新所有书籍章节
-- 本地书籍导入（TXT/EPUB）
+- 本地书籍导入（TXT/EPUB/PDF，PDF 独立阅读页支持翻页/跳页/缩放/进度）
 - 阅读进度自动保存
 
 #### 🔍 书源系统
@@ -35,6 +35,7 @@
 - 目录跳转、章节搜索
 - 亮度调节
 - 替换净化规则实时应用
+- 目录章节字数统计（可开关）
 - 阅读记录自动统计
 
 #### 🔊 TTS朗读
@@ -286,3 +287,9 @@ flutter build ios --release
 
 - [Legado](https://github.com/gedoor/legado) - 原版开源阅读器
 - [legado-with-MD3](https://github.com/HapeLee/legado-with-MD3) - MD3设计参考
+
+## 开发与质量保障
+
+- 静态检查：`dart analyze` 保持 0 error / 0 warning
+- 单元/Widget 测试：`flutter test`（83 例，覆盖密码学标准向量、书源规则全链路编排、URL 选项解析、备份 zip、EPUB 导出、书架/发现 UI、返回键行为等）
+- CI（`.github/workflows/build.yml`）：每次 push 自动执行 analyze → test → 构建 universal/arm64 Release APK 并发布 Prerelease

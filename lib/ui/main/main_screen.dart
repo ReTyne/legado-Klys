@@ -9,11 +9,6 @@ import 'package:legado_md3/ui/main/bookshelf/bookshelf_screen.dart';
 import 'package:legado_md3/ui/main/discover/discover_screen.dart';
 import 'package:legado_md3/ui/main/subscribe/subscribe_screen.dart';
 import 'package:legado_md3/ui/main/my/profile_screen.dart';
-import 'package:legado_md3/ui/book/local_import_screen.dart';
-import 'package:legado_md3/ui/backup/backup_screen.dart';
-import 'package:legado_md3/ui/cache/cache_manage_screen.dart';
-import 'package:legado_md3/ui/bookmark/bookmark_screen.dart';
-import 'package:legado_md3/ui/config/replace_rule_screen.dart';
 
 class MainScreen extends StatefulWidget {
   const MainScreen({super.key});
@@ -209,41 +204,21 @@ class _MainScreenState extends State<MainScreen> {
     return false;
   }
 
-  Route<dynamic>? _onGenerateRoute(RouteSettings settings) {
-    switch (settings.name) {
-      case '/local_import':
-        return MaterialPageRoute(builder: (_) => const LocalImportScreen());
-      case '/backup':
-        return MaterialPageRoute(builder: (_) => const BackupScreen());
-      case '/cache':
-        return MaterialPageRoute(builder: (_) => const CacheManageScreen());
-      case '/bookmark':
-        return MaterialPageRoute(builder: (_) => const BookmarkScreen());
-      case '/replace':
-        return MaterialPageRoute(builder: (_) => const ReplaceRuleScreen());
-      default:
-        return null;
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
-    final navigator = Navigator(
-      onGenerateRoute: (settings) {
-        if (settings.name == '/') {
-          return MaterialPageRoute(builder: (_) => _buildMainScaffold());
-        }
-        return _onGenerateRoute(settings);
-      },
-    );
-    if (!_confirmExit) return navigator;
+    // 直接返回主界面 Scaffold：不要再套一层 Navigator。
+    // 之前这里自建内层 Navigator，子页面 push 进的是内层栈，而系统返回键
+    // 只送达 WidgetsApp 的根 Navigator（其栈底 LaunchGate 的 popDisposition
+    // 为 bubble）→ 无人消费 → SystemNavigator.pop() 直接退出应用到桌面。
+    // 去掉内层 Navigator 后，所有子页面都 push 到根 Navigator，返回键正常逐级回退。
+    if (!_confirmExit) return _buildMainScaffold();
     return PopScope<Object?>(
       canPop: false,
       onPopInvokedWithResult: (bool didPop, Object? result) {
         if (didPop) return;
         if (_allowExit()) SystemNavigator.pop();
       },
-      child: navigator,
+      child: _buildMainScaffold(),
     );
   }
 
