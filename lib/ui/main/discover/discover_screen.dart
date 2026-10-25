@@ -1,20 +1,16 @@
+import 'dart:async';
+
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:legado_md3/data/model/book_source.dart';
+import 'package:legado_md3/data/model/explore_kind.dart';
 import 'package:legado_md3/data/model/search_book.dart';
 import 'package:legado_md3/help/source/source_engine.dart';
 import 'package:legado_md3/di/book_provider.dart';
 import 'package:legado_md3/data/local/app_database.dart';
 import 'package:legado_md3/ui/book/detail/book_detail_screen.dart';
-
-/// 发现分类（名称 + 发现地址）
-class _ExploreCategory {
-  final String name;
-  final String url;
-  const _ExploreCategory(this.name, this.url);
-}
 
 class DiscoverScreen extends StatefulWidget {
   const DiscoverScreen({super.key});
@@ -35,9 +31,21 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
   /// 视图层级：选源 -> 选分类 -> 书籍列表
   /// 'source' | 'category' | 'books'
   String _view = 'source';
-  List<_ExploreCategory> _categories = [];
-  _ExploreCategory? _currentCategory;
+
+  /// 发现分类全量（含控件型，对齐 legado exploreKinds 的 ExploreKind 列表）
+  List<ExploreKind> _kinds = [];
+  ExploreKind? _currentKind;
   Set<String> _hiddenCategories = {};
+
+  /// 发现页控件状态（对齐 legado InfoMap，按书源持久化）
+  Map<String, String> _infoMap = {};
+  /// 控件输入框控制器（按 title 缓存）
+  final Map<String, TextEditingController> _textControllers = {};
+  /// 控件动态文字缓存（viewName 求值结果，按 title 缓存）
+  final Map<String, String> _viewNames = {};
+  /// text 控件动作防抖（对齐 legado 600ms 防抖）
+  final Map<String, Timer> _textDebounce = {};
+  bool _loadingKinds = false;
 
   final List<SearchBook> _exploreBooks = [];
   bool _isLoading = false;
@@ -63,6 +71,12 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
 
   @override
   void dispose() {
+    for (final t in _textDebounce.values) {
+      t.cancel();
+    }
+    for (final c in _textControllers.values) {
+      c.dispose();
+    }
     _searchController.dispose();
     _scrollController.dispose();
     super.dispose();
@@ -93,23 +107,6 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
     }
   }
 
-  List<_ExploreCategory> _parseCategories(BookSource source) {
-    final result = <_ExploreCategory>[];
-    final lines = (source.exploreUrl ?? '').split('\n').where((l) => l.trim().isNotEmpty);
-    for (final line in lines) {
-      final parts = line.split(':::');
-      if (parts.length == 2) {
-        final name = parts[0].trim();
-        // 同一分类下的多选用 &&& 分隔，发现列表默认取第一个地址
-        final firstUrl = parts[1].split('&&&').first.trim();
-        if (firstUrl.isNotEmpty) result.add(_ExploreCategory(name, firstUrl));
-      } else if (line.trim().isNotEmpty) {
-        result.add(_ExploreCategory('发现', line.trim()));
-      }
-    }
-    return result;
-  }
-
   Future<Set<String>> _loadHidden(BookSource source) async {
     final prefs = await SharedPreferences.getInstance();
     return (prefs.getStringList('explore_hidden_${source.bookSourceUrl}') ?? const []).toSet();
@@ -120,25 +117,90 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
     await prefs.setStringList('explore_hidden_${source.bookSourceUrl}', hidden.toList());
   }
 
-  Future<void> _selectSource(BookSource source) async {
-    final cats = _parseCategories(source);
-    final hidden = await _loadHidden(source);
+  /// 可见的 url 型分类（控件型不参与显隐管理）
+  List<ExploreKind> get _visibleKinds =>
+      _kinds.where((k) => k.isUrl && !_hiddenCategories.contains(k.title)).toList();
+
+  /// 控件型分类（text/button/toggle/select）
+  List<ExploreKind> get _controlKinds => _kinds.where((k) => k.isControl).toList();
+
+  /// 加载发现分类：exploreUrl 为 `<js>`/`@js:` 时求值（对齐 legado exploreKinds），
+  /// 失败时得到 ERROR 占位分类，点击可见错误详情。
+  Future<void> _loadKinds(BookSource source) async {
+    if (!mounted) return;
+    setState(() => _loadingKinds = true);
+    List<ExploreKind> kinds;
+    try {
+      kinds = await _engine.exploreKinds(source);
+    } catch (e) {
+      kinds = [ExploreKind(title: 'ERROR:$e', url: '')];
+    }
+    Map<String, String> infoMap;
+    try {
+      infoMap = await _engine.loadExploreInfoMap(source);
+    } catch (_) {
+      infoMap = {};
+    }
+    Set<String> hidden;
+    try {
+      hidden = await _loadHidden(source);
+    } catch (_) {
+      hidden = <String>{};
+    }
     if (!mounted) return;
     setState(() {
-      _currentSource = source;
-      _categories = cats;
+      _loadingKinds = false;
+      _kinds = kinds;
+      _infoMap = infoMap;
       _hiddenCategories = hidden;
+      for (final c in _textControllers.values) {
+        c.dispose();
+      }
+      _textControllers.clear();
+      _viewNames.clear();
+    });
+    // viewName 动态文字（按钮/开关标签可脚本化）
+    for (final k in _controlKinds) {
+      final vn = k.viewName;
+      if (vn != null && vn.trim().isNotEmpty) {
+        final label = await _engine.evalExploreViewName(source, vn);
+        if (mounted && label.trim().isNotEmpty) {
+          setState(() => _viewNames[k.title] = label);
+        }
+      }
+    }
+    // 错误占位提示（exploreUrl 求值失败时让用户看到原因）
+    final errors = kinds.where((k) => k.isError).toList();
+    if (errors.isNotEmpty && mounted) {
+      final msg = errors.map((e) => e.title).join('\n');
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text('发现地址加载异常: $msg'),
+        duration: const Duration(seconds: 6),
+      ));
+    }
+  }
+
+  Future<void> _selectSource(BookSource source) async {
+    setState(() {
+      _currentSource = source;
       _searchQuery = '';
       _searchController.clear();
     });
-    if (cats.isEmpty) {
+    await _loadKinds(source);
+    if (!mounted) return;
+    final controls = _controlKinds;
+    final visible = _visibleKinds;
+    if (_kinds.isEmpty) {
       setState(() => _view = 'source');
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('「${source.bookSourceName}」未配置发现地址')));
       return;
     }
-    final visible = cats.where((c) => !hidden.contains(c.name)).toList();
-    if (visible.length == 1) {
-      _openCategory(visible.first);
+    if (visible.isEmpty && controls.isEmpty) {
+      setState(() => _view = 'category');
+      return;
+    }
+    if (visible.length == 1 && controls.isEmpty) {
+      _openKind(visible.first);
     } else {
       setState(() => _view = 'category');
     }
@@ -148,16 +210,22 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
     setState(() {
       if (_view == 'books') {
         // 单分类源没有分类选择层，直接回到选源
-        _view = _categories.where((c) => !_hiddenCategories.contains(c.name)).length <= 1 ? 'source' : 'category';
+        _view = _visibleKinds.length <= 1 && _controlKinds.isEmpty ? 'source' : 'category';
       } else if (_view == 'category') {
         _view = 'source';
       }
     });
   }
 
-  Future<void> _openCategory(_ExploreCategory cat) async {
+  Future<void> _openKind(ExploreKind kind) async {
+    if (kind.isError) {
+      _showKindError(kind);
+      return;
+    }
+    final url = kind.url?.trim() ?? '';
+    if (url.isEmpty) return; // 占位分类（空地址）不响应点击
     setState(() {
-      _currentCategory = cat;
+      _currentKind = kind;
       _view = 'books';
       _exploreBooks.clear();
       _isLoading = true;
@@ -170,6 +238,25 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
     await _loadExploreBooks();
   }
 
+  /// 展示 ERROR 占位分类的错误详情（对齐 legado 点击 ERROR 项看堆栈）
+  void _showKindError(ExploreKind kind) {
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('发现地址加载失败'),
+        content: SingleChildScrollView(
+          child: SelectableText(kind.title.length > 'ERROR:'.length
+              ? kind.title.substring('ERROR:'.length)
+              : kind.title),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx), child: const Text('关闭')),
+        ],
+      ),
+    );
+  }
+
   String _applyPage(String url, int page) {
     var u = url.replaceAll('{{page-1}}', '${page - 1}');
     u = u.replaceAll('{{ page - 1 }}', '${page - 1}');
@@ -180,10 +267,10 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
 
   Future<void> _loadExploreBooks() async {
     final source = _currentSource;
-    final cat = _currentCategory;
-    if (source == null || cat == null) return;
+    final kind = _currentKind;
+    if (source == null || kind == null) return;
     try {
-      final url = _applyPage(cat.url, _currentPage);
+      final url = _applyPage(kind.url ?? '', _currentPage);
       final books = await _engine.exploreByUrl(source, url);
       if (!mounted) return;
       setState(() {
@@ -204,8 +291,8 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
 
   Future<void> _loadMore() async {
     if (_isLoading || _isLoadingMore || !_hasMore || _view != 'books') return;
-    final cat = _currentCategory;
-    if (cat == null || !cat.url.contains('{{page')) {
+    final kind = _currentKind;
+    if (kind == null || !(kind.url ?? '').contains('{{page')) {
       _hasMore = false;
       return;
     }
@@ -228,6 +315,163 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
       await _loadExploreBooks();
     } else {
       await _loadSources();
+    }
+  }
+
+  // ==================== 发现页控件（对齐 legado ExploreAdapter） ====================
+
+  /// 执行控件动作（button 点击 / text 防抖后 / toggle 切换后 / select 选择后），
+  /// 动作执行完刷新分类（legado 由 java.refreshExplore() 触发，这里统一刷新）。
+  Future<void> _runKindAction(ExploreKind kind) async {
+    final source = _currentSource;
+    if (source == null) return;
+    final action = kind.action;
+    if (action == null || action.trim().isEmpty) return;
+    try {
+      await _engine.evalExploreAction(source, action);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('动作执行失败: $e')));
+      }
+      return;
+    }
+    if (!mounted) return;
+    // 刷新分类与控件状态（动作可能改了配置/infoMap，分类列表随之变化）
+    final keepKindTitle = _currentKind?.title;
+    await _loadKinds(source);
+    if (!mounted) return;
+    final stillThere =
+        keepKindTitle != null && _visibleKinds.any((k) => k.title == keepKindTitle);
+    if (_view == 'books') {
+      if (stillThere) {
+        // 对齐 legado：refreshExplore 后重取当前分类书籍
+        setState(() {
+          _exploreBooks.clear();
+          _isLoading = true;
+          _hasMore = true;
+          _currentPage = 1;
+          _error = null;
+        });
+        await _loadExploreBooks();
+      } else {
+        setState(() => _view = _visibleKinds.length <= 1 && _controlKinds.isEmpty
+            ? 'source'
+            : 'category');
+      }
+    }
+  }
+
+  TextEditingController _controllerFor(ExploreKind kind) {
+    return _textControllers.putIfAbsent(kind.title, () {
+      final initial = _infoMap[kind.title] ?? kind.defaultValue ?? '';
+      return TextEditingController(text: initial);
+    });
+  }
+
+  /// 控件区（text/button/toggle/select），分类页与书籍页顶部共用
+  Widget _buildControls() {
+    final controls = _controlKinds;
+    if (controls.isEmpty) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
+      child: Wrap(
+        spacing: 8,
+        runSpacing: 8,
+        crossAxisAlignment: WrapCrossAlignment.center,
+        children: controls.map(_buildControl).toList(),
+      ),
+    );
+  }
+
+  Widget _buildControl(ExploreKind kind) {
+    switch (kind.type) {
+      case ExploreKind.typeText:
+        final controller = _controllerFor(kind);
+        final flex = (kind.style?['layout_flexBasisPercent'] as num?)?.toDouble();
+        final field = SizedBox(
+          width: flex != null && flex > 0 && flex < 1
+              ? MediaQuery.of(context).size.width * flex
+              : 220,
+          child: TextField(
+            controller: controller,
+            style: const TextStyle(fontSize: 13),
+            decoration: InputDecoration(
+              labelText: kind.title,
+              isDense: true,
+              contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+            ),
+            onChanged: (v) {
+              _infoMap[kind.title] = v;
+              final source = _currentSource;
+              if (source == null) return;
+              _engine.putExploreInfoMap(source, kind.title, v);
+              final action = kind.action;
+              if (action == null || action.trim().isEmpty) return;
+              // 对齐 legado：内容变化后 600ms 防抖触发动作
+              _textDebounce[kind.title]?.cancel();
+              _textDebounce[kind.title] = Timer(
+                  const Duration(milliseconds: 600), () => _runKindAction(kind));
+            },
+          ),
+        );
+        return field;
+      case ExploreKind.typeButton:
+        final label = _viewNames[kind.title] ?? kind.title;
+        return FilledButton.tonal(
+          onPressed: () => _runKindAction(kind),
+          child: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis),
+        );
+      case ExploreKind.typeToggle:
+        final chars = (kind.chars ?? const <String>[]);
+        if (chars.isEmpty) return const SizedBox.shrink();
+        final current = _infoMap[kind.title] ?? kind.defaultValue ?? chars.first;
+        final label = _viewNames[kind.title] ?? kind.title;
+        return OutlinedButton(
+          onPressed: () {
+            final idx = chars.indexOf(current);
+            final next = chars[(idx + 1) % chars.length];
+            setState(() => _infoMap[kind.title] = next);
+            final source = _currentSource;
+            if (source != null) {
+              _engine.putExploreInfoMap(source, kind.title, next);
+            }
+            _runKindAction(kind);
+          },
+          child: Text('$current $label', maxLines: 1, overflow: TextOverflow.ellipsis),
+        );
+      case ExploreKind.typeSelect:
+        final chars = kind.chars ?? const <String>[];
+        if (chars.isEmpty) return const SizedBox.shrink();
+        var current = _infoMap[kind.title] ?? kind.defaultValue ?? chars.first;
+        if (!chars.contains(current)) current = chars.first;
+        return SizedBox(
+          width: 150,
+          child: DropdownButtonFormField<String>(
+            value: current,
+            isDense: true,
+            decoration: InputDecoration(
+              labelText: kind.title,
+              isDense: true,
+              contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+            ),
+            items: chars
+                .map((c) => DropdownMenuItem<String>(value: c, child: Text(c, style: const TextStyle(fontSize: 13))))
+                .toList(),
+            onChanged: (v) {
+              if (v == null) return;
+              setState(() => _infoMap[kind.title] = v);
+              final source = _currentSource;
+              if (source != null) {
+                _engine.putExploreInfoMap(source, kind.title, v);
+              }
+              _runKindAction(kind);
+            },
+          ),
+        );
+      default:
+        return const SizedBox.shrink();
     }
   }
 
@@ -297,6 +541,8 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
       _showSourceSwitcher();
       return;
     }
+    // 仅 url 型分类参与显隐（控件型为功能控件）
+    final urlKinds = _kinds.where((k) => k.isUrl).toList();
     showDialog(
       context: context,
       builder: (dialogContext) => StatefulBuilder(
@@ -315,20 +561,20 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
               Flexible(
                 child: ListView(
                   shrinkWrap: true,
-                  children: _categories.map((c) {
-                    final hidden = _hiddenCategories.contains(c.name);
+                  children: urlKinds.map((c) {
+                    final hidden = _hiddenCategories.contains(c.title);
                     return CheckboxListTile(
                       dense: true,
                       value: !hidden,
-                      title: Text(c.name),
+                      title: Text(c.title),
                       onChanged: (v) {
                         setDialogState(() {
                           if (v == true) {
-                            _hiddenCategories.remove(c.name);
+                            _hiddenCategories.remove(c.title);
                           } else {
                             // 至少保留一个可见分类
-                            if (_categories.length - _hiddenCategories.length <= 1) return;
-                            _hiddenCategories.add(c.name);
+                            if (urlKinds.length - _hiddenCategories.length <= 1) return;
+                            _hiddenCategories.add(c.title);
                           }
                         });
                       },
@@ -431,14 +677,14 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
   }
 
   void _backToCategory() {
-    final visibleCount = _categories.where((c) => !_hiddenCategories.contains(c.name)).length;
-    setState(() => _view = visibleCount > 1 ? 'category' : 'source');
+    final visibleCount = _visibleKinds.length;
+    setState(() => _view = visibleCount > 1 || _controlKinds.isNotEmpty ? 'category' : 'source');
   }
 
   String _titleText() {
     if (_view == 'source') return '发现';
     final name = _currentSource?.bookSourceName ?? '发现';
-    if (_view == 'books' && _currentCategory != null) return '${_currentCategory!.name} · $name';
+    if (_view == 'books' && _currentKind != null) return '${_currentKind!.title} · $name';
     return name;
   }
 
@@ -501,7 +747,7 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
   }
 
   Widget _buildCategoryList() {
-    final visible = _categories.where((c) => !_hiddenCategories.contains(c.name)).toList();
+    final visible = _visibleKinds;
     return RefreshIndicator(
       onRefresh: _refresh,
       child: ListView(
@@ -514,15 +760,41 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
               TextButton.icon(onPressed: _showCategoryManager, icon: const Icon(Icons.tune, size: 16), label: const Text('管理')),
             ]),
           ),
-          ...visible.map((c) => Card(
-            margin: const EdgeInsets.symmetric(vertical: 4),
-            child: ListTile(
-              leading: const Icon(Icons.folder_outlined),
-              title: Text(c.name),
-              trailing: const Icon(Icons.chevron_right),
-              onTap: () => _openCategory(c),
+          if (_loadingKinds)
+            const Padding(
+              padding: EdgeInsets.all(24),
+              child: Center(child: CircularProgressIndicator()),
             ),
-          )),
+          // 控件区（text/button/toggle/select，对齐 legado flexbox 控件）
+          _buildControls(),
+          ...visible.map((c) {
+            if (c.isError) {
+              return Card(
+                margin: const EdgeInsets.symmetric(vertical: 4),
+                child: ListTile(
+                  leading: Icon(Icons.error_outline, color: Theme.of(context).colorScheme.error),
+                  title: Text(c.title, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 13)),
+                  subtitle: const Text('点击查看错误详情', style: TextStyle(fontSize: 11)),
+                  onTap: () => _showKindError(c),
+                ),
+              );
+            }
+            final empty = (c.url ?? '').trim().isEmpty;
+            return Card(
+              margin: const EdgeInsets.symmetric(vertical: 4),
+              child: ListTile(
+                leading: Icon(empty ? Icons.check_box_outline_blank : Icons.folder_outlined),
+                title: Text(c.title),
+                trailing: empty ? null : const Icon(Icons.chevron_right),
+                onTap: () => _openKind(c),
+              ),
+            );
+          }),
+          if (!_loadingKinds && visible.isEmpty && _controlKinds.isEmpty)
+            const Padding(
+              padding: EdgeInsets.only(top: 48),
+              child: Center(child: Text('没有可用的发现分类')),
+            ),
         ],
       ),
     );
@@ -549,6 +821,7 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
     final books = _visibleBooks;
     return Column(
       children: [
+        _buildControls(),
         Padding(
           padding: const EdgeInsets.all(12),
           child: TextField(

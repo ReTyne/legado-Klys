@@ -46,6 +46,7 @@ class LegadoBridgeJs {
     loginInfo: "",
     loginHeader: "",
     kv: {},
+    infoMap: {},
     cookies: {},
     logs: [],
     toasts: [],
@@ -56,6 +57,14 @@ class LegadoBridgeJs {
         "Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36"
   };
   globalThis.__state = __state;
+
+  // 发现页控件状态（对齐 legado InfoMap：支持 infoMap['k'] 读写，写空串归一化）。
+  // 运行时每次求值会用带持久化数据的 Proxy 覆盖此默认值，此处保证
+  // jsLib / loginUrl 等加载期脚本引用 infoMap 不会 ReferenceError。
+  globalThis.infoMap = new Proxy(__state.infoMap, {
+    get: function (t, k) { return t[k]; },
+    set: function (t, k, v) { t[k] = (v === null || v === undefined) ? "" : String(v); return true; }
+  });
 
   // 简繁转换（常用字对照表，覆盖高频小说用字）
   var __T2S = {"萬": "万", "與": "与", "醜": "丑", "專": "专", "業": "业", "叢": "丛", "東": "东", "絲": "丝", "丟": "丢", "兩": "两", "嚴": "严", "喪": "丧", "個": "个", "臨": "临", "為": "为", "麗": "丽", "舉": "举", "麼": "么", "義": "义", "烏": "乌", "樂": "乐", "喬": "乔", "習": "习", "鄉": "乡", "書": "书", "買": "买", "亂": "乱", "爭": "争", "於": "于", "虧": "亏", "雲": "云", "亞": "亚", "產": "产", "畝": "亩", "親": "亲", "褻": "亵", "億": "亿", "僅": "仅", "從": "从", "侖": "仑", "倉": "仓", "儀": "仪", "們": "们", "價": "价", "眾": "众", "優": "优", "會": "会", "傭": "佣", "偽": "伪", "傳": "传", "傷": "伤", "傾": "倾", "僱": "雇", "儉": "俭", "兒": "儿", "兌": "兑", "黨": "党", "蘭": "兰", "關": "关", "興": "兴", "養": "养", "獸": "兽", "內": "内", "冊": "册", "寫": "写", "軍": "军", "農": "农", "凍": "冻", "衝": "冲", "決": "决", "況": "况", "淨": "净", "淒": "凄", "準": "准", "湊": "凑", "減": "减", "幾": "几", "鳳": "凤", "憑": "凭", "凱": "凯", "擊": "击", "鑿": "凿", "劃": "划", "劉": "刘", "則": "则", "剛": "刚", "創": "创", "刪": "删", "別": "别", "剎": "刹", "劊": "刽", "劑": "剂", "勸": "劝", "辦": "办", "務": "务", "動": "动", "勵": "励", "勁": "劲", "勞": "劳", "勢": "势", "勛": "勋", "匭": "匦", "區": "区", "醫": "医", "華": "华", "協": "协", "單": "单", "賣": "卖", "盧": "卢", "衛": "卫", "卻": "却", "廠": "厂", "廳": "厅", "厲": "厉", "壓": "压", "厭": "厌", "厙": "厍", "縣": "县", "隻": "只", "雙": "双", "發": "发", "臺": "台", "葉": "叶", "號": "号", "嘆": "叹", "嗎": "吗", "噸": "吨", "聽": "听", "啟": "启", "吳": "吴", "吶": "呐", "嚇": "吓", "呂": "吕", "嘍": "喽", "囑": "嘱", "場": "场", "塊": "块", "壇": "坛", "壘": "垒", "墾": "垦", "壯": "壮", "聲": "声", "壺": "壶", "處": "处", "復": "复", "頭": "头", "奮": "奋", "獎": "奖", "婦": "妇", "媽": "妈", "嫵": "妩", "嬰": "婴", "孫": "孙", "學": "学", "寧": "宁", "寶": "宝", "實": "实", "寵": "宠", "審": "审", "寬": "宽", "尋": "寻", "對": "对", "導": "导", "壽": "寿", "將": "将", "爾": "尔", "塵": "尘", "層": "层", "屬": "属", "嶼": "屿", "歲": "岁", "豈": "岂", "嶄": "崭", "嶺": "岭", "島": "岛", "峽": "峡", "嶸": "嵘", "師": "师", "帶": "带", "幫": "帮", "幹": "干", "莊": "庄", "廣": "广", "廬": "庐", "廢": "废", "張": "张", "彈": "弹", "強": "强", "歸": "归", "當": "当", "錄": "录", "彫": "雕", "徹": "彻", "誌": "志", "懷": "怀", "態": "态", "恆": "恒", "憶": "忆", "懼": "惧", "憂": "忧", "懸": "悬", "惡": "恶", "惱": "恼", "愴": "怆", "懲": "惩", "慣": "惯", "懟": "怼", "應": "应", "懶": "懒", "戰": "战", "戲": "戏", "戶": "户", "紮": "扎", "拋": "抛", "掃": "扫", "揚": "扬", "換": "换", "揮": "挥", "損": "损", "搖": "摇", "搶": "抢", "擁": "拥", "擇": "择", "擠": "挤", "擺": "摆", "擴": "扩", "攏": "拢", "攔": "拦", "攙": "搀", "攣": "挛", "攪": "搅", "攬": "揽", "敵": "敌", "敘": "叙", "數": "数", "斂": "敛", "斃": "毙", "斷": "断", "無": "无", "舊": "旧", "時": "时", "晉": "晋", "曉": "晓", "曠": "旷", "條": "条", "棟": "栋", "楊": "杨", "極": "极", "構": "构", "樹": "树", "權": "权", "樣": "样", "欄": "栏", "橫": "横", "檔": "档", "檢": "检", "檜": "桧", "檻": "槛", "櫃": "柜", "欖": "榄", "歡": "欢", "歐": "欧", "歷": "历", "殘": "残", "殺": "杀", "殼": "壳", "毀": "毁", "毆": "殴", "畢": "毕", "氣": "气", "漢": "汉", "湯": "汤", "沒": "没", "沖": "冲", "洶": "汹", "澤": "泽", "潔": "洁", "灑": "洒", "淺": "浅", "漿": "浆", "濁": "浊", "濃": "浓", "濕": "湿", "濟": "济", "濤": "涛", "瀉": "泻", "瀏": "浏", "灣": "湾", "瀰": "弥", "瀟": "潇", "災": "灾", "烴": "烃", "熱": "热", "煥": "焕", "煩": "烦", "燒": "烧", "燙": "烫", "燦": "灿", "營": "营", "燭": "烛", "爺": "爷", "牆": "墙", "犧": "牺", "狀": "状", "猶": "犹", "獨": "独", "獅": "狮", "獄": "狱", "獻": "献", "現": "现", "瑣": "琐", "環": "环", "畫": "画", "異": "异", "療": "疗", "癌": "癌", "癢": "痒", "皺": "皱", "盜": "盗", "盡": "尽", "監": "监", "盤": "盘", "睜": "睁", "睏": "困", "瞇": "眯", "瞧": "瞧", "瞭": "了", "礙": "碍", "礦": "矿", "礫": "砾", "礎": "础", "禮": "礼", "禱": "祷", "種": "种", "積": "积", "稱": "称", "穩": "稳", "窮": "穷", "窺": "窥", "竄": "窜", "窩": "窝", "竅": "窍", "競": "竞", "筆": "笔", "筍": "笋", "築": "筑", "簡": "简", "簽": "签", "簍": "篓", "糧": "粮", "級": "级", "紀": "纪", "約": "约", "紅": "红", "紆": "纡", "純": "纯", "納": "纳", "紙": "纸", "紛": "纷", "紋": "纹", "紡": "纺", "索": "索", "細": "细", "紳": "绅", "紹": "绍", "終": "终", "給": "给", "統": "统", "絹": "绢", "綁": "绑", "綢": "绸", "維": "维", "緒": "绪", "續": "续", "纓": "缨", "縮": "缩", "縱": "纵", "縷": "缕", "總": "总", "績": "绩", "繁": "繁", "織": "织", "繞": "绕", "繪": "绘", "繩": "绳", "繼": "继", "纜": "缆", "罰": "罚", "罷": "罢", "羅": "罗", "職": "职", "聯": "联", "聳": "耸", "聰": "聪", "肅": "肃", "腸": "肠", "膚": "肤", "膽": "胆", "脅": "胁", "脈": "脉", "腳": "脚", "臉": "脸", "脫": "脱", "脹": "胀", "腎": "肾", "腫": "肿", "臘": "腊", "臚": "胪", "舖": "铺", "艱": "艰", "艙": "舱", "藝": "艺", "藥": "药", "蘇": "苏", "蟲": "虫", "蠶": "蚕", "裡": "里", "補": "补", "裝": "装", "褲": "裤", "複": "复", "覆": "覆", "見": "见", "觀": "观", "覓": "觅", "規": "规", "視": "视", "覺": "觉", "覽": "览", "觸": "触", "訂": "订", "訃": "讣", "計": "计", "訊": "讯", "討": "讨", "訓": "训", "訪": "访", "設": "设", "許": "许", "訴": "诉", "診": "诊", "詞": "词", "譯": "译", "試": "试", "詩": "诗", "誠": "诚", "話": "话", "該": "该", "詳": "详", "認": "认", "說": "说", "請": "请", "諸": "诸", "讀": "读", "課": "课", "誰": "谁", "調": "调", "談": "谈", "謀": "谋", "謂": "谓", "講": "讲", "謝": "谢", "證": "证", "識": "识", "議": "议", "護": "护", "變": "变", "讓": "让", "豐": "丰", "貝": "贝", "責": "责", "貨": "货", "費": "费", "資": "资", "賓": "宾", "賢": "贤", "賬": "账", "質": "质", "賴": "赖", "賺": "赚", "賽": "赛", "贊": "赞", "贈": "赠", "贏": "赢", "趙": "赵", "趨": "趋", "車": "车", "軌": "轨", "軟": "软", "轉": "转", "輪": "轮", "轟": "轰", "辭": "辞", "辯": "辩", "連": "连", "進": "进", "遠": "远", "違": "违", "遲": "迟", "遷": "迁", "選": "选", "遺": "遗", "邁": "迈", "還": "还", "邊": "边", "邏": "逻", "鄰": "邻", "鄭": "郑", "釋": "释", "裏": "里", "針": "针", "釘": "钉", "釣": "钓", "鈣": "钙", "鈉": "钠", "鋼": "钢", "鍾": "钟", "鍵": "键", "鎖": "锁", "鎮": "镇", "鏡": "镜", "鏈": "链", "錯": "错", "鍛": "锻", "鍍": "镀", "鑑": "鉴", "長": "长", "門": "门", "閉": "闭", "問": "问", "開": "开", "間": "间", "閒": "闲", "闖": "闯", "隊": "队", "陽": "阳", "陰": "阴", "陣": "阵", "階": "阶", "際": "际", "陸": "陆", "陳": "陈", "險": "险", "隨": "随", "隱": "隐", "雖": "虽", "雜": "杂", "難": "难", "電": "电", "霧": "雾", "靈": "灵", "靜": "静", "頁": "页", "頂": "顶", "項": "项", "順": "顺", "須": "须", "預": "预", "頑": "顽", "領": "领", "頻": "频", "顆": "颗", "題": "题", "額": "额", "顏": "颜", "顧": "顾", "風": "风", "飛": "飞", "餘": "余", "館": "馆", "馬": "马", "驅": "驱", "驗": "验", "驚": "惊", "體": "体", "髮": "发", "鬥": "斗", "魚": "鱼", "鮮": "鲜", "鯽": "鲫", "鳥": "鸟", "鴨": "鸭", "鴻": "鸿", "鵝": "鹅", "鶴": "鹤", "麥": "麦", "黃": "黄", "點": "点", "齊": "齐", "齡": "龄", "龍": "龙", "龜": "龟"};
@@ -586,7 +595,7 @@ class LegadoBridgeJs {
     return { url: url, opt: opt };
   }
 
-  function __doXhr(url, opt, respType) {
+  function __doXhr(url, opt, respType, cookieUrl) {
     url = __resolve(url);
     var method = opt.method || "GET";
     var headers = {};
@@ -614,7 +623,9 @@ class LegadoBridgeJs {
     x.send(bodyStr);
     var sc = null;
     try { sc = x.getResponseHeader("X-Set-Cookie"); } catch (e) {}
-    if (sc) __ingestSetCookie(url, sc);
+    // 内部协议（legado://browser 等）需把 Cookie 归属到真实页面 URL，
+    // 由调用方通过 cookieUrl 传入，否则回落请求 URL 自身。
+    if (sc) __ingestSetCookie(cookieUrl || url, sc);
     if (__state.hosts.indexOf(__hostOf(url)) < 0) __state.hosts.push(__hostOf(url));
     if (x.status === 0) throw new Error("网络请求失败: " + url);
     if (x.status >= 400) throw new Error("HTTP " + x.status + " " + url);
@@ -626,30 +637,90 @@ class LegadoBridgeJs {
     return Object.keys(headers).some(function (k) { return k.toLowerCase() === lk; });
   }
 
+  // ---- StrResponse（对齐 legado io.legado.app.help.http.StrResponse）----
+  // body()/url()/code()/message()/headers() 均为方法；toString() 返回正文。
+  function __strResponse(url, body, code, message, headers) {
+    var b = (body === null || body === undefined) ? "" : String(body);
+    return {
+      body: function () { return b; },
+      url: function () { return String(url == null ? "" : url); },
+      code: function () { return code || 200; },
+      message: function () { return message || "OK"; },
+      headers: function () { return headers || {}; },
+      raw: function () { return b; },
+      isSuccessful: function () { return (code || 200) < 400; },
+      toString: function () { return b; }
+    };
+  }
+
+  // ---- Jsoup Connection.Response（对齐 legado java.get/post/head/put/delete）----
+  // body()/statusCode()/statusMessage()/headers()/cookies()/url()/charset()
+  function __jsoupResponse(url, text, code, message, headers, cookies) {
+    var b = (text === null || text === undefined) ? "" : String(text);
+    var hdrs = headers || {};
+    return {
+      body: function () { return b; },
+      bodyAsBytes: function () { return new TextEncoder().encode(b); },
+      statusCode: function () { return code || 200; },
+      statusMessage: function () { return message || "OK"; },
+      headers: function () { return hdrs; },
+      header: function (name) {
+        var keys = Object.keys(hdrs);
+        for (var i = 0; i < keys.length; i++) {
+          if (keys[i].toLowerCase() === String(name).toLowerCase()) return hdrs[keys[i]];
+        }
+        return null;
+      },
+      cookie: function (name) { return (cookies || {})[name] || null; },
+      cookies: function () { return cookies || {}; },
+      url: function () { return String(url == null ? "" : url); },
+      charset: function () { return "utf-8"; },
+      parse: function () { return b; },
+      execute: function () { return this; },
+      toString: function () { return b; }
+    };
+  }
+
+  // java.connect(url)：legado 语义为「立即执行并返回 StrResponse」；
+  // 同时兼容书源里常见的建造者写法（.method().body().execute()）：
+  //   * 直接调用 .body()/.url()/.code() → 触发一次 GET 并返回 StrResponse 字段
+  //   * 先配置再 .execute() → 按配置发起请求，返回 StrResponse
   function __connect(url) {
+    var state = { url: __resolve(url), method: "GET", headers: {}, body: null };
+    var executed = null;
+    function run() {
+      if (executed) return executed;
+      var text = __doXhr(state.url, { method: state.method, headers: state.headers, body: state.body });
+      executed = __strResponse(state.url, text, 200, "OK", state.headers);
+      return executed;
+    }
+    function invalidate() { executed = null; }
     var conn = {
-      __url: url, __method: "GET", __headers: {}, __body: null,
-      headers: function (h) { if (h) Object.keys(h).forEach((k) => { this.__headers[k] = h[k]; }); return this; },
-      addHeader: function (k, v) { this.__headers[k] = v; return this; },
-      header: function (k, v) { this.__headers[k] = v; return this; },
-      method: function (m) { this.__method = String(m).toUpperCase(); return this; },
-      setBody: function (b) { this.__body = b; return this; },
-      body: function (b) { this.__body = b; this.__method = "POST"; return this; },
-      get: function () { this.__method = "GET"; return this; },
-      post: function (b) { this.__method = "POST"; if (b !== undefined) this.__body = b; return this; },
+      __url: state.url, __method: "GET", __headers: {}, __body: null,
+      headers: function (h) {
+        if (h) Object.keys(h).forEach((k) => { state.headers[k] = h[k]; });
+        invalidate(); return this;
+      },
+      addHeader: function (k, v) { state.headers[k] = v; invalidate(); return this; },
+      header: function (k, v) { state.headers[k] = v; invalidate(); return this; },
+      method: function (m) { state.method = String(m).toUpperCase(); invalidate(); return this; },
+      setBody: function (b) { state.body = b; invalidate(); return this; },
+      // body() 无参 = StrResponse.body() 取值；带参 = 建造者设置请求体
+      body: function (b) {
+        if (b === undefined) return run().body();
+        state.body = b; state.method = "POST"; invalidate(); return this;
+      },
+      get: function () { state.method = "GET"; invalidate(); return this; },
+      post: function (b) { state.method = "POST"; if (b !== undefined) state.body = b; invalidate(); return this; },
       followRedirects: function () { return this; },
       timeout: function () { return this; },
-      execute: function () {
-        var text = __doXhr(this.__url, { method: this.__method, headers: this.__headers, body: this.__body });
-        return {
-          code: 200,
-          url: this.__url,
-          body: function () { return { string: function () { return text; }, bytes: function () { return new TextEncoder().encode(text); }, text: function () { return text; } }; },
-          headers: {},
-          header: function () { return null; },
-          raw: text
-        };
-      }
+      execute: function () { return run(); },
+      url: function () { return run().url(); },
+      code: function () { return run().code(); },
+      message: function () { return run().message(); },
+      headers_map: null,
+      raw: function () { return run().raw(); },
+      toString: function () { return run().toString(); }
     };
     return conn;
   }
@@ -683,6 +754,21 @@ class LegadoBridgeJs {
   globalThis.__resolveVerification = function (id, code) {
     if (__pendings[id]) { var r = __pendings[id]; delete __pendings[id]; r(String(code == null ? "" : code)); }
   };
+
+  // 阻塞式浏览器交互（对齐 legado startBrowserAwait/showBrowser/reLoginView）：
+  // 经「同步 XHR → legado://browser」让原生打开可见 WebView，用户关闭时
+  // 回传页面 HTML，包装为 StrResponse 返回（书源写法 .body() 取正文）。
+  function __openBrowserAwaitHtml(url, title) {
+    var resolved = __resolve(url);
+    if (!resolved) return __strResponse("", "", 200, "OK", {});
+    try {
+      var html = __doXhr("legado://browser?url=" + encodeURIComponent(resolved) +
+        "&title=" + encodeURIComponent(title || "登录"), { method: "GET" }, null, resolved);
+      return __strResponse(resolved, html, 200, "OK", {});
+    } catch (e) {
+      return __strResponse(resolved, "", 200, "OK", {});
+    }
+  }
 
   // ============================ MD5（纯 JS 实现）============================
   function __md5(str) {
@@ -950,20 +1036,31 @@ class LegadoBridgeJs {
       var p = __parseUrlOptions(url, options);
       return __doXhr(p.url, p.opt);
     },
+    // get/post/head/put/delete：legado 返回 Jsoup Connection.Response
+    // （.body() 为 String、.statusCode()/.headers()/.cookies()/.url()）
     get: function (url, headers) {
-      return __doXhr(url, { method: "GET", headers: headers || {} });
+      // legado 语义：java.get(url, headers) 为网络方法（Jsoup Connection.Response）。
+      // 旧书源兼容：单参调用且形态不像 URL 时按缓存读（如 java.get("book_id")）。
+      var looksUrl = typeof url === "string" && (
+        /^https?:\/\//i.test(url) || /^legado:\/\//.test(url) ||
+        url.indexOf('/') >= 0 || url.indexOf('.') >= 0 || url.indexOf(':') >= 0);
+      if (arguments.length <= 1 && !looksUrl) {
+        var v = cache.get(url);
+        return v === null ? "" : v;
+      }
+      return __jsoupResponse(url, __doXhr(url, { method: "GET", headers: headers || {} }));
     },
     post: function (url, body, headers) {
-      return __doXhr(url, { method: "POST", body: body, headers: headers || {} });
+      return __jsoupResponse(url, __doXhr(url, { method: "POST", body: body, headers: headers || {} }));
     },
     put: function (url, body, headers) {
-      return __doXhr(url, { method: "PUT", body: body, headers: headers || {} });
+      return __jsoupResponse(url, __doXhr(url, { method: "PUT", body: body, headers: headers || {} }));
     },
     delete: function (url, headers) {
-      return __doXhr(url, { method: "DELETE", headers: headers || {} });
+      return __jsoupResponse(url, __doXhr(url, { method: "DELETE", headers: headers || {} }));
     },
     head: function (url, headers) {
-      return __doXhr(url, { method: "HEAD", headers: headers || {} });
+      return __jsoupResponse(url, __doXhr(url, { method: "HEAD", headers: headers || {} }));
     },
     connect: function (url) { return __connect(url); },
     newResponse: function (url) { return __connect(url); },
@@ -1035,22 +1132,48 @@ class LegadoBridgeJs {
 
     // 跨阶段键值
     put: function (k, v) { cache.put(k, v); return true; },
-    get: function (k) { var v = cache.get(k); return v === null ? "" : v; },
-    contains: function (k) { return Object.prototype.hasOwnProperty.call(__state.kv, k); },
     remove: function (k) { cache.remove(k); },
+    contains: function (k) { return Object.prototype.hasOwnProperty.call(__state.kv, k); },
 
     // 书源相关
     refreshExplore: function () { return true; },
     refreshBookToc: function () { return true; },
     refreshBook: function () { return true; },
 
+    // 导航类（对齐 legado RssJsExtensions/SourceLoginJsExtensions，经内部协议转交原生）
+    // searchBook(key, searchScope)：scope 形如「分组::书源Url」或书源 Url，
+    // 用于限定在该书源内搜索（发现页搜索框即此用法）。
+    searchBook: function (key, searchScope) {
+      try {
+        __doXhr("legado://searchbook?key=" + encodeURIComponent(key == null ? "" : key) +
+          "&scope=" + encodeURIComponent(searchScope == null ? "" : searchScope), { method: "GET" });
+      } catch (e) {}
+      return true;
+    },
+    // open(name, url, title, origin)：login → 打开当前书源登录页；
+    // url/webView → 内置浏览器打开；其余名称忽略。
+    open: function (name, url, title, origin) {
+      try {
+        var n = String(name == null ? "" : name).toLowerCase();
+        if (n === "login") {
+          __doXhr("legado://openlogin?origin=" + encodeURIComponent(origin == null ? "" : origin), { method: "GET" });
+        } else if (n === "url" || n === "webview" || n === "browser") {
+          if (url) __openBrowser(url, title || "", false);
+        }
+      } catch (e) {}
+      return true;
+    },
+
     // 浏览器登录
-    startBrowser: function (url, title) { return __openBrowser(url, title, false); },
-    startBrowserDp: function (url, title) { return __openBrowser(url, title, false); },
-    startBrowserAwait: function (url, title) { return __openBrowser(url, title, true); },
-    showBrowser: function (url, title) { return __openBrowser(url, title, true); },
-    showReadingBrowser: function (url, title) { return __openBrowser(url, title, true); },
-    reLoginView: function (url) { return __openBrowser(url || "", "登录", true); },
+    // 非阻塞式：legado 语义为 Unit（发现页 url 型分类常写
+    // `{{java.startBrowser(url,title)}}`，求值须为空串而非 Promise）。
+    startBrowser: function (url, title) { __openBrowser(url, title, false); },
+    startBrowserDp: function (url, title) { __openBrowser(url, title, false); },
+    // 阻塞式：用户关闭网页后返回带 body() 的 StrResponse（正文为关闭时页面 HTML）
+    startBrowserAwait: function (url, title) { return __openBrowserAwaitHtml(url, title); },
+    showBrowser: function (url, title) { return __openBrowserAwaitHtml(url, title); },
+    showReadingBrowser: function (url, title) { return __openBrowserAwaitHtml(url, title); },
+    reLoginView: function (url) { return __openBrowserAwaitHtml(url || "", "登录"); },
 
     // 环境探测：轻阅读不可用，需抛错让书源走标准分支
     qread: function () { throw new Error("qread 不可用"); },
@@ -1123,7 +1246,7 @@ class LegadoBridgeJs {
       try { return __doXhr("legado://share", { method: "POST", body: String(text == null ? "" : text) }); }
       catch (e) { return false; }
     },
-    openUrl: function (url) { __openBrowser(url, "", false); return true; },
+    openUrl: function (url) { __openBrowser(url, "", false); },
 
     // 编码 / 文本处理
     encodeURI: function (str, enc) {
@@ -1195,12 +1318,16 @@ class LegadoBridgeJs {
     getSource: function () { return source; },
     getTag: function () { return __state.meta.name; },
 
-    // 并发请求（占位，串行执行）
+    // 并发请求（legado 返回 Array<StrResponse>，元素 .body() 取正文）
     ajaxAll: function (urlList) {
       var results = [];
       for (var i = 0; i < urlList.length; i++) {
-        try { results.push({ url: urlList[i], body: __doXhr(urlList[i], { method: "GET" }) }); }
-        catch (e) { results.push({ url: urlList[i], body: String(e) }); }
+        var u = urlList[i];
+        try {
+          results.push(__strResponse(u, __doXhr(u, { method: "GET" })));
+        } catch (e) {
+          results.push(__strResponse(u, String(e), 502, "Error", {}));
+        }
       }
       return results;
     },
@@ -1526,6 +1653,7 @@ class LegadoBridgeJs {
       loginInfo: __state.loginInfo,
       loginHeader: __state.loginHeader,
       kv: __state.kv,
+      infoMap: __state.infoMap,
       cookies: __state.cookies,
       logs: __state.logs,
       toasts: __state.toasts,

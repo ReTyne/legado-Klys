@@ -357,6 +357,15 @@ class BookSource implements JsSource {
   String? get searchLastChapter => ruleSearch?['lastChapter'];
   String? get searchWordCount => ruleSearch?['wordCount'];
 
+  /// 调试页推荐关键词：legado 定义在 `ruleSearch.checkKeyWord`
+  /// （BookSourceDebugActivity 直接读该字段），部分源写在顶层，
+  /// 这里统一回退取值（不校验用户输入，仅作调试默认值）。
+  String? get effectiveCheckKeyWord {
+    final fromRule = ruleSearch?['checkKeyWord']?.toString();
+    if (fromRule != null && fromRule.trim().isNotEmpty) return fromRule;
+    return checkKeyWord;
+  }
+
   // 目录规则快捷访问
   String? get tocChapterList => ruleToc?['chapterList'];
   String? get tocChapterName => ruleToc?['chapterName'];

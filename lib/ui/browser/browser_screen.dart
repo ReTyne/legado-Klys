@@ -20,7 +20,13 @@ import 'package:legado_md3/help/storage/import_book_service.dart';
 class BrowserScreen extends StatefulWidget {
   final String url;
   final String? title;
-  const BrowserScreen({super.key, required this.url, this.title});
+
+  /// 网页交互登录模式（java.startBrowserAwait 等阻塞式调用）：
+  /// 退出时回传当前页面 HTML 给调用方（书源据此取验证后的正文/结构），
+  /// 同时由调用方回收 Cookie。
+  final bool captureHtmlOnExit;
+  const BrowserScreen(
+      {super.key, required this.url, this.title, this.captureHtmlOnExit = false});
 
   @override
   State<BrowserScreen> createState() => _BrowserScreenState();
@@ -92,10 +98,39 @@ class _BrowserScreenState extends State<BrowserScreen> {
 
   _BrowserTab get _tab => _tabs[_activeTab];
 
+  /// 交互登录模式退出：取当前页面 HTML 后带值 pop（供书源 JS 使用）。
+  Future<void> _exitCapture() async {
+    var html = '';
+    try {
+      final raw = await _controller?.getHtml();
+      if (raw != null && raw.isNotEmpty) html = raw;
+    } catch (_) {}
+    if (html.isEmpty) {
+      try {
+        final raw = await _controller
+            ?.evaluateJavascript(source: 'document.documentElement.outerHTML');
+        if (raw != null && raw.isNotEmpty) {
+          var s = raw.trim();
+          if (s.startsWith('"') && s.endsWith('"')) {
+            s = jsonDecode(s).toString();
+          }
+          html = s;
+        }
+      } catch (_) {}
+    }
+    if (!mounted) return;
+    Navigator.pop(context, html);
+  }
+
   // ---------- 基础导航 ----------
   static String _normalize(String url) {
     final target = url.trim();
-    if (target.startsWith('http://') || target.startsWith('https://')) {
+    // http(s) 与 data:/javascript: 等带 scheme 的地址原样加载
+    // （书源 java.startBrowserAwait(base64, ...) 会传 data:text/html 地址）
+    if (target.startsWith('http://') ||
+        target.startsWith('https://') ||
+        target.startsWith('data:') ||
+        target.startsWith('javascript:')) {
       return target;
     }
     return 'https://$target';
@@ -476,14 +511,29 @@ class _BrowserScreenState extends State<BrowserScreen> {
   // ---------- UI ----------
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    final capture = widget.captureHtmlOnExit;
+    final scaffold = Scaffold(
       appBar: AppBar(
+        automaticallyImplyLeading: !capture,
+        leading: capture
+            ? IconButton(
+                icon: const Icon(Icons.arrow_back),
+                tooltip: '完成并返回',
+                onPressed: _exitCapture,
+              )
+            : null,
         title: Text(
           _tab.title.isEmpty ? '浏览器' : _tab.title,
           maxLines: 1,
           overflow: TextOverflow.ellipsis,
         ),
         actions: [
+          if (capture)
+            FilledButton.icon(
+              onPressed: _exitCapture,
+              icon: const Icon(Icons.check, size: 18),
+              label: const Text('完成'),
+            ),
           IconButton(
               icon: const Icon(Icons.refresh), onPressed: _reload),
           IconButton(
@@ -644,6 +694,15 @@ class _BrowserScreenState extends State<BrowserScreen> {
         ),
         if (_sniffResult != null && !_sniffResult!.isEmpty) _buildSniffBar(),
       ]),
+    );
+    if (!capture) return scaffold;
+    // 交互登录模式：拦截系统返回，统一走 _exitCapture 回传 HTML
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) _exitCapture();
+      },
+      child: scaffold,
     );
   }
 

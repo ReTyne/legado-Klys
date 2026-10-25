@@ -18,10 +18,14 @@ import 'package:legado_md3/help/source/source_engine.dart';
 import 'package:legado_md3/ui/book/detail/book_detail_screen.dart';
 
 class SearchScreen extends StatefulWidget {
-  /// 初始搜索范围（单书源 `名称::url`，来自书源编辑页的「保存并搜索」等入口）
+  /// 外部入口预设关键词（书源 JS java.searchBook(key) 跳转时携带，进入即搜索）
+  final String? initialKeyword;
+
+  /// 初始搜索范围（单书源 `名称::url`，来自书源编辑页的「保存并搜索」等入口；
+  /// 对齐 legado searchScope：「分组::书源Url」或书源 Url，命中后仅搜索该书源）
   final String? searchScope;
 
-  const SearchScreen({super.key, this.searchScope});
+  const SearchScreen({super.key, this.initialKeyword, this.searchScope});
 
   @override
   State<SearchScreen> createState() => _SearchScreenState();
@@ -56,6 +60,16 @@ class _SearchScreenState extends State<SearchScreen> {
     super.initState();
     _loadHistory();
     _loadScope();
+    _initFromIntent();
+  }
+
+  /// 处理外部入口（java.searchBook）：范围已由 [_scope] 构造时解析
+  /// （`名称::url` 单书源形态），此处仅负责携带关键词进入即搜索。
+  Future<void> _initFromIntent() async {
+    final kw = widget.initialKeyword?.trim() ?? '';
+    if (kw.isNotEmpty) {
+      await _search(kw);
+    }
   }
 
   Future<void> _loadScope() async {

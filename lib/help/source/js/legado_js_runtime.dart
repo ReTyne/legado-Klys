@@ -21,6 +21,8 @@ import 'package:legado_md3/data/model/rss_source.dart';
 import 'package:legado_md3/help/http/cookie_manager.dart';
 import 'package:legado_md3/help/source/archive_native.dart';
 import 'package:legado_md3/help/source/ttf_parser.dart';
+import 'package:legado_md3/ui/book/search/search_screen.dart';
+import 'package:legado_md3/ui/book/source/source_login_screen.dart';
 import 'package:legado_md3/ui/book/source/verification_code_screen.dart';
 import 'package:legado_md3/ui/browser/browser_screen.dart';
 import 'legado_bridge_js.dart';
@@ -42,6 +44,7 @@ class JsEvalRequest {
     this.book,
     this.chapter,
     this.rssArticle,
+    this.infoMap,
     this.isUrlRule = false,
   });
 
@@ -54,6 +57,7 @@ class JsEvalRequest {
   final Map<String, dynamic>? book;
   final Map<String, dynamic>? chapter;
   final Map<String, dynamic>? rssArticle; // RSS 当前文章（rssArticle）
+  final Map<String, String>? infoMap; // 发现页控件状态（对齐 legado InfoMap）
   final bool isUrlRule;
 }
 
@@ -200,7 +204,6 @@ class MiniLegadoJs implements LegadoJs {
   @override
   Future<void> dispose() async {}
 }
-
 /// 无头 WebView 真 JS 运行时。
 class WebViewLegadoJs implements LegadoJs {
   WebViewLegadoJs(this.source);
@@ -410,6 +413,9 @@ class WebViewLegadoJs implements LegadoJs {
     if (url.startsWith('legado://share')) return await _handleShare(request);
     if (url.startsWith('legado://file')) return await _handleFile(uri);
     if (url.startsWith('legado://webview')) return await _handleWebView(uri);
+    if (url.startsWith('legado://browser')) return await _handleBrowser(uri);
+    if (url.startsWith('legado://searchbook')) return await _handleSearchBook(uri);
+    if (url.startsWith('legado://openlogin')) return await _handleOpenLogin(uri);
 
     if (!url.startsWith('http')) return null;
     final method = (request.method ?? 'GET').toUpperCase();
@@ -805,6 +811,92 @@ class WebViewLegadoJs implements LegadoJs {
     });
   }
 
+  /// legado://browser 协议：阻塞式网页交互（java.startBrowserAwait/showBrowser/
+  /// reLoginView）。同步 XHR 会挂起书源 JS 直到用户关闭浏览器，与 legado 的
+  /// 「等待验证结果」语义一致。关闭时回传页面 HTML 作为响应体，同时回收 Cookie。
+  Future<iw.WebResourceResponse> _handleBrowser(iw.WebUri uri) async {
+    final url = uri.queryParameters['url'] ?? '';
+    final title = uri.queryParameters['title'] ?? '登录';
+    if (url.isEmpty) return _textResponse('', 400);
+    final nav = appNavigatorKey.currentState;
+    if (nav == null) return _textResponse('', 502);
+    try {
+      final html = await nav.push<String>(MaterialPageRoute(
+          builder: (_) =>
+              BrowserScreen(url: url, title: title, captureHtmlOnExit: true)));
+      // 回收登录 Cookie（与 _onBrowserRequest 同逻辑）
+      var cookieStr = '';
+      try {
+        final cookies =
+            await iw.CookieManager.instance().getCookies(url: iw.WebUri(url));
+        cookieStr = cookies
+            .where((ck) => ck.name.isNotEmpty && ck.value != null)
+            .map((ck) => '${ck.name}=${ck.value}')
+            .join('; ');
+      } catch (_) {}
+      if (cookieStr.isNotEmpty) {
+        CookieManager().saveFromResponse(url, [cookieStr]);
+        final host = Uri.tryParse(url)?.host ?? '';
+        if (_persistCookie && host.isNotEmpty) {
+          await _db.saveCookie(host, cookieStr);
+        }
+      }
+      final headers = _corsHeaders();
+      if (cookieStr.isNotEmpty) {
+        headers['X-Set-Cookie'] = cookieStr;
+      }
+      return iw.WebResourceResponse(
+        statusCode: 200,
+        reasonPhrase: 'OK',
+        contentType: 'text/plain; charset=utf-8',
+        contentEncoding: 'utf-8',
+        data: Uint8List.fromList(utf8.encode(html ?? '')),
+        headers: headers,
+      );
+    } catch (e) {
+      return _textResponse('', 502);
+    }
+  }
+
+  /// legado://searchbook 协议：java.searchBook(key, scope)。
+  /// scope 形如「分组::书源Url」或书源 Url，命中则限定该书源搜索。
+  Future<iw.WebResourceResponse> _handleSearchBook(iw.WebUri uri) async {
+    final key = uri.queryParameters['key'] ?? '';
+    final scope = uri.queryParameters['scope'] ?? '';
+    if (key.trim().isNotEmpty) {
+      final nav = appNavigatorKey.currentState;
+      if (nav != null) {
+        nav.push(MaterialPageRoute(
+            builder: (_) => SearchScreen(
+                  initialKeyword: key,
+                  searchScope: scope.isEmpty ? null : scope,
+                )));
+      }
+    }
+    return _textResponse('true', 200);
+  }
+
+  /// legado://openlogin 协议：java.open('login', ...)。
+  /// origin 非空时按书源地址解析目标源，否则打开当前书源登录页。
+  Future<iw.WebResourceResponse> _handleOpenLogin(iw.WebUri uri) async {
+    final origin = uri.queryParameters['origin'] ?? '';
+    final nav = appNavigatorKey.currentState;
+    if (nav != null) {
+      try {
+        BookSource? target;
+        if (origin.trim().isNotEmpty) {
+          target = await _db.getSource(origin);
+        }
+        target ??= source is BookSource ? source as BookSource : null;
+        if (target != null) {
+          nav.push(MaterialPageRoute(
+              builder: (_) => SourceLoginScreen(source: target!)));
+        }
+      } catch (_) {}
+    }
+    return _textResponse('true', 200);
+  }
+
   iw.WebResourceResponse _textResponse(String msg, int code) => iw.WebResourceResponse(
         statusCode: code,
         reasonPhrase: 'Error',
@@ -847,6 +939,8 @@ class WebViewLegadoJs implements LegadoJs {
     final loginHeader = prefs.getString('loginHeader_$srcUrl') ?? '';
     final kvJson = prefs.getString('jsKv_$srcUrl') ?? '{}';
     final cookies = await _collectCookies(req);
+    // 发现页 infoMap（对齐 legado InfoMap：按书源持久化，控件状态跨会话保留）
+    final infoMap = req.infoMap ?? await _loadInfoMap(srcUrl);
 
     var script = req.script;
     if (req.isUrlRule) {
@@ -869,6 +963,7 @@ class WebViewLegadoJs implements LegadoJs {
       'loginHeaderArg': loginHeader,
       'cookiesArg': cookies,
       'kvArg': _tryJson(kvJson) ?? <String, dynamic>{},
+      'infoMapArg': infoMap,
       'deviceIdArg': _deviceId!,
       'scriptArg': script,
       'sourceGroupArg': req.source.jsGroup,
@@ -911,6 +1006,11 @@ class WebViewLegadoJs implements LegadoJs {
       globalThis.book = __wrapBook(bookArg);
       globalThis.chapter = __wrapChapter(chapterArg);
       globalThis.rssArticle = rssArticleArg;
+      // 发现页控件状态（对齐 legado infoMap 绑定，支持 infoMap['k'] 读写）
+      globalThis.infoMap = new Proxy(infoMapArg || {}, {
+        get: function (t, k) { return t[k]; },
+        set: function (t, k, v) { t[k] = (v === null || v === undefined) ? "" : String(v); __state.infoMap[k] = t[k]; return true; }
+      });
       __state.variable = variableArg || '';
       __state.loginInfo = loginInfoArg || '';
       __state.loginHeader = loginHeaderArg || '';
@@ -984,6 +1084,16 @@ class WebViewLegadoJs implements LegadoJs {
       await prefs.setString('jsKv_$srcUrl', jsonEncode(kv));
     }
     await _persistBridgeCookies(env['cookies']);
+    // 发现页控件状态回写（对齐 legado InfoMap：按书源持久化，跨会话保留）。
+    // 桥只上报本次被写过的键，需与入参 infoMap 合并后再落盘，避免覆盖丢失。
+    final envInfoMap = env['infoMap'];
+    if (envInfoMap is Map && envInfoMap.isNotEmpty) {
+      final merged = Map<String, String>.from(infoMap);
+      envInfoMap.forEach((k, v) {
+        merged[k.toString()] = v?.toString() ?? '';
+      });
+      await _saveInfoMap(srcUrl, merged);
+    }
 
     return JsEvalResult(
       value: env['ret'],
@@ -1049,6 +1159,34 @@ class WebViewLegadoJs implements LegadoJs {
         }
       } catch (_) {}
     }
+  }
+
+  /// 读取发现页 infoMap（对齐 legado InfoMap：按书源持久化，控件状态跨会话保留）。
+  /// key 与 source_engine 的 _infoMapKey 保持一致。
+  Future<Map<String, String>> _loadInfoMap(String srcUrl) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getString('exploreInfoMap_$srcUrl');
+      if (raw == null || raw.isEmpty) return {};
+      final json = _tryJson(raw);
+      if (json is Map) {
+        return json
+            .map((k, v) => MapEntry(k.toString(), v?.toString() ?? ''));
+      }
+    } catch (_) {}
+    return {};
+  }
+
+  /// 持久化发现页 infoMap。
+  Future<void> _saveInfoMap(String srcUrl, Map<String, String> map) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      if (map.isEmpty) {
+        await prefs.remove('exploreInfoMap_$srcUrl');
+      } else {
+        await prefs.setString('exploreInfoMap_$srcUrl', jsonEncode(map));
+      }
+    } catch (_) {}
   }
 
   @override

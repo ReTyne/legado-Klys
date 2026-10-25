@@ -46,9 +46,31 @@ class _SourceDebugScreenState extends State<SourceDebugScreen>
   @override
   void initState() {
     super.initState();
-    _keywordController.text = '我的';
+    // 默认关键词：优先书源 ruleSearch.checkKeyWord（对齐 legado 调试页推荐词，
+    // 见 BookSourceDebugActivity「binding.textMy.text = ruleSearch?.checkKeyWord」），
+    // 回退顶层 checkKeyWord，最后回退「我的」。
+    _keywordController.text = _defaultKeyword(widget.source);
     _tabController = TabController(length: 3, vsync: this);
     _initSteps();
+  }
+
+  /// 调试页默认关键词（对齐 legado getCheckKeyword：忽略明显不是关键词的值）
+  static String _defaultKeyword(BookSource source) {
+    for (final candidate in [
+      source.effectiveCheckKeyWord,
+    ]) {
+      final v = candidate?.trim() ?? '';
+      if (v.isEmpty) continue;
+      final lower = v.toLowerCase();
+      if (lower.contains('http') ||
+          v.contains('::') ||
+          v.contains('++') ||
+          v.contains('--')) {
+        continue;
+      }
+      return v;
+    }
+    return '我的';
   }
 
   /// 初始化分步调试的 5 个步骤

@@ -3,6 +3,7 @@ import 'package:dio/dio.dart';
 import 'package:html/parser.dart' as html_parser;
 import 'package:html/dom.dart' as dom;
 import 'package:legado_md3/data/model/book_source.dart';
+import 'package:legado_md3/data/model/explore_kind.dart';
 import 'package:legado_md3/data/model/search_book.dart';
 import 'package:legado_md3/data/model/book_chapter.dart';
 import 'package:legado_md3/data/model/book.dart';
@@ -217,7 +218,11 @@ class BookSourceEngine {
 
   // ==================== URL / 请求 ====================
 
-  /// 处理URL中的{{key}}/{{page}}/{{(page-1)*n}}模板
+  /// 处理URL中的{{key}}/{{page}}/{{(page-1)*n}}模板（同步快速路径）。
+  ///
+  /// 任意 `{{js表达式}}` 需要走 [_processUrlTemplateAsync]（对齐 legado
+  /// `AnalyzeUrl.replaceKeyPageJs()`：所有 `{{}}` 块按内联 JS 求值，
+  /// 绑定 key/page/baseUrl/source/result/book）。
   String _processUrlTemplate(String url, String keyword, int page) {
     var result = url.replaceAll('{{key}}', Uri.encodeComponent(keyword));
     // 未编码的 key（部分站点需要原始中文）
@@ -228,6 +233,60 @@ class BookSourceEngine {
     // searchKey 别名
     result = result.replaceAll('{{searchKey}}', Uri.encodeComponent(keyword));
     return result;
+  }
+
+  /// URL 模板处理（异步完整版）：
+  /// 1. 先做固定占位符替换（{{key}}/{{page}}/{{(page-1)*n}}/{{searchKey}}）；
+  /// 2. 剩余的 `{{...}}` 按内联 JS 表达式求值（对齐 legado replaceKeyPageJs，
+  ///    求值作用域内含 key/page/baseUrl/source/book）。
+  ///
+  /// 典型场景：书山聚合 searchUrl 的 `<js>` 产出
+  /// `.../search?key={{encodeURIComponent(key)}}&page={{page}}`，
+  /// 若不求值内联 JS，请求字面量 URL 必然失败。
+  Future<String> _processUrlTemplateAsync(
+    BookSource source,
+    String url,
+    String keyword,
+    int page, {
+    String? baseUrl,
+    Map<String, dynamic>? book,
+  }) async {
+    if (!url.contains('{{') || !url.contains('}}')) {
+      return _processUrlTemplate(url, keyword, page);
+    }
+    // 固定占位符优先（字面量替换，避免走 JS 运行时）
+    var result = _processUrlTemplate(url, keyword, page);
+    if (!result.contains('{{') || !result.contains('}}')) return result;
+    final sb = StringBuffer();
+    var last = 0;
+    for (final m in _mustache.allMatches(result).toList()) {
+      sb.write(result.substring(last, m.start));
+      final expr = m.group(1)!.trim();
+      String? v;
+      if (expr.isNotEmpty) {
+        v = await _evalJs(source, expr,
+            key: keyword, page: page, baseUrl: baseUrl, book: book, isUrlRule: true);
+      }
+      sb.write(v ?? '');
+      last = m.end;
+    }
+    sb.write(result.substring(last));
+    final out = sb.toString();
+    // legado replaceKeyPageJs 的页数规则：<a,b,c> 按 page 取值（越界取末项）
+    return _applyAnglePageRule(out, page);
+  }
+
+  /// legado 页数规则 `<1,2,3>`：第 page 页取第 page-1 项，越界取最后一项。
+  /// 仅处理含逗号的多值列表，避免误伤 URL/JSON 选项里的普通 `<` 字符。
+  String _applyAnglePageRule(String url, int page) {
+    if (!url.contains('<') || !url.contains('>')) return url;
+    return url.replaceAllMapped(RegExp(r'<(.*?)>'), (m) {
+      final body = m.group(1)!;
+      if (!body.contains(',')) return m.group(0)!;
+      final parts = body.split(',');
+      final idx = page < parts.length ? page - 1 : parts.length - 1;
+      return parts[idx].trim();
+    });
   }
 
 
@@ -555,6 +614,7 @@ class BookSourceEngine {
     String? baseUrl,
     Map<String, dynamic>? book,
     Map<String, dynamic>? chapter,
+    Map<String, String>? infoMap,
     bool isUrlRule = false,
   }) async {
     final s = script.trim();
@@ -570,6 +630,7 @@ class BookSourceEngine {
         baseUrl: baseUrl,
         book: book,
         chapter: chapter,
+        infoMap: infoMap,
         isUrlRule: isUrlRule,
       ));
       for (final l in out.logs) {
@@ -655,6 +716,7 @@ class BookSourceEngine {
   }
 
   /// 解析 URL 规则：`<js>` 脚本求值（可返回 `url,{options}`），否则走模板替换。
+  /// 模板中的 `{{js}}` 内联表达式在脚本求值后继续处理（legado replaceKeyPageJs）。
   Future<String> _resolveUrlRule(
     BookSource source,
     String urlTpl, {
@@ -677,9 +739,11 @@ class BookSourceEngine {
       }
       v = v.trim();
       if (tail.isNotEmpty) v = '$v$tail';
-      return _processUrlTemplate(v, key ?? '', page ?? 1);
+      return _processUrlTemplateAsync(source, v, key ?? '', page ?? 1,
+          baseUrl: baseUrl, book: book);
     }
-    return _processUrlTemplate(urlTpl, key ?? '', page ?? 1);
+    return _processUrlTemplateAsync(source, t, key ?? '', page ?? 1,
+        baseUrl: baseUrl, book: book);
   }
 
   /// 异步解析 JSON 节点字段（支持 `<js>`、`{{$.x}}`、`$.x`、## 后处理、尾部 @js）。
@@ -731,14 +795,37 @@ class BookSourceEngine {
     if (value == null) return null;
     value = _pipeline.applyFieldOps(value, parts.ops);
     if (parts.tailJs != null && value.isNotEmpty) {
-      value = await _evalJs(source, parts.tailJs!,
-          result: value, baseUrl: baseUrl, key: key, page: page, book: book, chapter: chapter) ??
+      value = await _evalTailJs(source, parts.tailJs!, item, value,
+              baseUrl: baseUrl, key: key, page: page, book: book, chapter: chapter) ??
           value;
     }
     return value.isEmpty ? null : value;
   }
 
-  /// JS 产出的字符串可能是 JSON / HTML，按剩余选择器再取一次。
+  /// 求值字段规则的尾部 JS（`@js:` / `</js>` 尾巴）。
+  ///
+  /// 对齐 legado `SourceRule.makeUpRule`：JS 段内的 `{{}}` 内联块也会先按
+  /// isRule 消歧求值（`$.x` 走规则、其余走 JS）再执行脚本。
+  /// [node] 为当前解析节点（JSON Map 或 HTML 字符串），用于 `{{}}` 求值作用域。
+  Future<String?> _evalTailJs(
+    BookSource source,
+    String tailJs,
+    dynamic node,
+    String value, {
+    String? baseUrl,
+    String? key,
+    int? page,
+    Map<String, dynamic>? book,
+    Map<String, dynamic>? chapter,
+  }) async {
+    var js = tailJs;
+    if (js.contains('{{')) {
+      js = await _mustacheAsync(source, js, node,
+          baseUrl: baseUrl, key: key, page: page, book: book, chapter: chapter);
+    }
+    return _evalJs(source, js,
+        result: value, baseUrl: baseUrl, key: key, page: page, book: book, chapter: chapter);
+  }
   String? _fieldFromMixed(String jsOutput, String suffix) {
     final s = suffix.trim();
     if (s.isEmpty) return jsOutput;
@@ -751,6 +838,11 @@ class BookSourceEngine {
   }
 
   /// 处理 `{{...}}` mustache（内部为 JS，`$`/result 绑定为当前 JSON 节点）。
+  ///
+  /// 对齐 legado `SourceRule.makeUpRule` 的 isRule 消歧：内联块以
+  /// `@` / `$.` / `$[` / `//` 开头时按「规则」对当前节点求值
+  /// （JSONPath / XPath / 规则链），否则按 JS 执行（`$`/result 绑定为当前节点）。
+  /// 典型场景：`https://host/book/{{$.book_id}}` 混合字面量与 JSONPath。
   Future<String> _mustacheAsync(
     BookSource source,
     String template,
@@ -766,14 +858,44 @@ class BookSourceEngine {
     for (final m in _mustache.allMatches(template).toList()) {
       sb.write(template.substring(last, m.start));
       final expr = m.group(1)!.trim();
-      final v = await _evalJs(source, expr,
-          result: node, baseUrl: baseUrl, key: key, page: page, book: book, chapter: chapter);
+      String? v;
+      if (_isInnerRuleExpr(expr)) {
+        if (node is String) {
+          // 原始文本节点（HTML/JSON 字符串）：XPath/CSS/正则/JSONPath 统一解析
+          if (expr.startsWith('@js:')) {
+            v = await _evalJs(source, expr.substring(4), result: node,
+                baseUrl: baseUrl, key: key, page: page);
+          } else if (expr.startsWith('<js>')) {
+            final end = expr.lastIndexOf('</js>');
+            final script = end > 4 ? expr.substring(4, end) : expr.substring(4);
+            v = await _evalJs(source, script, result: node,
+                baseUrl: baseUrl, key: key, page: page);
+          } else {
+            v = _pipeline.extractStringFromRaw(node, expr);
+          }
+        } else {
+          // JSON 节点：走字段规则链（JSONPath / @js: / <js>，真运行时求值）
+          v = await _fieldFromJsonAsync(source, node, expr,
+              baseUrl: baseUrl, key: key, page: page, book: book, chapter: chapter);
+        }
+      } else {
+        v = await _evalJs(source, expr,
+            result: node, baseUrl: baseUrl, key: key, page: page, book: book, chapter: chapter);
+      }
       sb.write(v ?? '');
       last = m.end;
     }
     sb.write(template.substring(last));
     return sb.toString();
   }
+
+  /// 对齐 legado `SourceRule.isRule`：`{{}}` 内联块以这些前缀开头时
+  /// 视为「规则」而非 JS（js 首个字符不可能是 @，除非是装饰器）。
+  static bool _isInnerRuleExpr(String expr) =>
+      expr.startsWith('@') ||
+      expr.startsWith(r'$.') ||
+      expr.startsWith(r'$[') ||
+      expr.startsWith('//');
 
   /// 异步解析 HTML 元素字段（含 JS 时用 outerHtml 作为 result）。
   Future<String?> _fieldFromElementAsync(
@@ -814,8 +936,8 @@ class BookSourceEngine {
       if (value == null) return null;
       value = _pipeline.applyFieldOps(value, parts.ops);
       if (parts.tailJs != null && value.isNotEmpty) {
-        value = await _evalJs(source, parts.tailJs!,
-            result: value, baseUrl: baseUrl, key: key, page: page, book: book, chapter: chapter) ??
+        value = await _evalTailJs(source, parts.tailJs!, el.outerHtml, value,
+                baseUrl: baseUrl, key: key, page: page, book: book, chapter: chapter) ??
             value;
       }
       return value.isEmpty ? null : value;
@@ -977,21 +1099,16 @@ class BookSourceEngine {
   // ==================== 公开 API ====================
 
   /// 搜索书籍
+  ///
+  /// 注意：`ruleSearch.checkKeyWord` **不是**输入校验正则——legado 仅把它作为
+  /// 调试页的推荐关键词（BookSourceDebugActivity 把它填进搜索框）。
+  /// 早期版本误将其当作关键字过滤器，导致配置了 checkKeyWord 的书源
+  /// （如书山聚合/大灰狼）搜任何关键词都返回空，搜索与调试同时失效。
   Future<List<SearchBook>> search(BookSource source, String keyword, {int page = 1}) async {
     _applySourceFlags(source);
     await _beginSourceSession(source);
     if (source.searchUrl == null || source.searchUrl!.isEmpty) return [];
     if (source.ruleSearch == null) return [];
-    // checkKeyWord：校验关键字是否符合源要求（正则）
-    final checkKw = source.checkKeyWord?.trim() ?? '';
-    if (checkKw.isNotEmpty) {
-      try {
-        if (!RegExp(checkKw).hasMatch(keyword)) {
-          _log('关键字不符合校验规则: $checkKw');
-          return [];
-        }
-      } catch (_) {}
-    }
     try {
       final url = await _resolveUrlRule(source, source.searchUrl!,
           key: keyword, page: page, baseUrl: source.bookSourceUrl);
@@ -1162,6 +1279,145 @@ class BookSourceEngine {
       }
     }
     return kinds;
+  }
+
+  // ==================== 发现分类（动态 exploreUrl，对齐 legado exploreKinds） ====================
+
+  /// 发现页 infoMap 持久化 key（对齐 legado InfoMap：按书源维度持久化）
+  static String _infoMapKey(String sourceUrl) => 'exploreInfoMap_$sourceUrl';
+
+  /// 读取发现页 infoMap（控件输入/选择状态，跨会话持久化）
+  Future<Map<String, String>> loadExploreInfoMap(BookSource source) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getString(_infoMapKey(source.bookSourceUrl));
+      if (raw == null || raw.isEmpty) return {};
+      final m = jsonDecode(raw);
+      if (m is Map) return m.map((k, v) => MapEntry(k.toString(), v?.toString() ?? ''));
+    } catch (_) {}
+    return {};
+  }
+
+  Future<void> _saveExploreInfoMap(BookSource source, Map<String, String> map) async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_infoMapKey(source.bookSourceUrl), jsonEncode(map));
+    } catch (_) {}
+  }
+
+  /// 求值发现分类（对齐 legado `BookSource.exploreKinds()`）：
+  /// * exploreUrl 以 `<js>`/`@js:` 开头 → 求值（注入 infoMap），
+  ///   结果为 JSON 数组 → 解析为 [ExploreKind]；
+  /// * 否则按旧文本格式（`(&&|\n)+` 分割、`::` 切分）解析；
+  /// * 求值失败 → 返回 ERROR 占位分类（UI 点击可见错误详情）。
+  Future<List<ExploreKind>> exploreKinds(BookSource source) async {
+    _applySourceFlags(source);
+    await _beginSourceSession(source);
+    final exploreUrl = source.exploreUrl?.trim() ?? '';
+    if (exploreUrl.isEmpty) return [];
+    String ruleStr;
+    if (exploreUrl.toLowerCase().startsWith('<js>')) {
+      final end = exploreUrl.lastIndexOf('</js>');
+      final script = end > 4 ? exploreUrl.substring(4, end) : exploreUrl.substring(4);
+      final infoMap = await loadExploreInfoMap(source);
+      try {
+        final v = await _evalJs(source, script, baseUrl: source.bookSourceUrl, infoMap: infoMap);
+        if (v == null || v.trim().isEmpty) {
+          return const [ExploreKind(title: 'ERROR:发现地址求值为空', url: '')];
+        }
+        ruleStr = v.trim();
+      } catch (e) {
+        return [ExploreKind(title: 'ERROR:$e', url: '')];
+      }
+    } else if (exploreUrl.toLowerCase().startsWith('@js:')) {
+      final infoMap = await loadExploreInfoMap(source);
+      try {
+        final v = await _evalJs(source, exploreUrl.substring(4),
+            baseUrl: source.bookSourceUrl, infoMap: infoMap);
+        if (v == null || v.trim().isEmpty) {
+          return const [ExploreKind(title: 'ERROR:发现地址求值为空', url: '')];
+        }
+        ruleStr = v.trim();
+      } catch (e) {
+        return [ExploreKind(title: 'ERROR:$e', url: '')];
+      }
+    } else {
+      ruleStr = exploreUrl;
+    }
+
+    if (_isJsonArray(ruleStr)) {
+      try {
+        final list = jsonDecode(ruleStr) as List;
+        return list
+            .whereType<Map>()
+            .map((e) => ExploreKind.fromJson(Map<String, dynamic>.from(e)))
+            .toList();
+      } catch (e) {
+        return [ExploreKind(title: 'ERROR:发现地址 JSON 解析失败: $e', url: '')];
+      }
+    }
+    // 旧文本格式：按 (&&|\n)+ 分割，:: 切分标题与地址（::: 优先，与 getExploreKinds 一致）
+    final kinds = <ExploreKind>[];
+    for (final part in ruleStr.split(RegExp(r'(&&|\n)+'))) {
+      final s = part.trim();
+      if (s.isEmpty) continue;
+      final idx3 = s.indexOf(':::');
+      if (idx3 >= 0) {
+        kinds.add(ExploreKind(title: s.substring(0, idx3).trim(), url: s.substring(idx3 + 3).trim()));
+        continue;
+      }
+      final idx2 = s.indexOf('::');
+      if (idx2 >= 0) {
+        kinds.add(ExploreKind(title: s.substring(0, idx2).trim(), url: s.substring(idx2 + 2).trim()));
+      } else {
+        kinds.add(ExploreKind(title: s, url: s));
+      }
+    }
+    return kinds;
+  }
+
+  bool _isJsonArray(String s) {
+    final t = s.trim();
+    return t.startsWith('[') && t.endsWith(']');
+  }
+
+  /// 求值发现页控件动作（对齐 legado ExploreAdapter.evalButtonClick）：
+  /// 以 infoMap 为绑定执行 action JS，并把 infoMap 的修改持久化。
+  /// 返回是否发生刷新请求（legado 由动作内部调用 java.refreshExplore()，
+  /// 这里统一由调用方在动作结束后刷新分类）。
+  Future<void> evalExploreAction(BookSource source, String action) async {
+    if (action.trim().isEmpty) return;
+    _applySourceFlags(source);
+    await _beginSourceSession(source);
+    final infoMap = await loadExploreInfoMap(source);
+    await _evalJs(source, action, baseUrl: source.bookSourceUrl, infoMap: infoMap);
+    // infoMap 可能被动作修改（infoMap['x']=v），持久化
+    final merged = await loadExploreInfoMap(source);
+    await _saveExploreInfoMap(source, merged);
+  }
+
+  /// 写入发现页 infoMap 值（text 控件输入时由 UI 调用，对齐 legado
+  /// `infoMap[title] = reContent` 后触发 action）。
+  Future<void> putExploreInfoMap(BookSource source, String key, String value) async {
+    final map = await loadExploreInfoMap(source);
+    map[key] = value;
+    await _saveExploreInfoMap(source, map);
+  }
+
+  /// 求值发现页控件的 viewName（对齐 legado ExploreAdapter.evalUiJs）：
+  /// 按钮/开关文字可动态化，失败时回退原 title。
+  Future<String> evalExploreViewName(BookSource source, String js) async {
+    if (js.trim().isEmpty) return '';
+    _applySourceFlags(source);
+    await _beginSourceSession(source);
+    try {
+      final infoMap = await loadExploreInfoMap(source);
+      final v = await _evalJs(source, js,
+          baseUrl: source.bookSourceUrl, infoMap: infoMap);
+      return v ?? '';
+    } catch (_) {
+      return '';
+    }
   }
 
   /// 检查登录状态（执行 loginCheckJs，返回非空表示已登录）
