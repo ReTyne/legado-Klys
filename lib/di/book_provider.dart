@@ -229,7 +229,15 @@ class ReadProvider extends ChangeNotifier {
   double _brightness = 1.0; // 默认不压暗屏幕
   bool _loaded = false;
 
+  /// 全局唯一实例（由 main.dart 的 ChangeNotifierProvider 创建时登记），
+  /// 供 Web 服务等非 UI 上下文在持久化阅读配置后刷新阅读器内存态。
+  static ReadProvider? liveInstance;
+
   static const String _prefKey = 'read_config_json';
+
+  ReadProvider() {
+    liveInstance = this;
+  }
 
   ReadConfig get config => _config;
   bool get showMenu => _showMenu;
@@ -247,6 +255,20 @@ class ReadProvider extends ChangeNotifier {
       _brightness = prefs.getDouble('read_brightness') ?? 1.0;
     } catch (_) {}
     _loaded = true;
+    notifyListeners();
+  }
+
+  /// 重新从 [SharedPreferences] 加载阅读配置并刷新内存态。
+  /// 供 Web 服务保存阅读配置等外部写入后调用，使阅读器即时生效。
+  Future<void> reloadReadConfig() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final json = prefs.getString(_prefKey);
+      if (json != null && json.isNotEmpty) {
+        _config = ReadConfig.fromJsonString(json);
+      }
+      _brightness = prefs.getDouble('read_brightness') ?? 1.0;
+    } catch (_) {}
     notifyListeners();
   }
 

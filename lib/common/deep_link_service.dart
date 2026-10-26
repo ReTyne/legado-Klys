@@ -9,10 +9,14 @@ import 'package:legado_md3/common/app_navigator.dart';
 import 'package:legado_md3/data/local/app_database.dart';
 import 'package:legado_md3/data/model/book_source.dart';
 import 'package:legado_md3/data/model/db_models.dart';
+import 'package:legado_md3/data/model/read_config.dart';
 import 'package:legado_md3/data/model/replace_rule.dart';
 import 'package:legado_md3/data/model/rss_source.dart';
 import 'package:legado_md3/data/model/txt_toc_rule.dart';
+import 'package:legado_md3/di/book_provider.dart';
 import 'package:legado_md3/help/config/theme_share.dart';
+import 'package:legado_md3/help/source/source_engine.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 /// legado:// 深链 / 系统分享文本 的统一接收与导入服务（对齐 legado-E 的 OnLineImportActivity）。
 ///
@@ -134,9 +138,12 @@ class DeepLinkService {
         case 'theme':
           await _importByType('theme', src.trim());
         case 'readConfig':
-          _tip('暂不支持在线导入阅读配置包（readConfig）');
+          // 在线导入阅读配置包（E: OnLineImport readConfig）：URL 拉取 JSON 后写入
+          // 权威键 read_config_json 并刷新阅读器内存态。
+          await _importByType('readConfig', src.trim());
         case 'addToBookshelf':
-          _tip('暂不支持通过链接添加书籍到书架');
+          // 按书籍地址链接直接加入书架（E: addToBookshelf）：匹配书源 → 抓取详情 → 入库
+          await _addToBookshelf(src.trim());
         default:
           // 未知路径：按内容推断类型（E 的 determineType）
           await _determineType(src.trim());
@@ -213,6 +220,9 @@ class DeepLinkService {
       case 'theme':
         final theme = await ThemeShare.importThemeJson(jsonEncode(data));
         _tip(theme != null ? '已导入主题「${theme.name}」' : '主题解析失败');
+      case 'readConfig':
+        final ok = await _importReadConfig(data);
+        _tip(ok ? '已导入阅读配置' : '阅读配置格式不正确');
       case 'replaceRule':
         final n = await _importReplaceRules(data);
         _tip(n > 0 ? '成功导入 $n 条替换规则' : '未识别到有效替换规则');
@@ -337,6 +347,9 @@ class DeepLinkService {
       case 'http_tts':
       case 'tts':
         return 'httpTts';
+      case 'readconfig':
+      case 'read_config':
+        return 'readConfig';
       default:
         return null;
     }
@@ -430,6 +443,64 @@ class DeepLinkService {
       } catch (_) {}
     }
     return count;
+  }
+
+  /// 导入阅读配置（E: OnLineImport readConfig）：解析 JSON（单对象或数组）为
+  /// [ReadConfig]，写入权威键 `read_config_json` 并刷新阅读器内存态。
+  /// 返回是否成功。
+  Future<bool> _importReadConfig(dynamic data) async {
+    if (data == null) return false;
+    final map = data is List && data.isNotEmpty ? data.first : data;
+    if (map is! Map) return false;
+    try {
+      final cfg = ReadConfig.fromJson(Map<String, dynamic>.from(map));
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('read_config_json', jsonEncode(cfg.toJson()));
+      await ReadProvider.liveInstance?.reloadReadConfig();
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// 按书籍地址链接加入书架（E: addToBookshelf）：依据 `bookUrlPattern` 匹配可用
+  /// 书源 → 抓取书籍详情 → 入库并提示结果。
+  Future<void> _addToBookshelf(String url) async {
+    if (url.isEmpty || (!url.startsWith('http://') && !url.startsWith('https://'))) {
+      _tip('书籍链接无效');
+      return;
+    }
+    final engine = BookSourceEngine();
+    BookSource? matched;
+    try {
+      final sources = await _db.getAllSources(enabled: true);
+      for (final s in sources) {
+        try {
+          if (engine.matchBookUrl(s, url)) {
+            matched = s;
+            break;
+          }
+        } catch (_) {}
+      }
+    } catch (_) {}
+    if (matched == null) {
+      _tip('没有书源匹配该链接');
+      return;
+    }
+    try {
+      final book = await engine.getBookInfo(matched, url).timeout(const Duration(seconds: 30));
+      if (book == null || book.name.isEmpty) {
+        _tip('获取书籍信息失败');
+        return;
+      }
+      book.bookUrl = url;
+      book.origin = matched.bookSourceUrl;
+      book.originName = matched.bookSourceName;
+      await BookProvider().addBook(book);
+      _tip('已加入书架：《${book.name}》');
+    } catch (e) {
+      _tip('添加失败：$e');
+    }
   }
 
   /// GET 拉取文本（兼容无 Content-Encoding 头的 gzip 响应）

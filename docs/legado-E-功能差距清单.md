@@ -99,3 +99,24 @@ Klys 对 legado-E 的**主体功能已完成度约 85%**：书源规则引擎（
 12. **C1/D5**：旧版数据迁移探针 + PDF/压缩包导入 + 文件关联
 
 > D1–D4（Content Provider / 快捷方式 / 磁贴 / 悬浮窗）为 Android 平台深度集成项，需在 Flutter 侧编写原生 Kotlin 模块。本次在报告与代码注释中保留设计说明，并按 D5 的文件关联方式补齐可 Flutter 化的部分。
+
+---
+
+## 六、本次对照复核与补全（续）
+
+通读 `lib/` 全部 146 个 Dart 文件并就 legado-E 权威源码逐项复核后，确认前序会话已落地清单中绝大多数项（书源检测 A1、搜索范围 A2、验证码 A3、旧版迁移 C1、直链上传 C2、网络监听 B4、视频配置 B2、长章节拆分 B1、JS 桥 downloadFile/get7zStringContent/getRarStringContent A8/A9、书签导出 A6 等均已实现并接线）。本批次聚焦**残留的未完工细节**与**突兀的功能位置**，并完成以下修复（均含回归测试，analyze 0 error/0 warning，全量 141 测试通过）：
+
+### 已修复的 Bug / 未完工项
+
+| # | 问题 | 位置 | 修复 |
+|---|------|------|------|
+| B-1 | **Web 服务「配置阅读」写入错键**：`_getReadConfig`/`_saveReadConfig` 用 `web_read_config`，而阅读器从权威键 `read_config_json` 读取 → 网页端保存的阅读配置阅读器根本不加载 | `help/web/web_service.dart` | 统一改为 `read_config_json`；保存后调用 `ReadProvider.liveInstance?.reloadReadConfig()` 即时刷新阅读器内存态（新增 `ReadProvider.reloadReadConfig()` 与静态 `liveInstance`） |
+| B-2 | **深链 `readConfig` 为"暂不支持"桩** | `common/deep_link_service.dart` | 补全：解析 URL/JSON → `ReadConfig.fromJson` → 写入 `read_config_json` → 刷新阅读器；`_normalizeType`/`importRaw` 增加分支 |
+| B-3 | **深链 `addToBookshelf` 为"暂不支持"桩** | 同上 | 补全：按 `bookUrlPattern` 匹配书源 → `getBookInfo` → `BookProvider.addBook` 加入书架 |
+| B-4 | **设置页分区严重冗余**：`CacheManageScreen` 入口出现 3 次、下载管理 2 次、BackupScreen 4 次；「数据管理」之外另立整段「备份和恢复」「缓存管理」重复分区 | `ui/config/settings_screen.dart` | 合并去重：将两个独立重复分区的独有控制项（自动备份开关、`_buildBackupExtraSection`、自动清理缓存、下载管理）并入「数据管理」，删除冗余整段；清理因此产生的死方法 `_showDownloadManager` |
+
+### 复核结论
+
+- 差距清单 A1–A10、B1、B2、B4、C1、C2、A6 经代码核对**确认已完成**，无需重复实现。
+- B3（媒体按键控制）、B5（弹幕文件存储体系）、D1–D5（Android 平台深度集成）仍为平台/增强项，维持既有设计说明与降级实现。
+- 新增 `ReadProvider.liveInstance` 仅供非 UI 上下文（Web 服务）在外部写入阅读配置后回刷内存态，不影响既有 UI 订阅逻辑。

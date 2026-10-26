@@ -15,6 +15,7 @@ import 'package:legado_md3/data/model/book_chapter.dart';
 import 'package:legado_md3/data/model/bookmark.dart';
 import 'package:legado_md3/data/model/replace_rule.dart';
 import 'package:legado_md3/data/model/rss_source.dart';
+import 'package:legado_md3/di/book_provider.dart';
 import 'package:legado_md3/help/source/source_engine.dart';
 import 'package:legado_md3/help/storage/import_book_service.dart';
 import '../../data/local/app_database.dart';
@@ -956,7 +957,7 @@ class WebService {
   // === 阅读配置（legado-E 存 CacheManager，此处落到 SharedPreferences） ===
   Future<Response> _getReadConfig(Request request) async {
     final prefs = await SharedPreferences.getInstance();
-    final raw = prefs.getString('web_read_config');
+    final raw = prefs.getString('read_config_json');
     if (raw == null || raw.isEmpty) return _rdError('没有配置');
     return _rd(raw);
   }
@@ -965,10 +966,14 @@ class WebService {
     final body = await request.readAsString();
     final prefs = await SharedPreferences.getInstance();
     if (body.trim().isEmpty) {
-      await prefs.remove('web_read_config');
+      await prefs.remove('read_config_json');
     } else {
-      await prefs.setString('web_read_config', body);
+      // 与 BookProvider/backup 一致的权威键 read_config_json，
+      // 否则 Web 服务保存的阅读配置阅读器不会加载。
+      await prefs.setString('read_config_json', body);
     }
+    // 刷新阅读器内存态（若不存在则忽略，下次进入阅读页会从 prefs 读取）
+    await ReadProvider.liveInstance?.reloadReadConfig();
     return _rd('');
   }
 

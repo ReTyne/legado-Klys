@@ -543,6 +543,27 @@ class _SettingsScreenState extends State<SettingsScreen> {
             onTap: () => _showClearCacheDialog(),
           ),
           ..._buildCacheExtraSection(),
+          SwitchListTile(
+            title: const Text('自动备份'),
+            subtitle: Text(_autoBackupHours > 0
+                ? '每 $_autoBackupHours 小时自动备份一次（auto_backup_hours）'
+                : '已关闭：将 auto_backup_hours 置 0'),
+            value: _autoBackupHours > 0,
+            onChanged: (v) => setState(() {
+              _autoBackupHours = v ? (_autoBackupHours > 0 ? _autoBackupHours : 24) : 0;
+              _saveSetting('auto_backup_hours', _autoBackupHours);
+            }),
+          ),
+          ..._buildBackupExtraSection(),
+          SwitchListTile(
+            title: const Text('自动清理缓存'),
+            subtitle: const Text('超过7天自动清理（与「其他设置-自动清理过期内容」为同一设置 oc_autoClearExpired）'),
+            value: _autoCleanCache,
+            onChanged: (v) => setState(() {
+              _autoCleanCache = v;
+              _saveSetting('oc_autoClearExpired', v);
+            }),
+          ),
           const Divider(),
 
           // 主题管理
@@ -674,61 +695,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
             title: const Text('Web服务密码'),
             trailing: const Icon(Icons.chevron_right),
             onTap: () => _showWebPasswordDialog(),
-          ),
-
-          _buildSectionHeader('备份和恢复'),
-          ListTile(
-            leading: const Icon(Icons.backup),
-            title: const Text('本地备份'),
-            subtitle: const Text('备份到本地文件'),
-            trailing: const Icon(Icons.chevron_right),
-            onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const BackupScreen())),
-          ),
-          ListTile(
-            leading: const Icon(Icons.restore),
-            title: const Text('本地恢复'),
-            subtitle: const Text('从本地文件恢复'),
-            trailing: const Icon(Icons.chevron_right),
-            onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const BackupScreen())),
-          ),
-          ListTile(
-            leading: const Icon(Icons.cloud),
-            title: const Text('WebDAV备份'),
-            subtitle: const Text('同步到WebDAV服务器'),
-            trailing: const Icon(Icons.chevron_right),
-            onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const BackupScreen())),
-          ),
-          SwitchListTile(
-            title: const Text('自动备份'),
-            subtitle: Text(_autoBackupHours > 0 ? '每 $_autoBackupHours 小时自动备份一次（auto_backup_hours）' : '已关闭：将 auto_backup_hours 置 0'),
-            value: _autoBackupHours > 0,
-            onChanged: (v) => setState(() {
-              _autoBackupHours = v ? (_autoBackupHours > 0 ? _autoBackupHours : 24) : 0;
-              _saveSetting('auto_backup_hours', _autoBackupHours);
-            }),
-          ),
-          ..._buildBackupExtraSection(),
-
-          _buildSectionHeader('缓存管理'),
-          ListTile(
-            leading: const Icon(Icons.cleaning_services),
-            title: const Text('清理缓存'),
-            subtitle: Text('当前缓存: $_cacheSize'),
-            trailing: const Icon(Icons.chevron_right),
-            onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const CacheManageScreen())),
-          ),
-          ListTile(
-            leading: const Icon(Icons.download_done),
-            title: const Text('下载管理'),
-            subtitle: const Text('管理已下载的章节'),
-            trailing: const Icon(Icons.chevron_right),
-            onTap: () => _showDownloadManager(),
-          ),
-          SwitchListTile(
-            title: const Text('自动清理缓存'),
-            subtitle: const Text('超过7天自动清理（与「其他设置-自动清理过期内容」为同一设置 oc_autoClearExpired）'),
-            value: _autoCleanCache,
-            onChanged: (v) => setState(() { _autoCleanCache = v; _saveSetting('oc_autoClearExpired', v); }),
           ),
 
           _buildSectionHeader('规则管理'),
@@ -1304,10 +1270,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
 
 
-
-  void _showDownloadManager() {
-    Navigator.push(context, MaterialPageRoute(builder: (_) => const DownloadManageScreen()));
-  }
 
   void _showReplaceRuleScreen() {
     Navigator.push(context, MaterialPageRoute(builder: (_) => const ReplaceRuleScreen()));
