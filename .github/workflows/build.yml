@@ -1,40 +1,53 @@
-name: Build APK
+name: Build APK & iOS
+
 on:
   push:
     branches: [ main, master ]
+    tags: [ 'v*' ]
   workflow_dispatch:
+
 jobs:
-  build:
+  # ---------- Android APK（universal + arm64） ----------
+  android:
+    name: Build Android APK
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
       - name: Set up JDK 17
         uses: actions/setup-java@v4
         with:
           java-version: '17'
           distribution: 'temurin'
+
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
         with:
-          flutter-version: '3.24.0'
+          flutter-version: '3.24.5'
           channel: 'stable'
+
       - name: Install dependencies
         run: flutter pub get
+
       - name: Analyze
         run: flutter analyze --no-fatal-infos
+
       - name: Run tests
         run: flutter test
+
       - name: Build Release APK (universal)
         run: |
           flutter build apk --release
           cp build/app/outputs/flutter-apk/app-release.apk /tmp/app-universal-release.apk
+
       - name: Build arm64 APK
         run: |
           flutter build apk --release --target-platform android-arm64
           cp build/app/outputs/flutter-apk/app-release.apk /tmp/app-arm64-release.apk
+
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
         with:
@@ -43,54 +56,89 @@ jobs:
             /tmp/app-universal-release.apk
             /tmp/app-arm64-release.apk
           retention-days: 30
-      - name: Generate version tag
+
+      - name: Compute version
         id: version
         run: |
           VERSION=$(grep '^version:' pubspec.yaml | awk '{print $2}' | cut -d'+' -f1)
           # 展示归一：pubspec 为规范三段式，对外呈现去掉尾缀 .0（1.0.0 -> 1.0）
           DISPLAY="${VERSION%.0}"
-          TAG="v${DISPLAY}-beta"
+          if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
+            TAG="${GITHUB_REF_NAME}"
+          else
+            TAG="v${DISPLAY}-beta"
+          fi
           echo "tag=$TAG" >> $GITHUB_OUTPUT
           echo "version=$DISPLAY" >> $GITHUB_OUTPUT
-      - name: Delete old prereleases
-        run: |
-          echo "Deleting old prereleases..."
-          gh release list --limit 100 --json tagName,isPrerelease --jq '.[] | select(.isPrerelease) | .tagName' | while read -r tag; do
-            [ -z "$tag" ] && continue
-            echo "Deleting old prerelease: $tag"
-            gh release delete "$tag" --yes --cleanup-tag 2>/dev/null || true
-          done
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      - name: Create Prerelease
-        uses: softprops/action-gh-release@v1
+
+      - name: Upload APKs to release
+        uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.version.outputs.tag }}
-          name: "${{ steps.version.outputs.version }}-beta"
-          body: |
-            ## 1.0 版本预发布
-
-            应用更名为「阅读 / legado」（随系统语言切换），版本号重置为 1.0。
-
-            ### 主要更新
-            - 修复子页面按系统返回键直接退回桌面的问题
-            - UI 与配色重构（钢蓝低饱和主题）及流畅度优化
-            - 新增 PDF 阅读、legado:// 深链导入、主题导入导出与二维码分享、键盘助手、章节字数统计
-            - 全新应用图标（自适应图标 + Android 13 monochrome themed 图标）
-            - 修复书源 URL 选项解析、EPUB 乱码等问题
-            - 83 个测试全过，CI 增加 analyze / test 门禁
-
-            ### 下载
-            - `app-universal-release.apk` - 通用版（支持所有架构）
-            - `app-arm64-release.apk` - arm64 专用版（更小）
-
-            - 提交: ${{ github.sha }}
-            - 分支: ${{ github.ref_name }}
-
-            > 此为自动构建的预发布版本。
-          prerelease: true
+          name: ${{ steps.version.outputs.version }} ${{ github.ref_type == 'tag' && '' || '-beta' }}
+          prerelease: ${{ github.ref_type != 'tag' }}
           files: |
             /tmp/app-universal-release.apk
             /tmp/app-arm64-release.apk
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  # ---------- iOS IPA（未签名，供设备侧自签/ sideload 安装） ----------
+  ios:
+    name: Build iOS IPA
+    runs-on: macos-14
+    permissions:
+      contents: write
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: '3.24.5'
+          channel: 'stable'
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Build iOS (release, unsigned)
+        run: flutter build ios --release --no-codesign
+
+      - name: Package unsigned IPA
+        run: |
+          rm -rf /tmp/ipa && mkdir -p /tmp/ipa/Payload
+          cp -R build/ios/iphoneos/Runner.app /tmp/ipa/Payload/
+          cd /tmp/ipa
+          zip -qry /tmp/legado-ios-unsigned.ipa Payload
+          ls -la /tmp/legado-ios-unsigned.ipa
+
+      - name: Upload IPA artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: legado-ios
+          path: /tmp/legado-ios-unsigned.ipa
+          retention-days: 30
+
+      - name: Compute version
+        id: version
+        run: |
+          VERSION=$(grep '^version:' pubspec.yaml | awk '{print $2}' | cut -d'+' -f1)
+          DISPLAY="${VERSION%.0}"
+          if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
+            TAG="${GITHUB_REF_NAME}"
+          else
+            TAG="v${DISPLAY}-beta"
+          fi
+          echo "tag=$TAG" >> $GITHUB_OUTPUT
+          echo "version=$DISPLAY" >> $GITHUB_OUTPUT
+
+      - name: Upload IPA to release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.tag }}
+          name: ${{ steps.version.outputs.version }} ${{ github.ref_type == 'tag' && '' || '-beta' }}
+          prerelease: ${{ github.ref_type != 'tag' }}
+          files: /tmp/legado-ios-unsigned.ipa
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

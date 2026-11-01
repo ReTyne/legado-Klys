@@ -4,34 +4,22 @@ import 'dart:io';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:legado_md3/help/config/app_config.dart';
+import 'package:provider/provider.dart';
 import 'package:legado_md3/common/app_name.dart';
+import 'package:legado_md3/constant/app_theme.dart';
 import 'package:legado_md3/help/storage/crash_log_helper.dart';
 import 'package:legado_md3/help/web/web_service.dart';
 import 'package:legado_md3/help/web/web_tile_channel.dart';
-import 'package:legado_md3/ui/ai/ai_chat_screen.dart';
 import 'package:legado_md3/ui/backup/backup_screen.dart';
-import 'package:legado_md3/ui/book/source/opds_screen.dart';
 import 'package:legado_md3/ui/book/source/source_manage_screen.dart';
-import 'package:legado_md3/ui/bookmark/book_marking_screen.dart';
 import 'package:legado_md3/ui/bookmark/bookmark_screen.dart';
-import 'package:legado_md3/ui/cache/cache_manage_screen.dart';
-import 'package:legado_md3/ui/config/cloud_tts_screen.dart';
 import 'package:legado_md3/ui/config/dict_rule_screen.dart';
-import 'package:legado_md3/ui/config/highlight_tag_rule_screen.dart';
 import 'package:legado_md3/ui/config/replace_rule_screen.dart';
 import 'package:legado_md3/ui/config/settings_screen.dart';
-import 'package:legado_md3/ui/config/tag_group_rule_screen.dart';
 import 'package:legado_md3/ui/config/theme_manage_screen.dart';
-import 'package:legado_md3/ui/config/translation_screen.dart';
 import 'package:legado_md3/ui/config/txt_toc_rule_screen.dart';
 import 'package:legado_md3/ui/file/file_manage_screen.dart';
-import 'package:legado_md3/ui/main/homepage/homepage_manage_screen.dart';
-import 'package:legado_md3/ui/main/subscribe/subscribe_screen.dart';
-import 'package:legado_md3/ui/rss/rule_subscription_screen.dart';
-import 'package:legado_md3/ui/stats/reading_stats_screen.dart';
 import 'package:legado_md3/ui/stats/read_record_screen.dart';
-import 'package:legado_md3/ui/cache/download_manage_screen.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -116,42 +104,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
       appBar: AppBar(title: const Text('我的')),
       body: ListView(
         children: [
-          _buildSectionHeader('规则分段'),
+          _buildSectionHeader('规则'),
           _buildMenuItem(context, Icons.menu_book_outlined, '书源管理', '管理网络书源', () => Navigator.push(context, MaterialPageRoute(builder: (_) => const SourceManageScreen()))),
-          _buildMenuItem(context, Icons.cloud_sync_outlined, 'OPDS书源', 'OPDS 目录浏览', () => Navigator.push(context, MaterialPageRoute(builder: (_) => const OpdsScreen()))),
-          _buildMenuItem(context, Icons.find_replace_outlined, '替换净化', '正文内容替换规则', () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ReplaceRuleScreen()))),
           _buildMenuItem(context, Icons.list_alt_outlined, 'TXT目录规则', '本地TXT目录识别', () => Navigator.push(context, MaterialPageRoute(builder: (_) => const TxtTocRuleScreen()))),
-          _buildMenuItem(context, Icons.translate_outlined, '字典规则', '文字替换字典', () => Navigator.push(context, MaterialPageRoute(builder: (_) => const DictRuleScreen()))),
-          _buildMenuItem(context, Icons.tag_outlined, '高亮标签配置', '阅读内容高亮', () => Navigator.push(context, MaterialPageRoute(builder: (_) => const HighlightTagRuleScreen()))),
-          _buildMenuItem(context, Icons.dashboard_customize, '首页模块', '自定义首页模块', () => Navigator.push(context, MaterialPageRoute(builder: (_) => const HomepageManageScreen()))),
-          _buildMenuItem(context, Icons.account_tree_outlined, '标签分组规则', '按标签自动分组', () => Navigator.push(context, MaterialPageRoute(builder: (_) => const TagGroupRuleScreen()))),
-
-          const Divider(),
-
-          _buildSectionHeader('其他'),
-          if (AppConfig.enableAiChat)
-            _buildMenuItem(context, Icons.smart_toy_outlined, 'AI聊天', 'AI助手对话', () => Navigator.push(context, MaterialPageRoute(builder: (_) => const AiChatScreen()))),
-          _buildMenuItem(context, Icons.rss_feed_outlined, 'RSS订阅', '订阅源管理', () => Navigator.push(context, MaterialPageRoute(builder: (_) => const SubscribeScreen()))),
-          _buildMenuItem(context, Icons.cloud_outlined, '云盘同步', 'WebDAV云同步', () => Navigator.push(context, MaterialPageRoute(builder: (_) => const BackupScreen()))),
-          _buildMenuItem(context, Icons.subscriptions_outlined, '规则订阅', '订阅书源规则', () => Navigator.push(context, MaterialPageRoute(builder: (_) => const RuleSubscriptionScreen()))),
-          _buildMenuItem(context, Icons.download_outlined, '下载管理', '管理下载任务', () => Navigator.push(context, MaterialPageRoute(builder: (_) => const DownloadManageScreen()))),
-          _buildMenuItem(context, Icons.palette_outlined, '主题管理', '自定义主题', () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ThemeManageScreen()))),
-          _buildMenuItem(context, Icons.record_voice_over_outlined, 'TTS设置', '朗读引擎设置', () => Navigator.push(context, MaterialPageRoute(builder: (_) => const CloudTtsScreen()))),
-          _buildMenuItem(context, Icons.translate_outlined, '翻译设置', '翻译引擎配置', () => Navigator.push(context, MaterialPageRoute(builder: (_) => const TranslationScreen()))),
-          _buildMenuItem(context, Icons.science_outlined, '实验室', '实验性功能', () => Navigator.push(context, MaterialPageRoute(builder: (_) => const LabConfigScreen()))),
-          _buildMenuItem(context, Icons.flag_outlined, '书籍标记', '标记管理', () => Navigator.push(context, MaterialPageRoute(builder: (_) => const BookMarkingScreen(bookName: '', author: '')))),
-          _buildMenuItem(context, Icons.settings_outlined, '设置', '应用设置', () => Navigator.push(context, MaterialPageRoute(builder: (_) => const SettingsScreen()))),
-          _buildMenuItem(context, Icons.bookmark_border, '书签', '所有书签', () => Navigator.push(context, MaterialPageRoute(builder: (_) => const BookmarkScreen()))),
-          _buildMenuItem(context, Icons.history_outlined, '阅读记录', '每本书的阅读明细', () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ReadRecordScreen()))),
-          _buildMenuItem(context, Icons.bar_chart_outlined, '阅读统计', '时长与趋势', () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ReadingStatsScreen()))),
-          _buildMenuItem(context, Icons.cleaning_services_outlined, '缓存管理', '书籍缓存', () => Navigator.push(context, MaterialPageRoute(builder: (_) => const CacheManageScreen()))),
-          _buildMenuItem(context, Icons.backup_outlined, '备份恢复', '数据备份', () => Navigator.push(context, MaterialPageRoute(builder: (_) => const BackupScreen()))),
-          _buildMenuItem(context, Icons.folder_outlined, '文件管理', '本地文件', () => Navigator.push(context, MaterialPageRoute(builder: (_) => const FileManageScreen()))),
-          _buildMenuItem(context, Icons.info_outline, '关于', '应用信息', () => _showAbout(context)),
-
-          const Divider(),
-
-          _buildSectionHeader('Web服务'),
+          _buildMenuItem(context, Icons.find_replace_outlined, '替换净化', '正文内容替换规则', () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ReplaceRuleScreen()))),
+          _buildMenuItem(context, Icons.translate_outlined, '词典规则', '文字替换字典', () => Navigator.push(context, MaterialPageRoute(builder: (_) => const DictRuleScreen()))),
+          _buildThemeModeTile(context),
           SwitchListTile(
             secondary: const Icon(Icons.web_outlined),
             title: const Text('Web服务'),
@@ -165,15 +123,69 @@ class _ProfileScreenState extends State<ProfileScreen> {
               child: Text('在浏览器中打开上述地址即可管理书架、书源、RSS等', style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
             ),
 
+          const Divider(),
+
+          _buildSectionHeader('设置'),
+          _buildMenuItem(context, Icons.backup_outlined, '备份与恢复', 'WebDAV云同步与本地备份', () => Navigator.push(context, MaterialPageRoute(builder: (_) => const BackupScreen()))),
+          _buildMenuItem(context, Icons.palette_outlined, '主题设置', '自定义主题', () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ThemeManageScreen()))),
+          _buildMenuItem(context, Icons.settings_outlined, '其他设置', '应用设置', () => Navigator.push(context, MaterialPageRoute(builder: (_) => const SettingsScreen()))),
+
+          const Divider(),
+
+          _buildSectionHeader('其他'),
+          _buildMenuItem(context, Icons.bookmark_border, '书签', '所有书签', () => Navigator.push(context, MaterialPageRoute(builder: (_) => const BookmarkScreen()))),
+          _buildMenuItem(context, Icons.history_outlined, '阅读记录', '每本书的阅读明细', () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ReadRecordScreen()))),
+          _buildMenuItem(context, Icons.folder_outlined, '文件管理', '本地文件', () => Navigator.push(context, MaterialPageRoute(builder: (_) => const FileManageScreen()))),
+          _buildMenuItem(context, Icons.info_outline, '关于', '应用信息', () => _showAbout(context)),
+          _buildMenuItem(context, Icons.exit_to_app_outlined, '退出', '退出应用', () => SystemNavigator.pop()),
+
           const SizedBox(height: 24),
           Center(
-            child:             Text(
+            child: Text(
               _versionLabel.isEmpty ? appDisplayName : '$appDisplayName v$_versionLabel',
               style: TextStyle(color: cs.onSurfaceVariant, fontSize: 12),
             ),
           ),
           const SizedBox(height: 16),
         ],
+      ),
+    );
+  }
+
+  /// 主题模式选择（对齐 legado-E pref_main 的 themeMode NameListPreference）
+  Widget _buildThemeModeTile(BuildContext context) {
+    final appTheme = context.watch<AppTheme>();
+    const labels = ['跟随系统', '浅色', '深色'];
+    return ListTile(
+      leading: const Icon(Icons.brightness_6_outlined),
+      title: const Text('主题模式'),
+      subtitle: Text(labels[appTheme.themeMode.index.clamp(0, 2)], style: const TextStyle(fontSize: 12)),
+      trailing: const Icon(Icons.chevron_right),
+      onTap: () => _showThemeModeDialog(context, appTheme),
+    );
+  }
+
+  Future<void> _showThemeModeDialog(BuildContext context, AppTheme appTheme) async {
+    const labels = ['跟随系统', '浅色', '深色'];
+    await showDialog(
+      context: context,
+      builder: (c) => AlertDialog(
+        title: const Text('主题模式'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: List.generate(ThemeMode.values.length, (i) {
+            return RadioListTile<int>(
+              value: i,
+              groupValue: appTheme.themeMode.index,
+              title: Text(labels[i]),
+              onChanged: (v) async {
+                if (v == null) return;
+                await appTheme.setThemeMode(ThemeMode.values[v]);
+                if (c.mounted) Navigator.pop(c);
+              },
+            );
+          }),
+        ),
       ),
     );
   }

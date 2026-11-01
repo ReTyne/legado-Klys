@@ -55,8 +55,13 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
   String? _error;
 
   String _searchQuery = '';
-  /// 发现书源 chips 是否全部展开（默认限量展示，避免全量构建）
-  bool _allSourceChips = false;
+  bool _searching = false;
+  /// 各书源的发现分类（对齐 E ExploreAdapter 的 sourceKinds：列表按源聚合展示）
+  final Map<String, List<ExploreKind>> _sourceKinds = {};
+  /// 正在加载分类的书源（bookSourceUrl）
+  final Set<String> _kindsLoading = {};
+  /// 书源分组过滤（对齐 E main_explore 的 menu_group）
+  String _groupFilter = '';
   // 0 默认 1 名称 2 作者 3 最新章节
   int _sortMode = 0;
   // 搜索/过滤匹配的字段
@@ -97,14 +102,60 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
           .toList();
       if (!mounted) return;
       setState(() => _sources = exploreSources);
-      // 仅一个发现源时直接进入
-      if (_view == 'source' && _sources.length == 1) {
-        await _selectSource(_sources.first);
-      }
+      // 按源聚合加载发现分类（对齐 E：发现页直接展示各书源的分类流）
+      _loadAllKinds();
     } catch (_) {
       // 数据库尚未就绪等情况下保持空态，不使页面崩溃
       if (mounted) setState(() {});
     }
+  }
+
+  /// 并发加载所有发现书源的分类（JS 求值较重，串行执行 + 按源缓存）
+  Future<void> _loadAllKinds() async {
+    for (final source in _sources) {
+      if (!mounted) return;
+      final key = source.bookSourceUrl;
+      if (_sourceKinds.containsKey(key) || _kindsLoading.contains(key)) continue;
+      setState(() => _kindsLoading.add(key));
+      List<ExploreKind> kinds;
+      try {
+        kinds = await _engine.exploreKinds(source);
+      } catch (e) {
+        kinds = [ExploreKind(title: 'ERROR:$e', url: '')];
+      }
+      if (!mounted) return;
+      setState(() {
+        _kindsLoading.remove(key);
+        _sourceKinds[key] = kinds;
+      });
+    }
+  }
+
+  /// 发现页可用分组（对齐 E 的 menu_group 子菜单）
+  List<String> get _exploreGroups {
+    final set = <String>{};
+    for (final s in _sources) {
+      final g = s.bookSourceGroup;
+      if (g != null && g.trim().isNotEmpty) set.add(g);
+    }
+    final list = set.toList()..sort();
+    return ['全部', ...list];
+  }
+
+  /// 发现列表数据源：分组过滤 + 搜索（书名/作者/分类标题，对齐 E 的 searchView 过滤）
+  List<BookSource> get _visibleSources {
+    final q = _searchQuery.toLowerCase();
+    return _sources.where((s) {
+      if (_groupFilter.isNotEmpty &&
+          _groupFilter != '全部' &&
+          (s.bookSourceGroup ?? '') != _groupFilter) {
+        return false;
+      }
+      if (q.isEmpty) return true;
+      if (s.bookSourceName.toLowerCase().contains(q)) return true;
+      final kinds = _sourceKinds[s.bookSourceUrl] ?? const [];
+      return kinds.any((k) => k.title.toLowerCase().contains(q));
+    }).toList();
   }
 
   Future<Set<String>> _loadHidden(BookSource source) async {
@@ -215,6 +266,22 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
         _view = 'source';
       }
     });
+  }
+
+  /// 从发现列表直接打开某书源的分类（_currentSource/_kinds 先行切换）
+  Future<void> _openKindFor(BookSource source, ExploreKind kind) async {
+    if (kind.isError) {
+      _showKindError(kind);
+      return;
+    }
+    final url = kind.url?.trim() ?? '';
+    if (url.isEmpty) return;
+    setState(() {
+      _currentSource = source;
+      _kinds = _sourceKinds[source.bookSourceUrl] ?? const [];
+      _hiddenCategories = {};
+    });
+    await _openKind(kind);
   }
 
   Future<void> _openKind(ExploreKind kind) async {
@@ -659,8 +726,46 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
         leading: _view == 'source'
             ? null
             : IconButton(icon: const Icon(Icons.arrow_back), onPressed: _back),
-        title: Text(_titleText(), maxLines: 1, overflow: TextOverflow.ellipsis),
+        title: _view == 'source'
+            ? (_searching
+                ? TextField(
+                    controller: _searchController,
+                    autofocus: true,
+                    decoration: const InputDecoration(
+                        hintText: '搜索书源/分类...', border: InputBorder.none),
+                    onChanged: (v) => setState(() => _searchQuery = v),
+                  )
+                : const Text('发现'))
+            : Text(_titleText(), maxLines: 1, overflow: TextOverflow.ellipsis),
         actions: [
+          if (_view == 'source') ...[
+            if (_searching)
+              IconButton(
+                icon: const Icon(Icons.clear),
+                onPressed: () {
+                  _searchController.clear();
+                  setState(() {
+                    _searching = false;
+                    _searchQuery = '';
+                  });
+                },
+              )
+            else
+              IconButton(
+                  icon: const Icon(Icons.search),
+                  onPressed: () => setState(() => _searching = true)),
+            // 分组过滤（对齐 E main_explore 的 menu_group）
+            PopupMenuButton<String>(
+              tooltip: '分组',
+              icon: const Icon(Icons.filter_list),
+              initialValue: _groupFilter.isEmpty ? '全部' : _groupFilter,
+              onSelected: (v) =>
+                  setState(() => _groupFilter = v == '全部' ? '' : v),
+              itemBuilder: (context) => _exploreGroups
+                  .map((g) => PopupMenuItem(value: g, child: Text(g)))
+                  .toList(),
+            ),
+          ],
           if (_view == 'books') ...[
             IconButton(icon: const Icon(Icons.category_outlined), tooltip: '分类', onPressed: _backToCategory),
             IconButton(icon: const Icon(Icons.filter_list), tooltip: '过滤', onPressed: _showFilterDialog),
@@ -669,7 +774,6 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
           ],
           if (_view == 'category')
             IconButton(icon: const Icon(Icons.tune), tooltip: '分类管理', onPressed: _showCategoryManager),
-          IconButton(icon: const Icon(Icons.source_outlined), tooltip: '切换书源', onPressed: _showSourceSwitcher),
         ],
       ),
       body: _buildBody(),
@@ -689,59 +793,119 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
   }
 
   Widget _buildBody() {
-    if (_view == 'source') return _buildSourceChips();
+    if (_view == 'source') return _buildExploreList();
     if (_view == 'category') return _buildCategoryList();
     return _buildBooksList();
   }
 
-  Widget _buildSourceChips() {
-    if (_sources.isEmpty) {
+  /// 发现页主体 —— 对齐 legado-E `fragment_explore.xml` + `item_find_book.xml`：
+  /// 每个书源一张卡片，书名下方以流式 chips 展示该源的全部发现分类，
+  /// 点击分类直达书籍列表；含控件型分类的源提供「控件」入口。
+  Widget _buildExploreList() {
+    final visible = _visibleSources;
+    if (visible.isEmpty) {
       return Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Icon(Icons.explore_off, size: 80, color: Colors.grey[400]),
             const SizedBox(height: 16),
-            const Text('暂无发现书源', style: TextStyle(fontSize: 18)),
+            Text(_sources.isEmpty ? '暂无发现书源' : '没有匹配的发现内容',
+                style: const TextStyle(fontSize: 18)),
             const SizedBox(height: 8),
-            const Text('请在「书源管理」中导入书源、配置发现地址并启用发现', style: TextStyle(color: Colors.grey), textAlign: TextAlign.center),
+            Text(
+                _sources.isEmpty
+                    ? '请在「书源管理」中导入书源、配置发现地址并启用发现'
+                    : '换个关键词或分组试试',
+                style: const TextStyle(color: Colors.grey),
+                textAlign: TextAlign.center),
           ],
         ),
       );
     }
-    // 书源 chips 限量构建：默认最多 12 个，超出部分由「展开更多」按需展示
-    const maxChips = 12;
-    final shown = _allSourceChips ? _sources : _sources.take(maxChips).toList();
-    final chips = <Widget>[
-      ...shown.map((source) => ActionChip(
-            avatar: const Icon(Icons.rss_feed, size: 16),
-            label: Text(source.bookSourceName),
-            onPressed: () => _selectSource(source),
-          )),
-    ];
-    if (_sources.length > maxChips) {
-      chips.add(TextButton.icon(
-        onPressed: () => setState(() => _allSourceChips = !_allSourceChips),
-        icon: Icon(_allSourceChips ? Icons.expand_less : Icons.expand_more,
-            size: 18),
-        label: Text(_allSourceChips
-            ? '收起'
-            : '展开更多（${_sources.length - maxChips}）'),
-      ));
-    }
     return RefreshIndicator(
-      onRefresh: _loadSources,
-      child: ListView(
-        padding: const EdgeInsets.all(16),
-        children: [
-          const Text('发现书源', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-          const SizedBox(height: 12),
-          Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: chips,
-          ),
-        ],
+      onRefresh: () async {
+        _sourceKinds.clear();
+        await _loadSources();
+      },
+      child: ListView.builder(
+        padding: const EdgeInsets.all(12),
+        itemCount: visible.length,
+        itemBuilder: (context, i) => _buildSourceCard(visible[i]),
+      ),
+    );
+  }
+
+  Widget _buildSourceCard(BookSource source) {
+    final kinds = _sourceKinds[source.bookSourceUrl];
+    final loading = _kindsLoading.contains(source.bookSourceUrl);
+    final urlKinds =
+        (kinds ?? const []).where((k) => k.isUrl && !k.isError).toList();
+    final controlKinds = (kinds ?? const []).where((k) => k.isControl).toList();
+    final errorKinds = (kinds ?? const []).where((k) => k.isError).toList();
+    return Card(
+      margin: const EdgeInsets.only(bottom: 8),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(children: [
+              Icon(Icons.rss_feed,
+                  size: 16, color: Theme.of(context).colorScheme.primary),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(source.bookSourceName,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontWeight: FontWeight.bold)),
+              ),
+              if (loading)
+                const SizedBox(
+                    width: 16,
+                    height: 16,
+                    child: CircularProgressIndicator(strokeWidth: 2)),
+            ]),
+            if (kinds == null && !loading)
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 8),
+                child: Text('未配置发现分类',
+                    style: TextStyle(fontSize: 12, color: Colors.grey)),
+              ),
+            if (urlKinds.isNotEmpty || controlKinds.isNotEmpty || errorKinds.isNotEmpty)
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 6),
+                child: Wrap(
+                  spacing: 8,
+                  runSpacing: 4,
+                  children: [
+                    for (final k in urlKinds)
+                      ActionChip(
+                        label: Text(k.title),
+                        visualDensity: VisualDensity.compact,
+                        onPressed: () => _openKindFor(source, k),
+                      ),
+                    if (controlKinds.isNotEmpty)
+                      ActionChip(
+                        avatar: const Icon(Icons.tune, size: 16),
+                        label: const Text('控件'),
+                        visualDensity: VisualDensity.compact,
+                        onPressed: () => _selectSource(source),
+                      ),
+                    if (errorKinds.isNotEmpty)
+                      ActionChip(
+                        avatar: Icon(Icons.error_outline,
+                            size: 16,
+                            color: Theme.of(context).colorScheme.error),
+                        label: const Text('加载失败'),
+                        visualDensity: VisualDensity.compact,
+                        onPressed: () => _showKindError(errorKinds.first),
+                      ),
+                  ],
+                ),
+              ),
+          ],
+        ),
       ),
     );
   }

@@ -6,10 +6,11 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:legado_md3/data/model/rss_source.dart';
 import 'package:legado_md3/data/model/rss_article.dart';
-import 'package:legado_md3/ui/rss/rss_read_screen.dart';
 import 'package:legado_md3/ui/rss/rss_source_edit_screen.dart';
 import 'package:legado_md3/ui/rss/rss_favorites_screen.dart';
 import 'package:legado_md3/ui/rss/rss_articles_screen.dart';
+import 'package:legado_md3/ui/rss/rss_source_screen.dart';
+import 'package:legado_md3/ui/stats/read_record_screen.dart';
 import 'package:legado_md3/ui/rss/rss_source_login_screen.dart';
 import 'package:legado_md3/data/local/app_database.dart';
 import 'package:legado_md3/help/http/rss_service.dart';
@@ -25,15 +26,21 @@ class _SubscribeScreenState extends State<SubscribeScreen> {
   final DatabaseService _db = DatabaseService();
   final RssService _rssService = RssService();
   List<RssSource> _sources = [];
-  List<RssArticle> _articles = [];
   bool _isLoading = true;
-  bool _showSources = true;
-  String? _filterSourceUrl; // 非空时文章列表仅显示该订阅源
+  bool _searching = false;
+  String _searchQuery = '';
+  final TextEditingController _searchController = TextEditingController();
 
   @override
   void initState() {
     super.initState();
     _loadData();
+  }
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
   }
 
   void _showImportMenu() {
@@ -75,20 +82,14 @@ class _SubscribeScreenState extends State<SubscribeScreen> {
 
   Future<void> _loadData() async {
     setState(() => _isLoading = true);
-    _sources = await _db.getRssSources();
-    _articles = await _db.getRssArticles(_filterSourceUrl);
+    try {
+      _sources = await _db.getRssSources();
+    } catch (_) {
+      // 数据库尚未就绪等情况下保持空态，不使页面崩溃
+    }
     if (mounted) setState(() => _isLoading = false);
   }
 
-  /// 返回全部文章
-  Future<void> _showAllArticles() async {
-    setState(() {
-      _filterSourceUrl = null;
-      _isLoading = true;
-    });
-    _articles = await _db.getRssArticles();
-    if (mounted) setState(() => _isLoading = false);
-  }
 
   Future<void> _addSource() async {
     final result = await Navigator.push(context, MaterialPageRoute(builder: (_) => const RssSourceEditScreen()));
@@ -140,40 +141,57 @@ class _SubscribeScreenState extends State<SubscribeScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text('订阅'),
+        title: _searching
+            ? TextField(
+                controller: _searchController,
+                autofocus: true,
+                decoration: const InputDecoration(
+                    hintText: '搜索订阅源/分组...', border: InputBorder.none),
+                onChanged: (v) => setState(() => _searchQuery = v),
+              )
+            : const Text('订阅'),
         actions: [
+          if (_searching)
+            IconButton(
+              icon: const Icon(Icons.clear),
+              onPressed: () {
+                _searchController.clear();
+                setState(() {
+                  _searching = false;
+                  _searchQuery = '';
+                });
+              },
+            )
+          else
+            IconButton(
+                icon: const Icon(Icons.search),
+                onPressed: () => setState(() => _searching = true)),
           IconButton(
             icon: const Icon(Icons.star_border),
             tooltip: '收藏文章',
             onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const RssFavoritesScreen())),
           ),
           IconButton(
+            icon: const Icon(Icons.history),
+            tooltip: '阅读记录',
+            onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ReadRecordScreen())),
+          ),
+          IconButton(
+            icon: const Icon(Icons.settings_outlined),
+            tooltip: '订阅源管理',
+            onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const RssSourceScreen())),
+          ),
+          IconButton(
             icon: const Icon(Icons.refresh),
+            tooltip: '刷新全部',
             onPressed: _refreshAll,
           ),
           IconButton(icon: const Icon(Icons.file_download_outlined), tooltip: '导入订阅源', onPressed: _showImportMenu),
-          PopupMenuButton<String>(
-            onSelected: (value) {
-              if (value == 'sources') {
-                setState(() => _showSources = true);
-              } else if (value == 'articles') {
-                _filterSourceUrl = null;
-                setState(() => _showSources = false);
-                _loadData();
-              }
-            },
-            itemBuilder: (context) => [
-              PopupMenuItem(value: 'sources', child: Text('订阅源 (${_sources.length})')),
-              PopupMenuItem(value: 'articles', child: Text('文章 (${_articles.length})')),
-            ],
-          ),
         ],
       ),
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
-          : _showSources
-              ? _buildSourcesList()
-              : _buildArticlesList(),
+          : _buildSourcesGrid(),
       floatingActionButton: FloatingActionButton(
         onPressed: _addSource,
         child: const Icon(Icons.add),
@@ -181,139 +199,91 @@ class _SubscribeScreenState extends State<SubscribeScreen> {
     );
   }
 
-  Widget _buildSourcesList() {
-    if (_sources.isEmpty) {
+  /// 订阅源网格 —— 对齐 legado-E `fragment_rss.xml`（spanCount=4）
+  /// 与 `item_rss.xml`（50dp 圆角图标 + 两行 13sp 名称）。
+  Widget _buildSourcesGrid() {
+    final q = _searchQuery.toLowerCase();
+    final groups = _sources
+        .where((s) => q.isEmpty ||
+            s.sourceName.toLowerCase().contains(q) ||
+            (s.sourceGroup ?? '').toLowerCase().contains(q))
+        .toList();
+    if (groups.isEmpty) {
       return Center(
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Icon(Icons.subscriptions_outlined, size: 80, color: Colors.grey[400]),
             const SizedBox(height: 16),
-            Text('暂无订阅源', style: TextStyle(fontSize: 18, color: Colors.grey[600])),
+            Text(_searchQuery.isEmpty ? '暂无订阅源' : '没有匹配的订阅源',
+                style: TextStyle(fontSize: 18, color: Colors.grey[600])),
             const SizedBox(height: 8),
-            const Text('点击右下角添加订阅源'),
+            if (_searchQuery.isEmpty) const Text('点击右下角添加订阅源'),
           ],
         ),
       );
     }
-    return ListView.separated(
-      padding: const EdgeInsets.all(16),
-      itemCount: _sources.length,
-      separatorBuilder: (_, __) => const SizedBox(height: 8),
-      itemBuilder: (context, index) {
-        final source = _sources[index];
-        return Card(
-          child: ListTile(
-            leading: CircleAvatar(
-              child: Text(source.name.isNotEmpty ? source.name[0] : '?'),
-            ),
-            title: Text(source.name, maxLines: 1, overflow: TextOverflow.ellipsis),
-            subtitle: Text(source.url, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12)),
-            trailing: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Switch(
-                  value: source.enabled == true,
-                  onChanged: (v) {
-                    source.enabled = v;
-                    _db.updateRssSource(source);
-                    setState(() {});
-                  },
-                ),
-                IconButton(
-                  icon: const Icon(Icons.refresh),
-                  onPressed: () => _refreshSource(source),
-                ),
-              ],
-            ),
-            onTap: () => Navigator.push(context,
-                MaterialPageRoute(builder: (_) => RssArticlesScreen(source: source))),
-            onLongPress: () => _showSourceOptions(source),
-          ),
-        );
-      },
-    );
-  }
-
-  Widget _buildArticlesList() {
-    final filterName = _filterSourceUrl == null
-        ? null
-        : _sources.where((s) => s.sourceUrl == _filterSourceUrl).map((s) => s.name).cast<String?>().firstWhere((_) => true, orElse: () => '该订阅源');
-    return Column(
-      children: [
-        if (_filterSourceUrl != null)
-          Material(
-            color: Theme.of(context).colorScheme.secondaryContainer,
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-              child: Row(children: [
-                const Icon(Icons.filter_alt, size: 16),
-                const SizedBox(width: 8),
-                Expanded(child: Text('仅显示「$filterName」的文章', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12))),
-                TextButton.icon(
-                  onPressed: _showAllArticles,
-                  icon: const Icon(Icons.clear, size: 16),
-                  label: const Text('全部'),
-                ),
-              ]),
-            ),
-          ),
-        Expanded(child: _articles.isEmpty ? _buildEmptyArticles() : _buildArticleItems()),
-      ],
-    );
-  }
-
-  Widget _buildEmptyArticles() {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(Icons.article_outlined, size: 80, color: Colors.grey[400]),
-          const SizedBox(height: 16),
-          const Text('暂无文章'),
-        ],
+    return GridView.builder(
+      padding: const EdgeInsets.all(12),
+      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: 4,
+        mainAxisSpacing: 8,
+        crossAxisSpacing: 8,
+        childAspectRatio: 0.72,
       ),
-    );
-  }
-
-  Widget _buildArticleItems() {
-    return ListView.separated(
-      padding: const EdgeInsets.all(16),
-      itemCount: _articles.length,
-      separatorBuilder: (_, __) => const Divider(height: 1),
+      itemCount: groups.length,
       itemBuilder: (context, index) {
-        final article = _articles[index];
-        return ListTile(
-          leading: article.read == true ? const Icon(Icons.check_circle_outline, color: Colors.grey) : const Icon(Icons.fiber_new, color: Colors.red),
-          title: Text(article.title, maxLines: 2, overflow: TextOverflow.ellipsis,
-              style: TextStyle(fontWeight: article.read == true ? FontWeight.normal : FontWeight.bold)),
-          subtitle: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              if (article.description != null)
-                Text(article.description!, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12)),
-              const SizedBox(height: 4),
-              Text('${article.sourceName ?? ''} ${article.pubDate != null ? DateTime.fromMillisecondsSinceEpoch(article.pubDate!).toString().substring(0, 16) : ''}',
-                  style: const TextStyle(fontSize: 11, color: Colors.grey)),
-            ],
-          ),
-          onTap: () async {
-            if (article.id != null) await _db.markRssArticleRead(article.id!);
-            if (mounted) {
-              final src = _sources
-                  .where((s) => s.sourceUrl == article.sourceUrl)
-                  .cast<RssSource?>()
-                  .firstWhere((_) => true, orElse: () => null);
-              await Navigator.push(context, MaterialPageRoute(
-                  builder: (_) => RssReadScreen(article: article, source: src)));
-            }
-            _loadData();
-          },
-          onLongPress: () => _showArticleOptions(article),
+        final source = groups[index];
+        final enabled = source.enabled == true;
+        return InkWell(
+          borderRadius: BorderRadius.circular(12),
+          onTap: () => Navigator.push(context,
+              MaterialPageRoute(builder: (_) => RssArticlesScreen(source: source))),
+          onLongPress: () => _showSourceOptions(source),
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            Opacity(
+              opacity: enabled ? 1 : 0.38,
+              child: Container(
+                width: 50,
+                height: 50,
+                decoration: BoxDecoration(
+                  color: Theme.of(context).colorScheme.secondaryContainer,
+                  borderRadius: BorderRadius.circular(12),
+                  image: (source.sourceIcon ?? '').isNotEmpty
+                      ? DecorationImage(
+                          image: NetworkImage(source.sourceIcon!),
+                          fit: BoxFit.cover)
+                      : null,
+                ),
+                alignment: Alignment.center,
+                child: (source.sourceIcon ?? '').isNotEmpty
+                    ? null
+                    : Text(
+                        source.sourceName.isNotEmpty ? source.sourceName[0] : '?',
+                        style: TextStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.bold,
+                            color: Theme.of(context).colorScheme.onSecondaryContainer),
+                      ),
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(source.sourceName,
+                maxLines: 2,
+                textAlign: TextAlign.center,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                    fontSize: 13,
+                    color: enabled
+                        ? Theme.of(context).colorScheme.onSurface
+                        : Theme.of(context).colorScheme.onSurfaceVariant)),
+          ]),
         );
       },
     );
   }
+
+
 
   void _showSourceOptions(RssSource source) {
     showModalBottomSheet(

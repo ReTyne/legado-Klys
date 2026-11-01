@@ -15,8 +15,8 @@ import 'package:legado_md3/data/model/bookmark.dart';
 import 'package:legado_md3/data/model/replace_rule.dart';
 import 'package:legado_md3/di/book_provider.dart';
 import 'package:legado_md3/data/local/app_database.dart';
-import 'package:legado_md3/help/net/network_monitor.dart';
 import 'package:legado_md3/help/source/source_engine.dart';
+import 'package:legado_md3/help/storage/crash_log_helper.dart';
 import 'package:legado_md3/help/storage/export_book_service.dart';
 import 'package:legado_md3/ui/book/detail/book_detail_screen.dart';
 import 'package:legado_md3/ui/book/import/remote_book_screen.dart';
@@ -26,12 +26,9 @@ import 'package:legado_md3/ui/book/search/search_screen.dart';
 import 'package:legado_md3/ui/book/detail/change_source_screen.dart';
 import 'package:legado_md3/ui/book/detail/change_cover_screen.dart';
 import 'package:legado_md3/ui/bookmark/book_marking_screen.dart';
+import 'package:legado_md3/ui/cache/cache_manage_screen.dart';
+import 'package:legado_md3/ui/main/bookshelf/bookshelf_manage_screen.dart';
 import 'package:legado_md3/ui/main/bookshelf/group_manage_screen.dart';
-import 'package:legado_md3/ui/main/bookshelf/bookshelf_config_screen.dart';
-import 'package:legado_md3/ui/main/home/home_screen.dart';
-import 'package:legado_md3/ui/book/source/source_manage_screen.dart';
-import 'package:legado_md3/ui/stats/read_record_screen.dart';
-import 'package:legado_md3/ui/config/settings_screen.dart';
 
 /// 书架视图配置（来自 SharedPreferences，由书架配置页写入）
 class _ViewCfg {
@@ -64,6 +61,8 @@ class _ViewCfg {
   bool showWaitUpdateCount;
   /// bs_showFastScroller：书架是否显示快速滚动条
   bool showFastScroller;
+  /// bs_gridNameMode：网格布局下书名显示方式（0显示 1隐藏 2叠加到封面）
+  int gridNameMode;
 
   _ViewCfg({
     this.columnCount = 3,
@@ -92,6 +91,7 @@ class _ViewCfg {
     this.showLocalBook = false,
     this.showWaitUpdateCount = false,
     this.showFastScroller = true,
+    this.gridNameMode = 0,
   });
 
   static Future<_ViewCfg> load() async {
@@ -123,6 +123,7 @@ class _ViewCfg {
       showLocalBook: p.getBool('bs_showLocalBook') ?? false,
       showWaitUpdateCount: p.getBool('bs_showWaitUpdateCount') ?? false,
       showFastScroller: p.getBool('bs_showFastScroller') ?? true,
+      gridNameMode: p.getInt('bs_gridNameMode') ?? 0,
     );
   }
 
@@ -187,8 +188,6 @@ class BookshelfScreen extends StatefulWidget {
 class _BookshelfScreenState extends State<BookshelfScreen> {
   final DatabaseService _db = DatabaseService();
   final BookSourceEngine _engine = BookSourceEngine();
-  bool _selectMode = false;
-  final Set<Book> _selectedBooks = {};
   bool _isUpdating = false;
   bool _searching = false;
   String _searchQuery = '';
@@ -197,7 +196,6 @@ class _BookshelfScreenState extends State<BookshelfScreen> {
   _ViewCfg _cfg = _ViewCfg();
   _CoverCfg _coverCfg = const _CoverCfg();
 
-  static const List<String> _sortOptions = ['智能排序', '书名', '作者', '最近阅读', '添加时间', '字数'];
   int _sortBy = 3;
   bool _sortAsc = false;
 
@@ -369,102 +367,350 @@ class _BookshelfScreenState extends State<BookshelfScreen> {
             '更新完成，共检查 ${toUpdate.length} 本，$updated 本有新章节')));
   }
 
-  void _showSortDialog() {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('排序方式'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: List.generate(_sortOptions.length, (index) {
-            // 内部排序 -> 配置排序（用于持久化）
-            const toCfg = {0: 4, 1: 1, 2: 2, 3: 0, 4: 3};
-            return ListTile(
-              title: Text(_sortOptions[index]),
-              trailing: _sortBy == index
-                  ? Icon(
-                      _sortAsc ? Icons.arrow_upward : Icons.arrow_downward,
-                      color: Theme.of(context).colorScheme.primary)
-                  : null,
-              onTap: () async {
-                setState(() {
-                  if (_sortBy == index) {
-                    _sortAsc = !_sortAsc;
-                  } else {
-                    _sortBy = index;
-                  }
-                });
-                final prefs = await SharedPreferences.getInstance();
-                final cfgIndex = toCfg[index];
-                if (cfgIndex != null) {
-                  await prefs.setInt('bs_sortType', cfgIndex);
-                  await prefs.setBool('bs_sortAscending', _sortAsc);
-                }
-                if (mounted) Navigator.pop(context);
-              },
-            );
-          }),
-        ),
-      ),
-    );
-  }
-
+  /// 书架更多菜单 —— 项与顺序对齐 legado-E `res/menu/main_bookshelf.xml`：
+  /// 更新目录 / 添加本地 / 远程书籍 / 添加URL / 书架管理 / 缓存导出 /
+  /// 分组管理 / 书架布局 / 导出书架 / 导入书架 / 日志。
+  /// legado-E 书架没有的入口（首页模块视图、搜索书籍、多选模式、阅读记录、
+  /// 设置、清空书架、排序设置）已移除或迁移：
+  /// - 搜索书籍：顶栏常驻搜索图标（同 E 的 menu_search showAsAction=always）
+  /// - 多选模式 / 清空书架：移入独立的「书架管理」页（同 E 的 BookshelfManageActivity）
+  /// - 阅读记录 / 设置：移至「我的」页（同 E 的 pref_main）
+  /// - 排序设置：并入「书架布局」对话框（同 E 的 dialog_bookshelf_config）
   void _showMoreMenu() {
     showModalBottomSheet(
       context: context,
       builder: (context) {
-        final cs = Theme.of(context).colorScheme;
         return SafeArea(
           child: SingleChildScrollView(
             child: Column(mainAxisSize: MainAxisSize.min, children: [
-              ListTile(leading: const Icon(Icons.dashboard_outlined), title: const Text('首页模块视图'), onTap: () { Navigator.pop(context); Navigator.push(context, MaterialPageRoute(builder: (_) => const HomeScreen())); }),
-              ListTile(leading: const Icon(Icons.search_outlined), title: const Text('搜索书籍'), onTap: () { Navigator.pop(context); Navigator.push(context, MaterialPageRoute(builder: (_) => const SearchScreen())); }),
-              ListTile(leading: const Icon(Icons.refresh_outlined), title: const Text('一键更新'), onTap: () { Navigator.pop(context); _updateAllBooks(); }),
+              ListTile(
+                  leading: const Icon(Icons.refresh_outlined),
+                  title: const Text('更新目录'),
+                  onTap: () {
+                    Navigator.pop(context);
+                    _updateAllBooks();
+                  }),
               const Divider(),
-              ListTile(leading: const Icon(Icons.folder_open_outlined), title: const Text('本地导入'), onTap: () { Navigator.pop(context); Navigator.push(context, MaterialPageRoute(builder: (_) => const LocalImportScreen())); }),
-              ListTile(leading: const Icon(Icons.cloud_download_outlined), title: const Text('书源管理/网络导入'), onTap: () { Navigator.pop(context); Navigator.push(context, MaterialPageRoute(builder: (_) => const SourceManageScreen())); }),
-              ListTile(leading: const Icon(Icons.link_outlined), title: const Text('URL添加书籍'), onTap: () { Navigator.pop(context); _showAddBookByUrlDialog(); }),
-              ListTile(leading: const Icon(Icons.cloud_download_outlined), title: const Text('远程书籍'), onTap: () { Navigator.pop(context); Navigator.push(context, MaterialPageRoute(builder: (_) => const RemoteBookScreen())); }),
+              ListTile(
+                  leading: const Icon(Icons.folder_open_outlined),
+                  title: const Text('添加本地'),
+                  onTap: () {
+                    Navigator.pop(context);
+                    Navigator.push(context,
+                        MaterialPageRoute(builder: (_) => const LocalImportScreen()));
+                  }),
+              ListTile(
+                  leading: const Icon(Icons.cloud_download_outlined),
+                  title: const Text('远程书籍'),
+                  onTap: () {
+                    Navigator.pop(context);
+                    Navigator.push(context,
+                        MaterialPageRoute(builder: (_) => const RemoteBookScreen()));
+                  }),
+              ListTile(
+                  leading: const Icon(Icons.link_outlined),
+                  title: const Text('添加URL'),
+                  onTap: () {
+                    Navigator.pop(context);
+                    _showAddBookByUrlDialog();
+                  }),
               const Divider(),
-              ListTile(leading: const Icon(Icons.ios_share_outlined), title: const Text('导出书架'), onTap: () { Navigator.pop(context); _exportBookshelf(); }),
-              ListTile(leading: const Icon(Icons.file_download_outlined), title: const Text('导入书架'), onTap: () { Navigator.pop(context); _showImportBookshelfDialog(); }),
+              ListTile(
+                  leading: const Icon(Icons.select_all_outlined),
+                  title: const Text('书架管理'),
+                  onTap: () async {
+                    Navigator.pop(context);
+                    await Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                            builder: (_) => const BookshelfManageScreen()));
+                    await Provider.of<BookProvider>(context, listen: false).loadBooks();
+                  }),
+              ListTile(
+                  leading: const Icon(Icons.download_outlined),
+                  title: const Text('缓存导出'),
+                  onTap: () {
+                    Navigator.pop(context);
+                    Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                            builder: (_) => const CacheManageScreen()));
+                  }),
+              ListTile(
+                  leading: const Icon(Icons.folder_special_outlined),
+                  title: const Text('分组管理'),
+                  onTap: () async {
+                    Navigator.pop(context);
+                    await Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                            builder: (_) => const GroupManageScreen()));
+                    await Provider.of<BookProvider>(context, listen: false).loadBooks();
+                  }),
+              ListTile(
+                  leading: const Icon(Icons.view_quilt_outlined),
+                  title: const Text('书架布局'),
+                  onTap: () {
+                    Navigator.pop(context);
+                    _showBookshelfConfigDialog();
+                  }),
               const Divider(),
-              ListTile(leading: const Icon(Icons.view_module_outlined), title: const Text('布局设置'), onTap: () async {
-                Navigator.pop(context);
-                await Navigator.push(context, MaterialPageRoute(builder: (_) => const BookshelfConfigScreen()));
-                await _reloadCfg();
-              }),
-              ListTile(leading: const Icon(Icons.sort_outlined), title: const Text('排序设置'), onTap: () { Navigator.pop(context); _showSortDialog(); }),
-              ListTile(leading: const Icon(Icons.folder_special_outlined), title: const Text('分组管理'), onTap: () async {
-                Navigator.pop(context);
-                await Navigator.push(context, MaterialPageRoute(builder: (_) => const GroupManageScreen()));
-                await Provider.of<BookProvider>(context, listen: false).loadBooks();
-              }),
-              ListTile(leading: const Icon(Icons.select_all_outlined), title: const Text('多选模式'), onTap: () { Navigator.pop(context); setState(() => _selectMode = true); }),
+              ListTile(
+                  leading: const Icon(Icons.ios_share_outlined),
+                  title: const Text('导出书架'),
+                  onTap: () {
+                    Navigator.pop(context);
+                    _exportBookshelf();
+                  }),
+              ListTile(
+                  leading: const Icon(Icons.file_download_outlined),
+                  title: const Text('导入书架'),
+                  onTap: () {
+                    Navigator.pop(context);
+                    _showImportBookshelfDialog();
+                  }),
               const Divider(),
-              ListTile(leading: const Icon(Icons.bar_chart_outlined), title: const Text('阅读记录'), onTap: () { Navigator.pop(context); Navigator.push(context, MaterialPageRoute(builder: (_) => const ReadRecordScreen())); }),
-              ListTile(leading: const Icon(Icons.settings_outlined), title: const Text('设置'), onTap: () async {
-                Navigator.pop(context);
-                // 从设置页返回后重载配置，使 bs_showLocalBook 等开关即时生效
-                await Navigator.push(context, MaterialPageRoute(builder: (_) => const SettingsScreen()));
-                await _reloadCfg();
-              }),
-              const Divider(),
-              ListTile(leading: Icon(Icons.delete_sweep_outlined, color: cs.error), title: Text('清空书架', style: TextStyle(color: cs.error)), onTap: () async {
-                Navigator.pop(context);
-                final confirmed = await showDialog<bool>(context: context, builder: (context) => AlertDialog(title: const Text('清空书架'), content: const Text('确定要清空所有书籍吗？此操作会同时删除已缓存章节。'), actions: [TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('取消')), FilledButton(style: FilledButton.styleFrom(backgroundColor: cs.error, foregroundColor: cs.onError), onPressed: () => Navigator.pop(context, true), child: const Text('清空'))]));
-                if (confirmed == true) {
-                  final provider = Provider.of<BookProvider>(context, listen: false);
-                  for (final book in provider.books) {
-                    await _db.deleteBook(book.name, book.author);
-                  }
-                  await provider.loadBooks();
-                }
-              }),
+              ListTile(
+                  leading: const Icon(Icons.article_outlined),
+                  title: const Text('日志'),
+                  onTap: () {
+                    Navigator.pop(context);
+                    _showLogDialog();
+                  }),
             ]),
           ),
         );
       },
+    );
+  }
+
+  /// 书架布局对话框 —— 项与顺序对齐 legado-E `dialog_bookshelf_config.xml`：
+  /// 分组样式 / 显示未读 / 显示上次更新时间 / 显示待更新书籍 / 快速滚动条 /
+  /// 布局（列表·紧凑列表·网格2~6）/ 排序（六项）/ 书名显示（网格布局下）。
+  void _showBookshelfConfigDialog() {
+    // 对话框内的临时值，确认后一次性落盘
+    int groupStyle = _cfg.groupStyle;
+    bool showUnread = _cfg.showUnread;
+    bool showLastUpdateTime = _cfg.showLastUpdateTime;
+    bool showWaitUpdateCount = _cfg.showWaitUpdateCount;
+    bool showFastScroller = _cfg.showFastScroller;
+    int gridNameMode = _cfg.gridNameMode;
+    final provider = Provider.of<BookProvider>(context, listen: false);
+
+    // 当前布局 -> E 风格布局单选索引：
+    // 0列表 1紧凑列表 2网格2列 3网格3列 4网格4列 5网格5列 6网格6列
+    int layoutIndex;
+    final curLayout = provider.bookshelfLayout;
+    if (curLayout == 1) {
+      layoutIndex = 1;
+    } else if (curLayout == 2 || curLayout == 3) {
+      layoutIndex = _cfg.columnCount.clamp(2, 6);
+    } else if (curLayout == 4) {
+      layoutIndex = _cfg.columnCount.clamp(2, 6);
+    } else {
+      layoutIndex = 0;
+    }
+
+    // 当前内部排序 -> E 风格排序单选索引：
+    // E: 0最近阅读 1更新时间 2书名 3手动 4综合 5作者
+    // Klys 内部: 0智能/手动 1书名 2作者 3最近阅读 4更新时间 5字数
+    const internalToE = {3: 0, 4: 1, 1: 2, 0: 3, 2: 5};
+    int sortIndex = internalToE[_sortBy] ?? 0;
+
+    // E 风格布局索引 -> (Klys layout, columnCount)
+    (int, int?) layoutValue(int i) => switch (i) {
+          0 => (0, null),
+          1 => (1, null),
+          _ => (2, i),
+        };
+
+    showDialog(
+      context: context,
+      builder: (dialogContext) {
+        final cs = Theme.of(dialogContext).colorScheme;
+        return StatefulBuilder(
+          builder: (ctx, setLocal) {
+            Widget radio(String label, int value, int group, ValueChanged<int> onChanged) {
+              return RadioListTile<int>(
+                dense: true,
+                visualDensity: VisualDensity.compact,
+                value: value,
+                groupValue: group,
+                title: Text(label, style: const TextStyle(fontSize: 13)),
+                onChanged: (v) => onChanged(v ?? 0),
+              );
+            }
+
+            return AlertDialog(
+              title: const Text('书架布局'),
+              content: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    // 分组样式
+                    ListTile(
+                      dense: true,
+                      contentPadding: EdgeInsets.zero,
+                      title: const Text('分组样式', style: TextStyle(fontSize: 14)),
+                      trailing: DropdownButton<int>(
+                        value: groupStyle,
+                        underline: const SizedBox.shrink(),
+                        items: const [
+                          DropdownMenuItem(value: 0, child: Text('标签')),
+                          DropdownMenuItem(value: 1, child: Text('分区')),
+                        ],
+                        onChanged: (v) =>
+                            setLocal(() => groupStyle = v ?? 0),
+                      ),
+                    ),
+                    SwitchListTile(
+                      dense: true,
+                      visualDensity: VisualDensity.compact,
+                      contentPadding: EdgeInsets.zero,
+                      value: showUnread,
+                      title: const Text('显示未读', style: TextStyle(fontSize: 14)),
+                      onChanged: (v) => setLocal(() => showUnread = v),
+                    ),
+                    SwitchListTile(
+                      dense: true,
+                      visualDensity: VisualDensity.compact,
+                      contentPadding: EdgeInsets.zero,
+                      value: showLastUpdateTime,
+                      title: const Text('显示上次更新时间', style: TextStyle(fontSize: 14)),
+                      onChanged: (v) => setLocal(() => showLastUpdateTime = v),
+                    ),
+                    SwitchListTile(
+                      dense: true,
+                      visualDensity: VisualDensity.compact,
+                      contentPadding: EdgeInsets.zero,
+                      value: showWaitUpdateCount,
+                      title: const Text('显示待更新书籍', style: TextStyle(fontSize: 14)),
+                      onChanged: (v) => setLocal(() => showWaitUpdateCount = v),
+                    ),
+                    SwitchListTile(
+                      dense: true,
+                      visualDensity: VisualDensity.compact,
+                      contentPadding: EdgeInsets.zero,
+                      value: showFastScroller,
+                      title: const Text('快速滚动条', style: TextStyle(fontSize: 14)),
+                      onChanged: (v) => setLocal(() => showFastScroller = v),
+                    ),
+                    const Divider(height: 16),
+                    Text('布局', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: cs.primary)),
+                    radio('列表', 0, layoutIndex, (v) => setLocal(() => layoutIndex = v)),
+                    radio('紧凑列表', 1, layoutIndex, (v) => setLocal(() => layoutIndex = v)),
+                    for (final n in const [2, 3, 4, 5, 6])
+                      radio('网格$n列', n, layoutIndex, (v) => setLocal(() => layoutIndex = v)),
+                    const Divider(height: 16),
+                    Text('排序', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: cs.primary)),
+                    radio('最近阅读', 0, sortIndex, (v) => setLocal(() => sortIndex = v)),
+                    radio('更新时间', 1, sortIndex, (v) => setLocal(() => sortIndex = v)),
+                    radio('书名', 2, sortIndex, (v) => setLocal(() => sortIndex = v)),
+                    radio('手动', 3, sortIndex, (v) => setLocal(() => sortIndex = v)),
+                    radio('综合', 4, sortIndex, (v) => setLocal(() => sortIndex = v)),
+                    radio('作者', 5, sortIndex, (v) => setLocal(() => sortIndex = v)),
+                    // 书名显示：仅网格布局可见（同 E 的 book_name_choice 可见性逻辑）
+                    if (layoutIndex >= 2) ...[
+                      const Divider(height: 16),
+                      Text('书名', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: cs.primary)),
+                      RadioListTile<int>(
+                        dense: true,
+                        visualDensity: VisualDensity.compact,
+                        contentPadding: EdgeInsets.zero,
+                        value: 0,
+                        groupValue: gridNameMode,
+                        title: const Text('显示', style: TextStyle(fontSize: 13)),
+                        onChanged: (v) => setLocal(() => gridNameMode = 0),
+                      ),
+                      RadioListTile<int>(
+                        dense: true,
+                        visualDensity: VisualDensity.compact,
+                        contentPadding: EdgeInsets.zero,
+                        value: 1,
+                        groupValue: gridNameMode,
+                        title: const Text('隐藏', style: TextStyle(fontSize: 13)),
+                        onChanged: (v) => setLocal(() => gridNameMode = 1),
+                      ),
+                      RadioListTile<int>(
+                        dense: true,
+                        visualDensity: VisualDensity.compact,
+                        contentPadding: EdgeInsets.zero,
+                        value: 2,
+                        groupValue: gridNameMode,
+                        title: const Text('叠加', style: TextStyle(fontSize: 13)),
+                        onChanged: (v) => setLocal(() => gridNameMode = 2),
+                      ),
+                    ],
+                  ],
+                ),
+              ),
+              actions: [
+                TextButton(onPressed: () => Navigator.pop(dialogContext), child: const Text('取消')),
+                FilledButton(
+                  onPressed: () async {
+                    final prefs = await SharedPreferences.getInstance();
+                    await prefs.setInt('bs_groupStyle', groupStyle);
+                    await prefs.setBool('bs_showUnread', showUnread);
+                    await prefs.setBool('bs_showLastUpdateTime', showLastUpdateTime);
+                    await prefs.setBool('bs_showWaitUpdateCount', showWaitUpdateCount);
+                    await prefs.setBool('bs_showFastScroller', showFastScroller);
+                    await prefs.setInt('bs_gridNameMode', gridNameMode);
+                    // 布局与列数
+                    final (layout, cols) = layoutValue(layoutIndex);
+                    await provider.setBookshelfLayout(layout);
+                    if (cols != null) {
+                      await prefs.setInt('bs_columnCount', cols);
+                      _cfg.columnCount = cols;
+                    }
+                    // 排序：E 索引 -> Klys cfg 索引
+                    // E: 0最近阅读 1更新时间 2书名 3手动 4综合 5作者
+                    // cfg: 0最近阅读 1书名 2作者 3添加时间(更新时间) 4手动
+                    const eToCfg = [0, 3, 1, 4, 0, 2];
+                    await prefs.setInt('bs_sortType', eToCfg[sortIndex]);
+                    if (!mounted) return;
+                    Navigator.pop(dialogContext);
+                    await _reloadCfg();
+                  },
+                  child: const Text('确定'),
+                ),
+              ],
+            );
+          },
+        );
+      },
+    );
+  }
+
+  /// 日志对话框（对齐 legado-E 书架菜单 menu_log / AppLogDialog）
+  Future<void> _showLogDialog() async {
+    final logs = await CrashLogHelper.instance.readLogs();
+    if (!mounted) return;
+    final cs = Theme.of(context).colorScheme;
+    showDialog(
+      context: context,
+      builder: (c) => AlertDialog(
+        title: const Text('日志'),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: logs.trim().isEmpty
+              ? Text('暂无日志', style: TextStyle(color: cs.onSurfaceVariant))
+              : SingleChildScrollView(
+                  child: SelectableText(logs, style: const TextStyle(fontSize: 11, fontFamily: 'monospace')),
+                ),
+        ),
+        actions: [
+          if (logs.trim().isNotEmpty)
+            TextButton(
+              onPressed: () async {
+                await CrashLogHelper.instance.clear();
+                if (mounted) Navigator.pop(c);
+              },
+              child: const Text('清空'),
+            ),
+          TextButton(onPressed: () => Navigator.pop(c), child: const Text('关闭')),
+        ],
+      ),
     );
   }
 
@@ -1322,30 +1568,10 @@ class _BookshelfScreenState extends State<BookshelfScreen> {
                     _searchQuery = '';
                   });
                 }),
-          if (_selectMode) ...[
-            IconButton(icon: const Icon(Icons.select_all), tooltip: '全选', onPressed: () => setState(() { _selectedBooks..clear()..addAll(books); })),
-            IconButton(icon: const Icon(Icons.flip), tooltip: '反选', onPressed: () => setState(() { final all = books.toSet(); final inverted = all.difference(_selectedBooks); _selectedBooks..clear()..addAll(inverted); })),
-            IconButton(icon: const Icon(Icons.close), onPressed: () => setState(() { _selectMode = false; _selectedBooks.clear(); })),
-          ] else ...[
-            // 离线提示（E: NetworkUtils.isAvailable 的 UI 侧体现）
-            ValueListenableBuilder<bool>(
-              valueListenable: NetworkMonitor.instance.online,
-              builder: (context, online, _) => online
-                  ? const SizedBox.shrink()
-                  : Padding(
-                      padding: const EdgeInsets.only(right: 4),
-                      child: Chip(
-                        visualDensity: VisualDensity.compact,
-                        avatar: const Icon(Icons.cloud_off, size: 16),
-                        label: const Text('离线', style: TextStyle(fontSize: 12)),
-                        backgroundColor: Theme.of(context).colorScheme.errorContainer,
-                      ),
-                    ),
-            ),
+          if (!_searching)
             IconButton(icon: const Icon(Icons.more_vert), onPressed: _showMoreMenu),
-          ],
         ],
-        bottom: (_cfg.showTabMenu && !_selectMode)
+        bottom: _cfg.showTabMenu
             ? PreferredSize(
                 preferredSize: const Size.fromHeight(48),
                 child: _buildGroupTabs(provider))
@@ -1364,18 +1590,6 @@ class _BookshelfScreenState extends State<BookshelfScreen> {
                   FilledButton.icon(onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const SearchScreen())), icon: const Icon(Icons.search), label: const Text('去搜索')),
                 ]))
               : _wrapFastScroller(_buildBody(provider, books, layout)),
-      bottomNavigationBar: _selectMode
-          ? SafeArea(child: Column(mainAxisSize: MainAxisSize.min, children: [
-              const Divider(height: 1),
-              Row(mainAxisAlignment: MainAxisAlignment.spaceEvenly, children: [
-                _batchBtn(Icons.drive_file_move_outline, '移动分组', _batchMoveGroup),
-                _batchBtn(Icons.cloud_download_outlined, '缓存', _batchCache),
-                _batchBtn(Icons.file_upload_outlined, '导出', _batchExport),
-                _batchBtn(Icons.delete_sweep_outlined, '删除', _batchDelete, danger: true),
-              ]),
-              Padding(padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4), child: Align(alignment: Alignment.centerLeft, child: Text('已选 ${_selectedBooks.length} 本', style: TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.onSurfaceVariant)))),
-            ]))
-          : null,
     );
   }
 
@@ -1606,121 +1820,150 @@ class _BookshelfScreenState extends State<BookshelfScreen> {
     );
   }
 
+  /// 书架列表项 —— 结构对齐 legado-E `res/layout/item_bookshelf_list.xml`：
+  /// 左侧封面 66x90，右侧书名(16sp)/作者(13sp)+上次更新时间/读到(13sp)/最新(13sp)，
+  /// 未读数量以角标叠加在封面右上（showUnread）。
   Widget _buildListItem(Book book, {bool compact = false}) {
-    final selected = _selectedBooks.contains(book);
     final cs = Theme.of(context).colorScheme;
-    final coverW = compact ? 36.0 : (_cfg.coverWidth * 0.5).clamp(42.0, 90.0);
-    final coverH = coverW * 1.4;
-    final sub = <Widget>[
-      Text(book.author, maxLines: 1, style: const TextStyle(fontSize: 12)),
-    ];
-    if (!compact) {
-      if (_cfg.showLatestChapter) {
-        sub.add(const SizedBox(height: 2));
-        sub.add(Text(book.lastChapter ?? '暂无章节',
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-                fontSize: 11, color: cs.primary)));
-      }
-      if (_cfg.showTags && (book.kind ?? '').isNotEmpty) {
-        sub.add(const SizedBox(height: 2));
-        sub.add(Text(book.kind!,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant)));
-      }
-      if (_cfg.showSynopsis && (book.intro ?? '').isNotEmpty) {
-        sub.add(const SizedBox(height: 2));
-        sub.add(Text(book.intro!,
-            maxLines: _cfg.synopsisLines,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant)));
-      }
-      if (_cfg.showLastUpdateTime) {
-        final t = _fmtTime(book.lastCheckTime);
-        if (t.isNotEmpty) {
-          sub.add(const SizedBox(height: 2));
-          sub.add(Text('更新于 $t',
-              style: TextStyle(fontSize: 10, color: cs.onSurfaceVariant)));
-        }
-      }
+    final coverW = compact ? 36.0 : 66.0;
+    final coverH = compact ? 50.0 : 90.0;
+    final subStyle = TextStyle(fontSize: compact ? 11 : 13, color: cs.onSurfaceVariant);
+
+    // 「读到」行：按需单章查询 + 缓存，避免全量加载目录
+    final durKey = '${book.bookUrl ?? ''}::${book.name}::${book.author}::${book.durChapterIndex}';
+    Widget durLine;
+    if (compact) {
+      durLine = Text(book.lastChapter ?? '暂无章节',
+          maxLines: 1, overflow: TextOverflow.ellipsis, style: subStyle);
+    } else {
+      durLine = FutureBuilder<String>(
+        future: _durChapterTitle(book, durKey),
+        builder: (context, snap) {
+          final title = snap.data;
+          if (title == null || title.isEmpty) return const SizedBox.shrink();
+          return Text('读到: $title',
+              maxLines: 1, overflow: TextOverflow.ellipsis, style: subStyle);
+        },
+      );
     }
+
+    final timeText =
+        _cfg.showLastUpdateTime ? _fmtTime(book.lastCheckTime) : '';
+    final lastText = book.lastChapter ?? '';
+
     return ListTile(
+      contentPadding: EdgeInsets.symmetric(horizontal: compact ? 8 : 12, vertical: 2),
       leading: _buildCover(book, width: coverW, height: coverH),
       title: Text(book.name,
-          maxLines: _cfg.maxTitleLines.clamp(1, 5),
+          maxLines: 1,
           overflow: TextOverflow.ellipsis,
-          style: const TextStyle(fontWeight: FontWeight.w500)),
-      subtitle: _revAware(compact
-          ? Text('${book.author} · ${_cfg.showLatestChapter ? (book.lastChapter ?? '') : ''}',
-              maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 11))
-          : Column(crossAxisAlignment: CrossAxisAlignment.start, children: sub)),
-      trailing: _selectMode
-          ? Checkbox(value: selected, onChanged: (_) => _toggleSelect(book))
-          : (compact ? null : const Icon(Icons.chevron_right)),
-      selected: selected,
-      onTap: () => _selectMode
-          ? _toggleSelect(book)
-          : _openBook(book),
-      onLongPress: () =>
-          _selectMode ? _toggleSelect(book) : _showBookMenu(book),
+          style: TextStyle(
+              fontSize: compact ? 13 : 16, fontWeight: FontWeight.w500)),
+      subtitle: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Row(children: [
+            Expanded(
+                child: Text(book.author,
+                    maxLines: 1, overflow: TextOverflow.ellipsis, style: subStyle)),
+            if (timeText.isNotEmpty)
+              Text(timeText, maxLines: 1, style: subStyle),
+          ]),
+          durLine,
+          if (lastText.isNotEmpty)
+            Text('最新: $lastText',
+                maxLines: 1, overflow: TextOverflow.ellipsis, style: subStyle),
+        ],
+      ),
+      onTap: () => _openBook(book),
+      onLongPress: () => _showBookMenu(book),
     );
   }
 
+  final Map<String, String> _durTitleCache = {};
+
+  /// 当前阅读章节标题（对应 E 实体的 durChapterTitle），单章查询 + 内存缓存
+  Future<String> _durChapterTitle(Book book, String key) async {
+    final cached = _durTitleCache[key];
+    if (cached != null) return cached;
+    try {
+      final ch = await _db.getChapter(book.name, book.author, book.durChapterIndex);
+      final title = ch?.title ?? '';
+      _durTitleCache[key] = title;
+      return title;
+    } catch (_) {
+      return '';
+    }
+  }
+
   Widget _buildGridItem(Book book, {required bool compact}) {
-    final selected = _selectedBooks.contains(book);
+    final cs = Theme.of(context).colorScheme;
+    // bs_gridNameMode：0封面下显示书名（E 默认）1隐藏 2叠加到封面底部
+    final showNameBelow = _cfg.gridNameMode != 1;
+    final overlayOnCover = _cfg.gridNameMode == 2;
+    Widget cover = _buildCover(book, width: double.infinity, height: double.infinity, radius: 8);
+    if (overlayOnCover) {
+      cover = Stack(
+        fit: StackFit.expand,
+        children: [
+          cover,
+          Align(
+            alignment: Alignment.bottomCenter,
+            child: Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 3),
+              decoration: BoxDecoration(
+                borderRadius: const BorderRadius.vertical(bottom: Radius.circular(8)),
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [Colors.transparent, Colors.black.withOpacity(0.6)],
+                ),
+              ),
+              child: Text(
+                book.name,
+                maxLines: _cfg.maxTitleLines.clamp(1, 5),
+                textAlign: _cfg.centerTitle ? TextAlign.center : TextAlign.start,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(fontSize: 11, color: Colors.white, shadows: [Shadow(blurRadius: 2)]),
+              ),
+            ),
+          ),
+        ],
+      );
+    }
     return RepaintBoundary(
       child: GestureDetector(
-        onTap: () => _selectMode
-            ? _toggleSelect(book)
-            : _openBook(book),
-        onLongPress: () =>
-            _selectMode ? _toggleSelect(book) : _showBookMenu(book),
-        child: Container(
-          decoration: selected
-              ? BoxDecoration(
-                  border: Border.all(
-                      color: Theme.of(context).colorScheme.primary, width: 2),
-                  borderRadius: BorderRadius.circular(8))
-              : null,
-          child: Column(children: [
-            Expanded(child: _buildCover(book, width: double.infinity, height: double.infinity, radius: 8)),
+        onTap: () => _openBook(book),
+        onLongPress: () => _showBookMenu(book),
+        child: Column(children: [
+          Expanded(child: cover),
+          if (showNameBelow)
             _revAware(Padding(
               padding: EdgeInsets.all(compact ? 4 : 8),
               child: Text(book.name,
                   maxLines: _cfg.maxTitleLines.clamp(1, 5),
                   textAlign: _cfg.centerTitle ? TextAlign.center : TextAlign.start,
                   overflow: TextOverflow.ellipsis,
-                  style: TextStyle(fontSize: _cfg.compactTitle ? 11 : (compact ? 11 : 13))),
+                  style: TextStyle(
+                      fontSize: _cfg.compactTitle ? 11 : (compact ? 11 : 13),
+                      color: cs.onSurface)),
             )),
-          ]),
-        ),
+        ]),
       ),
     );
   }
 
   Widget _buildCoverItem(Book book) {
-    final selected = _selectedBooks.contains(book);
     return RepaintBoundary(
       child: GestureDetector(
-        onTap: () => _selectMode
-            ? _toggleSelect(book)
-            : _openBook(book),
-        onLongPress: () =>
-            _selectMode ? _toggleSelect(book) : _showBookMenu(book),
-        child: Container(
-          decoration: selected
-              ? BoxDecoration(
-                  border: Border.all(
-                      color: Theme.of(context).colorScheme.primary, width: 3),
-                  borderRadius: BorderRadius.circular(12))
-              : null,
-          child: ClipRRect(
-            borderRadius: BorderRadius.circular(12),
-            child: _buildCover(book,
-                width: double.infinity, height: double.infinity, radius: 0),
-          ),
+        onTap: () => _openBook(book),
+        onLongPress: () => _showBookMenu(book),
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(12),
+          child: _buildCover(book,
+              width: double.infinity, height: double.infinity, radius: 0),
         ),
       ),
     );
@@ -1930,119 +2173,7 @@ class _BookshelfScreenState extends State<BookshelfScreen> {
     );
   }
 
-  Widget _batchBtn(IconData icon, String label, VoidCallback onTap,
-      {bool danger = false}) {
-    final color = danger ? Theme.of(context).colorScheme.error : null;
-    return TextButton.icon(
-      onPressed: _selectedBooks.isEmpty ? null : onTap,
-      icon: Icon(icon, size: 20, color: color),
-      label: Text(label, style: TextStyle(color: color, fontSize: 13)),
-    );
-  }
-
-  Future<void> _batchMoveGroup() async {
-    final provider = Provider.of<BookProvider>(context, listen: false);
-    // 移动分组仅支持用户自定义分组，虚拟分组（本地/音频/视频/未分组）不可作为目标
-    final groups = provider.displayGroups()
-        .where((g) => g != '全部' && !BookProvider.isVirtualGroup(g))
-        .toList();
-    final controller = TextEditingController();
-    if (!mounted) return;
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('移动到分组'),
-        content: Column(mainAxisSize: MainAxisSize.min, children: [
-          Wrap(spacing: 8, runSpacing: 4, children: [
-            for (final g in groups)
-              ActionChip(label: Text(g), onPressed: () async {
-                for (final b in _selectedBooks) {
-                  b.group = g;
-                  await _db.updateBook(b);
-                }
-                if (mounted) {
-                  Navigator.pop(context);
-                  await provider.loadBooks();
-                  setState(() {
-                    _selectMode = false;
-                    _selectedBooks.clear();
-                  });
-                }
-              }),
-            ActionChip(label: const Text('未分组'), onPressed: () async {
-              for (final b in _selectedBooks) {
-                b.group = null;
-                await _db.updateBook(b);
-              }
-              if (mounted) {
-                Navigator.pop(context);
-                await provider.loadBooks();
-                setState(() {
-                  _selectMode = false;
-                  _selectedBooks.clear();
-                });
-              }
-            }),
-          ]),
-          const SizedBox(height: 12),
-          TextField(
-              controller: controller,
-              decoration: const InputDecoration(labelText: '新分组名称')),
-        ]),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('取消')),
-          FilledButton(onPressed: () async {
-            final g = controller.text.trim();
-            if (g.isEmpty) return;
-            for (final b in _selectedBooks) {
-              b.group = g;
-              await _db.updateBook(b);
-            }
-            if (mounted) {
-              Navigator.pop(context);
-              await provider.loadBooks();
-              setState(() {
-                _selectMode = false;
-                _selectedBooks.clear();
-              });
-            }
-          }, child: const Text('确定')),
-        ],
-      ),
-    );
-  }
-
-  Future<void> _batchCache() async {
-    final picked = List.of(_selectedBooks);
-    setState(() {
-      _selectMode = false;
-      _selectedBooks.clear();
-    });
-    int totalOk = 0, totalFail = 0, done = 0;
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (d) => StatefulBuilder(builder: (d, setP) {
-        _cacheBooksWithProgress(picked, (ok, fail, d2, t2) {
-          setP(() {
-            totalOk = ok;
-            totalFail = fail;
-            done = d2;
-          });
-        });
-        return AlertDialog(
-          title: const Text('批量缓存'),
-          content: Column(mainAxisSize: MainAxisSize.min, children: [
-            LinearProgressIndicator(
-                value: picked.isEmpty ? 0 : done / picked.length),
-            const SizedBox(height: 12),
-            Text('进度 $done/${picked.length}，成功 $totalOk 章，失败 $totalFail 章'),
-          ]),
-        );
-      }),
-    );
-  }
-
+  /// 单本缓存（书籍菜单「缓存全部」与书架管理页批量缓存共用逻辑）
   Future<void> _cacheOneBook(Book book) async {
     showDialog(
       context: context,
@@ -2064,12 +2195,10 @@ class _BookshelfScreenState extends State<BookshelfScreen> {
     if (mounted) {
       Navigator.pop(context);
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text(
-              '缓存完成: 成功${r.ok}章${r.fail > 0 ? ', 失败${r.fail}章' : ''}')));
+          content: Text('缓存完成: 成功${r.ok}章${r.fail > 0 ? ', 失败${r.fail}章' : ''}')));
     }
   }
 
-  /// 逐章缓存一本书，返回成功/失败计数
   Future<({int ok, int fail})> _cacheBook(Book book) async {
     int ok = 0, fail = 0;
     if (book.local || book.origin == null || book.noteUrl == null) {
@@ -2080,11 +2209,10 @@ class _BookshelfScreenState extends State<BookshelfScreen> {
         sources.where((s) => s.bookSourceUrl == book.origin).firstOrNull;
     if (source == null) return (ok: ok, fail: fail);
     final chapters = await _db.getChapters(book.name, book.author);
-    final engine = BookSourceEngine();
     for (final ch in chapters) {
       if (ch.isVolume || (ch.content ?? '').isNotEmpty) continue;
       try {
-        final content = await engine.getContent(source, ch.url,
+        final content = await _engine.getContent(source, ch.url,
             bookInfo: book.jsContext(),
             chapter: ch.jsContext(book.bookUrl));
         if (content != null && content.isNotEmpty) {
@@ -2101,83 +2229,5 @@ class _BookshelfScreenState extends State<BookshelfScreen> {
     return (ok: ok, fail: fail);
   }
 
-  Future<void> _cacheBooksWithProgress(List<Book> books,
-      void Function(int ok, int fail, int done, int total) onProgress) async {
-    int ok = 0, fail = 0;
-    for (var i = 0; i < books.length; i++) {
-      final r = await _cacheBook(books[i]);
-      ok += r.ok;
-      fail += r.fail;
-      onProgress(ok, fail, i + 1, books.length);
-    }
-    if (mounted) {
-      Navigator.pop(context);
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text(
-              '批量缓存完成: 成功$ok章${fail > 0 ? ', 失败$fail章' : ''}')));
-    }
-  }
 
-  Future<void> _batchDelete() async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (c) => AlertDialog(
-        title: const Text('删除书籍'),
-        content: Text('确定删除选中的 ${_selectedBooks.length} 本书吗？将同时删除已缓存章节。'),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('取消')),
-          FilledButton(onPressed: () => Navigator.pop(c, true), child: const Text('删除')),
-        ],
-      ),
-    );
-    if (confirmed == true) {
-      for (final book in _selectedBooks) {
-        await _db.deleteBook(book.name, book.author);
-      }
-      if (mounted) {
-        final p = Provider.of<BookProvider>(context, listen: false);
-        await p.loadBooks();
-        setState(() {
-          _selectMode = false;
-          _selectedBooks.clear();
-        });
-      }
-    }
-  }
-
-  Future<void> _batchExport() async {
-    final picked = List.of(_selectedBooks);
-    setState(() {
-      _selectMode = false;
-      _selectedBooks.clear();
-    });
-    int ok = 0;
-    for (final book in picked) {
-      try {
-        final chapters = await _db.getChapters(book.name, book.author);
-        final buf = StringBuffer()
-          ..writeln('《${book.name}》 作者:${book.author}')
-          ..writeln(book.intro ?? '')
-          ..writeln('\n');
-        for (final ch in chapters) {
-          buf.writeln(ch.title);
-          buf.writeln(ch.content ?? '');
-          buf.writeln('');
-        }
-        // 文件名去除非法字符
-        final safe = book.name.replaceAll(RegExp(r'[\\/:*?"<>|]'), '_');
-        final file = File('${Directory.systemTemp.path}/$safe.txt');
-        await file.writeAsString(buf.toString());
-        await Share.shareXFiles([XFile(file.path)], text: '《${book.name}》导出');
-        ok++;
-      } catch (_) {}
-    }
-    if (mounted) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text('已导出 $ok 本')));
-    }
-  }
-
-  void _toggleSelect(Book book) => setState(() =>
-      _selectedBooks.contains(book) ? _selectedBooks.remove(book) : _selectedBooks.add(book));
 }

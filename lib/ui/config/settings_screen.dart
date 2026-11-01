@@ -21,17 +21,12 @@ import 'package:legado_md3/ui/cache/cache_manage_screen.dart';
 import 'package:legado_md3/ui/cache/download_manage_screen.dart';
 import 'package:legado_md3/ui/config/cloud_tts_screen.dart';
 import 'package:legado_md3/ui/config/cover_config_screen.dart';
-import 'package:legado_md3/ui/config/dict_rule_screen.dart';
 import 'package:legado_md3/ui/config/download_cache_config_screen.dart';
-import 'package:legado_md3/ui/config/highlight_tag_rule_screen.dart';
 import 'package:legado_md3/ui/config/other_config_screen.dart';
 import 'package:legado_md3/ui/config/keyboard_assist_screen.dart';
-import 'package:legado_md3/ui/config/replace_rule_screen.dart';
 import 'package:legado_md3/ui/config/theme_manage_screen.dart';
 import 'package:legado_md3/ui/config/translation_screen.dart';
-import 'package:legado_md3/ui/config/txt_toc_rule_screen.dart';
 import 'package:legado_md3/ui/main/bookshelf/bookshelf_config_screen.dart';
-import 'package:legado_md3/ui/main/homepage/homepage_manage_screen.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -697,45 +692,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
             onTap: () => _showWebPasswordDialog(),
           ),
 
-          _buildSectionHeader('规则管理'),
-          ListTile(
-            leading: const Icon(Icons.find_replace),
-            title: const Text('替换净化规则'),
-            subtitle: const Text('管理内容替换规则'),
-            trailing: const Icon(Icons.chevron_right),
-            onTap: () => _showReplaceRuleScreen(),
-          ),
-          ListTile(
-            leading: const Icon(Icons.list_alt),
-            title: const Text('TXT目录规则'),
-            subtitle: const Text('管理TXT书籍目录识别规则'),
-            trailing: const Icon(Icons.chevron_right),
-            onTap: () => _showTxtTocRuleScreen(),
-          ),
-          ListTile(
-            leading: const Icon(Icons.menu_book),
-            title: const Text('字典规则'),
-            subtitle: const Text('管理字典和翻译规则'),
-            trailing: const Icon(Icons.chevron_right),
-            onTap: () => _showDictRuleScreen(),
-          ),
-          ListTile(
-            leading: const Icon(Icons.label_outline),
-            title: const Text('高亮标签配置'),
-            subtitle: const Text('管理阅读高亮标签'),
-            trailing: const Icon(Icons.chevron_right),
-            onTap: () => _showHighlightRuleScreen(),
-          ),
-
-          _buildSectionHeader('首页模块'),
-          ListTile(
-            leading: const Icon(Icons.view_module),
-            title: const Text('首页模块管理'),
-            subtitle: const Text('自定义首页显示模块'),
-            trailing: const Icon(Icons.chevron_right),
-            onTap: () => _showHomepageModuleScreen(),
-          ),
-
           ..._buildOtherExtraSection(),
           _buildSectionHeader('其他'),
           ListTile(
@@ -1270,26 +1226,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
 
 
-
-  void _showReplaceRuleScreen() {
-    Navigator.push(context, MaterialPageRoute(builder: (_) => const ReplaceRuleScreen()));
-  }
-
-  void _showTxtTocRuleScreen() {
-    Navigator.push(context, MaterialPageRoute(builder: (_) => const TxtTocRuleScreen()));
-  }
-
-  void _showDictRuleScreen() {
-    Navigator.push(context, MaterialPageRoute(builder: (_) => const DictRuleScreen()));
-  }
-
-  void _showHighlightRuleScreen() {
-    Navigator.push(context, MaterialPageRoute(builder: (_) => const HighlightTagRuleScreen()));
-  }
-
-  void _showHomepageModuleScreen() {
-    Navigator.push(context, MaterialPageRoute(builder: (_) => const HomepageManageScreen()));
-  }
 
   void _showAboutDialog() async {
     final info = await PackageInfo.fromPlatform();
