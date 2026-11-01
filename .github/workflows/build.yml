@@ -61,22 +61,25 @@ jobs:
         id: version
         run: |
           VERSION=$(grep '^version:' pubspec.yaml | awk '{print $2}' | cut -d'+' -f1)
-          # 展示归一：pubspec 为规范三段式，对外呈现去掉尾缀 .0（1.0.0 -> 1.0）
-          DISPLAY="${VERSION%.0}"
+          # tag 发布用完整三段式（1.1.0）；beta 标签去掉尾缀 .0（v1.1-beta）
           if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
             TAG="${GITHUB_REF_NAME}"
           else
-            TAG="v${DISPLAY}-beta"
+            TAG="v${VERSION%.0}-beta"
           fi
           echo "tag=$TAG" >> $GITHUB_OUTPUT
-          echo "version=$DISPLAY" >> $GITHUB_OUTPUT
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
 
       - name: Upload APKs to release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.version.outputs.tag }}
-          name: ${{ steps.version.outputs.version }} ${{ github.ref_type == 'tag' && '' || '-beta' }}
+          name: ${{ steps.version.outputs.version }}${{ github.ref_type != 'tag' && ' -beta' || '' }}
           prerelease: ${{ github.ref_type != 'tag' }}
+          body: |
+            界面与 legado-E 全面对齐（书架重构 / 发现 / 订阅 / 我的）。
+            iOS 为未签名 IPA，需自行签名或 sideload 后安装。
+            详见 CHANGELOG.md。
           files: |
             /tmp/app-universal-release.apk
             /tmp/app-arm64-release.apk
@@ -124,21 +127,25 @@ jobs:
         id: version
         run: |
           VERSION=$(grep '^version:' pubspec.yaml | awk '{print $2}' | cut -d'+' -f1)
-          DISPLAY="${VERSION%.0}"
+          # tag 发布用完整三段式（1.1.0）；beta 标签去掉尾缀 .0（v1.1-beta）
           if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
             TAG="${GITHUB_REF_NAME}"
           else
-            TAG="v${DISPLAY}-beta"
+            TAG="v${VERSION%.0}-beta"
           fi
           echo "tag=$TAG" >> $GITHUB_OUTPUT
-          echo "version=$DISPLAY" >> $GITHUB_OUTPUT
+          echo "version=$VERSION" >> $GITHUB_OUTPUT
 
       - name: Upload IPA to release
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.version.outputs.tag }}
-          name: ${{ steps.version.outputs.version }} ${{ github.ref_type == 'tag' && '' || '-beta' }}
+          name: ${{ steps.version.outputs.version }}${{ github.ref_type != 'tag' && ' -beta' || '' }}
           prerelease: ${{ github.ref_type != 'tag' }}
+          body: |
+            界面与 legado-E 全面对齐（书架重构 / 发现 / 订阅 / 我的）。
+            iOS 为未签名 IPA，需自行签名或 sideload 后安装。
+            详见 CHANGELOG.md。
           files: /tmp/legado-ios-unsigned.ipa
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
