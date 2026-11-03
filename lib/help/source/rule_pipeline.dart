@@ -223,7 +223,8 @@ class RulePipeline {
   /// * `||` 或：从左到右取第一个非空分支
   /// * `%%` 交叉：多个分支按位依次取数
   /// * `&&` 合并：多个分支结果拼接
-  List<String> extractListFromRaw(String raw, String rule, {bool forceJson = false}) {
+  List<String> extractListFromRaw(String raw, String rule,
+      {bool forceJson = false, dom.Element? scope}) {
     if (rule.trim().isEmpty) return raw.isEmpty ? [] : [raw];
     // @put: 变量语法：先执行所有 put（左→右，对当前内容求值）并从规则中
     // 移除，避免 put 段里的连接符/花括号干扰后续 ||/&&/%% 拆分
@@ -243,7 +244,7 @@ class RulePipeline {
     }
     final alternatives = _splitByConnectors(effective, const ['||']);
     for (final alt in alternatives) {
-      final values = _extractCombined(raw, alt.text.trim(), forceJson);
+      final values = _extractCombined(raw, alt.text.trim(), forceJson, scope: scope);
       if (values.isNotEmpty) {
         return values; // || 取第一个非空
       }
@@ -262,14 +263,18 @@ class RulePipeline {
     return values.length == 1 ? values.first : values.join('\n');
   }
 
-  /// 从一整段响应文本按规则取首个字符串
+  /// 从一整段响应文本按规则取字符串。
+  /// 多个命中按 legado `AnalyzeByJSoup.getString` 语义以换行拼接——
+  /// 正文规则（如 `#honbun@p@html`）命中多段时返回全文而非仅第一段。
   String? extractStringFromRaw(String raw, String rule, {bool forceJson = false}) {
     final list = extractListFromRaw(raw, rule, forceJson: forceJson);
-    return list.isEmpty ? null : list.first;
+    if (list.isEmpty) return null;
+    return list.length == 1 ? list.first : list.join('\n');
   }
 
   /// 处理不含连接符（`||` / `%%` / `&&`）的单条规则链（仍可能含 @@ / ## / js）
-  List<String> _extractSingleChain(String raw, String rule, bool forceJson) {
+  List<String> _extractSingleChain(String raw, String rule, bool forceJson,
+      {dom.Element? scope}) {
     final mode = _detectMode(rule, forceJson: forceJson);
 
     // 整段 <js>...</js>：把原始内容交给 JS
@@ -313,10 +318,12 @@ class RulePipeline {
         values = _cssValues(raw, core);
         break;
       case RuleMode.defaultRule:
-        values = _defaultValues(raw, core);
+        values = _defaultValues(raw, core, scope: scope);
         break;
       case RuleMode.auto:
-        values = forceJson || _looksJson(raw) ? _jsonValues(raw, core, true) : _defaultValues(raw, core);
+        values = forceJson || _looksJson(raw)
+            ? _jsonValues(raw, core, true)
+            : _defaultValues(raw, core, scope: scope);
         break;
     }
 
@@ -347,25 +354,27 @@ class RulePipeline {
   /// 语义对齐原版 AnalyzeUrl：
   /// * `%%`：各分支先分别取值，再按位依次取数（列表1[0]、列表2[0]…列表1[1]…）
   /// * `&&`：各分支取值后直接合并拼接
-  List<String> _extractCombined(String raw, String rule, bool forceJson) {
+  List<String> _extractCombined(String raw, String rule, bool forceJson,
+      {dom.Element? scope}) {
     final cross = _splitByConnectors(rule, const ['%%']);
     if (cross.length > 1) {
       final lists = cross
-          .map((seg) => _extractMerged(raw, seg.text.trim(), forceJson))
+          .map((seg) => _extractMerged(raw, seg.text.trim(), forceJson, scope: scope))
           .toList();
       return _crossZip(lists);
     }
-    return _extractMerged(raw, rule, forceJson);
+    return _extractMerged(raw, rule, forceJson, scope: scope);
   }
 
   /// 处理 `&&`（合并）组合。
-  List<String> _extractMerged(String raw, String rule, bool forceJson) {
+  List<String> _extractMerged(String raw, String rule, bool forceJson,
+      {dom.Element? scope}) {
     final merged = _splitByConnectors(rule, const ['&&']);
-    if (merged.length <= 1) return _valuesFromChain(raw, rule, forceJson);
+    if (merged.length <= 1) return _valuesFromChain(raw, rule, forceJson, scope: scope);
     final out = <String>[];
     for (final seg in merged) {
       if (seg.text.trim().isEmpty) continue;
-      out.addAll(_valuesFromChain(raw, seg.text.trim(), forceJson));
+      out.addAll(_valuesFromChain(raw, seg.text.trim(), forceJson, scope: scope));
     }
     return out;
   }
@@ -374,7 +383,8 @@ class RulePipeline {
   /// 整段即单个 `@get:{...}` 时直接取变量值，否则替换 @get: 后走普通链。
   /// 例：`@put:{token:<js>…</js>}&&@get:{token}` 移除 put 后剩
   /// `&&@get:{token}`，切出 `@get:{token}` 段即命中本分支。
-  List<String> _valuesFromChain(String raw, String rule, bool forceJson) {
+  List<String> _valuesFromChain(String raw, String rule, bool forceJson,
+      {dom.Element? scope}) {
     final t = rule.trim();
     if (t.isEmpty) return [];
     final gets = scanVarBlocks(t, '@get:');
@@ -382,7 +392,7 @@ class RulePipeline {
       final v = _readVariable(gets.single.$3);
       return v.isEmpty ? const [] : [v];
     }
-    return _extractSingleChain(raw, substituteGets(t), forceJson);
+    return _extractSingleChain(raw, substituteGets(t), forceJson, scope: scope);
   }
 
   /// `%%` 按位交叉：依次取每个列表对应位置的值。
@@ -427,11 +437,14 @@ class RulePipeline {
     }
   }
 
-  /// 相对单个 HTML 元素取字段值
+  /// 相对单个 HTML 元素取字段值。
+  /// 多个命中按 legado `AnalyzeByJSoup.getString` 语义以换行拼接
+  /// （如正文规则 `#honbun@p@html` 命中多段时返回全文，而非仅第一段）。
   String? fieldFromElement(dom.Element el, String rule) {
     if (rule.trim().isEmpty) return null;
-    final list = extractListFromRaw(el.outerHtml, rule);
-    return list.isEmpty ? null : list.first;
+    final list = extractListFromRaw(el.outerHtml, rule, scope: el);
+    if (list.isEmpty) return null;
+    return list.length == 1 ? list.first : list.join('\n');
   }
 
   // ============================== JSON 级 ==============================
@@ -587,18 +600,26 @@ class RulePipeline {
     return XpathSelector.selectTextFromNode(doc, _stripXPathPrefix(rule));
   }
 
-  List<String> _defaultValues(String raw, String rule) {
+  List<String> _defaultValues(String raw, String rule, {dom.Element? scope}) {
     final doc = html_parser.parse(raw);
     final steps = _splitSteps(rule);
     if (steps.isEmpty) return [];
-    List<dom.Node> current = [doc];
-    for (var i = 0; i < steps.length - 1; i++) {
-      final next = <dom.Element>[];
-      for (final el in current) {
-        next.addAll(_elementsSingle(el, steps[i]));
+    List<dom.Node> current;
+    if (steps.length == 1 && scope != null) {
+      // 无 @ 的裸规则（如 chapterUrl 的 "href"）：对齐 legado 语义 ——
+      // getResultLast(elements=[当前元素], rule)，即对元素自身按规则取值，
+      // 而不是把 outerHtml 重新解析后从 Document 根取（那会什么都取不到）。
+      current = [scope];
+    } else {
+      current = [doc];
+      for (var i = 0; i < steps.length - 1; i++) {
+        final next = <dom.Element>[];
+        for (final el in current) {
+          next.addAll(_elementsSingle(el, steps[i]));
+        }
+        current = next;
+        if (current.isEmpty) return [];
       }
-      current = next;
-      if (current.isEmpty) return [];
     }
     final getter = steps.last;
     return current.whereType<dom.Element>().map((e) => _getByGetter(e, getter)).where((s) => s.isNotEmpty).toList();
@@ -608,12 +629,11 @@ class RulePipeline {
   List<dom.Element> _defaultElements(dom.Node scope, String rule) {
     final steps = _splitSteps(rule);
     if (steps.isEmpty) return [];
-    // 若最后一步是已知 getter 或属性名，则不作为元素筛选
-    final knownGetters = {'text', 'textNodes', 'ownText', 'html', 'all'};
-    final lastIsGetter = knownGetters.contains(steps.last) || _looksLikeAttr(steps.last);
-    final selectSteps = lastIsGetter ? steps.sublist(0, steps.length - 1) : steps;
+    // 对齐 legado getElements：列表规则的每个 @ 段都是元素选择器并逐级下钻
+    // （如 "td@a" 先选 td 再在其内选 a，最终返回 a 元素列表）。
+    // 注意不能把最后一段当 getter 剥掉——那正是 "td@a 只返回 td" 的根因。
     List<dom.Node> current = [scope];
-    for (final step in selectSteps) {
+    for (final step in steps) {
       final next = <dom.Element>[];
       for (final el in current) {
         next.addAll(_elementsSingle(el, step));
@@ -622,14 +642,6 @@ class RulePipeline {
       if (current.isEmpty) break;
     }
     return current.whereType<dom.Element>().toList();
-  }
-
-  bool _looksLikeAttr(String step) {
-    // 属性 getter 只能是纯标识符（可含连字符），如 href/src/title/data-id；
-    // 含 . # [ 空格 > : 等 CSS/步骤特征的一律视为选择步骤，而非 getter。
-    if (step.startsWith(RegExp(r'(class|tag|id|text|children)\.'))) return false;
-    if (step == 'children') return false;
-    return RegExp(r'^[A-Za-z_][\w-]*$').hasMatch(step);
   }
 
   /// 单步选择：class.x / tag.x / id.x / text.x / children / 原生 CSS，支持 .N !N [索引]

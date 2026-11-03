@@ -46,7 +46,8 @@ void main() {
       expect(p.extractStringFromRaw(html, 'class.booklist@tag.li.0@tag.h2@text'), '第一本书');
       // !0 排除第一个，剩下第二本
       expect(p.extractStringFromRaw(html, 'class.booklist@tag.li!0@tag.h2@text'), '第二本书');
-      expect(p.extractStringFromRaw(html, 'class.author@text'), '张三');
+      // 命中多个时按 legado AnalyzeByJSoup.getString 语义换行拼接
+      expect(p.extractStringFromRaw(html, 'class.author@text'), '张三\n李四');
     });
 
     test('## 正则后处理：删除匹配内容', () {
@@ -57,7 +58,7 @@ void main() {
 
     test('|| 或规则取第一个非空', () {
       final r = p.extractStringFromRaw(html, '@css:.nope@text||@css:.author@text');
-      expect(r, '张三');
+      expect(r, '张三\n李四');
     });
 
     test('默认规则下含点的 CSS 类选择器不被误判为属性', () {
@@ -92,7 +93,7 @@ void main() {
     final p = RulePipeline();
     test('结尾 @js 清洗', () {
       final r = p.extractStringFromRaw(html, '@css:h2@text@js:result.trim()');
-      expect(r, '第一本书');
+      expect(r, '第一本书\n第二本书');
     });
   });
 }

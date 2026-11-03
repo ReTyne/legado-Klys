@@ -10,7 +10,11 @@ import 'package:legado_md3/data/model/search_book.dart';
 import 'package:legado_md3/help/source/source_engine.dart';
 import 'package:legado_md3/di/book_provider.dart';
 import 'package:legado_md3/data/local/app_database.dart';
+import 'package:legado_md3/help/source/search_scope.dart';
 import 'package:legado_md3/ui/book/detail/book_detail_screen.dart';
+import 'package:legado_md3/ui/book/search/search_screen.dart';
+import 'package:legado_md3/ui/book/source/source_login_screen.dart';
+import 'package:legado_md3/ui/book/source/source_edit_screen.dart';
 
 class DiscoverScreen extends StatefulWidget {
   const DiscoverScreen({super.key});
@@ -276,12 +280,30 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
     }
     final url = kind.url?.trim() ?? '';
     if (url.isEmpty) return;
+    // `{{java.xxx(...)}}` 型地址是动作而非书籍列表（对齐 legado AnalyzeUrl
+    // 的 {{js}} 内嵌求值）：点击后执行动作（如 startBrowser 打开登录页）。
+    if (url.contains('{{') && url.contains('}}')) {
+      await _runUrlAction(source, url);
+      return;
+    }
     setState(() {
       _currentSource = source;
       _kinds = _sourceKinds[source.bookSourceUrl] ?? const [];
       _hiddenCategories = {};
     });
     await _openKind(kind);
+  }
+
+  /// 执行 `{{...}}` 内嵌 JS 动作（去掉花括号后按控件动作求值）
+  Future<void> _runUrlAction(BookSource source, String url) async {
+    final inner = url.replaceAll('{{', '').replaceAll('}}', '');
+    try {
+      await _engine.evalExploreAction(source, inner);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('动作执行失败: $e')));
+      }
+    }
   }
 
   Future<void> _openKind(ExploreKind kind) async {
@@ -291,6 +313,11 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
     }
     final url = kind.url?.trim() ?? '';
     if (url.isEmpty) return; // 占位分类（空地址）不响应点击
+    if (url.contains('{{') && url.contains('}}')) {
+      final source = _currentSource;
+      if (source != null) await _runUrlAction(source, url);
+      return;
+    }
     setState(() {
       _currentKind = kind;
       _view = 'books';
@@ -845,7 +872,10 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
     final errorKinds = (kinds ?? const []).where((k) => k.isError).toList();
     return Card(
       margin: const EdgeInsets.only(bottom: 8),
-      child: Padding(
+      child: InkWell(
+        borderRadius: BorderRadius.circular(12),
+        onLongPress: () => _showSourceMenu(source),
+        child: Padding(
         padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -907,7 +937,124 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
           ],
         ),
       ),
+      ),
     );
+  }
+
+  /// 书源卡片长按菜单（对齐 legado-E ExploreAdapter.showMenu / menu explore_item）
+  void _showSourceMenu(BookSource source) {
+    showModalBottomSheet(
+      context: context,
+      builder: (ctx) => SafeArea(
+        child: SingleChildScrollView(child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Padding(
+              padding: const EdgeInsets.all(16),
+              child: Text(source.bookSourceName,
+                  style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+            ),
+            ListTile(
+              leading: const Icon(Icons.refresh),
+              title: const Text('刷新'),
+              onTap: () async {
+                Navigator.pop(ctx);
+                await _engine.clearExploreKindsCache(source);
+                setState(() {
+                  _sourceKinds.remove(source.bookSourceUrl);
+                  _kindsLoading.add(source.bookSourceUrl);
+                });
+                await _reloadKindsFor(source);
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.search),
+              title: const Text('搜索书籍'),
+              onTap: () {
+                Navigator.pop(ctx);
+                Navigator.push(context, MaterialPageRoute(
+                  builder: (_) => SearchScreen(searchScope: SearchScope.fromSource(source).scope),
+                ));
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.login),
+              title: const Text('登录'),
+              onTap: () {
+                Navigator.pop(ctx);
+                Navigator.push(context, MaterialPageRoute(
+                  builder: (_) => SourceLoginScreen(source: source),
+                ));
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.vertical_align_top),
+              title: const Text('置顶'),
+              onTap: () async {
+                Navigator.pop(ctx);
+                source.customOrder = -1;
+                await _db.updateSource(source);
+                await _loadSources();
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.edit),
+              title: const Text('编辑书源'),
+              onTap: () {
+                Navigator.pop(ctx);
+                Navigator.push(context, MaterialPageRoute(
+                  builder: (_) => SourceEditScreen(source: source),
+                ));
+              },
+            ),
+            ListTile(
+              leading: Icon(Icons.delete_outline, color: Theme.of(ctx).colorScheme.error),
+              title: Text('删除书源', style: TextStyle(color: Theme.of(ctx).colorScheme.error)),
+              onTap: () async {
+                Navigator.pop(ctx);
+                final ok = await showDialog<bool>(
+                  context: context,
+                  builder: (c) => AlertDialog(
+                    title: const Text('删除书源'),
+                    content: Text('确定要删除「${source.bookSourceName}」吗？'),
+                    actions: [
+                      TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('取消')),
+                      FilledButton(
+                        style: FilledButton.styleFrom(
+                          backgroundColor: Theme.of(c).colorScheme.error,
+                          foregroundColor: Theme.of(c).colorScheme.onError,
+                        ),
+                        onPressed: () => Navigator.pop(c, true),
+                        child: const Text('删除'),
+                      ),
+                    ],
+                  ),
+                );
+                if (ok == true) {
+                  await _db.deleteSource(source.bookSourceUrl);
+                  await _loadSources();
+                }
+              },
+            ),
+          ],
+        )),
+      ),
+    );
+  }
+
+  /// 重新加载单个书源的发现分类
+  Future<void> _reloadKindsFor(BookSource source) async {
+    List<ExploreKind> kinds;
+    try {
+      kinds = await _engine.exploreKinds(source);
+    } catch (e) {
+      kinds = [ExploreKind(title: 'ERROR:$e', url: '')];
+    }
+    if (!mounted) return;
+    setState(() {
+      _kindsLoading.remove(source.bookSourceUrl);
+      _sourceKinds[source.bookSourceUrl] = kinds;
+    });
   }
 
   Widget _buildCategoryList() {

@@ -38,6 +38,8 @@ class _SearchScreenState extends State<SearchScreen> {
   List<SearchBook> _results = [];
   List<String> _searchHistory = [];
   bool _isSearching = false;
+  /// 搜索取消标记：用户点「停止」后置位，并发池据此提前收工
+  bool _searchCancelled = false;
   String? _searchKeyword;
   int _searchedSources = 0;
   int _totalSources = 0;
@@ -150,6 +152,7 @@ class _SearchScreenState extends State<SearchScreen> {
     _saveHistory(keyword);
     setState(() {
       _isSearching = true;
+      _searchCancelled = false;
       _results = [];
       _searchedSources = 0;
     });
@@ -165,18 +168,21 @@ class _SearchScreenState extends State<SearchScreen> {
     _totalSources = sources.length;
     final selectedSources = sources;
 
-    // 并发池搜索所有启用书源（限制同时 8 个，避免源过多时连接耗尽），结果到达即刷新
+    // 并发池搜索所有启用书源（限制同时 8 个，避免源过多时连接耗尽），结果到达即刷新。
+    // 单源超时 30s：大灰狼等聚合源一次搜索请求约 7-10s，15s 会误杀慢源。
     const concurrency = 8;
+    const perSourceTimeout = Duration(seconds: 30);
     int cursor = 0;
     Future<void> worker() async {
       while (true) {
+        if (_searchCancelled) return;
         final i = cursor++;
         if (i >= selectedSources.length) return;
         final source = selectedSources[i];
         try {
-          final results = await _engine.search(source, keyword).timeout(const Duration(seconds: 15), onTimeout: () => []);
+          final results = await _engine.search(source, keyword).timeout(perSourceTimeout, onTimeout: () => []);
           if (mounted && results.isNotEmpty) {
-            setState(() => _results.addAll(results));
+            setState(() => _mergeResults(results));
           }
         } catch (_) {}
         if (mounted) setState(() => _searchedSources++);
@@ -185,6 +191,40 @@ class _SearchScreenState extends State<SearchScreen> {
     await Future.wait(List.generate(concurrency.clamp(1, selectedSources.isEmpty ? 1 : selectedSources.length), (_) => worker()));
 
     if (mounted) setState(() => _isSearching = false);
+  }
+
+  /// 停止当前搜索（保留已到达的结果）
+  void _stopSearch() {
+    _searchCancelled = true;
+    setState(() => _isSearching = false);
+  }
+
+  /// 合并新到达的搜索结果：同名同作者归并为一条并累计来源
+  /// （对齐 legado-E SearchModel.mergeItems 的 hasSame/addOrigin 逻辑）
+  void _mergeResults(List<SearchBook> incoming) {
+    for (final nBook in incoming) {
+      if (nBook.origin != null && nBook.origin!.isNotEmpty) {
+        nBook.origins.add(nBook.origin!);
+      }
+      final idx = _results.indexWhere((p) => p.name == nBook.name && p.author == nBook.author);
+      if (idx >= 0) {
+        final pBook = _results[idx];
+        for (final o in nBook.origins) {
+          pBook.addOrigin(o);
+        }
+        // 主条目信息为空时用后到的补齐
+        if ((pBook.coverUrl == null || pBook.coverUrl!.isEmpty) && (nBook.coverUrl?.isNotEmpty ?? false)) {
+          _results[idx] = SearchBook(
+            name: nBook.name, author: nBook.author, coverUrl: nBook.coverUrl, intro: nBook.intro,
+            kind: nBook.kind, lastChapter: nBook.lastChapter, origin: pBook.origin,
+            originName: pBook.originName, noteUrl: nBook.noteUrl, bookUrl: pBook.bookUrl,
+            wordCount: nBook.wordCount,
+          )..origins.addAll(pBook.origins);
+        }
+      } else {
+        _results.add(nBook);
+      }
+    }
   }
 
   Future<void> _addToShelf(SearchBook book) async {
@@ -413,7 +453,14 @@ class _SearchScreenState extends State<SearchScreen> {
           onSubmitted: _search,
         ),
         actions: [
-          IconButton(icon: const Icon(Icons.search), onPressed: () => _search(_controller.text)),
+          if (_isSearching)
+            IconButton(
+              icon: const Icon(Icons.stop_circle_outlined),
+              tooltip: '停止搜索',
+              onPressed: _stopSearch,
+            )
+          else
+            IconButton(icon: const Icon(Icons.search), onPressed: () => _search(_controller.text)),
           IconButton(
             icon: const Icon(Icons.filter_list),
             tooltip: '搜索范围：${_scope.display}',
@@ -467,6 +514,12 @@ class _SearchScreenState extends State<SearchScreen> {
         const CircularProgressIndicator(),
         const SizedBox(height: 16),
         Text('正在搜索 ($_searchedSources/$_totalSources)...'),
+        const SizedBox(height: 8),
+        TextButton.icon(
+          icon: const Icon(Icons.stop, size: 18),
+          label: const Text('停止搜索'),
+          onPressed: _stopSearch,
+        ),
       ]));
     }
     if (_results.isEmpty) {
@@ -575,7 +628,10 @@ class _SearchScreenState extends State<SearchScreen> {
         Text('${book.author} · ${book.kind ?? ''}', maxLines: 1, style: const TextStyle(fontSize: 12)),
         const SizedBox(height: 2),
         Text(book.lastChapter ?? '', maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 11, color: Theme.of(context).colorScheme.primary)),
-        if ((book.originName ?? '').isNotEmpty) Text('来源: ${book.originName}', maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 10, color: Theme.of(context).colorScheme.onSurfaceVariant)),
+        if (book.origins.length > 1)
+          Text('${book.origins.length} 个来源', maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 10, color: Theme.of(context).colorScheme.primary))
+        else if ((book.originName ?? '').isNotEmpty)
+          Text('来源: ${book.originName}', maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 10, color: Theme.of(context).colorScheme.onSurfaceVariant)),
       ],
     ),
     trailing: IconButton(icon: const Icon(Icons.add), onPressed: () => _addToShelf(book), tooltip: '加入书架'),

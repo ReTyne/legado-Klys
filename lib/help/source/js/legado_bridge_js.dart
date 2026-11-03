@@ -608,7 +608,14 @@ class LegadoBridgeJs {
     }
     if (bodyStr !== null && method !== "GET" && method !== "HEAD") {
       headers["X-Legado-Body"] = __b64Unicode(bodyStr);
-      if (!__hasHeader(headers, "Content-Type")) headers["Content-Type"] = "application/x-www-form-urlencoded";
+      if (!__hasHeader(headers, "Content-Type")) {
+        // 对齐 legado AnalyzeUrl.executeStrRequest：body 为 JSON 时走 postJson
+        // （application/json），否则按表单编码（postForm）
+        var t = bodyStr.trim();
+        headers["Content-Type"] = (t.indexOf("{") === 0 || t.indexOf("[") === 0)
+            ? "application/json"
+            : "application/x-www-form-urlencoded";
+      }
     }
     if (!__hasHeader(headers, "Cookie") && !__hasHeader(headers, "cookie")) {
       var c = cookie.getCookie(url);
@@ -1121,7 +1128,10 @@ class LegadoBridgeJs {
     },
 
     // 设备 / UA
-    deviceID: function () { return __state.deviceId; },
+    // deviceID 为 legado iOS 专属 API：安卓/本实现抛错，使书源的
+    // try{java.deviceID()}catch{java.androidId()} 环境探测走「安卓」分支
+    //（大灰狼等聚合源据此选择 book.type / 段落评论等平台适配逻辑）
+    deviceID: function () { throw new Error("deviceID 不可用（非 iOS 环境）"); },
     androidId: function () { return __state.deviceId; },
     getWebViewUA: function () { return __state.ua; },
     getAppVariant: function () { return "android"; },

@@ -35,12 +35,20 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
   bool _isLoading = true;
   bool _introExpanded = false;
   int _readChapterIndex = 0;
+  bool _inShelf = false;
 
   @override
   void initState() {
     super.initState();
     _loadChapters();
     _loadReadProgress();
+    _checkInShelf();
+  }
+
+  Future<void> _checkInShelf() async {
+    final books = await _db.getAllBooks();
+    final found = books.any((b) => b.name == widget.book.name && b.author == widget.book.author);
+    if (mounted && found != _inShelf) setState(() => _inShelf = found);
   }
 
   Future<void> _loadChapters() async {
@@ -456,165 +464,192 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
     final book = widget.book;
     final cs = Theme.of(context).colorScheme;
     return Scaffold(
-      body: CustomScrollView(
-        slivers: [
-          SliverAppBar(
-            expandedHeight: 280,
-            pinned: true,
-            flexibleSpace: FlexibleSpaceBar(
-              background: _buildHeader(book),
-            ),
-            actions: [
-              IconButton(icon: const Icon(Icons.more_vert), onPressed: _showMoreMenu),
-            ],
-          ),
-          SliverToBoxAdapter(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // 基本信息
-                Padding(
-                  padding: const EdgeInsets.all(16),
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      _buildCover(book),
-                      const SizedBox(width: 16),
-                      Expanded(
-                        child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(book.name, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold), maxLines: 2),
-                            const SizedBox(height: 8),
-                            Text(book.author, style: TextStyle(fontSize: 14, color: cs.onSurfaceVariant)),
-                            const SizedBox(height: 8),
-                            Wrap(
-                              spacing: 8,
-                              runSpacing: 4,
-                              children: [
-                                if (book.kind != null && book.kind!.isNotEmpty) _buildTag(book.kind!),
-                                _buildTag(book.local ? '本地' : '网络'),
-                                if (book.wordCount != null) _buildTag('${(book.wordCount! / 10000).toStringAsFixed(1)}万字'),
-                              ],
-                            ),
-                          ],
-                        ),
-                      ),
+      body: Column(
+        children: [
+          Expanded(
+            child: RefreshIndicator(
+              onRefresh: _refreshBookInfo,
+              child: CustomScrollView(
+                slivers: [
+                  SliverAppBar(
+                    expandedHeight: 300,
+                    pinned: true,
+                    actions: [
+                      IconButton(icon: const Icon(Icons.more_vert), onPressed: _showMoreMenu),
                     ],
-                  ),
-                ),
-
-                // 操作按钮
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  child: Row(
-                    children: [
-                      Expanded(
-                        child: FilledButton.icon(
-                          onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => readerForBook(book))),
-                          icon: const Icon(Icons.play_arrow),
-                          label: const Text('开始阅读'),
-                        ),
-                      ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: OutlinedButton.icon(
-                          onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => ChapterListScreen(book: book))),
-                          icon: const Icon(Icons.list_alt),
-                          label: const Text('目录'),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-
-                const SizedBox(height: 16),
-
-                // 阅读进度
-                if (_chapters.isNotEmpty) Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  child: Card(
-                    child: Padding(
-                      padding: const EdgeInsets.all(12),
-                      child: Row(
-                        children: [
-                          const Icon(Icons.bookmark, size: 20),
-                          const SizedBox(width: 8),
-                          Expanded(
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                Text('读到: ${_chapters[_readChapterIndex.clamp(0, _chapters.length - 1)].title}', style: const TextStyle(fontSize: 13), maxLines: 1, overflow: TextOverflow.ellipsis),
-                                Text('进度: ${((_readChapterIndex + 1) / _chapters.length * 100).toStringAsFixed(1)}%', style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant)),
-                              ],
-                            ),
-                          ),
-                          TextButton(onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => readerForBook(book, initialChapter: _readChapterIndex))), child: const Text('继续')),
-                        ],
-                      ),
+                    flexibleSpace: FlexibleSpaceBar(
+                      background: _buildHeader(book),
                     ),
                   ),
-                ),
+                  SliverToBoxAdapter(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        // 信息行：作者 / 来源(换源) / 读到或最新章节 / 分组 / 目录
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                          child: Column(
+                            children: [
+                              _infoRow(
+                                icon: Icons.person_outline,
+                                child: Expanded(
+                                  child: Text(book.author, maxLines: 1, overflow: TextOverflow.ellipsis,
+                                      style: TextStyle(fontSize: 13, color: cs.onSurfaceVariant)),
+                                ),
+                              ),
+                              _infoRow(
+                                icon: Icons.public,
+                                child: Expanded(
+                                  child: Text(book.originName ?? book.origin ?? '未知来源', maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: TextStyle(fontSize: 13, color: cs.onSurfaceVariant)),
+                                ),
+                                trailing: _accentButton('换源', () => Navigator.push(context,
+                                    MaterialPageRoute(builder: (_) => ChangeSourceScreen(book: book)))),
+                              ),
+                              _infoRow(
+                                icon: Icons.menu_book,
+                                child: Expanded(
+                                  child: Text(_progressText(), maxLines: 1, overflow: TextOverflow.ellipsis,
+                                      style: TextStyle(fontSize: 13, color: cs.onSurfaceVariant)),
+                                ),
+                              ),
+                              _infoRow(
+                                icon: Icons.folder_outlined,
+                                child: Expanded(
+                                  child: Text(book.group?.isNotEmpty == true ? book.group! : '未分组',
+                                      maxLines: 1, overflow: TextOverflow.ellipsis,
+                                      style: TextStyle(fontSize: 13, color: cs.onSurfaceVariant)),
+                                ),
+                                trailing: _accentButton('更改分组', _showChangeGroupDialog),
+                              ),
+                              _infoRow(
+                                icon: Icons.folder_open,
+                                child: Expanded(
+                                  child: Text(_chapters.isEmpty ? '暂无目录' : '共 ${_chapters.length} 章',
+                                      maxLines: 1, overflow: TextOverflow.ellipsis,
+                                      style: TextStyle(fontSize: 13, color: cs.onSurfaceVariant)),
+                                ),
+                                trailing: _accentButton('查看目录', () => Navigator.push(context,
+                                    MaterialPageRoute(builder: (_) => ChapterListScreen(book: book)))),
+                              ),
+                            ],
+                          ),
+                        ),
 
-                const SizedBox(height: 16),
+                        const SizedBox(height: 8),
 
-                // 简介
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text('简介', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-                      const SizedBox(height: 8),
-                      GestureDetector(
-                        onTap: () => setState(() => _introExpanded = !_introExpanded),
+                        // 简介（默认 4 行，可展开）
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 16),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              GestureDetector(
+                                onTap: () => setState(() => _introExpanded = !_introExpanded),
+                                child: Text(
+                                  book.intro?.isNotEmpty == true ? book.intro! : '暂无简介',
+                                  style: TextStyle(fontSize: 14, height: 1.6, color: cs.onSurfaceVariant),
+                                  maxLines: _introExpanded ? null : 4,
+                                  overflow: _introExpanded ? TextOverflow.visible : TextOverflow.ellipsis,
+                                ),
+                              ),
+                              if ((book.intro?.length ?? 0) > 100)
+                                Align(
+                                  alignment: Alignment.centerRight,
+                                  child: TextButton(
+                                    onPressed: () => setState(() => _introExpanded = !_introExpanded),
+                                    child: Text(_introExpanded ? '收起' : '展开'),
+                                  ),
+                                ),
+                            ],
+                          ),
+                        ),
+
+                        const SizedBox(height: 8),
+
+                        // 最新章节列表
+                        Padding(
+                          padding: const EdgeInsets.symmetric(horizontal: 16),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Row(
+                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                children: [
+                                  Text('最新章节', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: cs.onSurface)),
+                                  TextButton(
+                                    onPressed: () => Navigator.push(context,
+                                        MaterialPageRoute(builder: (_) => ChapterListScreen(book: book))),
+                                    child: const Text('全部目录'),
+                                  ),
+                                ],
+                              ),
+                              if (_isLoading)
+                                const Padding(padding: EdgeInsets.all(16), child: Center(child: CircularProgressIndicator()))
+                              else if (_chapters.isEmpty)
+                                Padding(
+                                  padding: const EdgeInsets.all(16),
+                                  child: Text('暂无章节', style: TextStyle(color: cs.onSurfaceVariant)),
+                                )
+                              else
+                                ..._chapters.reversed.take(5).map((chapter) => ListTile(
+                                  dense: true,
+                                  contentPadding: EdgeInsets.zero,
+                                  title: Text(chapter.title, maxLines: 1, overflow: TextOverflow.ellipsis),
+                                  trailing: chapter.isVolume ? const Icon(Icons.folder, size: 16) : null,
+                                  onTap: () => Navigator.push(context,
+                                      MaterialPageRoute(builder: (_) => readerForBook(book, initialChapter: chapter.index))),
+                                )),
+                            ],
+                          ),
+                        ),
+
+                        const SizedBox(height: 24),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          // 底部操作栏：加入/移出书架 + 阅读
+          Container(
+            decoration: BoxDecoration(
+              color: cs.surfaceContainer,
+              border: Border(top: BorderSide(color: cs.outlineVariant)),
+            ),
+            child: SafeArea(
+              child: SizedBox(
+                height: 50,
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: TextButton(
+                        style: TextButton.styleFrom(shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero)),
+                        onPressed: _toggleShelf,
                         child: Text(
-                          book.intro ?? '暂无简介',
-                          style: TextStyle(fontSize: 14, height: 1.6, color: cs.onSurfaceVariant),
-                          maxLines: _introExpanded ? null : 4,
-                          overflow: _introExpanded ? TextOverflow.visible : TextOverflow.ellipsis,
+                          _inShelf ? '移出书架' : '加入书架',
+                          style: const TextStyle(fontSize: 15),
                         ),
                       ),
-                      if ((book.intro?.length ?? 0) > 100) TextButton(
-                        onPressed: () => setState(() => _introExpanded = !_introExpanded),
-                        child: Text(_introExpanded ? '收起' : '展开'),
+                    ),
+                    Container(width: 1, color: cs.outlineVariant),
+                    Expanded(
+                      child: FilledButton(
+                        style: FilledButton.styleFrom(
+                          shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
+                          backgroundColor: cs.primary,
+                          foregroundColor: cs.onPrimary,
+                        ),
+                        onPressed: () => Navigator.push(context,
+                            MaterialPageRoute(builder: (_) => readerForBook(book, initialChapter: _readChapterIndex))),
+                        child: const Text('阅读', style: TextStyle(fontSize: 15)),
                       ),
-                    ],
-                  ),
+                    ),
+                  ],
                 ),
-
-                const SizedBox(height: 16),
-
-                // 最新章节
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Row(
-                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                        children: [
-                          const Text('最新章节', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-                          TextButton(onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => ChapterListScreen(book: book))), child: const Text('全部目录')),
-                        ],
-                      ),
-                      if (_isLoading)
-                        const Padding(padding: EdgeInsets.all(16), child: Center(child: CircularProgressIndicator()))
-                      else if (_chapters.isEmpty)
-                        const Padding(padding: EdgeInsets.all(16), child: Text('暂无章节'))
-                      else
-                        ..._chapters.reversed.take(5).map((chapter) => ListTile(
-                          dense: true,
-                          title: Text(chapter.title, maxLines: 1, overflow: TextOverflow.ellipsis),
-                          trailing: chapter.isVolume ? const Icon(Icons.folder, size: 16) : null,
-                          onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => readerForBook(book, initialChapter: _chapters.indexOf(chapter)))),
-                        )),
-                    ],
-                  ),
-                ),
-
-                const SizedBox(height: 24),
-              ],
+              ),
             ),
           ),
         ],
@@ -622,28 +657,244 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
     );
   }
 
+  /// 头部：封面 + 书名 + 分类标签（对齐 activity_book_info 的 ArcView 区域）
   Widget _buildHeader(Book book) {
+    final cs = Theme.of(context).colorScheme;
     return Container(
       decoration: BoxDecoration(
         gradient: LinearGradient(
           begin: Alignment.topCenter,
           end: Alignment.bottomCenter,
-          colors: [Theme.of(context).colorScheme.primaryContainer, Theme.of(context).scaffoldBackgroundColor],
+          colors: [cs.primaryContainer, cs.surface],
         ),
       ),
-      child: Center(
-        child: _buildCover(book, large: true),
+      child: SafeArea(
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const SizedBox(height: 36),
+            _buildCover(book, large: true),
+            const SizedBox(height: 10),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 24),
+              child: Text(book.name,
+                  textAlign: TextAlign.center,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            ),
+            const SizedBox(height: 6),
+            if (book.kind?.isNotEmpty == true || (book.wordCount ?? 0) > 0)
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 24),
+                child: Wrap(
+                  alignment: WrapAlignment.center,
+                  spacing: 6,
+                  runSpacing: 4,
+                  children: [
+                    if (book.kind?.isNotEmpty == true) _buildTag(book.kind!),
+                    if ((book.wordCount ?? 0) > 0) _buildTag('${(book.wordCount! / 10000).toStringAsFixed(1)}万字'),
+                    _buildTag(book.local ? '本地' : '网络'),
+                  ],
+                ),
+              ),
+          ],
+        ),
       ),
     );
   }
 
+  /// 一行「图标 + 内容 + 右侧强调按钮」（对齐 ll_info 内的各 LinearLayout 行）
+  Widget _infoRow({required IconData icon, required Widget child, Widget? trailing}) {
+    final cs = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 3),
+      child: Row(
+        children: [
+          Icon(icon, size: 18, color: cs.onSurfaceVariant),
+          const SizedBox(width: 6),
+          child,
+          if (trailing != null) ...[const SizedBox(width: 8), trailing],
+        ],
+      ),
+    );
+  }
+
+  /// 右侧小号强调按钮（对齐 AccentBgTextView）
+  Widget _accentButton(String text, VoidCallback onTap) {
+    final cs = Theme.of(context).colorScheme;
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 2),
+        decoration: BoxDecoration(color: cs.primaryContainer, borderRadius: BorderRadius.circular(2)),
+        child: Text(text, style: TextStyle(fontSize: 13, color: cs.onPrimaryContainer)),
+      ),
+    );
+  }
+
+  /// 读到进度 / 最新章节文案（对齐 tv_lasted）
+  String _progressText() {
+    final book = widget.book;
+    if (_chapters.isNotEmpty && _readChapterIndex < _chapters.length) {
+      final total = _chapters.length;
+      final percent = ((_readChapterIndex + 1) / total * 100).toStringAsFixed(1);
+      return '读到: ${_chapters[_readChapterIndex].title} ($percent%)';
+    }
+    if (book.local) return book.lastChapter ?? '本地书籍';
+    return '最新: ${book.lastChapter ?? '未知'}';
+  }
+
+  Future<void> _refreshBookInfo() async {
+    if (widget.book.local) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('本地书籍无需刷新')));
+      return;
+    }
+    try {
+      final sources = await _db.getAllSources(enabled: true);
+      final source = sources.where((s) => s.bookSourceUrl == widget.book.origin).firstOrNull;
+      if (source == null) {
+        if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('未找到对应书源')));
+        return;
+      }
+      final engine = BookSourceEngine();
+      final info = await engine.getBookInfo(source, widget.book.bookUrl ?? '',
+          presetName: widget.book.name, presetAuthor: widget.book.author);
+      if (info != null && mounted) {
+        setState(() {
+          widget.book.intro = (info.intro?.isNotEmpty ?? false) ? info.intro : widget.book.intro;
+          widget.book.kind = (info.kind?.isNotEmpty ?? false) ? info.kind : widget.book.kind;
+          widget.book.lastChapter = info.lastChapter ?? widget.book.lastChapter;
+          widget.book.wordCount = info.wordCount ?? widget.book.wordCount;
+          if (info.noteUrl?.isNotEmpty ?? false) widget.book.noteUrl = info.noteUrl;
+          if (info.coverUrl?.isNotEmpty ?? false) widget.book.coverUrl = info.coverUrl;
+        });
+        await _db.updateBook(widget.book);
+        await _loadChapters();
+      }
+    } catch (e) {
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('刷新失败: $e')));
+    }
+  }
+
+  void _toggleShelf() {
+    if (_inShelf) {
+      _confirmRemoveFromShelf();
+    } else {
+      _addToShelf();
+    }
+  }
+
+  Future<void> _addToShelf() async {
+    final book = widget.book;
+    if (!_inShelf) {
+      await _db.insertBook(book);
+      _inShelf = true;
+      await Provider.of<BookProvider>(context, listen: false).loadBooks();
+      final prefs = await SharedPreferences.getInstance();
+      final showTip = prefs.getBool('oc_showAddShelfTip') ?? true;
+      if (mounted && showTip) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('已添加《${book.name}》到书架')));
+      }
+      if (mounted) setState(() {});
+    }
+  }
+
+  Future<void> _confirmRemoveFromShelf() async {
+    final book = widget.book;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('移除书籍'),
+        content: Text('确定要从书架移除《${book.name}》吗？'),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('取消')),
+          FilledButton(
+            style: FilledButton.styleFrom(
+              backgroundColor: Theme.of(context).colorScheme.error,
+              foregroundColor: Theme.of(context).colorScheme.onError,
+            ),
+            onPressed: () => Navigator.pop(context, true),
+            child: const Text('移除'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed == true) {
+      await _db.deleteBook(book.name, book.author);
+      await Provider.of<BookProvider>(context, listen: false).loadBooks();
+      if (mounted) {
+        setState(() => _inShelf = false);
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('已移出书架')));
+      }
+    }
+  }
+
+  /// 更改分组对话框（对齐 tv_change_group）
+  void _showChangeGroupDialog() async {
+    final groups = <String>{};
+    final books = await _db.getAllBooks();
+    for (final b in books) {
+      if (b.group?.isNotEmpty == true) groups.add(b.group!);
+    }
+    var selected = widget.book.group ?? '';
+    if (!mounted) return;
+    showDialog(
+      context: context,
+      builder: (c) => StatefulBuilder(builder: (c, setS) => AlertDialog(
+        title: const Text('更改分组'),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Wrap(
+                spacing: 8,
+                children: [
+                  for (final g in groups)
+                    ChoiceChip(
+                      label: Text(g),
+                      selected: selected == g,
+                      onSelected: (_) => setS(() => selected = g),
+                    ),
+                  ChoiceChip(
+                    label: const Text('未分组'),
+                    selected: selected.isEmpty,
+                    onSelected: (_) => setS(() => selected = ''),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                decoration: const InputDecoration(labelText: '新建分组', isDense: true),
+                onSubmitted: (v) => setS(() => selected = v.trim()),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(c), child: const Text('取消')),
+          FilledButton(
+            onPressed: () async {
+              widget.book.group = selected.isEmpty ? null : selected;
+              await _db.updateBook(widget.book);
+              if (c.mounted) Navigator.pop(c);
+              if (mounted) setState(() {});
+            },
+            child: const Text('确定'),
+          ),
+        ],
+      )),
+    );
+  }
+
   Widget _buildCover(Book book, {bool large = false}) {
-    final width = large ? 120.0 : 80.0;
+    final width = large ? 110.0 : 80.0;
     final height = large ? 160.0 : 110.0;
     final cover = (book.customCoverUrl != null && book.customCoverUrl!.isNotEmpty) ? book.customCoverUrl : book.coverUrl;
     if (cover != null && cover.isNotEmpty) {
       return ClipRRect(
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: BorderRadius.circular(5),
         child: Image.network(cover, width: width, height: height, fit: BoxFit.cover, errorBuilder: (_, __, ___) => _buildDefaultCover(book, width, height)),
       );
     }
@@ -655,7 +906,7 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
     return Container(
       width: width,
       height: height,
-      decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(8)),
+      decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(5)),
       child: Center(child: Padding(padding: const EdgeInsets.all(8), child: Text(book.name, maxLines: 3, textAlign: TextAlign.center, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold)))),
     );
   }

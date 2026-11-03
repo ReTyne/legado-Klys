@@ -308,8 +308,22 @@ class BookSourceEngine {
 
     // data: URI（书源用 data:;base64,<状态码> 在书址里携带上下文，不发起网络请求）
     if (finalUrl.startsWith('data:')) {
-      final decoded = _decodeDataUri(finalUrl);
+      final bytes = _decodeDataUriBytes(finalUrl);
+      // legado：URL 选项带 type 时，响应体为字节的小写 hex 编码
+      // （AnalyzeUrl.getStrResponseAwait -> HexUtil.encodeHexStr(bytes)），
+      // 供书源 JS 以 java.hexDecodeToString(result) 还原（大灰狼等聚合源）。
+      final typeOpt = (opts['type'] ?? options?['type'])?.toString();
+      if (typeOpt != null && typeOpt.isNotEmpty) {
+        final hex = _hexEncode(bytes);
+        _log('data: 书址解码（type=$typeOpt），hex $hex 长度');
+        lastRawResponse = hex;
+        lastRequestUrl = finalUrl;
+        return hex;
+      }
+      final decoded = utf8.decode(bytes, allowMalformed: true);
       _log('data: 书址解码，${decoded.length} 字符');
+      lastRawResponse = decoded;
+      lastRequestUrl = finalUrl;
       return decoded;
     }
 
@@ -501,6 +515,16 @@ class BookSourceEngine {
       } catch (_) {}
     }
     _log('响应 ${response.statusCode}, ${(response.data ?? []).length} 字节');
+    // URL 选项 type：响应体以字节的小写 hex 编码返回
+    // （对齐 legado AnalyzeUrl.getStrResponseAwait -> HexUtil.encodeHexStr）
+    final respTypeOpt = (opts['type'] ?? options?['type'])?.toString();
+    if (respTypeOpt != null && respTypeOpt.isNotEmpty) {
+      final hex = _hexEncode(response.data ?? const <int>[]);
+      _log('type=$respTypeOpt 选项：响应体以 hex 编码返回，$hex 长度');
+      lastRawResponse = hex;
+      lastRequestUrl = finalUrl;
+      return hex;
+    }
     // URL 选项中的 charset 优先级最高
     final originalForced = forcedCharset;
     if (optCharset != null && optCharset.isNotEmpty) {
@@ -570,27 +594,45 @@ class BookSourceEngine {
     }
   }
 
-  /// 解析 data:[;base64],<payload> URI 为文本。
-  /// 兼容书源在 base64 末尾额外挂载的 URL 选项，如
-  /// `data:;base64,<b64>,{"type":"qingtian"}`（base64 字符集不含 `,{`）。
-  String _decodeDataUri(String uri) {
+  /// data: URI 的字节级解码（对齐 legado AnalyzeUrl.getByteArrayIfDataUri：
+  /// `^data:.*?;base64,(.*)` 取 base64 载荷，Android Base64 解码遇 `=` 填充即止）。
+  /// 兼容书源在 base64 末尾挂载 URL 选项：`data:;base64,<b64>,{"type":"qingtian"}`。
+  List<int> _decodeDataUriBytes(String uri) {
     final comma = uri.indexOf(',');
-    if (comma < 0) return '';
+    if (comma < 0) return const <int>[];
     final meta = uri.substring(5, comma);
     var payload = uri.substring(comma + 1);
     try {
       if (meta.contains('base64')) {
-        final optIdx = payload.indexOf(',{');
-        if (optIdx >= 0) payload = payload.substring(0, optIdx);
-        var b64 = payload.trim();
+        // 截断到第一个非 base64 字符：兼容 `data:;base64,<b64>,{"type":"..."}` 挂载选项
+        const alphabet =
+            'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/=';
+        var end = payload.length;
+        for (var i = 0; i < payload.length; i++) {
+          if (!alphabet.contains(payload[i])) {
+            end = i;
+            break;
+          }
+        }
+        var b64 = payload.substring(0, end).trim();
         final pad = b64.length % 4;
         if (pad != 0) b64 = b64.padRight(b64.length + (4 - pad), '=');
-        return utf8.decode(base64Decode(b64), allowMalformed: true);
+        return base64Decode(b64);
       }
-      return Uri.decodeComponent(payload);
+      return utf8.encode(Uri.decodeComponent(payload));
     } catch (_) {
-      return '';
+      return const <int>[];
     }
+  }
+
+  /// 字节的小写 hex 编码（对齐 legado cn.hutool.core.util.HexUtil.encodeHexStr）。
+  static String _hexEncode(List<int> bytes) {
+    final sb = StringBuffer();
+    for (final b in bytes) {
+      final v = b & 0xff;
+      sb.write(v.toRadixString(16).padLeft(2, '0'));
+    }
+    return sb.toString();
   }
 
   bool _isJson(String content) {
