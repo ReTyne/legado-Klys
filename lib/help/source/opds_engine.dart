@@ -24,39 +24,56 @@ class OpdsEngine {
     if (resp.statusCode != null && resp.statusCode! >= 400) {
       throw Exception('OPDS 请求失败: ${resp.statusCode}');
     }
-    return _parseAtom(resp.data.toString());
+    return parseAtom(resp.data.toString());
   }
 
-  /// 搜索 OPDS 目录
+  /// 搜索 OPDS 目录：优先使用 OpenSearch 模板（feed 级 <link rel="search">），
+  /// 兼容把搜索链接放在 entry 内的实现，最后回退到约定 /search?q=。
   Future<List<OpdsEntry>> search(String keyword, {String? searchUrl}) async {
     String? url = searchUrl;
     if (url == null) {
       try {
-        final catalog = await fetchCatalog();
-        for (final entry in catalog) {
-          for (final l in entry.links) {
-            if (l.rel?.contains('search') ?? false) {
-              url = l.href.replaceAll('{searchTerms}', Uri.encodeComponent(keyword));
-              break;
-            }
-          }
-          if (url != null) break;
-        }
+        final resp = await _dio.get(baseUrl,
+            options: Options(headers: _headers, responseType: ResponseType.plain));
+        url = parseSearchTemplate(resp.data.toString());
       } catch (_) {}
+      if (url == null) {
+        try {
+          for (final entry in await fetchCatalog()) {
+            url = entry.searchTemplate;
+            if (url != null) break;
+          }
+        } catch (_) {}
+      }
     }
-    if (url == null) {
-      url = '$baseUrl/search?q=${Uri.encodeComponent(keyword)}';
-    }
-    final resp = await _dio.get(url,
+    url ??= '$baseUrl/search?q={searchTerms}';
+    final target = url.replaceAll('{searchTerms}', Uri.encodeComponent(keyword));
+    final resp = await _dio.get(target,
         options: Options(headers: _headers, responseType: ResponseType.plain));
     if (resp.statusCode != null && resp.statusCode! >= 400) {
       throw Exception('OPDS 搜索失败: ${resp.statusCode}');
     }
-    return _parseAtom(resp.data.toString());
+    return parseAtom(resp.data.toString());
   }
 
-  /// 解析 Atom feed（使用 html 包的 XML 解析能力）
-  List<OpdsEntry> _parseAtom(String xmlStr) {
+  /// 从 OPDS feed XML 提取 OpenSearch 模板（feed 级 <link rel="search" href="...{searchTerms}...">）。
+  /// 公开便于离线测试；也修复了原先只遍历 entry.links 导致标准 OPDS 搜索模板找不到的缺陷。
+  String? parseSearchTemplate(String xmlStr) {
+    try {
+      final doc = html_parser.parse(xmlStr);
+      for (final l in doc.getElementsByTagName('link')) {
+        if ((l.attributes['rel'] ?? '').contains('search')) {
+          final href = l.attributes['href'] ?? '';
+          if (href.isNotEmpty) return _resolveUrl(href);
+        }
+      }
+    } catch (_) {}
+    return null;
+  }
+
+  /// 解析 Atom feed（使用 html 包的 XML 解析能力）。
+  /// 公开给 UI 预览与离线单元测试复用，避免解析能力只能通过网络请求触达。
+  List<OpdsEntry> parseAtom(String xmlStr) {
     try {
       final doc = html_parser.parse(xmlStr);
       final entries = doc.getElementsByTagName('entry');
@@ -77,10 +94,11 @@ class OpdsEngine {
       return _getText(a, 'name') ?? '';
     }).where((s) => s.isNotEmpty).toList();
 
-    // 链接
+    // 链接（href 统一解析为绝对地址，与 cover/downloadUrl 一致，UI 可直接打开）
     final links = entry.getElementsByTagName('link').map((l) {
+      final raw = l.attributes['href'] ?? '';
       return OpdsLink(
-        href: l.attributes['href'] ?? '',
+        href: raw.isEmpty ? '' : _resolveUrl(raw),
         rel: l.attributes['rel'],
         type: l.attributes['type'],
         title: l.attributes['title'],
@@ -137,8 +155,14 @@ class OpdsEngine {
   String _resolveUrl(String url) {
     if (url.startsWith('http')) return url;
     try {
-      final base = Uri.parse(baseUrl);
-      return base.resolve(url).toString();
+      // Uri.resolve 会把 {searchTerms} 等模板占位符转义成 %7B...，
+      // 先用安全标记替换再还原，保证搜索模板仍可被 replaceAll 命中。
+      const marker = '__LEGADO_SEARCH_TERM__';
+      final safe = url.replaceAll('{searchTerms}', marker);
+      return Uri.parse(baseUrl)
+          .resolve(safe)
+          .toString()
+          .replaceAll(marker, '{searchTerms}');
     } catch (_) {
       return url;
     }
@@ -181,6 +205,29 @@ class OpdsEntry {
     this.links = const [],
     this.categories = const [],
   });
+
+  /// 下一级目录 feed 链接（OPDS 导航型条目：rel=subsection / type 含 kind=navigation）。
+  /// 命中时 UI 应继续 fetchCatalog(path:) 下钻，而不是当作书籍条目下载。
+  String? get navigationUrl {
+    for (final l in links) {
+      final rel = l.rel ?? '';
+      final type = l.type ?? '';
+      final isNav = rel.contains('subsection') ||
+          rel == 'navigation' ||
+          rel == 'start' ||
+          type.contains('kind=navigation');
+      if (isNav && l.href.isNotEmpty) return l.href;
+    }
+    return null;
+  }
+
+  /// 目录内声明的搜索模板（rel=search），供 UI 显示「可搜索」标记。
+  String? get searchTemplate {
+    for (final l in links) {
+      if ((l.rel ?? '').contains('search') && l.href.isNotEmpty) return l.href;
+    }
+    return null;
+  }
 }
 
 /// OPDS 链接

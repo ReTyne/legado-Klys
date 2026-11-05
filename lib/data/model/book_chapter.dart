@@ -11,6 +11,16 @@ class BookChapter {
   int? endPos;
   String? variable;
 
+  /// 章节所属目录页地址（书源规则解析出的 baseUrl），落库列 baseUrl。
+  String? baseUrl;
+
+  /// 章节标签（如「VIP」「精校」），落库列 tag，供书源 JS `chapter.tag` 读取。
+  String? tag;
+
+  /// 章节资源直链（音频/视频/图片书源），落库列 resourceUrl。
+  /// JS 桥 __wrapChapter.getResourceUrl() 依赖该字段，此前恒为 null 导致死读。
+  String? resourceUrl;
+
   BookChapter({
     required this.title,
     required this.url,
@@ -23,18 +33,25 @@ class BookChapter {
     this.startPos,
     this.endPos,
     this.variable,
+    this.baseUrl,
+    this.tag,
+    this.resourceUrl,
   });
 
   /// 传给书源 JS（ruleContent）的章节上下文。
+  /// 键名与 JS 桥 __wrapChapter 的 getter 一一对应，避免书源侧恒取到空串。
   Map<String, dynamic> jsContext([String? bookUrl]) => {
     'index': index,
     'title': title,
     'url': url,
     'bookUrl': bookUrl ?? '',
+    'baseUrl': baseUrl ?? '',
     'isVolume': isVolume,
     'isVip': isVip,
     'isPay': isPay,
     'updateTime': updateTime,
+    'tag': tag ?? '',
+    'resourceUrl': resourceUrl ?? '',
     'variable': variable,
   };
 
@@ -51,6 +68,9 @@ class BookChapter {
     'startPos': startPos,
     'endPos': endPos,
     'variable': variable,
+    'baseUrl': baseUrl,
+    'tag': tag,
+    'resourceUrl': resourceUrl,
   };
 
   // 数据库列名（"index" 为 SQL 保留字，落库统一用 chapter_index）
@@ -60,12 +80,13 @@ class BookChapter {
     'title': title,
     'url': url,
     'chapter_index': index,
+    'baseUrl': baseUrl,
     'isVolume': isVolume ? 1 : 0,
     'isVip': isVip ? 1 : 0,
     'isPay': isPay ? 1 : 0,
     'update_time': updateTime,
-    'tag': null,
-    'resourceUrl': null,
+    'tag': tag,
+    'resourceUrl': resourceUrl,
     'content': content,
     'start_pos': startPos,
     'end_pos': endPos,
@@ -79,10 +100,13 @@ class BookChapter {
     isVolume: (map['isVolume'] as int? ?? 0) == 1,
     isVip: (map['isVip'] as int? ?? 0) == 1,
     isPay: (map['isPay'] as int? ?? 0) == 1,
-    updateTime: map['update_time'] as String?,
+    updateTime: map['update_time'] as String? ?? map['updateTime'] as String?,
     content: map['content'] as String?,
     startPos: map['start_pos'] as int? ?? map['start'] as int?,
     endPos: map['end_pos'] as int? ?? map['end'] as int?,
     variable: map['variable'] as String?,
+    baseUrl: map['baseUrl'] as String?,
+    tag: map['tag'] as String?,
+    resourceUrl: map['resourceUrl'] as String?,
   );
 }

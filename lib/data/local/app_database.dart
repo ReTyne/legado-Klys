@@ -20,6 +20,31 @@ class DatabaseService {
   Database? _db;
   static const int _dbVersion = 12;
 
+  /// 全新安装的建表语句（公开，供生产与回归测试共用同一份 SQL，避免两边漂移）。
+  /// 列集合必须与 Book.toMap / BookChapter.toMap 写入的键完全一致，否则
+  /// 新用户首次写库会抛 "table X has no column named Y"。
+  /// 对齐 legado-E 的 Book / BookChapter 实体，只保留模型真实读写的列。
+  static const String booksTableSql =
+      'CREATE TABLE IF NOT EXISTS books (name TEXT NOT NULL, author TEXT NOT NULL, '
+      'coverUrl TEXT, intro TEXT, kind TEXT, lastChapter TEXT, lastChapterIndex INTEGER, '
+      'durChapterIndex INTEGER, durChapterPos INTEGER, durChapterTime INTEGER, noteUrl TEXT, '
+      'bookUrl TEXT, origin TEXT, originName TEXT, tag TEXT, wordCount INTEGER, '
+      'canUpdate INTEGER DEFAULT 1, local INTEGER DEFAULT 0, type INTEGER DEFAULT 0, '
+      'group_name TEXT, order_num INTEGER, latestChapterTime INTEGER, lastCheckTime INTEGER, '
+      'infoHtml TEXT, tocHtml TEXT, variable TEXT, customOrder INTEGER, '
+      'allowUpdate INTEGER DEFAULT 1, fileName TEXT, customCoverUrl TEXT, bookComment TEXT, '
+      'splitLongChapter INTEGER DEFAULT 1, PRIMARY KEY (name, author))';
+
+  /// 与 v7 重建表、v9 迁移、BookChapter.toMap/fromMap 完全对齐：
+  /// isVip / update_time 必填，否则全新安装时 insertChapters 会因缺列抛异常。
+  static const String bookChaptersTableSql =
+      'CREATE TABLE IF NOT EXISTS book_chapters (bookName TEXT NOT NULL, '
+      'bookAuthor TEXT NOT NULL, chapter_index INTEGER NOT NULL, title TEXT, url TEXT, '
+      'baseUrl TEXT, isVolume INTEGER DEFAULT 0, isVip INTEGER DEFAULT 0, '
+      'isPay INTEGER DEFAULT 0, update_time TEXT, tag TEXT, resourceUrl TEXT, '
+      'content TEXT, start_pos INTEGER, end_pos INTEGER, variable TEXT, '
+      'PRIMARY KEY (bookName, bookAuthor, chapter_index))';
+
   Future<Database> get database async {
     if (_db != null) return _db!;
     _db = await _initDatabase();
@@ -142,8 +167,8 @@ class DatabaseService {
   }
 
   Future<void> _onCreate(Database db, int version) async {
-    await db.execute('CREATE TABLE IF NOT EXISTS books (name TEXT NOT NULL, author TEXT NOT NULL, coverUrl TEXT, intro TEXT, kind TEXT, lastChapter TEXT, lastChapterIndex INTEGER, durChapterIndex INTEGER, durChapterPos INTEGER, durChapterTime INTEGER, noteUrl TEXT, bookUrl TEXT, origin TEXT, originName TEXT, tag TEXT, wordCount INTEGER, canUpdate INTEGER DEFAULT 1, local INTEGER DEFAULT 0, type INTEGER DEFAULT 0, group_name TEXT, order_num INTEGER, latestChapterTime INTEGER, lastCheckTime INTEGER, infoHtml TEXT, tocHtml TEXT, variable TEXT, customOrder INTEGER, allowUpdate INTEGER DEFAULT 1, fileName TEXT, customCoverUrl TEXT, bookComment TEXT, splitLongChapter INTEGER DEFAULT 1, latestChapterTitle TEXT, lastChapterTime INTEGER, updateTime INTEGER, "order" INTEGER, groupId INTEGER, PRIMARY KEY (name, author))');
-    await db.execute('CREATE TABLE IF NOT EXISTS book_chapters (bookName TEXT NOT NULL, bookAuthor TEXT NOT NULL, chapter_index INTEGER NOT NULL, title TEXT, url TEXT, baseUrl TEXT, isVolume INTEGER DEFAULT 0, isPay INTEGER DEFAULT 0, tag TEXT, resourceUrl TEXT, content TEXT, start_pos INTEGER, end_pos INTEGER, variable TEXT, PRIMARY KEY (bookName, bookAuthor, chapter_index))');
+    await db.execute(booksTableSql);
+    await db.execute(bookChaptersTableSql);
     await db.execute('CREATE TABLE IF NOT EXISTS book_sources (bookSourceUrl TEXT PRIMARY KEY, bookSourceName TEXT, bookSourceGroup TEXT, bookSourceType INTEGER, bookSourceComment TEXT, lastUpdateTime INTEGER, enabled INTEGER DEFAULT 1, enabledExplore INTEGER DEFAULT 1, customOrder INTEGER, respondTime INTEGER, weight INTEGER, header TEXT, loginUrl TEXT, loginUi TEXT, loginCheckJs TEXT, bookUrlPattern TEXT, charset TEXT, coverDecodeJs TEXT, eventListener INTEGER DEFAULT 0, customButton INTEGER DEFAULT 0, enabledCookieJar INTEGER DEFAULT 0, concurrentRate TEXT, homepageModules TEXT, searchUrl TEXT, checkKeyWord TEXT, exploreUrl TEXT, exploreScreen TEXT, ruleSearch TEXT, ruleExplore TEXT, ruleBookInfo TEXT, ruleToc TEXT, ruleContent TEXT, ruleReview TEXT, ruleImage TEXT, variableComment TEXT, jsLib TEXT, variable TEXT, rulePut TEXT, ruleGet TEXT)');
     await db.execute('CREATE TABLE IF NOT EXISTS book_groups (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, "order" INTEGER, show INTEGER DEFAULT 1, cover TEXT)');
     await db.execute('CREATE TABLE IF NOT EXISTS book_knowledge (id INTEGER PRIMARY KEY AUTOINCREMENT, bookName TEXT, author TEXT, type TEXT, name TEXT, content TEXT, cover TEXT, "order" INTEGER)');

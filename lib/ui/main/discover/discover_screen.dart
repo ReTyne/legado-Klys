@@ -15,6 +15,7 @@ import 'package:legado_md3/ui/book/detail/book_detail_screen.dart';
 import 'package:legado_md3/ui/book/search/search_screen.dart';
 import 'package:legado_md3/ui/book/source/source_login_screen.dart';
 import 'package:legado_md3/ui/book/source/source_edit_screen.dart';
+import 'package:legado_md3/ui/main/discover/opds_catalog_screen.dart';
 
 class DiscoverScreen extends StatefulWidget {
   const DiscoverScreen({super.key});
@@ -781,6 +782,15 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
               IconButton(
                   icon: const Icon(Icons.search),
                   onPressed: () => setState(() => _searching = true)),
+            // OPDS 目录浏览（接入 OpdsEngine，下载后经 ImportBookService 入书架）
+            IconButton(
+              icon: const Icon(Icons.rss_feed_outlined),
+              tooltip: 'OPDS 目录',
+              onPressed: () => Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const OpdsCatalogScreen()),
+              ),
+            ),
             // 分组过滤（对齐 E main_explore 的 menu_group）
             PopupMenuButton<String>(
               tooltip: '分组',

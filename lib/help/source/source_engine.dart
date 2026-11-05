@@ -1709,6 +1709,17 @@ class BookSourceEngine {
                         rule['chapterInfo']?.toString() ?? '',
                     baseUrl: currentUrl, book: seed) ??
                 '';
+            // tag 对齐 E BookChapterList.kt：章节附加信息（更新时间/字数等），
+            // 默认取 updateTime 规则结果，也允许书源用独立 tag 规则覆写。
+            final tag = await _fieldFromJsonAsync(
+                    source, item, rule['tag']?.toString() ?? '',
+                    baseUrl: currentUrl, book: seed) ??
+                '';
+            // resourceUrl：音频/视频书源的章节资源直链（E BookChapter.resourceUrl）
+            final resourceUrl = await _fieldFromJsonAsync(
+                    source, item, rule['resourceUrl']?.toString() ?? '',
+                    baseUrl: currentUrl, book: seed) ??
+                '';
             pageChapters.add({
               'title': title,
               'url': _resolveUrl(url ?? '', currentUrl),
@@ -1716,6 +1727,9 @@ class BookSourceEngine {
               'isVip': isVip,
               'isPay': isPay,
               'updateTime': updateTime,
+              'tag': tag.isEmpty ? updateTime : tag,
+              'resourceUrl': resourceUrl.isEmpty ? '' : _resolveUrl(resourceUrl, currentUrl),
+              'baseUrl': currentUrl,
             });
           }
         } else {
@@ -1740,6 +1754,8 @@ class BookSourceEngine {
             if (updateTime == null || updateTime.isEmpty) {
               updateTime = await f('chapterInfo') ?? '';
             }
+            final tag = await f('tag') ?? '';
+            final resourceUrl = await f('resourceUrl') ?? '';
             pageChapters.add({
               'title': title,
               'url': url,
@@ -1747,11 +1763,14 @@ class BookSourceEngine {
               'isVip': isVip,
               'isPay': isPay,
               'updateTime': updateTime,
+              'tag': tag.isEmpty ? updateTime : tag,
+              'resourceUrl': resourceUrl.isEmpty ? '' : _resolveUrl(resourceUrl, currentUrl),
+              'baseUrl': currentUrl,
             });
           }
         }
 
-        // formatJs：对每个章节标题/URL 执行格式化 JS
+        // formatJs：对每个章节字段执行格式化 JS
         final formatJs = rule['formatJs']?.toString() ?? '';
         if (formatJs.trim().isNotEmpty) {
           for (var i = 0; i < pageChapters.length; i++) {
@@ -1760,18 +1779,29 @@ class BookSourceEngine {
               'title': pageChapters[i]['title'],
               'url': pageChapters[i]['url'],
               'isVolume': pageChapters[i]['isVolume'],
+              'isVip': pageChapters[i]['isVip'],
+              'isPay': pageChapters[i]['isPay'],
+              'updateTime': pageChapters[i]['updateTime'],
+              'tag': pageChapters[i]['tag'],
+              'resourceUrl': pageChapters[i]['resourceUrl'],
+              'baseUrl': pageChapters[i]['baseUrl'],
             };
             try {
               final formatted = await _evalJs(source, formatJs,
                   result: jsonEncode(chCtx), baseUrl: currentUrl, book: seed, chapter: chCtx);
               if (formatted != null && formatted.isNotEmpty) {
-                // formatJs 可返回 JSON {title, url} 或纯文本标题
+                // formatJs 可返回 JSON {title, url, tag, resourceUrl} 或纯文本标题
                 if (_isJson(formatted)) {
                   try {
                     final obj = jsonDecode(formatted);
                     if (obj is Map) {
                       if (obj['title'] != null) pageChapters[i]['title'] = obj['title'].toString();
                       if (obj['url'] != null) pageChapters[i]['url'] = obj['url'].toString();
+                      if (obj['tag'] != null) pageChapters[i]['tag'] = obj['tag'].toString();
+                      if (obj['resourceUrl'] != null) {
+                        final ru = obj['resourceUrl'].toString();
+                        pageChapters[i]['resourceUrl'] = ru.isEmpty ? '' : _resolveUrl(ru, currentUrl);
+                      }
                     }
                   } catch (_) {}
                 } else {
@@ -1794,6 +1824,9 @@ class BookSourceEngine {
             isPay: (c['isPay'] ?? '') == '1' ||
                 (c['isPay'] ?? '').toLowerCase() == 'true',
             updateTime: (c['updateTime'] ?? '').isEmpty ? null : c['updateTime'],
+            tag: (c['tag'] ?? '').isEmpty ? null : c['tag'],
+            resourceUrl: (c['resourceUrl'] ?? '').isEmpty ? null : c['resourceUrl'],
+            baseUrl: (c['baseUrl'] ?? '').isEmpty ? null : c['baseUrl'],
           ));
         }
 

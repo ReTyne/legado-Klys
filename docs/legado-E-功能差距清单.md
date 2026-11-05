@@ -147,3 +147,28 @@ Klys 对 legado-E 的**主体功能已完成度约 85%**：书源规则引擎（
 ### 平台边界（未假完成）
 - MOBI HUFF/CDIC 正文解压（需原生 libarchive）、PDF 首页封面（`PdfRenderer`）、视频应用内悬浮窗（D4）仍需独立原生模块。
 - 本轮完成「video 打开」链路；悬浮窗/长按倍速属独立增强项。
+
+---
+
+## 八、本轮收尾（P0 数据层 + OPDS 接入 + 备份真实化）
+
+> 详细证据见 `/workspace/功能差距清单_逐字通读.md` 第四章。
+
+### 复核更正（此前待办条目实际已完成）
+- `fontWeight` 渲染消费、`Book.tag` 的 toMap/fromMap、`backup_service` 的 zip+加密备份、本地书 MOBI/PDF/UMD 元数据接线、RSS `nextContentUrl`（走 `ruleContent` 规则 Map，非独立列）均已在前几轮落地，待办章节未回填状态。
+
+### 本轮新增修复
+
+| 编号 | 项 | 内容 |
+|---|---|---|
+| J-1 | **P0 全新安装崩溃** | `_onCreate` 的 `book_chapters` 缺 `isVip`/`update_time` 列，`BookChapter.toMap` 却写入 → 新装用户章节落库抛 `no such column`；抽 `DatabaseService.booksTableSql`/`bookChaptersTableSql` 公共常量（生产与测试共用同一份 SQL），补齐缺列并清理 `books` 表 5 个冗余死列 |
+| J-2 | 章节字段闭环 | 补 `BookChapter.baseUrl/tag/resourceUrl`，`source_engine` 目录解析的 JSON/HTML/formatJs/构造四段按 E `BookChapterList.kt` 语义填充；JS 桥 `getResourceUrl()` 不再恒空 |
+| J-3 | 备份版本真实化 | 两处 `'3.30.0'` → `BackupService.currentAppVersion()`（PackageInfo + pubspec 兜底） |
+| J-4 | OPDS 接入 | 新建 `opds_catalog_screen.dart` + 发现页入口，形成 UI→引擎→`ImportBookService`→书架闭环；修 feed 级 `rel=search` 模板解析与 `{searchTerms}` 被 URL 转义的问题 |
+
+### 验证
+- `dart analyze lib/ test/` **0 error**（183 info 基线）；`flutter test --no-pub` **+214 ~1 All passed**（新增 11 项，含 ffi 真库写读往返）。
+- 新增测试：`db_schema_chapter_roundtrip_test.dart`(4)、`backup_app_version_test.dart`(2)、`opds_wiring_test.dart`(5)。
+
+### 边界（不变）
+MOBI HUFF/CDIC、PDF 首页封面、视频悬浮窗、`BookHighlight`/`AutoTaskRule` 等实体与活跃下载队列仍属原生/整链路移植范围；iOS 因 Linux 无 Xcode 未构建。

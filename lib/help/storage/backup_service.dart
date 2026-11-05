@@ -45,7 +45,7 @@ class BackupService {
     final backup = <String, dynamic>{
       'version': '1.0',
       'backupTime': DateTime.now().toIso8601String(),
-      'appVersion': '3.30.0',
+      'appVersion': await currentAppVersion(),
     };
 
     if (includeBooks) {
@@ -99,6 +99,24 @@ class BackupService {
   }
 
   /* ================= 新版 zip 备份 ================= */
+
+  /// 与 pubspec.yaml 的 version 保持一致；仅在平台通道不可用（如纯 Dart 单元测试）时兜底。
+  static const String fallbackAppVersion = '1.1.0+2';
+
+  /// 真实应用版本：优先读 PackageInfo（version+buildNumber），
+  /// 平台通道不可用或返回空值时回退到 pubspec 版本常量。
+  /// 备份元信息里的 appVersion 用于跨版本恢复兼容判断，写死旧版号会误导。
+  static Future<String> currentAppVersion() async {
+    try {
+      final info = await PackageInfo.fromPlatform();
+      final version = info.version.trim();
+      if (version.isEmpty) return fallbackAppVersion;
+      final build = info.buildNumber.trim();
+      return (build.isEmpty || build == version) ? version : '$version+$build';
+    } catch (_) {
+      return fallbackAppVersion;
+    }
+  }
 
   /// 生成设备名（用于备份元信息）
   static Future<String> getDeviceName() async {
@@ -233,7 +251,7 @@ class BackupService {
       version: '2.0',
       time: DateTime.now().toIso8601String(),
       deviceName: await getDeviceName(),
-      appVersion: '3.30.0',
+      appVersion: await currentAppVersion(),
       // 有密码且存在敏感类型时为加密备份
       encrypted: password != null &&
           password.isNotEmpty &&
