@@ -1097,7 +1097,12 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
                 leading: Icon(empty ? Icons.check_box_outline_blank : Icons.folder_outlined),
                 title: Text(c.title),
                 trailing: empty ? null : const Icon(Icons.chevron_right),
-                onTap: () => _openKind(c),
+                // 对齐 legado-E ExploreAdapter：空地址占位分类不进入书籍列表，
+                // 点击给出明确提示而非静默无响应。
+                onTap: empty
+                    ? () => ScaffoldMessenger.of(context).showSnackBar(
+                        const SnackBar(content: Text('该分类未配置发现地址')))
+                    : () => _openKind(c),
               ),
             );
           }),

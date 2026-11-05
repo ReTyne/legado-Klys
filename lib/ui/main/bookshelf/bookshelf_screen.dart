@@ -25,7 +25,6 @@ import 'package:legado_md3/ui/book/local_import_screen.dart';
 import 'package:legado_md3/ui/book/search/search_screen.dart';
 import 'package:legado_md3/ui/book/detail/change_source_screen.dart';
 import 'package:legado_md3/ui/book/detail/change_cover_screen.dart';
-import 'package:legado_md3/ui/bookmark/book_marking_screen.dart';
 import 'package:legado_md3/ui/cache/cache_manage_screen.dart';
 import 'package:legado_md3/ui/main/bookshelf/bookshelf_manage_screen.dart';
 import 'package:legado_md3/ui/main/bookshelf/group_manage_screen.dart';
@@ -1200,7 +1199,7 @@ class _BookshelfScreenState extends State<BookshelfScreen> {
               ListTile(leading: const Icon(Icons.swap_horiz_outlined), title: const Text('换源'), onTap: () { Navigator.pop(context); Navigator.push(context, MaterialPageRoute(builder: (_) => ChangeSourceScreen(book: book))); }),
               ListTile(leading: const Icon(Icons.image_outlined), title: const Text('换封面'), onTap: () { Navigator.pop(context); Navigator.push(context, MaterialPageRoute(builder: (_) => ChangeCoverScreen(book: book))); }),
               ListTile(leading: const Icon(Icons.download_outlined), title: const Text('缓存全部'), onTap: () { Navigator.pop(context); _cacheOneBook(book); }),
-              ListTile(leading: const Icon(Icons.flag_outlined), title: const Text('书籍标记'), onTap: () { Navigator.pop(context); Navigator.push(context, MaterialPageRoute(builder: (_) => BookMarkingScreen(bookName: book.name, author: book.author))); }),
+              // 对齐 legado-E 的 BooksAdapterList：长按书籍直接进详情，书架无「书籍标记」等 E 没有的入口
               ListTile(leading: const Icon(Icons.bookmark_border), title: const Text('添加书签'), onTap: () { Navigator.pop(context); _addBookmarkAtProgress(book); }),
               const Divider(),
               ListTile(leading: const Icon(Icons.move_down_outlined), title: const Text('移动到分组'), onTap: () { Navigator.pop(context); _showMoveGroupDialog(book); }),
@@ -1245,9 +1244,9 @@ class _BookshelfScreenState extends State<BookshelfScreen> {
     var charset = 'UTF-8';
     var noChapterName = false;
     var useReplace = true;
-    var rangeAll = true; // false=仅已缓存正文 / 自定义在 rangeAll 内由 cachedOnly 表达
-    var cachedOnly = false;
-    var customRange = false;
+    // 对齐 legado-E CacheActivity 的导出范围三选一：0全部 1仅已缓存 2自定义范围。
+    // 旧实现以 bool 表达三态，「仅已缓存/自定义范围」两个 radio 共用 value=false 无法互斥。
+    int rangeMode = 0;
     final startCtrl = TextEditingController(text: '1');
     final endCtrl = TextEditingController(text: '${chapters.length}');
 
@@ -1310,37 +1309,32 @@ class _BookshelfScreenState extends State<BookshelfScreen> {
                   onChanged: (v) => setS(() => useReplace = v),
                 ),
                 const Divider(),
-                RadioListTile<bool>(
+                // 对齐 legado-E CacheActivity：导出范围互斥单选，选中态由 groupValue 唯一确定
+                RadioListTile<int>(
                   dense: true,
                   contentPadding: EdgeInsets.zero,
                   title: const Text('全部章节'),
-                  value: true,
-                  groupValue: rangeAll,
-                  onChanged: (v) => setS(() => rangeAll = v ?? true),
+                  value: 0,
+                  groupValue: rangeMode,
+                  onChanged: (v) => setS(() => rangeMode = v ?? 0),
                 ),
-                RadioListTile<bool>(
+                RadioListTile<int>(
                   dense: true,
                   contentPadding: EdgeInsets.zero,
                   title: const Text('仅已缓存的章节'),
-                  value: false,
-                  groupValue: rangeAll,
-                  onChanged: (v) => setS(() {
-                    rangeAll = v ?? true;
-                    cachedOnly = true;
-                  }),
+                  value: 1,
+                  groupValue: rangeMode,
+                  onChanged: (v) => setS(() => rangeMode = v ?? 0),
                 ),
-                RadioListTile<bool>(
+                RadioListTile<int>(
                   dense: true,
                   contentPadding: EdgeInsets.zero,
                   title: const Text('自定义范围'),
-                  value: false,
-                  groupValue: rangeAll,
-                  onChanged: (v) => setS(() {
-                    rangeAll = v ?? true;
-                    customRange = true;
-                  }),
+                  value: 2,
+                  groupValue: rangeMode,
+                  onChanged: (v) => setS(() => rangeMode = v ?? 0),
                 ),
-                if (customRange)
+                if (rangeMode == 2)
                   Padding(
                     padding: const EdgeInsets.only(top: 4),
                     child: Row(
@@ -1379,8 +1373,8 @@ class _BookshelfScreenState extends State<BookshelfScreen> {
                     charset: charset,
                     noChapterName: noChapterName,
                     useReplace: useReplace,
-                    cachedOnly: cachedOnly && !rangeAll,
-                    customRange: customRange && !rangeAll,
+                    cachedOnly: rangeMode == 1,
+                    customRange: rangeMode == 2,
                     start: int.tryParse(startCtrl.text.trim()),
                     end: int.tryParse(endCtrl.text.trim()));
               },

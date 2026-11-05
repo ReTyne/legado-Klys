@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
-import 'dart:typed_data';
 
 import 'package:dio/dio.dart';
 import 'package:flutter/foundation.dart';
@@ -371,6 +370,40 @@ class WebViewLegadoJs implements LegadoJs {
     return null;
   }
 
+  /// 构造验证码图片请求头（对齐 E VerificationCodeDialog 的
+  /// `OkHttpModelLoader.sourceOriginOption`）：书源 header + 会话 Cookie +
+  /// Referer，保证带登录态 / 防盗链的验证码图能正常加载。
+  Future<Map<String, String>> _verificationHeaders(String imageUrl) async {
+    final out = <String, String>{};
+    final raw = source.header;
+    if (raw != null && raw.trim().isNotEmpty) {
+      try {
+        final v = jsonDecode(raw);
+        if (v is Map) {
+          v.forEach((k, val) => out[k.toString()] = val?.toString() ?? '');
+        }
+      } catch (_) {}
+    }
+    try {
+      final ck = CookieManager().cookieHeader(imageUrl);
+      if (ck != null && ck.isNotEmpty && !out.containsKey('Cookie')) {
+        out['Cookie'] = ck;
+      }
+      // 持久化 CookieJar 时内存可能为空，回退到 DB 中同域 Cookie
+      if (!out.containsKey('Cookie') && _persistCookie) {
+        final host = Uri.tryParse(imageUrl)?.host ?? '';
+        if (host.isNotEmpty) {
+          final saved = await _db.getCookie(host);
+          if (saved != null && saved.isNotEmpty) out['Cookie'] = saved;
+        }
+      }
+    } catch (_) {}
+    final referer =
+        source.jsHttpUrl.isNotEmpty ? source.jsHttpUrl : source.jsUrl;
+    if (referer.startsWith('http')) out.putIfAbsent('Referer', () => referer);
+    return out;
+  }
+
   /// JS→原生：验证码识别请求（getVerificationCode）。
   /// 弹出人工输入界面，用户提交的字符回传给 JS resolve Promise；
   /// 取消/无 Navigator 时回传空串。
@@ -382,9 +415,12 @@ class WebViewLegadoJs implements LegadoJs {
       final nav = appNavigatorKey.currentState;
       String code = '';
       if (nav != null && imageUrl.isNotEmpty) {
+        final headers = await _verificationHeaders(imageUrl);
         final result = await nav.push<String>(MaterialPageRoute(
             builder: (_) => VerificationCodeScreen(
-                imageUrl: imageUrl, sourceName: source.jsName)));
+                imageUrl: imageUrl,
+                sourceName: source.jsName,
+                headers: headers)));
         code = result ?? '';
       }
       await _controller?.evaluateJavascript(
@@ -416,6 +452,9 @@ class WebViewLegadoJs implements LegadoJs {
     if (url.startsWith('legado://browser')) return await _handleBrowser(uri);
     if (url.startsWith('legado://searchbook')) return await _handleSearchBook(uri);
     if (url.startsWith('legado://openlogin')) return await _handleOpenLogin(uri);
+    // 对齐 E 的 java.openVideoPlayer：书源脚本发同步 XHR 到该协议，转交
+    // MethodChannel('legado/video') 由 Kotlin 原生播放器打开（互相联系）。
+    if (url.startsWith('legado://video')) return await _handleVideo(uri);
 
     if (!url.startsWith('http')) return null;
     final method = (request.method ?? 'GET').toUpperCase();
@@ -654,6 +693,22 @@ class WebViewLegadoJs implements LegadoJs {
         return _textResponse('true', 200);
       }
       return _textResponse('false', 200);
+    } catch (e) {
+      return _textResponse('false', 200);
+    }
+  }
+
+  /// legado://video 协议：java.openVideoPlayer(url, title)。
+  /// 转交 MethodChannel('legado/video') 的 Kotlin 原生视频播放器；通道不可用时
+  /// 返回 'false' 让书源脚本静默降级（对齐 E 的容错语义，不抛异常）。
+  Future<iw.WebResourceResponse> _handleVideo(iw.WebUri uri) async {
+    final vUri = Uri.tryParse(uri.toString());
+    final url = vUri?.queryParameters['url'] ?? '';
+    final title = vUri?.queryParameters['title'] ?? '';
+    if (url.isEmpty) return _textResponse('false', 200);
+    try {
+      final ok = await LegadoBridgeJs.openVideoPlayer(url, title);
+      return _textResponse(ok ? 'true' : 'false', 200);
     } catch (e) {
       return _textResponse('false', 200);
     }

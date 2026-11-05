@@ -233,7 +233,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
       .map((e) => int.tryParse(e) ?? 0)
       .toList();
 
-  /// 内置更新日志（本项目已完成的主要功能）
+  /// 内置更新日志 —— 对齐 legado-E：仅描述 E 具备的功能，
+  /// 不再列 E 没有的入口（首页模块自定义 / 阅读统计 / 书籍标记）。
   static const _changelog = <String>[
     '全新 Material 3 界面，书架支持列表/网格/封面流多种布局与封面样式配置',
     '书架分组管理：分组页签、折叠/平铺分组样式、待更新数量与批量移动分组',
@@ -241,10 +242,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
     '书架导入导出：JSON 格式导出/导入书架（含分组、书源、目录与阅读进度）',
     '书源管理：规则编辑、书源调试、导入导出、OPDS 书源与网络导入',
     '阅读引擎：JS 规则解析正文，支持替换净化、TXT 目录规则与正文朗读 TTS',
-    '阅读体验：主题管理、阅读页精细设置、书签、书籍标记与章节缓存管理',
-    '发现与 RSS：首页模块自定义、RSS 订阅源管理与文章阅读',
+    '阅读体验：主题管理、阅读页精细设置、书签与章节缓存管理',
+    '发现与 RSS：书源分类发现、RSS 订阅源管理与文章阅读',
     '备份与同步：WebDAV 云同步、本地备份恢复与 WebDAV 远程书籍导入',
-    '阅读统计：阅读时长/天数统计、连续阅读打卡与近 30 天阅读趋势图',
+    '我的：书源/TXT目录/替换净化/词典规则、主题模式与 Web 服务设置',
   ];
 
   void _showChangelog() {
@@ -416,75 +417,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 }
 
-/* ===== 由 lab_config_screen.dart 合并 ===== */
-
-/// 实验室 - 对齐原版LabConfigScreen
-class LabConfigScreen extends StatefulWidget {
-  const LabConfigScreen({super.key});
-
-  @override
-  State<LabConfigScreen> createState() => _LabConfigScreenState();
-}
-
-class _LabConfigScreenState extends State<LabConfigScreen> {
-  bool _labEnabled = false;
-  bool _eink = false;
-  bool _pageEstimateDiag = false;
-  bool _textSelectable = false;
-  bool _accelerateDownload = false;
-  bool _webDavSyncOnOpen = false;
-
-  @override
-  void initState() { super.initState(); _load(); }
-
-  Future<void> _load() async {
-    final p = await SharedPreferences.getInstance();
-    setState(() {
-      _labEnabled = p.getBool('lab_enabled') ?? false;
-      _eink = p.getBool('lab_eink') ?? false;
-      _pageEstimateDiag = p.getBool('lab_pageDiag') ?? false;
-      _textSelectable = p.getBool('lab_selectable') ?? false;
-      _accelerateDownload = p.getBool('lab_accDownload') ?? false;
-      _webDavSyncOnOpen = p.getBool('lab_webdavOpen') ?? false;
-    });
-  }
-
-  Future<void> _set(String k, bool v) async {
-    (await SharedPreferences.getInstance()).setBool(k, v);
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
-    return Scaffold(
-      appBar: AppBar(title: const Text('实验室')),
-      body: ListView(children: [
-        SwitchListTile(
-          secondary: const Icon(Icons.science_outlined),
-          title: const Text('启用实验室功能'),
-          subtitle: const Text('开启后可使用实验性功能，可能不稳定', style: TextStyle(fontSize: 11)),
-          value: _labEnabled, onChanged: (v) { setState(() => _labEnabled = v); _set('lab_enabled', v); }),
-        const Divider(),
-        Padding(padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
-          child: Text('显示', style: TextStyle(fontWeight: FontWeight.bold, color: Theme.of(context).colorScheme.primary))),
-        SwitchListTile(dense: true, title: const Text('墨水屏(E-ink)显示优化'), subtitle: const Text('去除动画、提高对比度', style: TextStyle(fontSize: 11)),
-          value: _eink, onChanged: _labEnabled ? (v) { setState(() => _eink = v); _set('lab_eink', v); } : null),
-        SwitchListTile(dense: true, title: const Text('正文可自由选择复制'),
-          value: _textSelectable, onChanged: _labEnabled ? (v) { setState(() => _textSelectable = v); _set('lab_selectable', v); } : null),
-        Padding(padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
-          child: Text('诊断', style: TextStyle(fontWeight: FontWeight.bold, color: Theme.of(context).colorScheme.primary))),
-        SwitchListTile(dense: true, title: const Text('分页估算诊断'), subtitle: const Text('显示章节分页计算过程', style: TextStyle(fontSize: 11)),
-          value: _pageEstimateDiag, onChanged: _labEnabled ? (v) { setState(() => _pageEstimateDiag = v); _set('lab_pageDiag', v); } : null),
-        Padding(padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
-          child: Text('性能', style: TextStyle(fontWeight: FontWeight.bold, color: Theme.of(context).colorScheme.primary))),
-        SwitchListTile(dense: true, title: const Text('加速下载（多连接）'),
-          value: _accelerateDownload, onChanged: _labEnabled ? (v) { setState(() => _accelerateDownload = v); _set('lab_accDownload', v); } : null),
-        SwitchListTile(dense: true, title: const Text('打开应用时自动WebDAV同步'),
-          value: _webDavSyncOnOpen, onChanged: _labEnabled ? (v) { setState(() => _webDavSyncOnOpen = v); _set('lab_webdavOpen', v); } : null),
-        const SizedBox(height: 24),
-        Center(child: Text('实验性功能可能随时变更或移除', style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant))),
-      ]),
-    );
-  }
-}
+// 对齐 legado-E pref_main：我的页无「实验室」入口，原 lab_config_screen 合并残留的
+// LabConfigScreen 为全项目无引用的死代码，已移除，避免暴露 E 没有的实验性功能界面。
 

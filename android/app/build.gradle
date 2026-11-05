@@ -18,7 +18,9 @@ def flutterVersionName = localProperties.getProperty('flutter.versionName') ?: '
 android {
     namespace "com.legado.md3"
     compileSdk 36
-    ndkVersion flutter.ndkVersion
+    // 对齐 AGP/插件(sqflite_android/url_launcher/video_player)要求的 NDK 27，
+    // 消除 "requires Android NDK 27.0.12077973" 探测告警（预编译插件向后兼容）。
+    ndkVersion "27.0.12077973"
 
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_17

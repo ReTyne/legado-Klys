@@ -11,6 +11,7 @@ import 'package:legado_md3/data/local/app_database.dart';
 import 'package:legado_md3/data/model/book_source.dart';
 import 'package:legado_md3/help/config/app_config.dart';
 import 'package:legado_md3/help/source/check_source_service.dart';
+import 'package:legado_md3/ui/book/import/online_import_screen.dart';
 import 'package:legado_md3/ui/book/source/source_debug_screen.dart';
 import 'package:legado_md3/ui/book/source/source_edit_screen.dart';
 import 'package:legado_md3/ui/book/source/source_login_screen.dart';
@@ -32,6 +33,9 @@ class _SourceManageScreenState extends State<SourceManageScreen> {
   bool _isLoading = true;
   String _searchQuery = '';
   String? _selectedGroup;
+  // 对齐 E BookSourceActivity.upBookSource 的特殊分组过滤
+  // （need_login / 未分组 / 已启用 / 未启用 / 已启用发现）
+  String? _specialFilter;
   int _sortBy = 0; // 0=手动 1=权重 2=名称 3=URL 4=更新时间 5=响应时间 6=启用
   bool _sortAsc = true;
   bool _selectMode = false;
@@ -65,6 +69,28 @@ class _SourceManageScreenState extends State<SourceManageScreen> {
 
   List<BookSource> get _filteredSources {
     var result = _sources;
+    // 对齐 E upBookSource(searchKey)：need_login 等特殊过滤
+    switch (_specialFilter) {
+      case 'need_login':
+        result = result
+            .where((s) => (s.loginUrl ?? '').trim().isNotEmpty)
+            .toList();
+        break;
+      case 'no_group':
+        result = result
+            .where((s) => (s.bookSourceGroup ?? '').trim().isEmpty)
+            .toList();
+        break;
+      case 'enabled':
+        result = result.where((s) => s.enabled).toList();
+        break;
+      case 'disabled':
+        result = result.where((s) => !s.enabled).toList();
+        break;
+      case 'enabled_explore':
+        result = result.where((s) => s.enabledExplore).toList();
+        break;
+    }
     if (_selectedGroup != null) {
       result = result.where((s) => s.bookSourceGroup == _selectedGroup).toList();
     }
@@ -86,6 +112,23 @@ class _SourceManageScreenState extends State<SourceManageScreen> {
       case 6: result.sort((a, b) => _sortAsc ? (a.enabled ? 0 : 1).compareTo(b.enabled ? 0 : 1) : (b.enabled ? 0 : 1).compareTo(a.enabled ? 0 : 1)); break;
     }
     return result;
+  }
+
+  String _specialFilterLabel(String key) {
+    switch (key) {
+      case 'need_login':
+        return '需要登录';
+      case 'no_group':
+        return '未分组';
+      case 'enabled':
+        return '已启用';
+      case 'disabled':
+        return '未启用';
+      case 'enabled_explore':
+        return '已启用发现';
+      default:
+        return key;
+    }
   }
 
   Future<void> _toggleSource(BookSource source, bool enabled) async {
@@ -391,59 +434,13 @@ class _SourceManageScreenState extends State<SourceManageScreen> {
     return count;
   }
 
-  /// 网络导入（对齐 legado-E OnLineImport：书源/RSS/替换规则/TXT目录/在线TTS/字典/主题）
+  /// 网络/在线导入（对齐 legado-E OnLineImportActivity）：打开独立的一键导入
+  /// 界面，支持 URL / JSON / legado:// 链接与 7 类+readConfig 类型选择；
+  /// 返回后刷新书源列表（导入可能新增/更新书源）。
   void _showImportDialog() {
-    final controller = TextEditingController();
-    var importType = 'auto'; // auto=按内容推断
-    showDialog(
-      context: context,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setDialogState) => AlertDialog(
-          title: const Text('网络导入'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              DropdownButtonFormField<String>(
-                value: importType,
-                decoration: const InputDecoration(labelText: '导入类型'),
-                items: const [
-                  DropdownMenuItem(value: 'auto', child: Text('自动识别')),
-                  DropdownMenuItem(value: 'bookSource', child: Text('书源')),
-                  DropdownMenuItem(value: 'rss', child: Text('订阅源(RSS)')),
-                  DropdownMenuItem(value: 'replaceRule', child: Text('替换规则')),
-                  DropdownMenuItem(value: 'txtRule', child: Text('TXT目录规则')),
-                  DropdownMenuItem(value: 'httpTts', child: Text('在线TTS')),
-                  DropdownMenuItem(value: 'dictRule', child: Text('字典规则')),
-                  DropdownMenuItem(value: 'theme', child: Text('主题')),
-                ],
-                onChanged: (v) => setDialogState(() => importType = v ?? 'auto'),
-              ),
-              const SizedBox(height: 8),
-              TextField(
-                controller: controller,
-                decoration: const InputDecoration(hintText: '输入 JSON / legado://import 链接'),
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(context), child: const Text('取消')),
-            FilledButton(
-              onPressed: () {
-                final url = controller.text.trim();
-                Navigator.pop(context);
-                if (url.isEmpty) return;
-                if (url.startsWith('legado://') || url.startsWith('share://')) {
-                  DeepLinkService.instance.handleLink(url);
-                  return;
-                }
-                _importFromUrl(url, type: importType == 'auto' ? null : importType);
-              },
-              child: const Text('导入'),
-            ),
-          ],
-        ),
-      ),
-    );
+    Navigator.of(context)
+        .push(MaterialPageRoute(builder: (_) => const OnlineImportScreen()))
+        .then((_) => _loadSources());
   }
 
   void _showSortDialog() {
@@ -668,12 +665,30 @@ class _SourceManageScreenState extends State<SourceManageScreen> {
                 case 'group_manage':
                   _showGroupManageDialog();
                   break;
+                // 对齐 E BookSourceActivity 的 menu_group_* 特殊分组过滤
+                case 'filter_need_login':
+                case 'filter_no_group':
+                case 'filter_enabled':
+                case 'filter_disabled':
+                case 'filter_enabled_explore':
+                  setState(() => _specialFilter = value.substring(7));
+                  break;
+                case 'filter_clear':
+                  setState(() => _specialFilter = null);
+                  break;
               }
             },
             itemBuilder: (context) => const [
               PopupMenuItem(value: 'select_mode', child: Text('多选模式')),
               PopupMenuItem(value: 'sort', child: Text('排序')),
               PopupMenuItem(value: 'group_manage', child: Text('分组管理')),
+              PopupMenuDivider(),
+              PopupMenuItem(value: 'filter_need_login', child: Text('需要登录')),
+              PopupMenuItem(value: 'filter_no_group', child: Text('未分组')),
+              PopupMenuItem(value: 'filter_enabled', child: Text('已启用')),
+              PopupMenuItem(value: 'filter_disabled', child: Text('未启用')),
+              PopupMenuItem(value: 'filter_enabled_explore', child: Text('已启用发现')),
+              PopupMenuItem(value: 'filter_clear', child: Text('清除过滤')),
               PopupMenuDivider(),
               PopupMenuItem(value: 'enable_all', child: Text('全部启用')),
               PopupMenuItem(value: 'disable_all', child: Text('全部禁用')),
@@ -683,6 +698,26 @@ class _SourceManageScreenState extends State<SourceManageScreen> {
       ),
       body: Column(
         children: [
+          // 对齐 E BookSourceActivity：特殊分组过滤状态条，点了可一键清除
+          if (_specialFilter != null)
+            Container(
+              width: double.infinity,
+              color: Theme.of(context).colorScheme.secondaryContainer,
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
+              child: Row(
+                children: [
+                  const Icon(Icons.filter_alt, size: 16),
+                  const SizedBox(width: 6),
+                  Text('筛选：${_specialFilterLabel(_specialFilter!)}',
+                      style: const TextStyle(fontSize: 12)),
+                  const Spacer(),
+                  TextButton(
+                    onPressed: () => setState(() => _specialFilter = null),
+                    child: const Text('清除'),
+                  ),
+                ],
+              ),
+            ),
           if (_groups.isNotEmpty)
             Container(
               height: 48,

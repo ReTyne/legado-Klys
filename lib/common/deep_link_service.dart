@@ -503,9 +503,21 @@ class DeepLinkService {
     }
   }
 
-  /// GET 拉取文本（兼容无 Content-Encoding 头的 gzip 响应）
+  /// GET 拉取文本（兼容无 Content-Encoding 头的 gzip 响应）。
+  /// 对齐 E OnLineImportViewModel：URL 以 `#requestWithoutUA` 结尾时去掉后缀并
+  /// 以 UA="null" 请求（部分订阅源要求不带浏览器标识）。
   Future<String> _fetchText(String url) async {
-    final resp = await _dio.get<List<int>>(url);
+    var target = url;
+    Map<String, dynamic>? headers;
+    const suffix = '#requestWithoutUA';
+    if (url.endsWith(suffix)) {
+      target = url.substring(0, url.length - suffix.length);
+      headers = {'User-Agent': 'null'};
+    }
+    final resp = await _dio.get<List<int>>(
+      target,
+      options: headers == null ? null : Options(headers: headers),
+    );
     final bytes = resp.data ?? const <int>[];
     if (bytes.length >= 2 && bytes[0] == 0x1f && bytes[1] == 0x8b) {
       return utf8.decode(gzip.decode(bytes));

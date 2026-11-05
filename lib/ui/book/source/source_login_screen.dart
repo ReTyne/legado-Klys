@@ -1,20 +1,27 @@
 import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:legado_md3/data/local/app_database.dart';
 import 'package:legado_md3/data/model/book_source.dart';
+import 'package:legado_md3/help/http/cookie_manager.dart';
 import 'package:legado_md3/help/source/js/legado_js_runtime.dart';
 import 'package:legado_md3/help/source/source_engine.dart';
-import 'package:legado_md3/ui/browser/browser_screen.dart';
+import 'package:legado_md3/ui/book/source/source_webview_login_screen.dart';
 
-/// 书源登录页：对齐 legado 的 loginUi / loginUrl 机制。
+/// 书源登录页：对齐 legado-E ui/login 的
+/// SourceLoginActivity / WebViewLoginFragment / SourceLoginDialog。
 ///
-/// * loginUrl 为 http(s)：直接打开网页登录，回收 Cookie。
+/// * loginUrl 为 http(s) 且无自定义 loginUi：进入 [SourceWebViewLoginScreen]
+///   做 WebView 登录（注入 header/UA、拦截 URL、回收 Cookie 回写书源，供网络层与 JS 消费）。
 /// * loginUrl 为 <js>/JS：按 loginUi 渲染 text/password/button/switch/select，
 ///   loginUrl 先求值（定义 login()/register() 等全局函数），按钮 action 再求值；
 ///   result 为「字段名 -> 值」的对象，登录信息经 putLoginInfo 持久化。
+/// * loginUi 为 `@js:` / `<js>`：先求值生成表单 JSON（对齐 E evalUiJs/reUiView）。
 /// * 无 loginUi：回退为账号/密码表单，写入书源变量。
-/// * 页面加载时执行书源 loginCheckJs，展示「已登录/未登录」状态。
+/// * 页面加载时执行书源 loginCheckJs，展示「已登录/未登录」状态；
+///   AppBar 菜单对齐 E source_login.xml（查看/清除登录头、运行日志）。
 class SourceLoginScreen extends StatefulWidget {
   const SourceLoginScreen({super.key, required this.source});
   final BookSource source;
@@ -27,6 +34,8 @@ class _SourceLoginScreenState extends State<SourceLoginScreen> {
   final DatabaseService _db = DatabaseService();
   final BookSourceEngine _engine = BookSourceEngine();
   final Map<String, TextEditingController> _controllers = {};
+  // 所有创建过的 controller（动态 loginUi 重建表单时统一释放，避免泄漏）
+  final List<TextEditingController> _allControllers = [];
   // switch 开关控件的勾选值（字段名 -> bool）
   final Map<String, bool> _switchValues = {};
   // select 下拉控件的选中值（字段名 -> 选项 value）
@@ -46,6 +55,8 @@ class _SourceLoginScreenState extends State<SourceLoginScreen> {
     super.initState();
     source = widget.source;
     _buildUi();
+    // 对齐 E SourceLoginDialog：loginUi 为 @js:/<js> 时异步求值后重建表单
+    _maybeLoadDynamicUi();
     // 页面加载时检测登录状态（loginCheckJs）
     _checkLoginStatus();
   }
@@ -66,12 +77,14 @@ class _SourceLoginScreenState extends State<SourceLoginScreen> {
 
   void _buildUi() {
     final loginUrl = (source.loginUrl ?? '').trim();
-    // URL 型登录：交给网页
+    // URL 型登录：交给专用 WebView 登录页（对齐 E WebViewLoginFragment）
     if (loginUrl.startsWith('http://') || loginUrl.startsWith('https://')) {
       WidgetsBinding.instance.addPostFrameCallback((_) => _openWebLogin(loginUrl));
       return;
     }
     final uiText = (source.loginUi ?? '').trim();
+    // 动态 loginUi：先留空，由 _maybeLoadDynamicUi 求值后重建（对齐 E evalUiJs）
+    if (_extractLoginUiJs(uiText) != null) return;
     List<dynamic> items = [];
     if (uiText.isNotEmpty) {
       try {
@@ -83,13 +96,76 @@ class _SourceLoginScreenState extends State<SourceLoginScreen> {
     }
     if (items.isEmpty) {
       // 回退：账号/密码
-      items = [
-        {'name': '用户名', 'type': 'text'},
-        {'name': '密码', 'type': 'password'},
-        {'name': '登录', 'type': 'button', 'action': 'login(true)'},
-      ];
+      items = _fallbackLoginUi;
     }
+    _buildFields(items);
+  }
 
+  static const List<Map<String, dynamic>> _fallbackLoginUi = [
+    {'name': '用户名', 'type': 'text'},
+    {'name': '密码', 'type': 'password'},
+    {'name': '登录', 'type': 'button', 'action': 'login(true)'},
+  ];
+
+  /// 对齐 E SourceLoginDialog.handleReUiView / evalUiJs：
+  /// loginUi 为 `@js:` / `<js>...</js>` 时先求值生成表单 JSON，再重建控件。
+  Future<void> _maybeLoadDynamicUi() async {
+    final raw = (source.loginUi ?? '').trim();
+    final code = _extractLoginUiJs(raw);
+    if (code == null) return;
+    List<dynamic> items = _fallbackLoginUi;
+    try {
+      final rt = await JsRuntimeManager.instance.forSource(source);
+      final res = await rt.eval(JsEvalRequest(
+        source: source,
+        script: code,
+        result: _form,
+        baseUrl: source.bookSourceUrl.startsWith('http')
+            ? source.bookSourceUrl
+            : '',
+      ));
+      final dynamic value = res.value;
+      if (value is List) {
+        // JS 直接返回 RowUi 数组
+        items = value;
+      } else {
+        // E 的 evalUiJs 用 toString() 得到 JSON 字符串再解析
+        final jsonStr = (res.stringValue ?? '').trim();
+        if (jsonStr.isNotEmpty) {
+          final decoded = jsonDecode(jsonStr);
+          if (decoded is List) items = decoded;
+        }
+      }
+    } catch (e) {
+      _appendLog('动态 loginUi 求值失败，已回退：$e');
+    }
+    if (!mounted) return;
+    setState(() {
+      _clearFields();
+      _buildFields(items);
+    });
+  }
+
+  /// 提取 loginUi 里的 JS（对齐 E SourceLoginDialog 的 @js:/<js> 分支）
+  String? _extractLoginUiJs(String raw) {
+    if (raw.startsWith('@js:')) return raw.substring(4);
+    if (raw.startsWith('<js>')) {
+      final end = raw.lastIndexOf('</js>');
+      return raw.substring(4, end > 4 ? end : raw.length);
+    }
+    return null;
+  }
+
+  void _clearFields() {
+    _fields.clear();
+    _buttons.clear();
+    _controllers.clear();
+    _switchValues.clear();
+    _selectValues.clear();
+  }
+
+  /// 依据 loginUi 条目渲染 text/password/button/switch/select 控件
+  void _buildFields(List<dynamic> items) {
     for (final raw in items) {
       if (raw is! Map) continue;
       final item = Map<String, dynamic>.from(raw);
@@ -140,6 +216,7 @@ class _SourceLoginScreenState extends State<SourceLoginScreen> {
       } else if (type == 'text' || type == 'password' || type.isEmpty) {
         final c = TextEditingController();
         _controllers[name] = c;
+        _allControllers.add(c);
         _fields.add(Padding(
           padding: const EdgeInsets.symmetric(vertical: 8),
           child: TextField(
@@ -186,15 +263,123 @@ class _SourceLoginScreenState extends State<SourceLoginScreen> {
     return out;
   }
 
+  /// 打开 WebView 登录并打通闭环（对齐 E SourceLoginActivity → WebViewLoginFragment）。
+  /// 新页完成登录时已把 Cookie 回写内存 CookieJar、cookies 表并开启
+  /// enabledCookieJar；这里 await 结果后让 JS 运行时重新读取会话 Cookie，
+  /// 再刷新 loginCheckJs 状态，网络层下一次请求即自动携带登录 Cookie。
   Future<void> _openWebLogin(String url) async {
-    await Navigator.of(context).push(MaterialPageRoute(
-      builder: (_) => BrowserScreen(url: url, title: '登录 - ${source.bookSourceName}'),
+    final result = await Navigator.of(context).push<SourceWebLoginResult>(
+      MaterialPageRoute(
+        builder: (_) =>
+            SourceWebViewLoginScreen(source: source, loginUrl: url),
+      ),
+    );
+    if (!mounted) return;
+    await JsRuntimeManager.instance.invalidate(source.bookSourceUrl);
+    await _checkLoginStatus();
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text(result == null
+          ? '已取消网页登录'
+          : result.cookieCount > 0
+              ? '登录完成：已回写 ${result.cookieCount} 项 Cookie，书源请求与 JS 将自动携带'
+              : '登录完成：未检测到 Cookie（可能已登录或该源无需 Cookie）'),
+      duration: const Duration(seconds: 3),
     ));
+  }
+
+  /// 查看登录头 / 登录信息（对齐 E source_login.xml 的 menu_show_login_header）
+  Future<void> _showLoginHeader() async {
+    final key = source.bookSourceUrl;
+    final prefs = await SharedPreferences.getInstance();
+    final loginInfo = prefs.getString('loginInfo_$key') ?? '';
+    final loginHeader = prefs.getString('loginHeader_$key') ?? '';
+    final dbCookie = await _db.getCookie(key) ?? '';
+    final memCookie = CookieManager().cookieHeader(
+            key.startsWith('http') ? key : 'https://$key/') ??
+        '';
+    final parts = <String>[
+      '书源 Header：${(source.header ?? '').isEmpty ? '无' : source.header}',
+      '登录信息 loginInfo：${loginInfo.isEmpty ? '无' : loginInfo}',
+      '登录头 loginHeader：${loginHeader.isEmpty ? '无' : loginHeader}',
+      '持久化 Cookie(DB)：${dbCookie.isEmpty ? '无' : dbCookie}',
+      '内存 Cookie：${memCookie.isEmpty ? '无' : memCookie}',
+    ];
+    if (!mounted) return;
+    showDialog(
+      context: context,
+      builder: (c) => AlertDialog(
+        title: const Text('登录头 / 登录信息'),
+        content: SingleChildScrollView(
+          child: SelectableText(parts.join('\n\n'),
+              style: const TextStyle(fontSize: 12)),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(c), child: const Text('关闭')),
+          FilledButton(
+            onPressed: () async {
+              await Clipboard.setData(ClipboardData(text: parts.join('\n')));
+              if (c.mounted) Navigator.pop(c);
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('已复制')));
+              }
+            },
+            child: const Text('复制'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// 清除登录头 / 登录信息 / Cookie（对齐 E menu_del_login_header / removeLoginHeader）
+  Future<void> _clearLoginHeader() async {
+    final key = source.bookSourceUrl;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.remove('loginInfo_$key');
+    await prefs.remove('loginHeader_$key');
+    await _db.deleteCookie(key);
+    try {
+      final host = Uri.tryParse(key)?.host ?? '';
+      if (host.isNotEmpty) CookieManager().removeHost(host);
+    } catch (_) {}
+    await JsRuntimeManager.instance.invalidate(key);
+    await _checkLoginStatus();
     if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('网页登录结束，已尝试回收 Cookie')),
-      );
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('已清除登录头、登录信息与持久化 Cookie')));
     }
+  }
+
+  /// 运行日志（对齐 E source_login.xml 的 menu_log / AppLogDialog）
+  void _showLogs() {
+    showDialog(
+      context: context,
+      builder: (c) => AlertDialog(
+        title: const Text('运行日志'),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: SingleChildScrollView(
+            child: SelectableText(
+              _logs.isEmpty ? '暂无日志' : _logs.join('\n'),
+              style: const TextStyle(fontSize: 11, fontFamily: 'monospace'),
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(c), child: const Text('关闭')),
+          TextButton(
+            onPressed: () {
+              setState(() => _logs.clear());
+              Navigator.pop(c);
+            },
+            child: const Text('清空'),
+          ),
+        ],
+      ),
+    );
   }
 
   Future<void> _runAction(String action) async {
@@ -290,7 +475,7 @@ class _SourceLoginScreenState extends State<SourceLoginScreen> {
 
   @override
   void dispose() {
-    for (final c in _controllers.values) {
+    for (final c in _allControllers) {
       c.dispose();
     }
     super.dispose();
@@ -304,6 +489,29 @@ class _SourceLoginScreenState extends State<SourceLoginScreen> {
       appBar: AppBar(
         title: Text('登录 - ${source.bookSourceName}', maxLines: 1, overflow: TextOverflow.ellipsis),
         actions: [
+          // 对齐 E source_login.xml：查看登录头 / 删除登录头 / 日志
+          PopupMenuButton<String>(
+            onSelected: (v) {
+              switch (v) {
+                case 'show_header':
+                  _showLoginHeader();
+                  break;
+                case 'clear_header':
+                  _clearLoginHeader();
+                  break;
+                case 'logs':
+                  _showLogs();
+                  break;
+              }
+            },
+            itemBuilder: (_) => const [
+              PopupMenuItem(
+                  value: 'show_header', child: Text('查看登录头 / 登录信息')),
+              PopupMenuItem(
+                  value: 'clear_header', child: Text('清除登录头 / Cookie')),
+              PopupMenuItem(value: 'logs', child: Text('运行日志')),
+            ],
+          ),
           IconButton(
             tooltip: '重新载入',
             icon: const Icon(Icons.refresh),

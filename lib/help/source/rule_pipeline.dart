@@ -877,6 +877,10 @@ class RulePipeline {
 
   // ============================== 工具方法 ==============================
 
+  /// 公开的规则模式判定（委托 [_detectMode]），供离线兼容测试/调试页复用。
+  RuleMode modeOf(String rule, {bool forceJson = false}) =>
+      _detectMode(rule, forceJson: forceJson);
+
   RuleMode _detectMode(String rule, {bool forceJson = false}) {
     final r = rule.trim();
     if (r.toLowerCase().startsWith('@css:')) return RuleMode.css;

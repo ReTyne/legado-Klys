@@ -5,6 +5,7 @@ import 'package:html/parser.dart' as html_parser;
 import 'package:enough_convert/enough_convert.dart';
 import 'package:legado_md3/data/model/rss_source.dart';
 import 'package:legado_md3/data/model/rss_article.dart';
+import 'package:legado_md3/help/http/cookie_manager.dart';
 import 'package:legado_md3/help/source/rule_pipeline.dart';
 import 'package:legado_md3/help/source/js/legado_js_runtime.dart';
 
@@ -96,8 +97,10 @@ class RssService {
         ));
         final v = (res.stringValue ?? '').trim();
         if (v.startsWith('http')) {
-          // JS 产出 URL：按该 URL 抓取起始页
-          final html = await _httpGet(v, await _resolveHeader(s));
+          // JS 产出 URL：按该 URL 抓取起始页，并执行 loginCheckJs（对齐 E Rss.kt:57）
+          final header = await _resolveHeader(s);
+          var html = await _httpGet(v, header, source: s);
+          html = await _applyLoginCheck(s, html, v);
           if (html.isNotEmpty) return _StartPage(html, v);
         } else if (v.contains('<')) {
           // JS 直接产出 HTML：作为待解析起始页（相对链接仍按 baseUrl 解析）
@@ -117,10 +120,75 @@ class RssService {
       return _StartPage(html, baseUrl);
     }
     // 3) 默认：抓取页面（逻辑源 / data: 源无页面可抓时返回空）
-    final html = baseUrl.startsWith('http')
-        ? await _httpGet(baseUrl, await _resolveHeader(s))
+    var html = baseUrl.startsWith('http')
+        ? await _httpGet(baseUrl, await _resolveHeader(s), source: s)
         : '';
+    // 对齐 E Rss.kt getArticlesAwait：响应正文经 loginCheckJs 检测/改写
+    html = await _applyLoginCheck(s, html, baseUrl);
     return _StartPage(html, baseUrl);
+  }
+
+  /// 执行 loginCheckJs（对齐 E Rss.kt:57 / :108「检测源是否已登录」）。
+  /// JS 可返回改写后的响应正文（E 中以 StrResponse 形式回写），非空则替换原文；
+  /// 求值失败一律保留原文、不阻断主链路。
+  Future<String> _applyLoginCheck(
+      RssSource s, String body, String baseUrl) async {
+    final js = (s.loginCheckJs ?? '').trim();
+    if (js.isEmpty || body.isEmpty) return body;
+    try {
+      final rt = await JsRuntimeManager.instance.forSource(s);
+      final script = await _applyMustache(s, _stripJs(js),
+          result: body, baseUrl: baseUrl);
+      final res = await rt.eval(JsEvalRequest(
+          source: s, script: script, result: body, baseUrl: baseUrl));
+      final v = (res.stringValue ?? '').trim();
+      return v.isEmpty ? body : v;
+    } catch (_) {
+      return body;
+    }
+  }
+
+  /// 正文规则：对齐 E ContentRule.kt 的 `content` 字段。
+  /// 兼容两种写法：JSON 对象 `{"content":...,"nextContentUrl":...}` 或纯规则字符串。
+  String _contentRuleOf(RssSource s) =>
+      _contentRuleMap(s)['content'] ?? (s.ruleContent ?? '').trim();
+
+  /// 正文下一页规则：对齐 E ContentRule.kt 的 `nextContentUrl` 字段。
+  /// 当前主线 RssSource 无独立字段（lib/data 不改动），故从 ruleContent 的
+  /// JSON 对象按新结构解析；纯字符串规则则返回空（不启用多页）。
+  String _nextContentRuleOf(RssSource s) =>
+      _contentRuleMap(s)['nextContentUrl'] ?? '';
+
+  Map<String, String> _contentRuleMap(RssSource s) {
+    final raw = (s.ruleContent ?? '').trim();
+    if (!raw.startsWith('{')) return const {};
+    try {
+      final m = jsonDecode(raw);
+      if (m is Map) {
+        return m.map((k, v) =>
+            MapEntry(k.toString(), v == null ? '' : v.toString().trim()));
+      }
+    } catch (_) {}
+    return const {};
+  }
+
+  /// 取正文下一页链接（对齐 E BookContent.kt:254 analyzeContentPage）：
+  /// sourceType==0 且 nextContentUrl 规则非空时，逐条解析为绝对地址。
+  List<String> _nextContentUrls(
+      RssSource s, String html, String baseUrl) {
+    final rule = _nextContentRuleOf(s);
+    if (s.sourceType != 0 || rule.isEmpty || html.isEmpty) return const [];
+    _pipeline.baseUrl = baseUrl;
+    try {
+      return _pipeline
+          .extractListFromRaw(html, rule)
+          .map((e) => e.trim())
+          .where((e) => e.isNotEmpty)
+          .map((e) => _resolveUrl(baseUrl, e))
+          .toList();
+    } catch (_) {
+      return const [];
+    }
   }
 
   // ============================ JS 链路 ============================
@@ -220,28 +288,65 @@ class RssService {
   }
 
   /// 计算文章正文（ruleContent），返回正文（可能是 HTML）。
+  /// 对齐 E Rss.getContentAwait + BookContent 正文翻页：单条 nextContentUrl
+  /// 串行循环，多条并发取完，各页以 "\n" 拼接后再走白/黑名单过滤。
   Future<String?> fetchArticleContent(RssSource s, RssArticle article) async {
-    final rule = (s.ruleContent ?? '').trim();
+    final rule = _contentRuleOf(s);
     if (rule.isEmpty) return article.description ?? article.content ?? '';
     final rt = await JsRuntimeManager.instance.forSource(s);
 
-    var pageHtml = '';
-    if (article.link.startsWith('http')) {
-      pageHtml = await _httpGet(article.link, await _resolveHeader(s));
+    Future<String> contentOfPage(String url, String html) async {
+      final am = article.jsContext();
+      var body = _stripJs(rule);
+      body = await _applyMustache(s, body,
+          result: html, baseUrl: url, rssArticle: am);
+      final res = await rt.eval(JsEvalRequest(
+          source: s,
+          script: body,
+          result: html,
+          baseUrl: url,
+          rssArticle: am));
+      return res.stringValue ?? '';
     }
-    final am = article.jsContext();
-    var body = _stripJs(rule);
-    body = await _applyMustache(s, body,
-        result: pageHtml, baseUrl: article.link, rssArticle: am);
-    final res = await rt.eval(JsEvalRequest(
-        source: s,
-        script: body,
-        result: pageHtml,
-        baseUrl: article.link,
-        rssArticle: am));
+
+    Future<String> htmlOfPage(String url) async {
+      final header = await _resolveHeader(s);
+      final html = await _httpGet(url, header, source: s);
+      // 对齐 E Rss.kt:108：正文响应同样经 loginCheckJs 检测/改写
+      return _applyLoginCheck(s, html, url);
+    }
+
+    final firstUrl = article.link;
+    final firstHtml =
+        firstUrl.startsWith('http') ? await htmlOfPage(firstUrl) : '';
+    final contents = <String>[await contentOfPage(firstUrl, firstHtml)];
+
+    const maxPages = 50; // 规则写错时防死循环
+    final firstNext = _nextContentUrls(s, firstHtml, firstUrl);
+    if (firstNext.length == 1) {
+      final visited = <String>{firstUrl};
+      var nextUrl = firstNext.first;
+      while (nextUrl.isNotEmpty &&
+          visited.add(nextUrl) &&
+          contents.length < maxPages) {
+        final html = await htmlOfPage(nextUrl);
+        contents.add(await contentOfPage(nextUrl, html));
+        final nx = _nextContentUrls(s, html, nextUrl);
+        nextUrl = nx.isEmpty ? '' : nx.first;
+      }
+    } else if (firstNext.length > 1) {
+      final pages = await Future.wait(firstNext.map((u) async {
+        final html = await htmlOfPage(u);
+        return contentOfPage(u, html);
+      }));
+      contents.addAll(pages);
+    }
+
     // 白名单/黑名单按 CSS 选择器过滤后再返回
     return _applyContentFilter(
-        res.stringValue ?? '', s.contentWhitelist, s.contentBlacklist);
+        contents.where((e) => e.trim().isNotEmpty).join('\n'),
+        s.contentWhitelist,
+        s.contentBlacklist);
   }
 
   /// 内容白名单/黑名单过滤（按 CSS 选择器）。
@@ -354,9 +459,15 @@ class RssService {
   Future<String> fetchRaw(String url, {String? header}) =>
       _httpGet(url, header);
 
-  Future<String> _httpGet(String url, String? headerJson) async {
+  /// 抓取原始页面文本。
+  /// [source] 非空且 enabledCookieJar 为真时，按 E AnalyzeUrl 的 cookieJar 语义：
+  /// 请求自动带上已保存 Cookie，并把响应的 Set-Cookie 写回 CookieJar
+  /// （与书源网络层共用同一 [CookieManager] 单例，登录后会话互通）。
+  Future<String> _httpGet(String url, String? headerJson,
+      {RssSource? source}) async {
     if (!url.startsWith('http')) return '';
     try {
+      final jarEnabled = source?.enabledCookieJar ?? false;
       final headers = <String, dynamic>{};
       if (headerJson != null && headerJson.trim().isNotEmpty) {
         try {
@@ -367,7 +478,14 @@ class RssService {
           }
         } catch (_) {}
       }
+      if (jarEnabled) {
+        final ck = CookieManager().cookieHeader(url);
+        if (ck != null && ck.isNotEmpty) headers['Cookie'] = ck;
+      }
       final resp = await _dio.get(url, options: Options(headers: headers));
+      if (jarEnabled) {
+        CookieManager().saveFromResponse(url, resp.headers.map['set-cookie']);
+      }
       return _decode(resp.data ?? const <int>[], resp.headers.map);
     } catch (_) {
       return '';
@@ -386,8 +504,8 @@ class RssService {
     }
     cs = cs.toLowerCase();
     try {
-      if (cs == 'gbk' || cs == 'gb2312' || cs == 'gb18030') return GbkCodec().decode(bytes);
-      if (cs == 'big5') return Big5Codec().decode(bytes);
+      if (cs == 'gbk' || cs == 'gb2312' || cs == 'gb18030') return const GbkCodec().decode(bytes);
+      if (cs == 'big5') return const Big5Codec().decode(bytes);
       if (cs == 'latin1' || cs == 'iso-8859-1') return latin1.decode(bytes);
       return utf8.decode(bytes, allowMalformed: false);
     } catch (_) {
@@ -395,7 +513,7 @@ class RssService {
         return utf8.decode(bytes, allowMalformed: true);
       } catch (_) {
         try {
-          return GbkCodec().decode(bytes);
+          return const GbkCodec().decode(bytes);
         } catch (_) {
           return latin1.decode(bytes);
         }
@@ -446,7 +564,10 @@ class RssService {
       if (nextUrl == currentUrl) break;
       currentUrl = nextUrl;
       _pipeline.baseUrl = currentUrl;
-      content = await _httpGet(currentUrl, source.header);
+      content = await _httpGet(currentUrl, source.header, source: source);
+      if (content.isEmpty) break;
+      // 对齐 E Rss.kt：翻页响应同样经 loginCheckJs
+      content = await _applyLoginCheck(source, content, currentUrl);
       if (content.isEmpty) break;
     }
     return out;

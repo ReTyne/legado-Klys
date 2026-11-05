@@ -10,6 +10,19 @@ import 'package:legado_md3/data/model/book_source.dart';
 import 'package:legado_md3/help/source/source_engine.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+/// 当前翻页模式的总页数：单页=图片数；双页=相邻两页拼一屏（ceil(n/2)）。
+/// 补齐双页拼合（对齐 E 的漫画双页阅读），抽成顶层纯函数便于离线单测。
+int mangaPageCount(int imageCount, bool doublePage) =>
+    doublePage ? (imageCount + 1) ~/ 2 : imageCount;
+
+/// 双页模式第 [pageIndex] 屏对应的图片下标：正常两张 [左, 右]，奇数张时最后一屏仅 [左]。
+/// 补齐双页拼合（对齐 E 的漫画双页阅读），抽成顶层纯函数便于离线单测。
+List<int> mangaDoublePageIndices(int pageIndex, int imageCount) {
+  final left = 2 * pageIndex;
+  if (left >= imageCount) return const [];
+  return left + 1 < imageCount ? [left, left + 1] : [left];
+}
+
 /// 漫画阅读器（图片书源 / 条漫）。
 ///
 /// 图片获取策略（增量修复）：
@@ -35,7 +48,7 @@ class _MangaReaderScreenState extends State<MangaReaderScreen> {
   bool _showMenu = false;
 
   // ==================== 漫画配置（manga_config_screen 写入的 prefs 键） ====================
-  int _scrollMode = 0;      // manga_scrollMode：0 条漫(纵向连续) 1 横向翻页 2 双页(降级为翻页)
+  int _scrollMode = 0;      // manga_scrollMode：0 条漫(纵向连续) 1 横向翻页 2 双页(相邻两页拼一屏)
   bool _gray = false;       // manga_gray：灰度模式
   bool _eink = false;       // manga_eink：墨水屏优化
   bool _hideTitle = false;  // manga_hideTitle：隐藏菜单标题栏
@@ -261,13 +274,29 @@ class _MangaReaderScreenState extends State<MangaReaderScreen> {
         itemBuilder: (context, index) => _buildImage(images[index], BoxFit.fitWidth, true),
       );
     } else {
-      // 横向翻页（manga_scrollMode=2 双页模式降级为普通翻页，暂未实现双页拼合）
+      // 补齐双页拼合（manga_scrollMode==2，对齐 E 的漫画双页阅读）：
+      // 相邻两页并排放进同一屏 Row，页数按 ceil(n/2)；单页模式保持原有 Center 渲染不变。
+      final doublePage = _scrollMode == 2;
       return PageView.builder(
         controller: _pageController,
-        itemCount: images.length,
+        itemCount: mangaPageCount(images.length, doublePage),
         onPageChanged: (i) => setState(() => _imageIndex = i),
-        itemBuilder: (context, index) =>
-            Center(child: _buildImage(images[index], BoxFit.contain, false)),
+        itemBuilder: (context, index) {
+          if (!doublePage) {
+            return Center(child: _buildImage(images[index], BoxFit.contain, false));
+          }
+          // 相邻两页并排：每张图各自保留缩放/滤镜能力，互不影响
+          return Row(
+            children: [
+              for (final imgIndex
+                  in mangaDoublePageIndices(index, images.length))
+                Expanded(
+                    child: Center(
+                        child: _buildImage(
+                            images[imgIndex], BoxFit.contain, false))),
+            ],
+          );
+        },
       );
     }
   }
@@ -419,6 +448,9 @@ class _MangaReaderScreenState extends State<MangaReaderScreen> {
       _scrollMode = mode;
       _imageIndex = 0;
     });
+    // 补齐双页拼合（对齐 E 的漫画双页阅读）：单页↔双页切换会改变 PageView 页数，
+    // 复位到第 0 页避免停留在越界页。
+    if (_pageController.hasClients) _pageController.jumpToPage(0);
     try {
       final p = await SharedPreferences.getInstance();
       await p.setInt('manga_scrollMode', mode);
@@ -464,7 +496,9 @@ class _MangaReaderScreenState extends State<MangaReaderScreen> {
       _scrollController.animateTo(next,
           duration: const Duration(milliseconds: 300), curve: Curves.easeOut);
     } else {
-      if (_imageIndex >= images.length - 1) {
+      // 补齐双页拼合（对齐 E 的漫画双页阅读）：双页模式下 _imageIndex 是「页对」索引，
+      // 章末判断改用 _pageCount，避免单页口径导致翻到一半就跳章。
+      if (_imageIndex >= mangaPageCount(images.length, _scrollMode == 2) - 1) {
         _nextChapter();
         return;
       }
@@ -489,6 +523,8 @@ class _MangaReaderScreenState extends State<MangaReaderScreen> {
       _currentChapter = index;
       _imageIndex = 0;
     });
+    // 补齐双页拼合（对齐 E 的漫画双页阅读）：新章节图片数不同，复位翻页位置避免越界。
+    if (_pageController.hasClients) _pageController.jumpToPage(0);
     await _ensureImages(index);
     unawaited(_prefetchImages(index));
   }

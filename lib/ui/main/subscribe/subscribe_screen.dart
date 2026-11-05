@@ -10,6 +10,7 @@ import 'package:legado_md3/ui/rss/rss_source_edit_screen.dart';
 import 'package:legado_md3/ui/rss/rss_favorites_screen.dart';
 import 'package:legado_md3/ui/rss/rss_articles_screen.dart';
 import 'package:legado_md3/ui/rss/rss_source_screen.dart';
+import 'package:legado_md3/ui/rss/rule_subscription_screen.dart';
 import 'package:legado_md3/ui/stats/read_record_screen.dart';
 import 'package:legado_md3/ui/rss/rss_source_login_screen.dart';
 import 'package:legado_md3/data/local/app_database.dart';
@@ -29,6 +30,8 @@ class _SubscribeScreenState extends State<SubscribeScreen> {
   bool _isLoading = true;
   bool _searching = false;
   String _searchQuery = '';
+  /// 订阅源分组过滤（对齐 legado-E main_rss.xml 的 menu_group 子菜单）
+  String _groupFilter = '';
   final TextEditingController _searchController = TextEditingController();
 
   @override
@@ -90,6 +93,20 @@ class _SubscribeScreenState extends State<SubscribeScreen> {
     if (mounted) setState(() => _isLoading = false);
   }
 
+  /// 订阅源可用分组（对齐 legado-E RssFragment 的 flowEnabledGroups + menu_group）。
+  /// 首位为「全部」；当前过滤值在数据变化后仍保留，避免 PopupMenuButton.initialValue 失配。
+  List<String> get _rssGroups {
+    final set = <String>{};
+    for (final s in _sources) {
+      final g = s.sourceGroup?.trim();
+      if (g != null && g.isNotEmpty) set.add(g);
+    }
+    final list = <String>['全部', ...(set.toList()..sort())];
+    if (_groupFilter.isNotEmpty && !list.contains(_groupFilter)) {
+      list.add(_groupFilter);
+    }
+    return list;
+  }
 
   Future<void> _addSource() async {
     final result = await Navigator.push(context, MaterialPageRoute(builder: (_) => const RssSourceEditScreen()));
@@ -189,12 +206,67 @@ class _SubscribeScreenState extends State<SubscribeScreen> {
           IconButton(icon: const Icon(Icons.file_download_outlined), tooltip: '导入订阅源', onPressed: _showImportMenu),
         ],
       ),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : _buildSourcesGrid(),
+      body: Column(
+        children: [
+          // 对齐 legado-E RssFragment：RecyclerView 顶部常驻 header「规则订阅」，
+          // 以及 main_rss.xml 的 menu_group 分组过滤，二者不随订阅源空态消失。
+          _buildRssHeader(),
+          const Divider(height: 1),
+          Expanded(
+            child: _isLoading
+                ? const Center(child: CircularProgressIndicator())
+                : _buildSourcesGrid(),
+          ),
+        ],
+      ),
       floatingActionButton: FloatingActionButton(
         onPressed: _addSource,
         child: const Icon(Icons.add),
+      ),
+    );
+  }
+
+  /// 订阅页顶部入口 —— 对齐 legado-E `RssFragment.initRecyclerView` 的 header 项
+  /// （「规则订阅」→ RuleSubActivity）与 `main_rss.xml` 的 menu_group（分组过滤）。
+  /// 两个入口都是真实交互：前者跳转规则订阅管理页（增删/更新订阅），
+  /// 后者按 sourceGroup 过滤下方订阅源列表。
+  Widget _buildRssHeader() {
+    return SizedBox(
+      height: 48,
+      child: Row(
+        children: [
+          Expanded(
+            child: InkWell(
+              onTap: () => Navigator.push(
+                context,
+                MaterialPageRoute(
+                    builder: (_) => const RuleSubscriptionScreen()),
+              ),
+              child: const Padding(
+                padding: EdgeInsets.symmetric(horizontal: 12),
+                child: Row(children: [
+                  Icon(Icons.dynamic_feed_outlined, size: 20),
+                  SizedBox(width: 10),
+                  Text('规则订阅',
+                      style: TextStyle(
+                          fontSize: 14, fontWeight: FontWeight.w500)),
+                  Icon(Icons.chevron_right, size: 18),
+                ]),
+              ),
+            ),
+          ),
+          // 对齐 legado-E main_rss.xml 的 menu_group：选中分组后按 group 过滤订阅源
+          PopupMenuButton<String>(
+            tooltip: '分组',
+            icon: const Icon(Icons.filter_list),
+            initialValue: _groupFilter.isEmpty ? '全部' : _groupFilter,
+            onSelected: (v) =>
+                setState(() => _groupFilter = v == '全部' ? '' : v),
+            itemBuilder: (context) => _rssGroups
+                .map((g) => PopupMenuItem(value: g, child: Text(g)))
+                .toList(),
+          ),
+        ],
       ),
     );
   }
@@ -203,10 +275,14 @@ class _SubscribeScreenState extends State<SubscribeScreen> {
   /// 与 `item_rss.xml`（50dp 圆角图标 + 两行 13sp 名称）。
   Widget _buildSourcesGrid() {
     final q = _searchQuery.toLowerCase();
+    // 对齐 legado-E RssFragment：分组过滤（menu_group）与搜索框（关键字/分组）叠加生效
     final groups = _sources
-        .where((s) => q.isEmpty ||
-            s.sourceName.toLowerCase().contains(q) ||
-            (s.sourceGroup ?? '').toLowerCase().contains(q))
+        .where((s) =>
+            (_groupFilter.isEmpty ||
+                (s.sourceGroup ?? '').trim() == _groupFilter) &&
+            (q.isEmpty ||
+                s.sourceName.toLowerCase().contains(q) ||
+                (s.sourceGroup ?? '').toLowerCase().contains(q)))
         .toList();
     if (groups.isEmpty) {
       return Center(
@@ -215,10 +291,13 @@ class _SubscribeScreenState extends State<SubscribeScreen> {
           children: [
             Icon(Icons.subscriptions_outlined, size: 80, color: Colors.grey[400]),
             const SizedBox(height: 16),
-            Text(_searchQuery.isEmpty ? '暂无订阅源' : '没有匹配的订阅源',
+            Text(_searchQuery.isEmpty && _groupFilter.isEmpty
+                    ? '暂无订阅源'
+                    : '没有匹配的订阅源',
                 style: TextStyle(fontSize: 18, color: Colors.grey[600])),
             const SizedBox(height: 8),
-            if (_searchQuery.isEmpty) const Text('点击右下角添加订阅源'),
+            if (_searchQuery.isEmpty && _groupFilter.isEmpty)
+              const Text('点击右下角添加订阅源'),
           ],
         ),
       );

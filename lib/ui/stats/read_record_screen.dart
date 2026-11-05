@@ -308,7 +308,10 @@ class _ReadRecordScreenState extends State<ReadRecordScreen> {
       key: ValueKey('record_${record.id ?? index}'),
       direction: DismissDirection.endToStart,
       confirmDismiss: (direction) => _confirmDelete(record),
-      onDismissed: (direction) {},
+      // 对齐 E 的 ReadRecordActivity：滑动删除确认后给出可见反馈（原为空实现），删除与刷新已由 confirmDismiss 完成
+      onDismissed: (direction) => ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('阅读记录已删除')),
+          ),
       background: Container(
         alignment: Alignment.centerRight,
         color: Colors.red,

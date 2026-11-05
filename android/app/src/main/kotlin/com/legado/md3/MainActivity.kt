@@ -19,6 +19,9 @@ class MainActivity : FlutterActivity() {
 
     /** legado:// 深链 / 系统分享文本 导入频道 */
     private val deepLinkChannelName = "legado/deep_link"
+
+    /** 书源 java.openVideoPlayer 的原生视频播放频道（对齐 legado-E openVideoPlayer） */
+    private val videoChannelName = "legado/video"
     private var pendingPath: String? = null
     private var channel: MethodChannel? = null
     private var wakeLock: PowerManager.WakeLock? = null
@@ -62,6 +65,36 @@ class MainActivity : FlutterActivity() {
                 result.success(link)
             } else {
                 result.notImplemented()
+            }
+        }
+        // 书源 java.openVideoPlayer：用系统原生视频播放器打开（K 风格原生实现）。
+        // Dart 侧 legado://video 协议 handler 会 invokeMethod('open', {url, title})。
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, videoChannelName).setMethodCallHandler { call, result ->
+            when (call.method) {
+                "open" -> {
+                    val url = call.argument<String>("url")
+                    val title = call.argument<String>("title") ?: "视频播放"
+                    if (url.isNullOrEmpty()) {
+                        result.success(false)
+                    } else {
+                        val ok = try {
+                            // 交给系统/已安装的视频播放器：ACTION_VIEW + video/*，
+                            // 支持 http(s)/content/file 等书源常见视频地址，无需额外依赖。
+                            val intent = Intent(Intent.ACTION_VIEW).apply {
+                                setDataAndType(Uri.parse(url), "video/*")
+                                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                                putExtra(Intent.EXTRA_TITLE, title)
+                            }
+                            startActivity(Intent.createChooser(intent, title))
+                            true
+                        } catch (_: Exception) {
+                            // 无可用播放器 / bad URI：静默失败，Dart 侧降级到内置播放页
+                            false
+                        }
+                        result.success(ok)
+                    }
+                }
+                else -> result.notImplemented()
             }
         }
         // 屏幕常亮控制

@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:legado_md3/help/readaloud/reading_record.dart';
 
+// 对齐 E：legado-E 无「阅读统计」独立界面，本页无任何主入口引用（我的页/设置页/主导航均未接入），
+// 页面文件保留仅供潜在复用，避免删除导致编译断裂。
 class ReadingStatsScreen extends StatefulWidget {
   const ReadingStatsScreen({super.key});
 

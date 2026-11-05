@@ -12,6 +12,7 @@ import 'package:legado_md3/help/source/txt_parser.dart';
 import 'package:legado_md3/help/storage/epub_parser.dart';
 import 'package:legado_md3/help/storage/umd_parser.dart';
 import 'package:legado_md3/help/storage/mobi_parser.dart';
+import 'package:legado_md3/help/storage/local_book_parser.dart';
 
 /// 本地书籍导入结果
 class ImportResult {
@@ -203,9 +204,71 @@ class ImportBookService {
       }
     }
 
+    // 让 LocalBookParser 补齐的元数据真正进入书架/详情页（互相联系）。
+    // umd/mobi/pdf 三支上面只造了最小 Book；这里用统一解析器取 EXTH/PDF Info/
+    // UMD TLV 里的书名/作者/简介/字数/封面，仅在目标字段为空或占位值时回填，
+    // 不覆盖既有解析器已给的正确值，也不改 origin/noteUrl/chapters/type 等导入契约。
+    if (ext == 'umd' || ext == 'mobi' || ext == 'azw' || ext == 'azw3' ||
+        ext == 'pdf') {
+      await enrichMetadataFromParser(book, path, fileName);
+    }
+
     await _db.insertBook(book);
     await _db.saveChapters(book.name, book.author, chapters);
     return ImportResult(book, chapters.length);
+  }
+
+  /// 用 LocalBookParser.parse 的元数据回填导入 Book（对齐 E 的 LocalBook.upBookInfo）。
+  /// 只补「空 / 未知 / 未统计」字段，避免覆盖各格式解析器已产出的更准信息。
+  /// 公开为静态方法便于行为测试验证「解析 → 回填 → 进书架」这条调用链真实成立。
+  static Future<void> enrichMetadataFromParser(
+      Book book, String path, String fileName) async {
+    Book? meta;
+    try {
+      meta = await LocalBookParser.parse(path);
+    } catch (_) {
+      return; // 元数据解析失败不影响导入主流程
+    }
+    if (meta == null) return;
+
+    String? clean(String? s) {
+      final v = (s ?? '').trim();
+      if (v.isEmpty || v == '未知' || v == '未知作者') return null;
+      return v;
+    }
+
+    // 书名/作者：仅当当前是文件名兜底或占位值时用元数据里的真实标题作者
+    final curName = book.name.trim();
+    final betterName = clean(meta.name);
+    if (betterName != null &&
+        (curName.isEmpty ||
+            curName == _stripExt(fileName) ||
+            curName == fileName)) {
+      book.name = betterName;
+    }
+    final curAuthor = book.author.trim();
+    final betterAuthor = clean(meta.author);
+    if (betterAuthor != null &&
+        (curAuthor.isEmpty || curAuthor == '未知' || curAuthor == '未知作者')) {
+      book.author = betterAuthor;
+    }
+    if ((book.intro == null || book.intro!.trim().isEmpty)) {
+      final intro = clean(meta.intro);
+      if (intro != null) book.intro = intro;
+    }
+    if (book.wordCount == null || book.wordCount == 0) {
+      if (meta.wordCount != null && meta.wordCount! > 0) {
+        book.wordCount = meta.wordCount;
+      }
+    }
+    if ((book.coverUrl == null || book.coverUrl!.isEmpty)) {
+      final cover = clean(meta.coverUrl);
+      if (cover != null) book.coverUrl = cover;
+    }
+    if ((book.kind == null || book.kind!.isEmpty)) {
+      final kind = clean(meta.kind);
+      if (kind != null) book.kind = kind;
+    }
   }
 
   static String _stripExt(String name) {

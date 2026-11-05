@@ -23,6 +23,9 @@
 /// getTxtInFolder / openVideoPlayer）在 JS 侧读 `__state` 快照并回退默认值；
 /// 原生需要实时数据时，可用本类的 Dart 静态助手生成 JSON 后种子注入
 /// `__state.readConfig` / `__state.theme` / `__state.themeMode`。
+/// 库声明：承载上方库级文档注释（同时供离线兼容测试读取桥源码做断言）。
+library;
+
 import 'dart:convert';
 import 'dart:io';
 import 'dart:ui' show Brightness, PlatformDispatcher;
@@ -46,6 +49,8 @@ class LegadoBridgeJs {
     loginInfo: "",
     loginHeader: "",
     kv: {},
+    // 内存态缓存（putMemory/getFromMemory）：不落盘、不参与 __envelope 回写
+    memory: {},
     infoMap: {},
     cookies: {},
     logs: [],
@@ -400,7 +405,13 @@ class LegadoBridgeJs {
       __state.kv[key] = (typeof value === "string") ? value : JSON.stringify(value);
       return true;
     },
-    remove: function (key) { delete __state.kv[key]; }
+    remove: function (key) { delete __state.kv[key]; },
+    // 内存态缓存（对齐 legado CacheManager.putMemory/getFromMemory，7632/7814 段评限流依赖）
+    putMemory: function (key, value) { __state.memory[key] = value; return true; },
+    getFromMemory: function (key) {
+      return Object.prototype.hasOwnProperty.call(__state.memory, key) ? __state.memory[key] : null;
+    },
+    removeMemory: function (key) { delete __state.memory[key]; }
   };
   globalThis.cache = cache;
 
@@ -1489,11 +1500,12 @@ class LegadoBridgeJs {
       } catch (e) { return []; }
     },
     openVideoPlayer: function (url, title) {
-      // 原生 legado/video 播放通道待实现（MethodChannel('legado/video') Kotlin 侧未接），
-      // 当前经 legado://video 内部协议转交；失败静默返回 false。
+      // 经 legado://video 内部协议转交 Dart handler → MethodChannel('legado/video')
+      // → Kotlin 原生视频播放器（对齐 E openVideoPlayer 的完整调用链）。
+      // 同步 XHR 返回 'true'/'false'，供书源判断是否成功拉起播放器。
       try {
-        __doXhr("legado://video?url=" + encodeURIComponent(url || "") + "&title=" + encodeURIComponent(title || ""), { method: "GET" });
-        return true;
+        var ok = __doXhr("legado://video?url=" + encodeURIComponent(url || "") + "&title=" + encodeURIComponent(title || ""), { method: "GET" });
+        return String(ok).indexOf("true") >= 0;
       } catch (e) { return false; }
     },
 
@@ -1677,9 +1689,9 @@ class LegadoBridgeJs {
 
   /// 尝试打开原生视频播放器（对齐 legado-E 视频播放入口）。
   ///
-  /// 走 MethodChannel('legado/video') 的 invokeMethod('open', ...)；
-  /// Kotlin 侧暂未实现该 channel，调用失败时静默返回 false（不抛异常），
-  /// 由调用方决定回退（如使用内置 video_player_screen）。
+  /// 走 MethodChannel('legado/video') 的 invokeMethod('open', ...)，由
+  /// MainActivity 注册的 Kotlin 原生处理器用系统视频播放器打开（K 风格原生实现）。
+  /// 平台不支持 / 调用失败时静默返回 false（不抛异常），由调用方降级到内置播放页。
   static Future<bool> openVideoPlayer(String url, String title) async {
     if (url.trim().isEmpty) return false;
     try {

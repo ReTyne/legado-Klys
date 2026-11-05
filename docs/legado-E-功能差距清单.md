@@ -120,3 +120,30 @@ Klys 对 legado-E 的**主体功能已完成度约 85%**：书源规则引擎（
 - 差距清单 A1–A10、B1、B2、B4、C1、C2、A6 经代码核对**确认已完成**，无需重复实现。
 - B3（媒体按键控制）、B5（弹幕文件存储体系）、D1–D5（Android 平台深度集成）仍为平台/增强项，维持既有设计说明与降级实现。
 - 新增 `ReadProvider.liveInstance` 仅供非 UI 上下文（Web 服务）在外部写入阅读配置后回刷内存态，不影响既有 UI 订阅逻辑。
+
+---
+
+## 七、集成本轮（合并 + 调用链闭环 + Kotlin 原生补全）
+
+> 本轮把多轮并行重构集成为可编译、可测试、互相连通的整体，对齐用户「原生完成、使用 K 的风格」。
+
+### 已完成
+| # | 项 | 落地 |
+|---|----|------|
+| I-1 | 测试环境 | 离线补齐 `sqflite_common_ffi`/`sqlite3`；`live_7632_test` 改为仓库 fixture + opt-in 跳过 |
+| I-2 | 全量回归 | `flutter test --no-pub` **+203 ~1 All passed**；`dart analyze lib/` **0 error**（179 info 基线） |
+| I-3 | 云 TTS 回归修复 | 主线回退版 → 备份分支修复版：`saveAudio`/`audioBytes` + 8 家 `ResponseType.bytes` + Gemini TTS(PCM→WAV)，恢复 6 项单测 |
+| I-4 | 本地书元数据接线 | `ImportBookService.enrichMetadataFromParser()` 让 `LocalBookParser.parse()` 的 MOBI/PDF/UMD 元数据真正进书架（3 项单测） |
+| I-5 | 漫画双页 | `manga_scrollMode==2` 真实并排两页（7 项单测） |
+| I-6 | video 三层链路 | JS 桥 `legado://video` → Dart `_handleVideo` → Kotlin `MainActivity` `MethodChannel('legado/video')` 系统播放器（3 项契约单测） |
+| I-7 | 真实高级书源 | 7632/7814 fixture + 21 项离线兼容断言（loginUi/@js/<js>/jsLib/13 桥 API/AES-DES/cache/cookie） |
+
+### 调用链核实（互相联系）
+- 7z/RAR：`ArchivePlugin.kt`(Kotlin) ↔ `archive_native.dart`(`legado/archive`) ↔ JS 桥 —— 完整三层原生闭环。
+- 特殊书源登录：`source_login_screen` → `SourceWebViewLoginScreen`（Cookie 收集）→ `CookieManager.saveFromResponse`（内存/DB 回写）→ `enabledCookieJar` → `loginCheckJs` 刷新 → 网络层/JS 携带。
+- A 组（书源检测/搜索范围/验证码/在线导入/导出/书签导出/动态发现/downloadFile/7z/WebDAV 上传）经 grep 核实**均有实现且被 UI 调用**。
+- `offline_js_bridge.dart` 为离线测试镜像，`real_source_compat_test.dart` 有断言直读生产桥源码校验 13 个 API，镜像与生产相联系。
+
+### 平台边界（未假完成）
+- MOBI HUFF/CDIC 正文解压（需原生 libarchive）、PDF 首页封面（`PdfRenderer`）、视频应用内悬浮窗（D4）仍需独立原生模块。
+- 本轮完成「video 打开」链路；悬浮窗/长按倍速属独立增强项。

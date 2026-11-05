@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:legado_md3/help/ai/ai_chat_service.dart';
 
+// 对齐 E：legado-E 无「AI 聊天」独立界面，本页无任何主入口引用（我的页/设置页/主导航均未接入），
+// 页面文件保留仅供潜在复用，避免删除导致编译断裂。
 /// AI 聊天页：消息气泡 + 快捷提问 + 接口设置
 class AiChatScreen extends StatefulWidget {
   const AiChatScreen({super.key});

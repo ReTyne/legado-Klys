@@ -11,6 +11,8 @@ import 'package:legado_md3/help/storage/auto_sync_service.dart';
 import 'package:legado_md3/help/storage/backup_service.dart';
 import 'package:legado_md3/help/web/web_service.dart';
 import 'package:legado_md3/help/web/web_tile_channel.dart';
+// 对齐 E 的 help/config/AppConfig.kt：全局 AppPrefs 定义，供 main() 启动时一次性加载
+import 'package:legado_md3/help/config/app_config.dart';
 import 'package:legado_md3/data/local/app_database.dart';
 import 'package:legado_md3/common/app_navigator.dart';
 import 'package:legado_md3/common/app_name.dart';
@@ -24,6 +26,9 @@ import 'package:legado_md3/ui/book/reader_router.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   final prefs = await SharedPreferences.getInstance();
+  // 对齐 E 的 help/config/AppConfig.kt：启动时一次性把全局配置载入内存（AppPrefs.loadFrom 复用已有 prefs），
+  // 各页（备份/封面/主题/导出配置等）无需再各自 await AppPrefs.load()，消除配置割裂。
+  AppPrefs.loadFrom(prefs);
   // 记录日志开关（oc_recordLog）
   if (prefs.getBool('oc_recordLog') ?? false) {
     CrashLogHelper.instance.install();

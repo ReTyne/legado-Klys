@@ -8,6 +8,106 @@ abstract class CloudTtsProvider {
   final CloudTtsEngine engine;
   CloudTtsProvider(this.engine);
 
+  /// 把云厂商响应落地为本地音频文件并返回路径。
+  /// 各厂商返回形态不一：有的直接是音频字节，有的返回含 base64 的 JSON，
+  /// 有的直接返回 base64 字符串。这里统一识别后写盘，保证调用方
+  /// （tts_service 用 DeviceFileSource(path) 播放）拿到的是可播放的本地路径。
+  Future<String?> saveAudio(dynamic data, {String ext = 'mp3'}) async {
+    final bytes = audioBytes(data);
+    if (bytes == null || bytes.isEmpty) return null;
+    try {
+      final dir = await getTemporaryDirectory();
+      final file =
+          File('${dir.path}/tts_${DateTime.now().millisecondsSinceEpoch}.$ext');
+      await file.writeAsBytes(bytes);
+      return file.path;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// 从响应体中提取音频字节；无法识别为音频时返回 null（调用方跳过该段）。
+  static List<int>? audioBytes(dynamic data) {
+    if (data == null) return null;
+    if (data is List<int>) {
+      // 少数厂商虽返回字节流，但内容是包裹 base64 的 JSON 文本，需再解析一次
+      if (_looksLikeJson(data)) return audioBytes(_decodeJson(data));
+      return data;
+    }
+    if (data is String) return _tryBase64(data);
+    if (data is Map) return _bytesFromMap(data);
+    return null;
+  }
+
+  /// 从 Map 中取音频：优先常见 base64 字段，兼容 Gemini 的嵌套结构。
+  static List<int>? _bytesFromMap(Map<dynamic, dynamic> m) {
+    const keys = [
+      'Audio', 'audio', 'audioContent', 'audio_content', 'data', 'Data',
+      'result', 'content'
+    ];
+    for (final k in keys) {
+      final v = m[k];
+      if (v is String && v.isNotEmpty) {
+        final b = _tryBase64(v);
+        if (b != null) return b;
+      } else if (v is List<int> && v.isNotEmpty) {
+        return v;
+      }
+    }
+    // Gemini：candidates[0].content.parts[0].inlineData.data
+    final cands = m['candidates'];
+    if (cands is List && cands.isNotEmpty) {
+      final first = cands.first;
+      if (first is Map) {
+        final content = first['content'];
+        if (content is Map) {
+          final parts = content['parts'];
+          if (parts is List && parts.isNotEmpty) {
+            final part = parts.first;
+            if (part is Map) {
+              final inline = part['inlineData'] ?? part['inline_data'];
+              if (inline is Map) {
+                final d = inline['data'];
+                if (d is String) return _tryBase64(d);
+              }
+            }
+          }
+        }
+      }
+    }
+    return null;
+  }
+
+  /// 首字符为 '{' 或 '[' 视为 JSON 文本（跳过空白）
+  static bool _looksLikeJson(List<int> data) {
+    for (final b in data) {
+      if (b == 32 || b == 10 || b == 13 || b == 9) continue;
+      return b == 0x7B || b == 0x5B;
+    }
+    return false;
+  }
+
+  static dynamic _decodeJson(List<int> data) {
+    try {
+      return jsonDecode(utf8.decode(data, allowMalformed: true));
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// 尝试按 base64 解码；非法 base64 返回 null
+  static List<int>? _tryBase64(String s) {
+    final t = s.trim();
+    if (t.isEmpty) return null;
+    if (t.length % 4 != 0) return null;
+    if (!RegExp(r'^[A-Za-z0-9+/=\s]+$').hasMatch(t)) return null;
+    try {
+      return base64Decode(t);
+    } catch (_) {
+      return null;
+    }
+  }
+
   /// 合成语音，返回音频URL或本地路径
   Future<String?> synthesize(String text, {String? voice, double? rate, double? pitch});
 
@@ -39,12 +139,12 @@ class AlibabaCloudTtsProvider extends CloudTtsProvider {
           'format': 'mp3',
           'sample_rate': 16000,
         },
-        options: Options(headers: {
+        options: Options(responseType: ResponseType.bytes, headers: {
           'X-NLS-Token': engine.apiKey ?? '',
           'Content-Type': 'application/json',
         }),
       );
-      return response.data.toString();
+      return await saveAudio(response.data);
     } catch (e) {
       return null;
     }
@@ -70,9 +170,9 @@ class TencentCloudTtsProvider extends CloudTtsProvider {
       final response = await dio.post(
         engine.url ?? 'https://tts.tencentcloudapi.com',
         data: {'Text': text, 'VoiceType': voice ?? engine.voice ?? '101001', 'Codec': 'mp3'},
-        options: Options(headers: {'X-TC-Action': 'TextToVoice', 'X-TC-Version': '2019-08-23', 'Authorization': engine.apiKey ?? ''}),
+        options: Options(responseType: ResponseType.bytes, headers: {'X-TC-Action': 'TextToVoice', 'X-TC-Version': '2019-08-23', 'Authorization': engine.apiKey ?? ''}),
       );
-      return response.data['Audio']?.toString();
+      return await saveAudio(response.data);
     } catch (e) {
       return null;
     }
@@ -97,13 +197,13 @@ class AzureTtsProvider extends CloudTtsProvider {
       final response = await dio.post(
         engine.url ?? 'https://${engine.region ?? 'eastasia'}.tts.speech.microsoft.com/cognitiveservices/v1',
         data: ssml,
-        options: Options(headers: {
+        options: Options(responseType: ResponseType.bytes, headers: {
           'Ocp-Apim-Subscription-Key': engine.apiKey ?? '',
           'Content-Type': 'application/ssml+xml',
           'X-Microsoft-OutputFormat': 'audio-24khz-48kbitrate-mono-mp3',
         }),
       );
-      return response.data.toString();
+      return await saveAudio(response.data);
     } catch (e) {
       return null;
     }
@@ -127,9 +227,9 @@ class OpenAiTtsProvider extends CloudTtsProvider {
       final response = await dio.post(
         engine.url ?? 'https://api.openai.com/v1/audio/speech',
         data: {'model': 'tts-1', 'input': text, 'voice': voice ?? engine.voice ?? 'alloy', 'response_format': 'mp3', 'speed': rate ?? 1.0},
-        options: Options(headers: {'Authorization': 'Bearer ${engine.apiKey ?? ''}', 'Content-Type': 'application/json'}),
+        options: Options(responseType: ResponseType.bytes, headers: {'Authorization': 'Bearer ${engine.apiKey ?? ''}', 'Content-Type': 'application/json'}),
       );
-      return response.data.toString();
+      return await saveAudio(response.data);
     } catch (e) {
       return null;
     }
@@ -158,9 +258,9 @@ class VolcengineTtsProvider extends CloudTtsProvider {
           'audio': {'voice_type': voice ?? engine.voice ?? 'BV001_streaming', 'encoding': 'mp3', 'speed_ratio': rate ?? 1.0, 'volume_ratio': 1.0, 'pitch_ratio': pitch ?? 1.0},
           'request': {'reqid': DateTime.now().millisecondsSinceEpoch.toString(), 'text': text, 'text_type': 'plain', 'operation': 'query'},
         }),
-        options: Options(headers: {'Content-Type': 'application/json'}),
+        options: Options(responseType: ResponseType.bytes, headers: {'Content-Type': 'application/json'}),
       );
-      return response.data['data']?.toString();
+      return await saveAudio(response.data);
     } catch (e) {
       return null;
     }
@@ -184,9 +284,9 @@ class AwsPollyTtsProvider extends CloudTtsProvider {
       final response = await dio.post(
         engine.url ?? 'https://polly.${engine.region ?? 'us-east-1'}.amazonaws.com/v1/speech',
         data: {'Text': text, 'OutputFormat': 'mp3', 'VoiceId': voice ?? engine.voice ?? 'Zhiyu', 'SampleRate': '16000'},
-        options: Options(headers: {'Authorization': engine.apiKey ?? ''}),
+        options: Options(responseType: ResponseType.bytes, headers: {'Authorization': engine.apiKey ?? ''}),
       );
-      return response.data.toString();
+      return await saveAudio(response.data);
     } catch (e) {
       return null;
     }
@@ -207,19 +307,72 @@ class GeminiTtsProvider extends CloudTtsProvider {
   Future<String?> synthesize(String text, {String? voice, double? rate, double? pitch}) async {
     try {
       final dio = Dio();
+      // 必须使用 Gemini 的 TTS 专用接口（responseModalities: AUDIO），
+      // 而非 generateContent 文本接口，否则只返回文本、永远拿不到音频。
+      final voiceName = voice ?? engine.voice ?? 'Kore';
       final response = await dio.post(
-        engine.url ?? 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent',
-        data: {'contents': [{'parts': [{'text': '请朗读以下文本：$text'}]}]},
+        engine.url ?? 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-preview-tts:generateContent',
         queryParameters: {'key': engine.apiKey ?? ''},
+        data: {
+          'contents': [
+            {'parts': [{'text': text}]}
+          ],
+          'generationConfig': {
+            'responseModalities': ['AUDIO'],
+            'speechConfig': {
+              'voiceConfig': {'prebuiltVoiceConfig': {'voiceName': voiceName}}
+            }
+          }
+        },
+        options: Options(responseType: ResponseType.bytes),
       );
-      return response.data.toString();
+      // Gemini TTS 以 base64 把 16-bit PCM@24kHz mono 放在 inlineData.data，
+      // 父类 audioBytes 已能正确提取该 PCM 字节。
+      final pcm = CloudTtsProvider.audioBytes(response.data);
+      if (pcm == null || pcm.isEmpty) return null;
+      // 真实音频是裸 PCM 而非 mp3，封装为 WAV 方可被播放器识别。
+      final wav = _pcmToWav(pcm, sampleRate: 24000, channels: 1, bitsPerSample: 16);
+      final dir = await getTemporaryDirectory();
+      final file =
+          File('${dir.path}/tts_${DateTime.now().millisecondsSinceEpoch}.wav');
+      await file.writeAsBytes(wav);
+      return file.path;
     } catch (e) {
       return null;
     }
   }
 
   @override
-  Future<List<String>> getVoices() async => ['default', 'male', 'female'];
+  Future<List<String>> getVoices() async =>
+      ['Kore', 'Zephyr', 'Puck', 'Charon', 'Fenrir', 'Aoede', 'Leda', 'Orus'];
+
+  /// 将裸 PCM 字节封装为标准 WAV 文件头（小端 16-bit）。
+  static List<int> _pcmToWav(List<int> pcm,
+      {required int sampleRate, required int channels, required int bitsPerSample}) {
+    final byteRate = sampleRate * channels * bitsPerSample ~/ 8;
+    final blockAlign = channels * bitsPerSample ~/ 8;
+    final dataSize = pcm.length;
+    final header = <int>[
+      ...ascii.encode('RIFF'),
+      ..._u32(36 + dataSize),
+      ...ascii.encode('WAVE'),
+      ...ascii.encode('fmt '),
+      ..._u32(16),
+      ..._u16(1), // PCM
+      ..._u16(channels),
+      ..._u32(sampleRate),
+      ..._u32(byteRate),
+      ..._u16(blockAlign),
+      ..._u16(bitsPerSample),
+      ...ascii.encode('data'),
+      ..._u32(dataSize),
+    ];
+    return [...header, ...pcm];
+  }
+
+  static List<int> _u32(int v) =>
+      [(v) & 0xff, (v >> 8) & 0xff, (v >> 16) & 0xff, (v >> 24) & 0xff];
+  static List<int> _u16(int v) => [(v) & 0xff, (v >> 8) & 0xff];
 }
 
 /// Mimo TTS
@@ -236,9 +389,9 @@ class MimoTtsProvider extends CloudTtsProvider {
       final response = await dio.post(
         engine.url ?? 'https://api.mimo.ai/v1/tts',
         data: {'text': text, 'voice': voice ?? engine.voice ?? 'default', 'format': 'mp3'},
-        options: Options(headers: {'Authorization': 'Bearer ${engine.apiKey ?? ''}'}),
+        options: Options(responseType: ResponseType.bytes, headers: {'Authorization': 'Bearer ${engine.apiKey ?? ''}'}),
       );
-      return response.data.toString();
+      return await saveAudio(response.data);
     } catch (e) {
       return null;
     }

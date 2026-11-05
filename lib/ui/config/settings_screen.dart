@@ -18,6 +18,8 @@ import 'package:legado_md3/ui/book/detail/book_detail_screen.dart';
 import 'package:legado_md3/ui/book/manga/manga_config_screen.dart';
 import 'package:legado_md3/ui/book/read/config/reading_settings_screen.dart';
 import 'package:legado_md3/ui/cache/cache_manage_screen.dart';
+// 对齐 E：E 无「下载管理」独立界面，E 无此功能，入口下架；保留页面文件与 import 避免编译断裂
+// ignore: unused_import
 import 'package:legado_md3/ui/cache/download_manage_screen.dart';
 import 'package:legado_md3/ui/config/cloud_tts_screen.dart';
 import 'package:legado_md3/ui/config/cover_config_screen.dart';
@@ -25,6 +27,8 @@ import 'package:legado_md3/ui/config/download_cache_config_screen.dart';
 import 'package:legado_md3/ui/config/other_config_screen.dart';
 import 'package:legado_md3/ui/config/keyboard_assist_screen.dart';
 import 'package:legado_md3/ui/config/theme_manage_screen.dart';
+// 对齐 E：E 无翻译功能，E 无此功能，入口下架；保留页面文件与 import 避免编译断裂
+// ignore: unused_import
 import 'package:legado_md3/ui/config/translation_screen.dart';
 import 'package:legado_md3/ui/main/bookshelf/bookshelf_config_screen.dart';
 import 'package:provider/provider.dart';
@@ -54,8 +58,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
   String _exportNameTpl = '{name}';
   bool _tocCountWords = false;
   bool _autoNextPage = false;
-  bool _translateEnabled = false;
-  bool _simulateReading = false;
+  // 对齐 E：E 无翻译功能，「启用翻译」为切换后无消费方的假开关 → E 无此功能，入口下架，状态字段一并移除
+  // 对齐 E 的 pref_config_read.xml：E 无「实验室/模拟阅读」分区，模拟阅读已在阅读设置页接线 → E 无此功能，入口下架，状态字段一并移除
   bool _boldText = false;
   bool _showStatusBar = true;
   bool _showTitle = true;
@@ -174,8 +178,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       _keepScreenOn = cfg.keepScreenOn;
       _showMenuOnTap = cfg.showMenuOnTap;
       _autoNextPage = cfg.autoNextPage;
-      _translateEnabled = _prefs?.getBool('translate_enabled') ?? false;
-      _simulateReading = cfg.simulatedReading;
+      // 对齐 E：translate_enabled / simulatedReading 为 E 外功能，入口下架后不再读取其状态
       _boldText = cfg.boldText;
       _showStatusBar = cfg.statusBarVisibility;
       _showTitle = cfg.titleVisibility;
@@ -514,6 +517,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
               onChanged: (v) => setState(() { _preDownloadCount = v ?? 5; _updateReadConfig((c) => c.preDownloadCount = _preDownloadCount); }),
             ),
           ),
+          // 对齐 E 的 pref_config_other.xml（其他设置分类：preDownloadNum/bitmapCacheSize/threadCount/userAgent）：
+          // 「下载缓存配置」由 E 不存在的「下载缓存」分区归位到网络与更新分区，入口保留。
+          ListTile(
+            leading: const Icon(Icons.tune),
+            title: const Text('下载缓存配置'),
+            subtitle: const Text('线程/预下载/图片缓存/UA'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const DownloadCacheConfigScreen())),
+          ),
           ..._buildThreadSection(),
           const Divider(),
 
@@ -580,25 +592,20 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
           const Divider(),
 
-          // TTS设置
-          ListTile(
-            leading: const Icon(Icons.photo_library_outlined),
-            title: const Text('漫画阅读设置'),
-            trailing: const Icon(Icons.chevron_right),
-            onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const MangaConfigScreen())),
-          ),
-          _buildSectionHeader('TTS设置'),
+          // 对齐 E 的 pref_config_aloud.xml（朗读配置）：清理 E 不存在的「TTS设置」「下载缓存」
+          //「翻译设置」「实验室」分区；E 有的 TTS 引擎/语速归位到「朗读配置」分区。
+          _buildSectionHeader('朗读配置'),
           ListTile(
             leading: const Icon(Icons.record_voice_over_outlined),
             title: const Text('TTS引擎管理'),
-            subtitle: const Text('系统/云端TTS引擎'),
+            subtitle: const Text('系统/云端TTS引擎（对齐 E 的 appTtsEngine / sysTtsConfig）'),
             trailing: const Icon(Icons.chevron_right),
             onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const CloudTtsScreen())),
           ),
           ListTile(
             leading: const Icon(Icons.mic_outlined),
             title: const Text('朗读语速'),
-            subtitle: const Text('保存语速偏好 tts_rate（0.3-3.0 倍）；朗读引擎读取该值的接线由 tts_service 完成'),
+            subtitle: const Text('保存语速偏好 tts_rate（0.3-3.0 倍）；tts_service / tts_player_screen 消费该值'),
             trailing: const Icon(Icons.chevron_right),
             onTap: () async {
               double rate = (await SharedPreferences.getInstance()).getDouble('tts_rate') ?? 1.0;
@@ -614,59 +621,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
             },
           ),
 
-          const Divider(),
-
-          // 下载缓存
-          _buildSectionHeader('下载缓存'),
-          ListTile(
-            leading: const Icon(Icons.tune),
-            title: const Text('下载缓存配置'),
-            subtitle: const Text('线程/预下载/图片缓存/UA'),
-            trailing: const Icon(Icons.chevron_right),
-            onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const DownloadCacheConfigScreen())),
-          ),
-          ListTile(
-            leading: const Icon(Icons.download_outlined),
-            title: const Text('下载管理'),
-            subtitle: const Text('管理下载任务'),
-            trailing: const Icon(Icons.chevron_right),
-            onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const DownloadManageScreen())),
-          ),
-          ListTile(
-            leading: const Icon(Icons.storage_outlined),
-            title: const Text('缓存管理'),
-            subtitle: const Text('管理书籍缓存'),
-            trailing: const Icon(Icons.chevron_right),
-            onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const CacheManageScreen())),
-          ),
-
-          const Divider(),
-
-          // 翻译设置
-          _buildSectionHeader('翻译设置'),
-          SwitchListTile(
-            title: const Text('启用翻译'),
-            value: _translateEnabled,
-            onChanged: (v) async { await _prefs?.setBool('translate_enabled', v); setState(() => _translateEnabled = v); },
-          ),
-          ListTile(
-            leading: const Icon(Icons.translate_outlined),
-            title: const Text('翻译引擎'),
-            subtitle: const Text('选择翻译服务'),
-            trailing: const Icon(Icons.chevron_right),
-            onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const TranslationScreen())),
-          ),
-
-          const Divider(),
-
-          // 实验室
-          _buildSectionHeader('实验室'),
-          SwitchListTile(
-            title: const Text('模拟阅读'),
-            subtitle: const Text('自动模拟翻页阅读'),
-            value: _simulateReading,
-            onChanged: (v) => setState(() { _simulateReading = v; _updateReadConfig((c) => c.simulatedReading = v); }),
-          ),
+          // ===== 对齐 E：以下入口在 legado-E 中无对应功能，已从 UI 下架；页面文件与 import 均保留，避免编译断裂 =====
+          // 对齐 E 的 pref_config_other.xml：E 无独立「下载管理」任务界面 → E 无此功能，入口下架
+          // 对齐 E 的 pref_config_other.xml（cleanCache）：「缓存管理」已归入「数据管理」分区，此处为重复项 → E 无此功能，入口下架
+          // 对齐 E：E 的 pref_config_* 无翻译项，「启用翻译」为切换后无消费方的假开关 → E 无此功能，入口下架
+          // 对齐 E：E 无「翻译引擎」界面（TranslationScreen 为 E 外功能）→ E 无此功能，入口下架
+          // 对齐 E 的 pref_config_read.xml：E 无「实验室」分区，模拟阅读已在阅读设置页接线 → E 无此功能，入口下架
+          // 对齐 E：分区标题「TTS设置」「下载缓存」「翻译设置」「实验室」均为 E 不存在的分区 → E 无此功能，入口下架
 
           const Divider(),
 
@@ -845,6 +806,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
         },
       ),
     ),
+    // 对齐 E 的 pref_config_read.xml / 漫画阅读配置（showMangaUi）：
+    // 「漫画阅读设置」由 E 不存在的「TTS设置」分区归位到阅读设置分区，入口保留。
+    _jump(icon: Icons.photo_library_outlined, title: '漫画阅读设置', sub: '漫画墨水屏/灰度/缩放', page: const MangaConfigScreen()),
     _jump(icon: Icons.menu_book_outlined, title: '完整阅读设置', sub: '字体/间距/页边距/反馈区域', page: const ReadingSettingsScreen()),
   ];
 
@@ -900,11 +864,21 @@ class _SettingsScreenState extends State<SettingsScreen> {
         },
       ),
     ),
+    // 对齐 E 的 pref_config_other.xml：缓存路径项补上真实交互（点击查看完整路径），原为无 onTap 的只读项
     ListTile(
       dense: true,
       leading: const Icon(Icons.folder_open_outlined),
       title: const Text('缓存路径'),
       subtitle: Text(_cachePath.isEmpty ? '读取中…' : _cachePath, style: const TextStyle(fontSize: 11)),
+      trailing: const Icon(Icons.chevron_right),
+      onTap: () => showDialog(
+        context: context,
+        builder: (c) => AlertDialog(
+          title: const Text('缓存路径'),
+          content: Text(_cachePath.isEmpty ? '读取中…' : _cachePath),
+          actions: [TextButton(onPressed: () => Navigator.pop(c), child: const Text('关闭'))],
+        ),
+      ),
     ),
     ListTile(
       dense: true,

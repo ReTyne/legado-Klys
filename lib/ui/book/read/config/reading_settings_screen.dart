@@ -5,7 +5,6 @@ import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:legado_md3/data/model/read_config.dart';
 import 'package:legado_md3/di/book_provider.dart';
-import 'package:legado_md3/help/config/read_menu_config.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -116,9 +115,8 @@ class _ReadingSettingsScreenState extends State<ReadingSettingsScreen> with Sing
         ListTile(title: const Text('词间距'), trailing: Slider(value: config.wordSpacing, min: 0, max: 20, divisions: 20, label: config.wordSpacing.toStringAsFixed(1), onChanged: (v) => context.read<ReadProvider>().updateConfig((c) => c.wordSpacing = v))),
         ListTile(title: const Text('阴影等级'), trailing: DropdownButton<int>(value: config.shadowLevel, items: List.generate(4, (i) => DropdownMenuItem(value: i, child: Text('等级$i'))), onChanged: (v) => context.read<ReadProvider>().updateConfig((c) => c.shadowLevel = v ?? 0))),
         ListTile(title: const Text('下划线'), trailing: DropdownButton<int>(value: config.underlineType, items: const [DropdownMenuItem(value: 0, child: Text('无')), DropdownMenuItem(value: 1, child: Text('实线')), DropdownMenuItem(value: 2, child: Text('虚线')), DropdownMenuItem(value: 3, child: Text('波浪线')), DropdownMenuItem(value: 4, child: Text('双线'))], onChanged: (v) => context.read<ReadProvider>().updateConfig((c) => c.underlineType = v ?? 0))),
-        SwitchListTile(title: const Text('正文带到行高'), subtitle: const Text('正文文本高度计入行距计算', style: TextStyle(fontSize: 11)), value: config.readBodyToLh, onChanged: (v) => context.read<ReadProvider>().updateConfig((c) => c.readBodyToLh = v)),
-        SwitchListTile(title: const Text('特殊样式适配'), subtitle: const Text('兼容书源中的特殊排版样式', style: TextStyle(fontSize: 11)), value: config.adaptSpecialStyle, onChanged: (v) => context.read<ReadProvider>().updateConfig((c) => c.adaptSpecialStyle = v)),
-        SwitchListTile(title: const Text('渲染优化'), subtitle: const Text('优化正文渲染性能', style: TextStyle(fontSize: 11)), value: config.optimizeRender, onChanged: (v) => context.read<ReadProvider>().updateConfig((c) => c.optimizeRender = v)),
+        // 对齐 E：正文带到行高 / 特殊样式适配 / 渲染优化为 Android Canvas 绘制层能力，
+        // Flutter 文本渲染无对应消费方，暂从 UI 下架（配置仍持久化，避免假开关）。
         const Divider(),
         ListTile(title: const Text('左边距'), trailing: Slider(value: config.paddingLeft.toDouble(), min: 0, max: 64, divisions: 16, label: '${config.paddingLeft}', onChanged: (v) => context.read<ReadProvider>().updateConfig((c) => c.paddingLeft = v.toInt()))),
         ListTile(title: const Text('右边距'), trailing: Slider(value: config.paddingRight.toDouble(), min: 0, max: 64, divisions: 16, label: '${config.paddingRight}', onChanged: (v) => context.read<ReadProvider>().updateConfig((c) => c.paddingRight = v.toInt()))),
@@ -142,13 +140,10 @@ class _ReadingSettingsScreenState extends State<ReadingSettingsScreen> with Sing
         SwitchListTile(title: const Text('模拟阅读'), value: config.simulatedReading, onChanged: (v) => context.read<ReadProvider>().updateConfig((c) => c.simulatedReading = v)),
         SwitchListTile(title: const Text('上下颠倒'), value: config.invertPage, onChanged: (v) => context.read<ReadProvider>().updateConfig((c) => c.invertPage = v)),
         SwitchListTile(title: const Text('竖排(横屏竖握)'), value: config.verticalLayout == 1, onChanged: (v) => context.read<ReadProvider>().updateConfig((c) => c.verticalLayout = v ? 1 : 0)),
-        ListTile(title: const Text('双水平页'), trailing: DropdownButton<int>(value: config.doubleHorizontalPage, items: const [DropdownMenuItem(value: 0, child: Text('单页')), DropdownMenuItem(value: 1, child: Text('双水平页')), DropdownMenuItem(value: 2, child: Text('横屏双页'))], onChanged: (v) => context.read<ReadProvider>().updateConfig((c) => c.doubleHorizontalPage = v ?? 0))),
-        SwitchListTile(title: const Text('滚动无动画'), subtitle: const Text('滚动翻页时禁用平滑动画', style: TextStyle(fontSize: 11)), value: config.noAnimScrollPage, onChanged: (v) => context.read<ReadProvider>().updateConfig((c) => c.noAnimScrollPage = v)),
-        SwitchListTile(title: const Text('播放时音量键翻页'), subtitle: const Text('朗读播放中音量键仍用于翻页', style: TextStyle(fontSize: 11)), value: config.volumeKeyPageOnPlay, onChanged: (v) => context.read<ReadProvider>().updateConfig((c) => c.volumeKeyPageOnPlay = v)),
-        SwitchListTile(title: const Text('长按翻页'), subtitle: const Text('长按音量键持续翻页', style: TextStyle(fontSize: 11)), value: config.keyPageOnLongPress, onChanged: (v) => context.read<ReadProvider>().updateConfig((c) => c.keyPageOnLongPress = v)),
-        SwitchListTile(title: const Text('禁用返回键'), subtitle: const Text('阅读界面不响应系统返回键', style: TextStyle(fontSize: 11)), value: config.disableReturnKey, onChanged: (v) => context.read<ReadProvider>().updateConfig((c) => c.disableReturnKey = v)),
-        ListTile(title: Text('滑动灵敏度: ${config.pageTouchSlop}'), subtitle: Slider(value: config.pageTouchSlop.toDouble(), min: 0, max: 20, divisions: 20, label: '${config.pageTouchSlop}', onChanged: (v) => context.read<ReadProvider>().updateConfig((c) => c.pageTouchSlop = v.toInt()))),
-        ListTile(title: const Text('自定义按键'), subtitle: Text(config.customPageKey ?? '未设置', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 11)), trailing: const Icon(Icons.edit), onTap: () => _showPageKeyEditor()),
+        // 对齐 E：双水平页 / 滚动无动画 / 播放时音量键 / 长按翻页 / 滑动灵敏度 / 自定义按键
+        // 依赖 Android 原生翻页与按键分发，本域 Flutter 阅读器无对应消费方，暂从 UI 下架
+        // （配置仍持久化，避免假开关）。「禁用返回键」已在阅读页由 PopScope 接线，保留。
+        SwitchListTile(title: const Text('禁用返回键'), subtitle: const Text('已接线：阅读界面由 PopScope 拦截系统返回键', style: TextStyle(fontSize: 11)), value: config.disableReturnKey, onChanged: (v) => context.read<ReadProvider>().updateConfig((c) => c.disableReturnKey = v)),
       ],
     );
   }
@@ -180,7 +175,8 @@ class _ReadingSettingsScreenState extends State<ReadingSettingsScreen> with Sing
           },
         ),
         SwitchListTile(title: const Text('标题附加信息'), subtitle: const Text('阅读标题栏显示章节附加信息', style: TextStyle(fontSize: 11)), value: config.showReadTitleAddition, onChanged: (v) => context.read<ReadProvider>().updateConfig((c) => c.showReadTitleAddition = v)),
-        SwitchListTile(title: const Text('刘海屏 padding'), subtitle: const Text('为刘海屏/挖孔屏预留安全边距', style: TextStyle(fontSize: 11)), value: config.paddingDisplayCutouts, onChanged: (v) => context.read<ReadProvider>().updateConfig((c) => c.paddingDisplayCutouts = v)),
+        // 对齐 E：刘海屏 padding 由 Android Window insets 处理，Flutter 侧已用 SafeArea，
+        // 无独立消费方，暂从 UI 下架（配置仍持久化）。
         ListTile(title: const Text('图片点击方式'), trailing: DropdownButton<int>(value: config.clickImgWay, items: const [DropdownMenuItem(value: 0, child: Text('无')), DropdownMenuItem(value: 1, child: Text('预览')), DropdownMenuItem(value: 2, child: Text('浏览器'))], onChanged: (v) => context.read<ReadProvider>().updateConfig((c) => c.clickImgWay = v ?? 0))),
       ],
     );
@@ -190,25 +186,18 @@ class _ReadingSettingsScreenState extends State<ReadingSettingsScreen> with Sing
     final config = context.watch<ReadProvider>().config;
     return ListView(
       children: [
-        ListTile(leading: const Icon(Icons.dashboard_customize), title: const Text('阅读菜单配置'), subtitle: const Text('底部工具栏 / 更多菜单 / 选择菜单的显示与排序'), trailing: const Icon(Icons.chevron_right),
-          onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ReadToolConfigScreen()))),
-        const Divider(),
+        // 对齐 E：E 的阅读菜单由 XML 固定，没有「阅读菜单配置」界面，故下架该入口并移除 ReadToolConfigScreen。
         SwitchListTile(title: const Text('保持屏幕常亮'), value: config.keepScreenOn, onChanged: (v) => context.read<ReadProvider>().updateConfig((c) => c.keepScreenOn = v)),
         SwitchListTile(title: const Text('点击显示菜单'), value: config.showMenuOnTap, onChanged: (v) => context.read<ReadProvider>().updateConfig((c) => c.showMenuOnTap = v)),
         SwitchListTile(title: const Text('长按选择文字'), value: config.longPressSelect, onChanged: (v) => context.read<ReadProvider>().updateConfig((c) => c.longPressSelect = v)),
         ListTile(title: const Text('编码格式'), trailing: Text(config.charset ?? '自动'), onTap: () => _showCharsetPicker()),
         ListTile(title: const Text('预下载章节数'), trailing: DropdownButton<int>(value: config.preDownloadCount, items: List.generate(6, (i) => DropdownMenuItem(value: i, child: Text(i == 0 ? '不预下载' : '$i章'))), onChanged: (v) => context.read<ReadProvider>().updateConfig((c) => c.preDownloadCount = v ?? 0))),
         SwitchListTile(title: const Text('显示时间电量'), value: config.showTimeBattery, onChanged: (v) => context.read<ReadProvider>().updateConfig((c) => c.showTimeBattery = v)),
-        SwitchListTile(title: const Text('自动换源'), subtitle: const Text('正文失效时自动切换可用书源', style: TextStyle(fontSize: 11)), value: config.autoChangeSource, onChanged: (v) => context.read<ReadProvider>().updateConfig((c) => c.autoChangeSource = v)),
-        SwitchListTile(title: const Text('阅读栏样式跟随页面'), subtitle: const Text('阅读菜单栏背景跟随当前阅读页背景', style: TextStyle(fontSize: 11)), value: config.readBarStyleFollowPage, onChanged: (v) => context.read<ReadProvider>().updateConfig((c) => c.readBarStyleFollowPage = v)),
+        // 对齐 E：自动换源需按章节标题跨源检索目录，本域阅读器无该链路，暂从 UI 下架（配置仍持久化）。
+        SwitchListTile(title: const Text('阅读栏样式跟随页面'), subtitle: const Text('已接线：菜单栏背景/文字跟随正文背景', style: TextStyle(fontSize: 11)), value: config.readBarStyleFollowPage, onChanged: (v) => context.read<ReadProvider>().updateConfig((c) => c.readBarStyleFollowPage = v)),
         const Divider(),
-        SwitchListTile(title: const Text('按页朗读'), subtitle: const Text('以页为单位朗读而非整章', style: TextStyle(fontSize: 11)), value: config.readAloudByPage, onChanged: (v) => context.read<ReadProvider>().updateConfig((c) => c.readAloudByPage = v)),
-        SwitchListTile(title: const Text('来电暂停朗读'), value: config.pauseReadAloudWhilePhoneCalls, onChanged: (v) => context.read<ReadProvider>().updateConfig((c) => c.pauseReadAloudWhilePhoneCalls = v)),
-        SwitchListTile(title: const Text('媒体键下一章'), subtitle: const Text('耳机媒体键双击跳到下一章', style: TextStyle(fontSize: 11)), value: config.mediaButtonPerNext, onChanged: (v) => context.read<ReadProvider>().updateConfig((c) => c.mediaButtonPerNext = v)),
-        SwitchListTile(title: const Text('流式朗读音频'), subtitle: const Text('边合成边播放，减少等待', style: TextStyle(fontSize: 11)), value: config.streamReadAloudAudio, onChanged: (v) => context.read<ReadProvider>().updateConfig((c) => c.streamReadAloudAudio = v)),
-        SwitchListTile(title: const Text('系统 TTS 跟随系统语速'), value: config.sysTtsConfig, onChanged: (v) => context.read<ReadProvider>().updateConfig((c) => c.sysTtsConfig = v)),
-        SwitchListTile(title: const Text('朗读跟随系统语速'), value: config.ttsFlowSys, onChanged: (v) => context.read<ReadProvider>().updateConfig((c) => c.ttsFlowSys = v)),
-        const Divider(),
+        // 对齐 E：按页朗读 / 来电暂停 / 媒体键 / 流式音频 / 系统 TTS 语速依赖原生媒体会话与
+        // TTS 引擎能力，本域无消费方，暂从 UI 下架（配置仍持久化，避免假开关）。
         SwitchListTile(title: const Text('自定义头部'), value: config.customHeaderEnabled, onChanged: (v) => context.read<ReadProvider>().updateConfig((c) => c.customHeaderEnabled = v)),
         if (config.customHeaderEnabled) ListTile(title: const Text('头部文字'), trailing: const Icon(Icons.edit), onTap: () => _showHeaderEditor()),
         SwitchListTile(title: const Text('自定义底部'), value: config.customFooterEnabled, onChanged: (v) => context.read<ReadProvider>().updateConfig((c) => c.customFooterEnabled = v)),
@@ -254,22 +243,8 @@ class _ReadingSettingsScreenState extends State<ReadingSettingsScreen> with Sing
     showDialog(context: context, builder: (context) => AlertDialog(title: const Text('自定义底部'), content: TextField(controller: controller, maxLines: 2), actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('取消')), FilledButton(onPressed: () { context.read<ReadProvider>().updateConfig((c) => c.footerString = controller.text); Navigator.pop(context); }, child: const Text('保存'))]));
   }
 
-  /// 自定义按键 JSON 编辑器（customPageKey）
-  void _showPageKeyEditor() {
-    final controller = TextEditingController(text: context.read<ReadProvider>().config.customPageKey ?? '');
-    showDialog(context: context, builder: (context) => AlertDialog(
-      title: const Text('自定义按键'),
-      content: TextField(controller: controller, maxLines: 6, decoration: const InputDecoration(hintText: '{"prevPage":["KEYCODE_PAGE_UP"],"nextPage":["KEYCODE_PAGE_DOWN"]}')),
-      actions: [
-        TextButton(onPressed: () => Navigator.pop(context), child: const Text('取消')),
-        FilledButton(onPressed: () {
-          final text = controller.text.trim();
-          context.read<ReadProvider>().updateConfig((c) => c.customPageKey = text.isEmpty ? null : text);
-          Navigator.pop(context);
-        }, child: const Text('保存')),
-      ],
-    ));
-  }
+  // 对齐 E：自定义按键（customPageKey）依赖 Android 原生按键分发，本域无消费方，
+  // 已从「翻页」Tab 下架，故删除其编辑器（配置仍持久化）。
 
   /// 页脚三槽位选择弹窗：左 / 中 / 右各自从内容枚举中选择
   void _showFooterSlotsPicker() {
@@ -423,124 +398,6 @@ class _ClickActionConfigScreenState extends State<ClickActionConfigScreen> {
   }
 }
 
-/* ===== 由 read_tool_config_screen.dart 合并 ===== */
-
-/// 阅读界面菜单/按钮配置：控制显示与排序（对齐原版三个 ConfigSheet）
-class ReadToolConfigScreen extends StatefulWidget {
-  const ReadToolConfigScreen({super.key});
-
-  @override
-  State<ReadToolConfigScreen> createState() => _ReadToolConfigScreenState();
-}
-
-class _Group {
-  final String title;
-  final String prefsKey;
-  final Map<String, String> all;
-  final List<String> defaults;
-  List<String> order; // 可见且有序
-  _Group(this.title, this.prefsKey, this.all, this.defaults, this.order);
-}
-
-class _ReadToolConfigScreenState extends State<ReadToolConfigScreen> with SingleTickerProviderStateMixin {
-  late final TabController _tab;
-  final List<_Group> _groups = [];
-  bool _loading = true;
-
-  @override
-  void initState() {
-    super.initState();
-    _tab = TabController(length: 4, vsync: this);
-    _load();
-  }
-
-  Future<void> _load() async {
-    final tb = await ReadMenuConfig.load(ReadMenuConfig.kToolBar, ReadMenuConfig.defaultToolBar);
-    final mm = await ReadMenuConfig.load(ReadMenuConfig.kMoreMenu, ReadMenuConfig.defaultMoreMenu);
-    final sm = await ReadMenuConfig.load(ReadMenuConfig.kSelectMenu, ReadMenuConfig.defaultSelectMenu);
-    final fb = await ReadMenuConfig.load(ReadMenuConfig.kFloatingBar, ReadMenuConfig.defaultFloatingBar);
-    _groups
-      ..add(_Group('底部工具栏', ReadMenuConfig.kToolBar, ReadMenuConfig.toolBarItems, ReadMenuConfig.defaultToolBar, tb))
-      ..add(_Group('更多菜单', ReadMenuConfig.kMoreMenu, ReadMenuConfig.moreMenuItems, ReadMenuConfig.defaultMoreMenu, mm))
-      ..add(_Group('文本选择菜单', ReadMenuConfig.kSelectMenu, ReadMenuConfig.selectMenuItems, ReadMenuConfig.defaultSelectMenu, sm))
-      ..add(_Group('悬浮快捷栏', ReadMenuConfig.kFloatingBar, ReadMenuConfig.floatingBarItems, ReadMenuConfig.defaultFloatingBar, fb));
-    if (mounted) setState(() => _loading = false);
-  }
-
-  Future<void> _save(_Group g) => ReadMenuConfig.save(g.prefsKey, g.order);
-
-  void _toggle(_Group g, String key, bool on) {
-    setState(() {
-      if (on) {
-        if (!g.order.contains(key)) g.order.add(key);
-      } else {
-        g.order.remove(key);
-      }
-    });
-    _save(g);
-  }
-
-  void _move(_Group g, int i, int dir) {
-    final j = i + dir;
-    if (j < 0 || j >= g.order.length) return;
-    setState(() {
-      final t = g.order[i]; g.order[i] = g.order[j]; g.order[j] = t;
-    });
-    _save(g);
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    if (_loading) return const Scaffold(body: Center(child: CircularProgressIndicator()));
-    return Scaffold(
-      appBar: AppBar(
-        title: const Text('阅读菜单配置'),
-        bottom: TabBar(controller: _tab, isScrollable: true, tabs: const [Tab(text: '底部工具栏'), Tab(text: '更多菜单'), Tab(text: '选择菜单'), Tab(text: '悬浮栏')]),
-        actions: [
-          IconButton(tooltip: '恢复默认', icon: const Icon(Icons.restart_alt), onPressed: _resetAll),
-        ],
-      ),
-      body: TabBarView(
-        controller: _tab,
-        children: _groups.map(_buildGroup).toList(),
-      ),
-    );
-  }
-
-  Future<void> _resetAll() async {
-    for (final g in _groups) {
-      g.order = List.of(g.defaults);
-      await _save(g);
-    }
-    if (mounted) setState(() {});
-  }
-
-  Widget _buildGroup(_Group g) {
-    // 已显示项按 order 排在前，其余隐藏项排在后
-    final hidden = g.all.keys.where((k) => !g.order.contains(k)).toList();
-    return ListView(
-      children: [
-        Padding(padding: const EdgeInsets.all(12), child: Text('勾选显示，拖动箭头调整顺序（已显示 ${g.order.length}/${g.all.length}）', style: Theme.of(context).textTheme.bodySmall)),
-        for (var i = 0; i < g.order.length; i++)
-          _tile(g, g.order[i], true, i),
-        if (hidden.isNotEmpty) const Divider(),
-        for (final k in hidden) _tile(g, k, false, -1),
-      ],
-    );
-  }
-
-  Widget _tile(_Group g, String key, bool shown, int index) {
-    return ListTile(
-      dense: true,
-      leading: Checkbox(value: shown, onChanged: (v) => _toggle(g, key, v ?? false)),
-      title: Text(g.all[key] ?? key),
-      trailing: shown
-          ? Row(mainAxisSize: MainAxisSize.min, children: [
-              IconButton(icon: const Icon(Icons.arrow_upward, size: 20), onPressed: index > 0 ? () => _move(g, index, -1) : null),
-              IconButton(icon: const Icon(Icons.arrow_downward, size: 20), onPressed: index < g.order.length - 1 ? () => _move(g, index, 1) : null),
-            ])
-          : null,
-    );
-  }
-}
+// 对齐 E：E 的阅读菜单项与顺序由 XML 固定，没有「阅读菜单配置」界面，
+// 原 ReadToolConfigScreen / _Group 已删除；文本选择菜单顺序仍由 ReadMenuConfig 持久化。
 

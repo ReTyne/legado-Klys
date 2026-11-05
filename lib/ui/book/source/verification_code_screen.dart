@@ -4,11 +4,21 @@ import 'package:flutter/material.dart';
 ///
 /// 由书源 JS 的 `getVerificationCode(imageUrl)` 触发：JS 返回 Promise，
 /// 本界面提交/取消后由 JS 运行时回传结果、resolve 该 Promise。
+/// [headers] 对齐 E 的 `OkHttpModelLoader.sourceOriginOption`：验证码图常需
+/// 带书源 User-Agent / Referer / 登录 Cookie 才能加载，否则反爬会挡掉图片。
 class VerificationCodeScreen extends StatefulWidget {
   final String imageUrl;
   final String? sourceName;
 
-  const VerificationCodeScreen({super.key, required this.imageUrl, this.sourceName});
+  /// 加载验证码图片时附带的请求头（书源 header + 会话 Cookie）
+  final Map<String, String>? headers;
+
+  const VerificationCodeScreen({
+    super.key,
+    required this.imageUrl,
+    this.sourceName,
+    this.headers,
+  });
 
   @override
   State<VerificationCodeScreen> createState() => _VerificationCodeScreenState();
@@ -62,6 +72,8 @@ class _VerificationCodeScreenState extends State<VerificationCodeScreen> {
                 clipBehavior: Clip.antiAlias,
                 child: Image.network(
                   widget.imageUrl,
+                  // 对齐 E VerificationCodeDialog 带书源 origin 加载验证码图
+                  headers: widget.headers,
                   fit: BoxFit.contain,
                   loadingBuilder: (c, child, progress) =>
                       progress == null ? child : const Center(child: CircularProgressIndicator()),
@@ -135,7 +147,8 @@ class _VerificationCodeScreenState extends State<VerificationCodeScreen> {
             child: InteractiveViewer(
               minScale: 1,
               maxScale: 5,
-              child: Image.network(url, fit: BoxFit.contain),
+              child: Image.network(url,
+                  fit: BoxFit.contain, headers: widget.headers),
             ),
           ),
         ),

@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:legado_md3/data/model/book.dart';
 import 'package:legado_md3/data/local/app_database.dart';
 import 'package:legado_md3/help/storage/backup_service.dart';
+import 'package:legado_md3/ui/cache/export_config_screen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class CacheManageScreen extends StatefulWidget {
@@ -195,6 +196,13 @@ class _CacheManageScreenState extends State<CacheManageScreen> {
       appBar: AppBar(
         title: const Text('缓存管理'),
         actions: [
+          // 对齐 E book_cache.xml：缓存页提供导出配置入口（导出全部/导出选项/日志）
+          IconButton(
+            icon: const Icon(Icons.ios_share_outlined),
+            tooltip: '导出配置',
+            onPressed: () => Navigator.push(context,
+                MaterialPageRoute(builder: (_) => const ExportConfigScreen())),
+          ),
           if (_books.isNotEmpty)
             TextButton(
               onPressed: _clearAllCache,

@@ -1,11 +1,8 @@
-import 'dart:convert';
-import 'dart:io';
-
 import 'package:flutter/material.dart';
-import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:legado_md3/data/model/bookmark.dart';
 import 'package:legado_md3/data/local/app_database.dart';
+import 'package:legado_md3/ui/bookmark/bookmark_export.dart';
 
 class BookmarkScreen extends StatefulWidget {
   final String? bookName;
@@ -55,7 +52,7 @@ class _BookmarkScreenState extends State<BookmarkScreen> {
   }
 
   /// 导出书签（对齐 legado-E TocViewModel.saveBookmark / saveBookmarkMd）：
-  /// JSON 为全字段列表；Markdown 为 `## 书名 作者` + 每条 `#### 章节`/`###### 原文`/`###### 摘要`。
+  /// 复用 bookmark_export.dart，与目录页书签 Tab 共用同一导出逻辑。
   Future<void> _exportBookmarks({required bool markdown}) async {
     if (_bookmarks.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
@@ -63,36 +60,12 @@ class _BookmarkScreenState extends State<BookmarkScreen> {
       return;
     }
     try {
-      final name = widget.bookName ?? '全部书签';
-      final author = widget.bookAuthor ?? '';
-      final fileName =
-          'bookmark-$name${author.isNotEmpty ? ' $author' : ''}.${markdown ? 'md' : 'json'}';
-      String content;
-      if (markdown) {
-        final buffer = StringBuffer();
-        buffer.writeln('## $name $author');
-        buffer.writeln();
-        for (final b in _bookmarks) {
-          buffer.writeln('#### ${b.chapterTitle}');
-          buffer.writeln();
-          buffer.writeln('###### 原文');
-          buffer.writeln(' ${b.content ?? ''}');
-          buffer.writeln();
-          buffer.writeln('###### 摘要');
-          buffer.writeln(' ');
-          buffer.writeln();
-        }
-        content = buffer.toString();
-      } else {
-        content = const JsonEncoder.withIndent('  ')
-            .convert(_bookmarks.map((b) => b.toMap()).toList());
-      }
-      final dir = await getApplicationDocumentsDirectory();
-      final exportDir = Directory('${dir.path}/export');
-      if (!exportDir.existsSync()) exportDir.createSync(recursive: true);
-      final safeName = fileName.replaceAll(RegExp(r'[\\/:*?"<>|]'), '_');
-      final file = File('${exportDir.path}/$safeName');
-      await file.writeAsString(content);
+      final file = await exportBookmarks(
+        _bookmarks,
+        bookName: widget.bookName,
+        bookAuthor: widget.bookAuthor,
+        markdown: markdown,
+      );
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
         content: Text('已导出: ${file.path}'),
@@ -137,15 +110,15 @@ class _BookmarkScreenState extends State<BookmarkScreen> {
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : _bookmarks.isEmpty
-              ? Center(
+              ? const Center(
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       Icon(Icons.bookmark_border, size: 64, color: Colors.grey),
-                      const SizedBox(height: 16),
-                      const Text('暂无书签', style: TextStyle(color: Colors.grey)),
-                      const SizedBox(height: 8),
-                      const Text('阅读时点击书签按钮添加', style: TextStyle(color: Colors.grey, fontSize: 12)),
+                      SizedBox(height: 16),
+                      Text('暂无书签', style: TextStyle(color: Colors.grey)),
+                      SizedBox(height: 8),
+                      Text('阅读时点击书签按钮添加', style: TextStyle(color: Colors.grey, fontSize: 12)),
                     ],
                   ),
                 )

@@ -18,7 +18,6 @@ import 'package:legado_md3/data/model/read_config.dart';
 import 'package:legado_md3/di/book_provider.dart';
 import 'package:legado_md3/ui/book/read/text_paginator.dart';
 import 'package:legado_md3/help/config/read_menu_config.dart';
-import 'package:legado_md3/help/http/cookie_manager.dart';
 import 'package:legado_md3/help/readaloud/chinese_converter.dart';
 import 'package:legado_md3/help/readaloud/reading_record.dart';
 import 'package:legado_md3/help/readaloud/tts_service.dart';
@@ -35,6 +34,7 @@ import 'package:legado_md3/ui/book/read/tts_player_screen.dart';
 import 'package:legado_md3/ui/book/read/widgets/download_sheet.dart';
 import 'package:legado_md3/ui/book/search/search_content_screen.dart';
 import 'package:legado_md3/ui/book/source/source_login_screen.dart';
+import 'package:legado_md3/ui/book/source/source_edit_screen.dart';
 import 'package:legado_md3/ui/browser/browser_screen.dart';
 import 'package:legado_md3/ui/config/replace_rule_screen.dart';
 import 'package:legado_md3/ui/config/txt_toc_rule_screen.dart';
@@ -94,11 +94,32 @@ class _ReadingScreenState extends State<ReadingScreen> with SingleTickerProvider
   int? _dragChapterIndex;
   // 正文搜索命中其他章时的章内偏移：章节加载分页完成后按此定位页码
   int? _pendingPosInChapter;
-  List<String> _toolbarOrder = List.of(ReadMenuConfig.defaultToolBar);
-  List<String> _moreMenuOrder = List.of(ReadMenuConfig.defaultMoreMenu);
+  // 文本选择菜单沿用可配置顺序（对齐 E TextActionMenu）；其余菜单按 E 的 ReadMenu 硬编码顺序，
+  // 不再使用 Klys 自有的「阅读菜单配置」默认列表（E 无可配置阅读菜单）。
   List<String> _selectMenuOrder = List.of(ReadMenuConfig.defaultSelectMenu);
-  List<String> _floatingBarOrder = List.of(ReadMenuConfig.defaultFloatingBar);
-  bool _floatingBarVisible = true;
+  // 对齐 E res/menu/book_read.xml 的 overflow 菜单（showAsAction="never"）项与顺序。
+  static const List<String> _eMoreMenuOrder = [
+    'addbookmark',       // 添加书签
+    'contentedit',       // 编辑内容
+    'pageanim',          // 翻页动画
+    'reverse',           // 内容倒序
+    'simulated',         // 模拟阅读（checkable）
+    'replace',           // 启用替换（checkable）
+    'sametitle',         // 同名章节去除（checkable）
+    'resegment',         // 重新分段（checkable）
+    'delruby',           // 删除注音标签（checkable，E epub 组）
+    'delh',              // 删除标题标签（checkable，E epub 组）
+    'imagestyle',        // 图片样式
+    'updatetoc',         // 更新目录
+    'effectivereplace',  // 生效替换
+    'log',               // 日志
+    'help',              // 帮助
+  ];
+  // 对齐 E book_read.xml 的 checkable 菜单项：持久作用于章节内容后处理（非一次性操作）。
+  bool _reSegmentEnabled = false;
+  bool _delRubyEnabled = false;
+  bool _delHEnabled = false;
+  bool _removeSameTitle = false;
   // 实验室开关：正文是否允许自由选择复制（默认开启）
   bool _textSelectable = true;
   // 实验室开关：分页估算诊断（输出分页计算过程到控制台）
@@ -114,11 +135,11 @@ class _ReadingScreenState extends State<ReadingScreen> with SingleTickerProvider
   int _preDownload = 5;
   // 正在预缓存的章节下标，避免重复请求
   final Set<int> _prefetching = {};
-  // 书源开启 customButton 时缓存的来源书源，用于「书源操作」菜单
-  BookSource? _customButtonSource;
+  // 当前书籍来源书源（对齐 E ReadMenu.tvSourceAction：网络书显示「书源」操作菜单）
+  BookSource? _currentBookSource;
 
-  /// 加载当前书籍来源书源；若其启用 customButton，则在更多菜单暴露「书源操作」
-  Future<void> _loadCustomButtonSource() async {
+  /// 加载当前书籍来源书源，供顶部「书源」操作菜单使用。
+  Future<void> _loadCurrentSource() async {
     final origin = widget.book.origin;
     if (origin == null || origin.isEmpty) return;
     try {
@@ -127,48 +148,45 @@ class _ReadingScreenState extends State<ReadingScreen> with SingleTickerProvider
       for (final e in sources) {
         if (e.bookSourceUrl == origin) { s = e; break; }
       }
-      if (mounted) setState(() => _customButtonSource = (s != null && s.customButton) ? s : null);
+      if (mounted) setState(() => _currentBookSource = s);
     } catch (_) {}
   }
 
-  /// 书源操作面板（设置变量 / 登录 / 清 Cookie / 打开主页）
-  void _showSourceActions() {
-    final source = _customButtonSource;
-    if (source == null) return;
+  /// 书源操作菜单（对齐 E res/menu/book_read_source.xml：登录 / 章节购买 / 编辑书源 / 禁用书源）
+  void _showSourceMenu() {
+    final source = _currentBookSource;
+    if (source == null) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('未找到当前书源')));
+      return;
+    }
     showModalBottomSheet(
       context: context,
       builder: (ctx) => SafeArea(
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            ListTile(leading: const Icon(Icons.edit_note), title: const Text('设置书源变量'),
-              subtitle: Text(source.variableComment?.isNotEmpty == true ? source.variableComment! : 'variableComment 未提示', maxLines: 1, overflow: TextOverflow.ellipsis),
-              onTap: () async {
-                Navigator.pop(ctx);
-                final ctrl = TextEditingController(text: source.variable ?? '');
-                final v = await showDialog<String>(context: context, builder: (d) => AlertDialog(
-                  title: const Text('设置书源变量'),
-                  content: TextField(controller: ctrl, decoration: const InputDecoration(hintText: '变量内容（JSON 或文本）'), maxLines: 4),
-                  actions: [TextButton(onPressed: () => Navigator.pop(d), child: const Text('取消')),
-                    FilledButton(onPressed: () => Navigator.pop(d, ctrl.text), child: const Text('保存'))],
-                ));
-                if (v != null) {
-                  await _db.updateSourceVariable(source.bookSourceUrl, v);
-                  source.variable = v;
-                  if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('书源变量已保存')));
-                }
-              }),
             ListTile(leading: const Icon(Icons.login), title: const Text('书源登录'),
               onTap: () { Navigator.pop(ctx); Navigator.push(context, MaterialPageRoute(builder: (_) => SourceLoginScreen(source: source))); }),
-            ListTile(leading: const Icon(Icons.cookie_outlined), title: const Text('清除书源 Cookie'),
+            ListTile(leading: const Icon(Icons.payment), title: const Text('章节购买'),
+              subtitle: const Text('在内置浏览器打开当前章节链接'),
               onTap: () {
                 Navigator.pop(ctx);
-                final host = Uri.tryParse(source.bookSourceUrl)?.host ?? '';
-                if (host.isNotEmpty) CookieManager().removeHost(host);
-                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('已清除该书源 Cookie')));
+                final url = _chapters.isNotEmpty ? _chapters[_currentChapterIndex].url : '';
+                if (url.isEmpty) {
+                  ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('当前章节无链接')));
+                  return;
+                }
+                Navigator.push(context, MaterialPageRoute(builder: (_) => BrowserScreen(url: url, title: _chapters[_currentChapterIndex].title)));
               }),
-            ListTile(leading: const Icon(Icons.language), title: const Text('打开书源主页'),
-              onTap: () { Navigator.pop(ctx); Navigator.push(context, MaterialPageRoute(builder: (_) => BrowserScreen(url: source.bookSourceUrl, title: source.bookSourceName))); }),
+            ListTile(leading: const Icon(Icons.edit_note), title: const Text('编辑书源'),
+              onTap: () { Navigator.pop(ctx); Navigator.push(context, MaterialPageRoute(builder: (_) => SourceEditScreen(source: source))); }),
+            ListTile(leading: const Icon(Icons.block), title: const Text('禁用书源'),
+              onTap: () async {
+                Navigator.pop(ctx);
+                source.enabled = false; // 对齐 E menu_disable_source：禁用当前书源
+                await _db.updateSource(source);
+                if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('已禁用书源「${source.bookSourceName}」')));
+              }),
           ],
         ),
       ),
@@ -242,18 +260,24 @@ class _ReadingScreenState extends State<ReadingScreen> with SingleTickerProvider
   }
 
   Future<void> _loadMenuConfig() async {
-    final tb = await ReadMenuConfig.load(ReadMenuConfig.kToolBar, ReadMenuConfig.defaultToolBar);
-    final mm = await ReadMenuConfig.load(ReadMenuConfig.kMoreMenu, ReadMenuConfig.defaultMoreMenu);
+    // 对齐 E：只保留文本选择菜单（TextActionMenu）的可配置顺序；其余菜单硬编码为 E 的顺序。
     final sm = await ReadMenuConfig.load(ReadMenuConfig.kSelectMenu, ReadMenuConfig.defaultSelectMenu);
-    final fb = await ReadMenuConfig.load(ReadMenuConfig.kFloatingBar, ReadMenuConfig.defaultFloatingBar);
-    if (mounted) setState(() { _toolbarOrder = tb; _moreMenuOrder = mm; _selectMenuOrder = sm; _floatingBarOrder = fb; });
+    final p = await SharedPreferences.getInstance();
+    if (mounted) setState(() {
+      _selectMenuOrder = sm;
+      // 对齐 E book_read.xml checkable 菜单项：读取持久化的内容处理开关
+      _reSegmentEnabled = p.getBool('read_reSegment') ?? false;
+      _delRubyEnabled = p.getBool('read_delRuby') ?? false;
+      _delHEnabled = p.getBool('read_delH') ?? false;
+      _removeSameTitle = p.getBool('read_removeSameTitle') ?? false;
+    });
   }
 
   @override
   void initState() {
     super.initState();
     _loadClickActions();
-    _loadCustomButtonSource();
+    _loadCurrentSource();
     _restoreCharset();
     _loadMenuConfig();
     _loadLabFlags();
@@ -462,6 +486,37 @@ class _ReadingScreenState extends State<ReadingScreen> with SingleTickerProvider
       if (mode != 0) {
         _content = ChineseConverter.convert(_content!, mode);
       }
+    }
+
+    // 对齐 E res/menu/book_read.xml 的 checkable 菜单项：这些开关持久作用于正文后处理，
+    // 而非一次性文本操作；切换后重新加载当前章即可生效。
+    if (_content != null && _content!.isNotEmpty) {
+      var text = _content!;
+      if (_delRubyEnabled) {
+        text = text
+            .replaceAll(RegExp(r'<ruby[^>]*>'), '')
+            .replaceAll('</ruby>', '')
+            .replaceAll(RegExp(r'<rt[^>]*>.*?</rt>', dotAll: true), '');
+      }
+      if (_delHEnabled) {
+        text = text
+            .replaceAll(RegExp(r'<h[1-6][^>]*>'), '')
+            .replaceAll(RegExp(r'</h[1-6]>'), '');
+      }
+      if (_removeSameTitle && index < _chapters.length) {
+        // 同名章节去除：正文首行与章节标题重复时去掉该行（对齐 E same_title_removed）
+        final title = _chapters[index].title.trim();
+        final lines = text.split('\n');
+        if (title.isNotEmpty && lines.isNotEmpty && lines.first.trim() == title) {
+          text = lines.sublist(1).join('\n');
+        }
+      }
+      if (_reSegmentEnabled) {
+        var re = text.replaceAll(RegExp(r'\s+'), '');
+        re = re.replaceAllMapped(RegExp(r'[。！？…](?!["”』」])'), (m) => '${m[0]}\n\n');
+        text = re;
+      }
+      _content = text;
     }
 
     _paginateContent();
@@ -744,7 +799,10 @@ class _ReadingScreenState extends State<ReadingScreen> with SingleTickerProvider
       _applyWakeLock(config.keepScreenOn);
     }
 
-    return Focus(
+    // 对齐 E pref_config_read.disableReturnKey：开启时由 PopScope 拦截系统返回键
+    return PopScope(
+      canPop: !config.disableReturnKey,
+      child: Focus(
       autofocus: true,
       onKeyEvent: (node, event) {
         if (!config.volumeKeyPage) return KeyEventResult.ignored;
@@ -854,11 +912,13 @@ class _ReadingScreenState extends State<ReadingScreen> with SingleTickerProvider
                             ),
                           ),
                         ),
-                      _buildFloatingBar(),
+                      // 对齐 E view_read_menu.xml ll_floating_button：水平悬浮按钮行已并入底部设置面板；
+                      // E 没有 Klys 的右侧竖排悬浮栏，故此处不再放置。
                     ],
                   ),
                 ),
         ),
+      ),
       ),
     );
   }
@@ -899,7 +959,10 @@ class _ReadingScreenState extends State<ReadingScreen> with SingleTickerProvider
       height: config.lineSpacing * 0.5 + 1.0,
       letterSpacing: config.letterSpacing,
       wordSpacing: config.wordSpacing,
-      fontWeight: config.boldText ? FontWeight.bold : FontWeight.normal,
+      // 对齐 E TextFontWeightConverter：字重设置真实作用于正文（粗体开关优先）
+      fontWeight: config.boldText
+          ? FontWeight.bold
+          : FontWeight.values[((config.fontWeight ~/ 100) - 1).clamp(0, FontWeight.values.length - 1)],
       fontFamily: config.fontFamily,
       shadows: config.shadowLevel > 0
           ? [
@@ -1230,6 +1293,10 @@ class _ReadingScreenState extends State<ReadingScreen> with SingleTickerProvider
   }
 
   Widget _buildTopMenu() {
+    final config = context.read<ReadProvider>().config;
+    // 对齐 E ReadMenu.immersiveMenu：阅读栏背景/文字跟随当前页面背景
+    final barBg = config.readBarStyleFollowPage ? Color(config.bgColor) : null;
+    final barFg = config.readBarStyleFollowPage ? Color(config.textColor) : null;
     return AnimatedBuilder(
       animation: _menuController,
       builder: (context, child) {
@@ -1247,37 +1314,48 @@ class _ReadingScreenState extends State<ReadingScreen> with SingleTickerProvider
         );
       },
       child: AppBar(
-        title: Text(widget.book.name, maxLines: 1, overflow: TextOverflow.ellipsis),
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.list_alt),
-            onPressed: () async {
-              _menuController.reverse();
-              final result = await Navigator.push(
-                context,
-                MaterialPageRoute(
-                  builder: (_) => ChapterListScreen(
-                    chapters: _chapters,
-                    currentIndex: _currentChapterIndex,
-                  ),
+        backgroundColor: barBg,
+        foregroundColor: barFg,
+        title: GestureDetector(
+          // 对齐 E ReadMenu：点击标题栏打开书籍详情
+          onTap: () {
+            _menuController.reverse();
+            Navigator.push(context, MaterialPageRoute(builder: (_) => BookDetailScreen(book: widget.book)));
+          },
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(widget.book.name, maxLines: 1, overflow: TextOverflow.ellipsis),
+              // 对齐 E showReadTitleBarAddition：标题附加区显示章节名 / 书源
+              if (config.showReadTitleAddition)
+                Text(
+                  _chapters.isNotEmpty
+                      ? _chapters[_currentChapterIndex].title
+                      : (widget.book.originName ?? ''),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(fontSize: 11, color: barFg?.withOpacity(0.75)),
                 ),
-              );
-              if (result != null) {
-                final (index, tocChanged) = result;
-                // 目录被重排（长章节拆分切换）后按新目录重载，索引才能对上
-                if (tocChanged) {
-                  _chapters = await _db.getChapters(widget.book.name, widget.book.author);
-                }
-                if (index >= 0 && index < _chapters.length) {
-                  _loadChapterContent(index);
-                }
-              }
-            },
+            ],
           ),
-          IconButton(
-            icon: const Icon(Icons.more_vert),
-            onPressed: () => _showMoreMenu(),
-          ),
+        ),
+        // 对齐 E res/menu/book_read.xml：showAsAction="always" 的工具栏项与本地书附加项
+        actions: [
+          IconButton(tooltip: '换源', icon: const Icon(Icons.swap_horiz), onPressed: _showChangeSourceMenu),
+          IconButton(tooltip: '刷新', icon: const Icon(Icons.refresh), onPressed: _refreshCurrentChapter),
+          IconButton(tooltip: '离线缓存', icon: const Icon(Icons.download), onPressed: _showCacheSheet),
+          // 本地书：TXT目录规则 / 设置编码（对齐 E menu_group_text / menu_group_local）
+          if (widget.book.local) ...[
+            IconButton(tooltip: 'TXT目录规则', icon: const Icon(Icons.list_alt),
+              onPressed: () { _menuController.reverse(); Navigator.push(context, MaterialPageRoute(builder: (_) => const TxtTocRuleScreen())); }),
+            IconButton(tooltip: '设置编码', icon: const Icon(Icons.translate), onPressed: _selectCharset),
+          ],
+          // 对齐 E ReadMenu.tvSourceAction：网络书的书源操作菜单
+          if (!widget.book.local)
+            TextButton(onPressed: _showSourceMenu, child: Text('书源', style: TextStyle(color: barFg))),
+          // 更多菜单（对齐 E overflow showAsAction="never"）
+          IconButton(icon: const Icon(Icons.more_vert), onPressed: _showMoreMenu),
         ],
       ),
     );
@@ -1310,9 +1388,16 @@ class _ReadingScreenState extends State<ReadingScreen> with SingleTickerProvider
   Widget _buildReadingSettingsPanel() {
     final readProvider = context.read<ReadProvider>();
     final config = readProvider.config;
+    // 对齐 E ReadMenu.immersiveMenu：底部设置栏背景/文字跟随页面背景
+    final barBg = config.readBarStyleFollowPage
+        ? Color(config.bgColor)
+        : Theme.of(context).colorScheme.surface;
+    final barFg = config.readBarStyleFollowPage
+        ? Color(config.textColor)
+        : Theme.of(context).colorScheme.onSurface;
     return Container(
       decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surface,
+        color: barBg,
         borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
       ),
       child: SafeArea(
@@ -1320,17 +1405,20 @@ class _ReadingScreenState extends State<ReadingScreen> with SingleTickerProvider
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            // 进度条
+            // 对齐 E view_read_menu.xml ll_floating_button：水平悬浮按钮行（搜索/自动翻页/替换/夜间）
+            _buildFloatingButtonRow(barFg),
+            // 章节进度行（对齐 E tv_pre / seek_read_page / tv_next）
             Padding(
-              padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
               child: Row(
                 children: [
                   IconButton(
-                    icon: const Icon(Icons.skip_previous),
+                    icon: Icon(Icons.skip_previous, color: barFg),
                     onPressed: _currentChapterIndex > 0 ? () => _loadChapterContent(_currentChapterIndex - 1) : null,
                   ),
                   Expanded(
                     child: Slider(
+                      activeColor: barFg,
                       value: _chapters.length <= 1 ? 0 : (_dragChapterIndex ?? _currentChapterIndex) / (_chapters.length - 1),
                       // 拖动中只更新局部状态，不触发章节加载/落库/重排
                       onChanged: _chapters.length <= 1
@@ -1354,7 +1442,7 @@ class _ReadingScreenState extends State<ReadingScreen> with SingleTickerProvider
                     ),
                   ),
                   IconButton(
-                    icon: const Icon(Icons.skip_next),
+                    icon: Icon(Icons.skip_next, color: barFg),
                     onPressed: _currentChapterIndex < _chapters.length - 1
                         ? () => _loadChapterContent(_currentChapterIndex + 1)
                         : null,
@@ -1362,36 +1450,24 @@ class _ReadingScreenState extends State<ReadingScreen> with SingleTickerProvider
                 ],
               ),
             ),
-            // 字号和行距
+            // 字号 / 行距（对齐 E「界面」ReadStyleDialog 的字号调节，常驻便于快捷调整）
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
               child: Row(
                 children: [
-                  const Text('字号'),
-                  IconButton(
-                    icon: const Icon(Icons.remove_circle_outline),
-                    onPressed: () => readProvider.setTextSize(config.textSize - 1),
-                  ),
-                  Text('${config.textSize}'),
-                  IconButton(
-                    icon: const Icon(Icons.add_circle_outline),
-                    onPressed: () => readProvider.setTextSize(config.textSize + 1),
-                  ),
+                  Text('字号', style: TextStyle(color: barFg)),
+                  IconButton(icon: Icon(Icons.remove_circle_outline, color: barFg), onPressed: () => readProvider.setTextSize(config.textSize - 1)),
+                  Text('${config.textSize}', style: TextStyle(color: barFg)),
+                  IconButton(icon: Icon(Icons.add_circle_outline, color: barFg), onPressed: () => readProvider.setTextSize(config.textSize + 1)),
                   const Spacer(),
-                  const Text('行距'),
-                  IconButton(
-                    icon: const Icon(Icons.remove_circle_outline),
-                    onPressed: () => readProvider.setLineSpacing(config.lineSpacing - 1),
-                  ),
-                  Text('${config.lineSpacing}'),
-                  IconButton(
-                    icon: const Icon(Icons.add_circle_outline),
-                    onPressed: () => readProvider.setLineSpacing(config.lineSpacing + 1),
-                  ),
+                  Text('行距', style: TextStyle(color: barFg)),
+                  IconButton(icon: Icon(Icons.remove_circle_outline, color: barFg), onPressed: () => readProvider.setLineSpacing(config.lineSpacing - 1)),
+                  Text('${config.lineSpacing}', style: TextStyle(color: barFg)),
+                  IconButton(icon: Icon(Icons.add_circle_outline, color: barFg), onPressed: () => readProvider.setLineSpacing(config.lineSpacing + 1)),
                 ],
               ),
             ),
-            // 背景色选择
+            // 配色预设（对齐 E ReadStyleDialog 的背景选择；不使用「背景」文字标题）
             SizedBox(
               height: 60,
               child: ListView.builder(
@@ -1420,28 +1496,23 @@ class _ReadingScreenState extends State<ReadingScreen> with SingleTickerProvider
                         ),
                       ),
                       child: Center(
-                        child: Text(
-                          preset['name'] as String,
-                          style: TextStyle(
-                            color: Color(fg),
-                            fontSize: 12,
-                          ),
-                        ),
+                        child: Text(preset['name'] as String, style: TextStyle(color: Color(fg), fontSize: 12)),
                       ),
                     ),
                   );
                 },
               ),
             ),
-            // 底部操作按钮（显示与顺序可在「阅读菜单配置」中自定义）
+            // 对齐 E view_read_menu.xml ll_bottom_bg 的四个按钮：目录 / 朗读 / 界面 / 设置
             Padding(
               padding: const EdgeInsets.symmetric(vertical: 8),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                 children: [
-                  for (final key in _toolbarOrder)
-                    if (_toolAction(key) != null)
-                      _buildBottomAction(_toolAction(key)!.$1, _toolAction(key)!.$2, _toolAction(key)!.$3),
+                  _buildBottomAction(Icons.list_alt, '目录', barFg, _showChapterList),
+                  _buildReadAloudAction(barFg),
+                  _buildBottomAction(Icons.text_format, '界面', barFg, _showInterfaceSettings),
+                  _buildBottomAction(Icons.settings, '设置', barFg, _showReadingSettings),
                 ],
               ),
             ),
@@ -1451,71 +1522,146 @@ class _ReadingScreenState extends State<ReadingScreen> with SingleTickerProvider
     );
   }
 
-  /// 悬浮快捷栏（右侧竖排，可点击手柄收起/展开）
-  Widget _buildFloatingBar() {
-    if (_floatingBarOrder.isEmpty) return const SizedBox.shrink();
-    final cs = Theme.of(context).colorScheme;
-    return Positioned(
-      right: 4,
-      top: MediaQuery.of(context).size.height * 0.3,
-      child: AnimatedSize(
-        duration: const Duration(milliseconds: 200),
-        child: Container(
-          decoration: BoxDecoration(
-            color: cs.surface.withOpacity(0.85),
-            borderRadius: BorderRadius.circular(20),
-            boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.15), blurRadius: 6)],
+  /// 对齐 E view_read_menu.xml ll_floating_button：搜索 / 自动翻页 / 替换 / 夜间 水平行
+  Widget _buildFloatingButtonRow(Color fg) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+      child: Row(
+        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+        children: [
+          IconButton(tooltip: '搜索', icon: Icon(Icons.search, color: fg), onPressed: _showSearchInBook),
+          IconButton(
+            tooltip: _autoReadOn ? '停止自动翻页' : '自动翻页',
+            icon: Icon(_autoReadOn ? Icons.pause_circle_filled : Icons.play_circle_outline, color: fg),
+            onPressed: _toggleAutoRead,
           ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              GestureDetector(
-                onTap: () => setState(() => _floatingBarVisible = !_floatingBarVisible),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 6),
-                  child: Icon(_floatingBarVisible ? Icons.chevron_right : Icons.chevron_left, size: 18, color: cs.onSurfaceVariant),
-                ),
-              ),
-              if (_floatingBarVisible)
-                for (final key in _floatingBarOrder)
-                  if (_floatingAction(key) != null)
-                    IconButton(
-                      icon: Icon(_floatingAction(key)!.$1, size: 20),
-                      tooltip: _floatingAction(key)!.$2,
-                      onPressed: _floatingAction(key)!.$3,
-                      padding: const EdgeInsets.all(8),
-                      constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
-                    ),
-            ],
-          ),
-        ),
+          IconButton(tooltip: '替换规则', icon: Icon(Icons.find_replace, color: fg), onPressed: _showReplaceRules),
+          IconButton(tooltip: '夜间模式', icon: Icon(Icons.brightness_4, color: fg), onPressed: _toggleNightTheme),
+        ],
       ),
     );
   }
 
-  (IconData, String, VoidCallback)? _floatingAction(String key) {
-    switch (key) {
-      case 'prev': return (Icons.skip_previous, '上一章', () => _currentChapterIndex > 0 ? _loadChapterContent(_currentChapterIndex - 1) : null);
-      case 'next': return (Icons.skip_next, '下一章', () => _currentChapterIndex < _chapters.length - 1 ? _loadChapterContent(_currentChapterIndex + 1) : null);
-      case 'toc': return (Icons.list_alt, '目录', () => _showChapterList());
-      case 'search': return (Icons.search, '搜索', () => _showSearchInBook());
-      case 'tts': return (Icons.headphones, '朗读', () => _startTTS());
-      case 'more': return (Icons.more_horiz, '更多', () => _showMoreMenu());
-      default: return null;
+  /// 对齐 E fabNightTheme：切换日/夜间阅读配色（真实改变正文背景与文字色）
+  void _toggleNightTheme() {
+    final rp = context.read<ReadProvider>();
+    final isNight = rp.config.bgColor == 0xFF1A1A2E;
+    if (isNight) {
+      rp.setBgColor(0xFFFFF8E1);
+      rp.setTextColor(0xFF333333);
+    } else {
+      rp.setBgColor(0xFF1A1A2E);
+      rp.setTextColor(0xFFE0E0E0);
     }
   }
 
-  (IconData, String, VoidCallback)? _toolAction(String key) {    switch (key) {
-      case 'font': return (Icons.font_download, '字体', () => _showFontPicker());
-      case 'pageanim': return (Icons.animation, '翻页', () => _showPageAnimPicker());
-      case 'brightness': return (Icons.brightness_6, '亮度', () => _showBrightnessSlider());
-      case 'settings': return (Icons.settings, '设置', () => _showReadingSettings());
-      case 'tts': return (Icons.headphones, '朗读', () => _startTTS());
-      default: return null;
-    }
+  /// 对齐 E llReadAloud：点击朗读、长按弹出朗读配置
+  Widget _buildReadAloudAction(Color fg) {
+    return GestureDetector(
+      onLongPress: _showReadAloudConfig,
+      child: _buildBottomAction(Icons.headphones, '朗读', fg, _startTTS),
+    );
   }
 
-  Widget _buildBottomAction(IconData icon, String label, VoidCallback onTap) {
+  // 对齐 E：删除 Klys 的右侧竖排悬浮栏与可配置工具栏/悬浮栏映射。
+  // E 的浮动按钮为底部栏上方的水平行（_buildFloatingButtonRow），底部按钮固定为四项。
+
+  /// 对齐 E menu_change_source：换源（章节换源）
+  Future<void> _showChangeSourceMenu() async {
+    _menuController.reverse();
+    final source = await showModalBottomSheet<BookSource>(
+      context: context,
+      isScrollControlled: true,
+      builder: (_) => ChangeChapterSourceSheet(
+        bookName: widget.book.name, author: widget.book.author, currentOrigin: widget.book.origin),
+    );
+    if (source == null) return;
+    final err = await _changeChapterSource(source);
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text(err ?? '已换源：${source.bookSourceName}'),
+      duration: const Duration(seconds: 2),
+    ));
+  }
+
+  /// 对齐 E menu_refresh：清当前章缓存并强制从网络重新加载正文
+  Future<void> _refreshCurrentChapter() async {
+    _menuController.reverse();
+    if (_chapters.isEmpty) return;
+    await _db.updateChapterContent(widget.book.name, widget.book.author, _currentChapterIndex, '');
+    await _loadChapterContent(_currentChapterIndex, targetPage: _currentPage);
+    if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('已刷新当前章节')));
+  }
+
+  /// 对齐 E menu_download：离线缓存（选择章节范围）
+  Future<void> _showCacheSheet() async {
+    _menuController.reverse();
+    final range = await showModalBottomSheet<List<int>>(
+      context: context,
+      builder: (_) => DownloadSheet(chapters: _chapters, currentIndex: _currentChapterIndex),
+    );
+    if (range != null) _cacheChapters(range[0], range[1]);
+  }
+
+  /// 对齐 E llFont（showReadStyle）：界面设置（字体 / 翻页动画 / 亮度 / 简繁）
+  void _showInterfaceSettings() {
+    _menuController.reverse();
+    showModalBottomSheet(context: context, builder: (ctx) => SafeArea(child: Column(mainAxisSize: MainAxisSize.min, children: [
+      ListTile(leading: const Icon(Icons.font_download), title: const Text('字体'), onTap: () { Navigator.pop(ctx); _showFontPicker(); }),
+      ListTile(leading: const Icon(Icons.animation), title: const Text('翻页动画'), onTap: () { Navigator.pop(ctx); _showPageAnimPicker(); }),
+      ListTile(leading: const Icon(Icons.brightness_6), title: const Text('亮度'), onTap: () { Navigator.pop(ctx); _showBrightnessSlider(); }),
+      ListTile(leading: const Icon(Icons.translate), title: const Text('简繁转换'), onTap: () { Navigator.pop(ctx); _showChineseConverter(); }),
+    ])));
+  }
+
+  /// 对齐 E llReadAloud 长按（showReadAloudDialog）：朗读配置
+  void _showReadAloudConfig() {
+    _menuController.reverse();
+    showModalBottomSheet(context: context, builder: (ctx) => SafeArea(child: Column(mainAxisSize: MainAxisSize.min, children: [
+      ListTile(leading: const Icon(Icons.headphones), title: const Text('开始朗读'), onTap: () { Navigator.pop(ctx); _startTTS(); }),
+      ListTile(leading: const Icon(Icons.pause_circle_outline), title: const Text('暂停 / 继续'), onTap: () { Navigator.pop(ctx); _toggleTtsPause(); }),
+      ListTile(leading: const Icon(Icons.play_circle_outline), title: const Text('自动翻页'), onTap: () { Navigator.pop(ctx); _toggleAutoRead(); }),
+    ])));
+  }
+
+  /// 切换对齐 E 的内容开关：持久化并重新加载当前章使其生效
+  void _flipContentToggle(String prefKey, void Function(bool) assign, bool current) {
+    final next = !current;
+    assign(next);
+    setState(() {});
+    SharedPreferences.getInstance().then((p) => p.setBool(prefKey, next));
+    _loadChapterContent(_currentChapterIndex, targetPage: _currentPage);
+  }
+
+  /// 对齐 E menu_image_style：图片样式（消费 clickImgWay 死开关）
+  void _showImageStylePicker() {
+    final rp = context.read<ReadProvider>();
+    const names = ['无', '预览', '浏览器'];
+    showModalBottomSheet(context: context, builder: (ctx) => SafeArea(child: Column(mainAxisSize: MainAxisSize.min, children: [
+      const Padding(padding: EdgeInsets.all(16), child: Text('图片样式', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold))),
+      for (var i = 0; i < names.length; i++)
+        RadioListTile<int>(title: Text(names[i]), value: i, groupValue: rp.config.clickImgWay,
+          onChanged: (v) { rp.updateConfig((c) => c.clickImgWay = v ?? 0); Navigator.pop(ctx); }),
+    ])));
+  }
+
+  /// 对齐 E menu_help：阅读菜单帮助（点击区域与菜单入口说明）
+  void _showHelp() {
+    showDialog(context: context, builder: (c) => AlertDialog(
+      title: const Text('阅读帮助'),
+      content: const SingleChildScrollView(child: Text(
+        '· 点击正文中央：唤出/收起菜单\n'
+        '· 点击左右区域：上/下一章（可在「设置-翻页-点击区域设置」调整）\n'
+        '· 顶部栏：换源 / 刷新 / 离线缓存 / 书源 / 更多\n'
+        '· 底部栏：目录 / 朗读（长按为朗读配置）/ 界面 / 设置\n'
+        '· 更多菜单：书签、内容编辑、翻页动画、内容处理开关、更新目录、生效替换、日志等',
+        style: TextStyle(fontSize: 13, height: 1.6),
+      )),
+      actions: [TextButton(onPressed: () => Navigator.pop(c), child: const Text('知道了'))],
+    ));
+  }
+
+  Widget _buildBottomAction(IconData icon, String label, Color fg, VoidCallback onTap) {
     return InkWell(
       onTap: onTap,
       borderRadius: BorderRadius.circular(12),
@@ -1524,9 +1670,9 @@ class _ReadingScreenState extends State<ReadingScreen> with SingleTickerProvider
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(icon, size: 22),
+            Icon(icon, size: 22, color: fg),
             const SizedBox(height: 4),
-            Text(label, style: const TextStyle(fontSize: 11)),
+            Text(label, style: TextStyle(fontSize: 11, color: fg)),
           ],
         ),
       ),
@@ -1539,15 +1685,14 @@ class _ReadingScreenState extends State<ReadingScreen> with SingleTickerProvider
       isScrollControlled: true,
       builder: (ctx) => SafeArea(
         child: ConstrainedBox(
-          constraints: BoxConstraints(maxHeight: MediaQuery.of(ctx).size.height * 0.75),
+          constraints: BoxConstraints(maxHeight: MediaQuery.of(ctx).size.height * 0.8),
           child: SingleChildScrollView(
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                for (final key in _moreMenuOrder) ...[
-                  if (key == 'detail' || key == 'reverse') const Divider(),
+                // 严格按 E res/menu/book_read.xml 的 overflow 项与顺序展示
+                for (final key in _eMoreMenuOrder)
                   if (_moreMenuItem(key, ctx) != null) _moreMenuItem(key, ctx)!,
-                ],
               ],
             ),
           ),
@@ -1556,58 +1701,60 @@ class _ReadingScreenState extends State<ReadingScreen> with SingleTickerProvider
     );
   }
 
-  /// 更多菜单项（显示由 _moreMenuOrder 控制）
+  /// 更多菜单项（对齐 E book_read.xml 的 showAsAction="never" 项）
   Widget? _moreMenuItem(String key, BuildContext ctx) {
     void close() => Navigator.pop(ctx);
+    // checkable 项：右侧勾选框表示当前开关状态（对齐 E 的 android:checkable）
+    Widget checkable(String title, IconData icon, bool value, VoidCallback onTap) => ListTile(
+      leading: Icon(icon),
+      title: Text(title),
+      trailing: Icon(value ? Icons.check_box : Icons.check_box_outline_blank),
+      onTap: () { close(); onTap(); },
+    );
+    final cfg = context.read<ReadProvider>().config;
     switch (key) {
-      case 'toc': return ListTile(leading: const Icon(Icons.list_alt), title: const Text('目录'), onTap: () { close(); _showChapterList(); });
-      case 'search': return ListTile(leading: const Icon(Icons.search), title: const Text('搜索'), onTap: () { close(); _showSearchInBook(); });
-      case 'translate': return ListTile(leading: const Icon(Icons.translate), title: const Text('翻译'), onTap: () { close(); _showTranslateDialog(); });
-      case 'autoread': return ListTile(leading: Icon(_autoReadOn ? Icons.pause_circle : Icons.play_circle_outline), title: Text(_autoReadOn ? '停止自动阅读' : '自动阅读'), onTap: () { close(); _toggleAutoRead(); });
-      case 'changesource': return ListTile(leading: const Icon(Icons.swap_horiz), title: const Text('章节换源'), onTap: () async {
-          close();
-          final source = await showModalBottomSheet<BookSource>(context: context, isScrollControlled: true, builder: (_) => ChangeChapterSourceSheet(bookName: widget.book.name, author: widget.book.author, currentOrigin: widget.book.origin));
-          if (source != null) {
-            // 换源后在新书源目录中重新定位当前章节并用新源章节 URL 拉正文
-            final err = await _changeChapterSource(source);
-            if (!mounted) return;
-            ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-              content: Text(err ?? '已换源：${source.bookSourceName}'),
-              duration: const Duration(seconds: 2),
-            ));
-          }
+      case 'addbookmark':
+        return ListTile(leading: const Icon(Icons.bookmark_border), title: const Text('添加书签'), onTap: () { close(); _addBookmark(); });
+      case 'contentedit':
+        return ListTile(leading: const Icon(Icons.edit_note), title: const Text('编辑内容'), onTap: () { close(); _showContentEditor(); });
+      case 'pageanim':
+        return ListTile(leading: const Icon(Icons.animation), title: const Text('翻页动画'), onTap: () { close(); _showPageAnimPicker(); });
+      case 'reverse':
+        return ListTile(leading: const Icon(Icons.swap_vert), title: const Text('内容倒序'), onTap: () { close(); _reverseContent(); });
+      case 'simulated':
+        return checkable('模拟阅读', Icons.play_circle_outline, cfg.simulatedReading, () {
+          final next = !cfg.simulatedReading;
+          context.read<ReadProvider>().updateConfig((c) => c.simulatedReading = next);
+          if (next && !_autoReadOn) _startAutoRead();
         });
-      case 'copypage': return ListTile(leading: const Icon(Icons.content_copy), title: const Text('复制当前页'), onTap: () async {
+      case 'replace':
+        return checkable('启用替换', Icons.find_replace, _purifyEnabled, _togglePurify);
+      case 'sametitle':
+        return checkable('同名章节去除', Icons.playlist_remove, _removeSameTitle,
+          () => _flipContentToggle('read_removeSameTitle', (v) => _removeSameTitle = v, _removeSameTitle));
+      case 'resegment':
+        return checkable('重新分段', Icons.format_align_left, _reSegmentEnabled,
+          () => _flipContentToggle('read_reSegment', (v) => _reSegmentEnabled = v, _reSegmentEnabled));
+      case 'delruby':
+        return checkable('删除注音标签', Icons.text_fields, _delRubyEnabled,
+          () => _flipContentToggle('read_delRuby', (v) => _delRubyEnabled = v, _delRubyEnabled));
+      case 'delh':
+        return checkable('删除标题标签', Icons.title, _delHEnabled,
+          () => _flipContentToggle('read_delH', (v) => _delHEnabled = v, _delHEnabled));
+      case 'imagestyle':
+        return ListTile(leading: const Icon(Icons.image), title: const Text('图片样式'), onTap: () { close(); _showImageStylePicker(); });
+      case 'updatetoc':
+        return ListTile(leading: const Icon(Icons.refresh), title: const Text('更新目录'), onTap: () {
           close();
-          if (_chapters.isNotEmpty && _currentChapterIndex < _chapters.length) {
-            await Clipboard.setData(ClipboardData(text: _chapters[_currentChapterIndex].content ?? ''));
-            if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('已复制到剪贴板')));
-          }
+          _fetchTocFromNetwork();
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('正在更新目录')));
         });
-      case 'summary': return ListTile(leading: const Icon(Icons.subject), title: const Text('章节摘要'), onTap: () { close(); _showChapterSummary(); });
-      case 'contentedit': return ListTile(leading: const Icon(Icons.edit_note), title: const Text('内容编辑'), onTap: () { close(); _showContentEditor(); });
-      case 'replace': return ListTile(leading: const Icon(Icons.find_replace), title: const Text('生效替换'), onTap: () { close(); _showReplaceRules(); });
-      case 'detail': return ListTile(leading: const Icon(Icons.info_outline), title: const Text('书籍详情'), onTap: () { close(); Navigator.push(context, MaterialPageRoute(builder: (_) => BookDetailScreen(book: widget.book))); });
-      case 'refreshtoc': return ListTile(leading: const Icon(Icons.refresh), title: const Text('刷新目录'), onTap: () { close(); _fetchTocFromNetwork(); });
-      case 'cache': return ListTile(leading: const Icon(Icons.download), title: const Text('离线缓存'), onTap: () async {
-          close();
-          final range = await showModalBottomSheet<List<int>>(context: context, builder: (_) => DownloadSheet(chapters: _chapters, currentIndex: _currentChapterIndex));
-          if (range != null) _cacheChapters(range[0], range[1]);
-        });
-      case 'addbookmark': return ListTile(leading: const Icon(Icons.bookmark_border), title: const Text('添加书签'), onTap: () { close(); _addBookmark(); });
-      case 'bookmarklist': return ListTile(leading: const Icon(Icons.bookmarks), title: const Text('书签列表'), onTap: () { close(); _showBookmarks(); });
-      case 'share': return ListTile(leading: const Icon(Icons.share), title: const Text('分享书籍'), onTap: () { close(); Share.share('《${widget.book.name}》- ${widget.book.author}'); });
-      case 'reverse': return ListTile(leading: const Icon(Icons.swap_vert), title: const Text('反转内容'), onTap: () { close(); _reverseContent(); });
-      case 'resegment': return ListTile(leading: const Icon(Icons.format_align_left), title: const Text('重新分段'), onTap: () { close(); _reSegment(); });
-      case 'delruby': return ListTile(leading: const Icon(Icons.text_fields), title: const Text('删除注音(ruby)'), onTap: () { close(); _cleanContent('ruby'); });
-      case 'delh': return ListTile(leading: const Icon(Icons.title), title: const Text('删除标题标签'), onTap: () { close(); _cleanContent('h'); });
-      case 'chineseconvert': return ListTile(leading: const Icon(Icons.translate), title: const Text('简繁转换'), onTap: () { close(); _showChineseConverter(); });
-      case 'charset': return ListTile(leading: const Icon(Icons.code), title: const Text('选择编码'), onTap: () { close(); _selectCharset(); });
-      case 'txttoc': return ListTile(leading: const Icon(Icons.list_alt), title: const Text('TXT目录规则'), onTap: () { close(); Navigator.push(context, MaterialPageRoute(builder: (_) => const TxtTocRuleScreen())); });
-      case 'debug': return ListTile(leading: const Icon(Icons.receipt_long), title: const Text('调试日志'), onTap: () { close(); _showDebugLog(); });
-      case 'sourceaction':
-        if (_customButtonSource == null) return null;
-        return ListTile(leading: const Icon(Icons.build_circle_outlined), title: const Text('书源操作'), onTap: () { close(); _showSourceActions(); });
+      case 'effectivereplace':
+        return ListTile(leading: const Icon(Icons.rule), title: const Text('生效替换'), onTap: () { close(); _showReplaceRules(); });
+      case 'log':
+        return ListTile(leading: const Icon(Icons.receipt_long), title: const Text('日志'), onTap: () { close(); _showDebugLog(); });
+      case 'help':
+        return ListTile(leading: const Icon(Icons.help_outline), title: const Text('帮助'), onTap: () { close(); _showHelp(); });
       default: return null;
     }
   }
@@ -1777,33 +1924,8 @@ class _ReadingScreenState extends State<ReadingScreen> with SingleTickerProvider
     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('已反转内容')));
   }
 
-  /// 重新分段：把粘连文本按句号/问号/叹号重新换行
-  void _reSegment() {
-    if (_content == null) return;
-    var text = _content!.replaceAll(RegExp(r'\s+'), '');
-    text = text.replaceAllMapped(RegExp(r'[。！？…](?!["”』」])'), (m) => '${m[0]}\n\n');
-    setState(() {
-      _content = text;
-      _paginateContent();
-    });
-    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('已重新分段')));
-  }
-
-  /// 清理内容标签：ruby=注音标签，h=标题标签
-  void _cleanContent(String type) {
-    if (_content == null) return;
-    var text = _content!;
-    if (type == 'ruby') {
-      text = text.replaceAll(RegExp(r'<ruby[^>]*>'), '').replaceAll(RegExp(r'</ruby>'), '').replaceAll(RegExp(r'<rt[^>]*>.*?</rt>', dotAll: true), '');
-    } else {
-      text = text.replaceAll(RegExp(r'<h[1-6][^>]*>'), '').replaceAll(RegExp(r'</h[1-6]>'), '');
-    }
-    setState(() {
-      _content = text;
-      _paginateContent();
-    });
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(type == 'ruby' ? '已删除注音' : '已删除标题标签')));
-  }
+  // 对齐 E book_read.xml：重新分段 / 删除注音 / 删除标题改为持久开关
+  // （见 _loadChapterContent 的内容后处理与 _flipContentToggle），故删除原一次性操作方法。
 
   void _selectCharset() {
     const charsets = ['UTF-8', 'GBK', 'GB2312', 'GB18030', 'Big5', 'ISO-8859-1'];
@@ -2116,50 +2238,8 @@ class _ReadingScreenState extends State<ReadingScreen> with SingleTickerProvider
     if (mounted) setState(() {});
   }
 
-  Future<void> _showTranslateDialog() async {
-    final p = await SharedPreferences.getInstance();
-    bool auto = p.getBool('translate_enabled') ?? false;
-    const langs = ['zh-CN','zh-TW','en','ja','ko','fr','de','es','ru'];
-    const names = {'zh-CN':'简体中文','zh-TW':'繁体中文','en':'英语','ja':'日语','ko':'韩语','fr':'法语','de':'德语','es':'西班牙语','ru':'俄语'};
-    String target = p.getString('tr_target') ?? 'zh-CN';
-    if (!mounted) return;
-    await showDialog(context: context, builder: (dctx) => StatefulBuilder(builder: (dctx, setD) => AlertDialog(
-      title: const Text('翻译设置'),
-      content: Column(mainAxisSize: MainAxisSize.min, children: [
-        SwitchListTile(
-          title: const Text('本章自动翻译'),
-          value: auto,
-          onChanged: (v) async { await p.setBool('translate_enabled', v); await TranslationService.instance.loadPrefs(); setD(() => auto = v); },
-        ),
-        ListTile(
-          leading: const Icon(Icons.swap_horiz), title: const Text('目标语言'),
-          trailing: DropdownButton<String>(value: target, items: langs.map((l) => DropdownMenuItem(value: l, child: Text(names[l] ?? l))).toList(),
-            onChanged: (v) async { await p.setString('tr_target', v ?? 'zh-CN'); await TranslationService.instance.loadPrefs(); setD(() => target = v ?? 'zh-CN'); }),
-        ),
-      ]),
-      actions: [
-        TextButton(onPressed: () => Navigator.pop(dctx), child: const Text('关闭')),
-        FilledButton(onPressed: () async { Navigator.pop(dctx); await _translateCurrentChapter(); }, child: const Text('立即翻译本章')),
-      ],
-    )));
-  }
-
-  Future<void> _translateCurrentChapter() async {
-    if ((_content ?? '').isEmpty) return;
-    await TranslationService.instance.loadPrefs();
-    if (mounted) setState(() => _isLoadingChapter = true);
-    final translated = await TranslationService.instance.translateParagraphs(_content!);
-    if (mounted) setState(() { _content = translated; _paginateContent(); _isLoadingChapter = false; });
-  }
-
-  void _showChapterSummary() {
-    final summary = _chapters.isNotEmpty && _currentChapterIndex < _chapters.length ? _chapters[_currentChapterIndex].title : '无';
-    showDialog(context: context, builder: (context) => AlertDialog(
-      title: const Text('章节摘要'),
-      content: Text('当前章节: $summary\n\n共${_chapters.length}章\n当前第${_currentChapterIndex + 1}章'),
-      actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('关闭'))],
-    ));
-  }
+  // 对齐 E book_read.xml：更多菜单不含「翻译设置 / 章节摘要」入口，
+  // 故删除无消费方的对话框方法；划词翻译（_translateSelection）仍由文本选择菜单提供。
 
   void _showContentEditor() {
     final controller = TextEditingController(text: _chapters.isNotEmpty ? (_chapters[_currentChapterIndex].content ?? '') : '');

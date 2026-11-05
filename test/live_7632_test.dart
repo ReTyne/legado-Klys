@@ -18,19 +18,27 @@ class _RealHttpOverrides extends HttpOverrides {
   }
 }
 
-/// 对真实「大灰狼聚合」书源（yck2026.fun id/7632）跑完整阅读链路：
+/// 对真实「大灰狼聚合」书源（yckceo 社区 id/7632）跑完整阅读链路：
 /// 搜索 -> 详情 -> 目录 -> 正文。任何一环断裂即失败并打印 debugLog 供定位。
 /// 强制迷你求值器（MiniLegadoJs），保证链路可在单测中确定性复现。
+///
+/// 数据源改用仓库内真实书源 fixture `test/fixtures/source_7632.json`（自包含，
+/// 不再依赖 /tmp 临时文件）。本测试直连外网，沙箱/CI 网络不可靠，故默认跳过；
+/// 需真实链路验证时显式开启：
+///   flutter test --no-pub --dart-define=LEGADO_LIVE_NETWORK=true test/live_7632_test.dart
+/// 离线、可复现的高级功能回归由 test/real_source_compat_test.dart 承担。
+const bool _liveNetwork = bool.fromEnvironment('LEGADO_LIVE_NETWORK');
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
-  HttpOverrides.global = _RealHttpOverrides();
 
-  test('7632 全链路', () async {
+  test('7632 真实网络全链路（opt-in）', () async {
+    HttpOverrides.global = _RealHttpOverrides();
     SharedPreferences.setMockInitialValues({});
     JsRuntimeManager.instance.factoryOverride = (_) => MiniLegadoJs();
-    final raw = File('/tmp/sp/normal_source.json').readAsStringSync();
+    final raw = File('test/fixtures/source_7632.json').readAsStringSync();
     final m = jsonDecode(raw) as Map<String, dynamic>;
-    final source = BookSource.fromJson((m['source'] as Map).cast<String, dynamic>());
+    final source = BookSource.fromJson(m.cast<String, dynamic>());
 
     final engine = BookSourceEngine();
 
@@ -112,5 +120,9 @@ void main() {
     dumpLog('content');
     expect(content, isNotNull, reason: '正文获取失败');
     expect(content!.length, greaterThan(50), reason: '正文过短');
-  }, timeout: const Timeout(Duration(minutes: 8)));
+  },
+      skip: _liveNetwork
+          ? null
+          : '真实外网探针，默认跳过；用 --dart-define=LEGADO_LIVE_NETWORK=true 开启',
+      timeout: const Timeout(Duration(minutes: 8)));
 }
