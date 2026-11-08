@@ -3,7 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:legado_md3/constant/app_theme.dart';
+import 'package:legado_md3/ui/widgets/app_widgets.dart';
 import 'package:legado_md3/data/model/book.dart';
 import 'package:legado_md3/data/model/book_chapter.dart';
 import 'package:legado_md3/di/book_provider.dart';
@@ -31,6 +31,8 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
   final DatabaseService _db = DatabaseService();
   List<BookChapter> _chapters = [];
   bool _isLoading = true;
+  /// 目录获取失败原因（非空时详情页展示错误 + 重试，替代原先静默吞掉）
+  String? _tocError;
   bool _introExpanded = false;
   int _readChapterIndex = 0;
   bool _inShelf = false;
@@ -115,39 +117,87 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
     if (_chapters.isEmpty && !widget.book.local) {
       await _fetchTocFromNetwork();
     }
-    if (mounted) setState(() => _isLoading = false);
+    if (mounted) setState(() {
+      _isLoading = false;
+      if (_chapters.isNotEmpty) _tocError = null;
+    });
   }
 
   Future<void> _fetchTocFromNetwork() async {
+    if (mounted) setState(() => _tocError = null);
     try {
       final sources = await _db.getAllSources(enabled: true);
       final source = sources.where((s) => s.bookSourceUrl == widget.book.origin).firstOrNull;
-      if (source == null) return;
+      if (source == null) {
+        if (mounted) setState(() => _tocError = '未找到匹配的书源（${widget.book.origin ?? '未知'}），无法获取目录');
+        return;
+      }
       final engine = BookSourceEngine();
-      var noteUrl = widget.book.noteUrl;
-      // 没有目录地址时先用书籍详情规则补全
-      if ((noteUrl == null || noteUrl.isEmpty) && (widget.book.bookUrl ?? '').isNotEmpty) {
-        final info = await engine.getBookInfo(source, widget.book.bookUrl!,
-            presetName: widget.book.name, presetAuthor: widget.book.author);
-        if (info != null) {
-          noteUrl = info.noteUrl ?? noteUrl;
-          widget.book.noteUrl = noteUrl;
-          if ((info.intro ?? '').isNotEmpty) widget.book.intro = info.intro;
-          await _db.updateBook(widget.book);
+
+      // legado 约定：目录地址 = noteUrl，为空时回退 bookUrl。绝大多数书源
+      // 搜索结果给的 bookUrl 本身就是目录页地址，并没有独立的 noteUrl /
+      // ruleBookInfo。旧实现把目录获取绑死在 getBookInfo 成功上，详情解析
+      // 失败（无规则 / JS 抛异常）就直接放弃，导致「能搜到却无目录无正文」。
+      final bookUrl = widget.book.bookUrl ?? '';
+      var noteUrl = (widget.book.noteUrl ?? '').isNotEmpty
+          ? widget.book.noteUrl!
+          : bookUrl;
+
+      // 详情规则仅作为可选增强：补全封面/简介/独立 tocUrl，绝不因失败放弃目录。
+      if ((source.ruleBookInfo?.isNotEmpty ?? false) && bookUrl.isNotEmpty) {
+        try {
+          final info = await engine.getBookInfo(source, bookUrl,
+              presetName: widget.book.name, presetAuthor: widget.book.author);
+          if (info != null) {
+            if ((info.noteUrl ?? '').isNotEmpty) noteUrl = info.noteUrl!;
+            if ((info.intro ?? '').isNotEmpty &&
+                (widget.book.intro ?? '').isEmpty) {
+              widget.book.intro = info.intro;
+            }
+            if ((info.coverUrl ?? '').isNotEmpty &&
+                (widget.book.coverUrl ?? '').isEmpty) {
+              widget.book.coverUrl = info.coverUrl;
+            }
+          }
+        } catch (_) {
+          // 详情失败不影响目录：忽略，继续用 bookUrl 兜底
         }
       }
-      if (noteUrl != null && noteUrl.isNotEmpty) {
-        final chapters = await engine.getToc(source, noteUrl,
+
+      // 把最终目录地址回写，供阅读页 / 换源 / 二次进入复用
+      widget.book.noteUrl = noteUrl;
+      await _db.updateBook(widget.book);
+
+      if (noteUrl.isEmpty) {
+        if (mounted) {
+          setState(() => _tocError = '书籍缺少目录地址（bookUrl 为空），请换源或重新搜索');
+        }
+        return;
+      }
+
+      var chapters = await engine.getToc(source, noteUrl,
+          bookInfo: widget.book.jsContext());
+      // 独立 tocUrl 取不到章节时，回退用书址本身再取一次目录
+      if (chapters.isEmpty && bookUrl.isNotEmpty && bookUrl != noteUrl) {
+        chapters = await engine.getToc(source, bookUrl,
             bookInfo: widget.book.jsContext());
         if (chapters.isNotEmpty) {
-          await _db.saveChapters(widget.book.name, widget.book.author, chapters);
-          _chapters = chapters;
-          widget.book.lastChapter = chapters.last.title;
-          widget.book.lastChapterIndex = chapters.length - 1;
+          widget.book.noteUrl = bookUrl;
           await _db.updateBook(widget.book);
         }
       }
-    } catch (_) {}
+      if (chapters.isNotEmpty) {
+        await _db.saveChapters(widget.book.name, widget.book.author, chapters);
+        _chapters = chapters;
+        widget.book.lastChapter = chapters.last.title;
+        widget.book.lastChapterIndex = chapters.length - 1;
+        await _db.updateBook(widget.book);
+      } else if (mounted) {
+        setState(() => _tocError = '已访问目录地址但未解析到章节（该书源 toc 规则未匹配，或需要登录会话）');
+      }
+    } catch (e) {
+      if (mounted) setState(() => _tocError = '获取目录失败：${e.toString().split('\n').first}');
+    }
   }
 
   Future<void> _loadReadProgress() async {
@@ -212,15 +262,15 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
     final book = widget.book;
     if (!_isLocalTxt) return;
     final next = !book.splitLongChapter;
-    // 忙碌提示（E: upLoading(true)）
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (_) => const Center(child: Card(child: Padding(padding: EdgeInsets.all(24), child: Column(mainAxisSize: MainAxisSize.min, children: [CircularProgressIndicator(), SizedBox(height: 12), Text('正在重新解析目录...')])))),
-    );
     try {
-      await ImportBookService.toggleSplitLongChapter(book, _db);
-      await _loadChapters();
+      await runWithBusyDialog<void>(
+        context,
+        message: '正在重新解析目录...',
+        task: (() async {
+          await ImportBookService.toggleSplitLongChapter(book, _db);
+          await _loadChapters();
+        })(),
+      );
       // 进度随章节重排变化，同步详情页展示
       _readChapterIndex = book.durChapterIndex;
       if (mounted) {
@@ -234,8 +284,6 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
       }
     } catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('重新解析失败: $e')));
-    } finally {
-      if (mounted) Navigator.pop(context); // 关闭忙碌对话框
     }
   }
 
@@ -248,18 +296,13 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
     if (localPath == null || localPath.isEmpty) return;
     // 已上传过的书籍：E 会先弹确认（远程链接已存在，是否继续）
     if ((book.origin ?? '').startsWith('webDav::')) {
-      final ok = await showDialog<bool>(
-        context: context,
-        builder: (_) => AlertDialog(
-          title: const Text('上传书籍'),
-          content: const Text('远程 WebDAV 链接已存在，是否继续（将覆盖远程文件）？'),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('取消')),
-            FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('继续')),
-          ],
-        ),
+      final ok = await showAppConfirmDialog(
+        context,
+        title: '上传书籍',
+        content: '远程 WebDAV 链接已存在，是否继续（将覆盖远程文件）？',
+        confirmText: '继续',
       );
-      if (ok != true) return;
+      if (!ok) return;
     }
     final prefs = await SharedPreferences.getInstance();
     final url = prefs.getString('webdav_url');
@@ -275,28 +318,26 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('网络不可用，请检查网络后重试')));
       return;
     }
-    // 忙碌提示（E: waitDialog）
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (_) => const Center(child: Card(child: Padding(padding: EdgeInsets.all(24), child: Column(mainAxisSize: MainAxisSize.min, children: [CircularProgressIndicator(), SizedBox(height: 12), Text('上传中...')])))),
-    );
     try {
-      final dav = WebDavService()
-        ..configure(baseUrl: url.trim(), username: user, password: pass);
-      final ok = await dav.uploadBook(localPath, bookDir: bookDir);
-      if (!ok) throw '上传失败（请检查网络与 WebDAV 配置）';
-      // 标记远程地址，使远程书库/同步可知该书已上传（E: BookType.webDavTag）
-      book.origin = WebDavService.remoteBookUrl(url.trim(), bookDir, localPath.split('/').last);
-      // 让本地最后检查时间新于远程，便于后续同步判断
-      book.lastCheckTime = DateTime.now().millisecondsSinceEpoch;
-      await _db.updateBook(book);
+      await runWithBusyDialog<void>(
+        context,
+        message: '上传中...',
+        task: (() async {
+          final dav = WebDavService()
+            ..configure(baseUrl: url.trim(), username: user, password: pass);
+          final ok = await dav.uploadBook(localPath, bookDir: bookDir);
+          if (!ok) throw '上传失败（请检查网络与 WebDAV 配置）';
+          // 标记远程地址，使远程书库/同步可知该书已上传（E: BookType.webDavTag）
+          book.origin = WebDavService.remoteBookUrl(url.trim(), bookDir, localPath.split('/').last);
+          // 让本地最后检查时间新于远程，便于后续同步判断
+          book.lastCheckTime = DateTime.now().millisecondsSinceEpoch;
+          await _db.updateBook(book);
+        })(),
+      );
       if (mounted) setState(() {});
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('上传成功')));
     } catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('上传失败: $e')));
-    } finally {
-      if (mounted) Navigator.pop(context); // 关闭忙碌对话框
     }
   }
 
@@ -434,7 +475,7 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
                         IconButton(icon: const Icon(Icons.edit), tooltip: '编辑', onPressed: _showEditBookDialog),
                       IconButton(icon: const Icon(Icons.share), tooltip: '分享',
                         onPressed: () => Share.share('《${book.name}》 - ${book.author}\n${book.intro ?? ''}')),
-                      IconButton(icon: const Icon(Icons.more_vert), onPressed: _showMoreMenu),
+                      IconButton(tooltip: '更多', icon: const Icon(Icons.more_vert), onPressed: _showMoreMenu),
                     ],
                     flexibleSpace: FlexibleSpaceBar(
                       background: _buildHeader(book),
@@ -549,7 +590,25 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
                               else if (_chapters.isEmpty)
                                 Padding(
                                   padding: const EdgeInsets.all(16),
-                                  child: Text('暂无章节', style: TextStyle(color: cs.onSurfaceVariant)),
+                                  child: Column(
+                                    crossAxisAlignment: CrossAxisAlignment.start,
+                                    children: [
+                                      Text(_tocError ?? '暂无章节', style: TextStyle(color: cs.onSurfaceVariant)),
+                                      if (_tocError != null) ...[
+                                        const SizedBox(height: 8),
+                                        FilledButton.icon(
+                                          icon: const Icon(Icons.refresh, size: 16),
+                                          label: const Text('重新获取目录'),
+                                          onPressed: () {
+                                            setState(() => _isLoading = true);
+                                            _fetchTocFromNetwork().then((_) {
+                                              if (mounted) setState(() => _isLoading = false);
+                                            });
+                                          },
+                                        ),
+                                      ],
+                                    ],
+                                  ),
                                 )
                               else
                                 ..._chapters.reversed.take(5).map((chapter) => ListTile(
@@ -775,25 +834,14 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
       }
       return;
     }
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('移除书籍'),
-        content: Text('确定要从书架移除《${book.name}》吗？'),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('取消')),
-          FilledButton(
-            style: FilledButton.styleFrom(
-              backgroundColor: Theme.of(context).colorScheme.error,
-              foregroundColor: Theme.of(context).colorScheme.onError,
-            ),
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('移除'),
-          ),
-        ],
-      ),
+    final confirmed = await showAppConfirmDialog(
+      context,
+      title: '移除书籍',
+      content: '确定要从书架移除《${book.name}》吗？',
+      confirmText: '移除',
+      danger: true,
     );
-    if (confirmed == true) {
+    if (confirmed) {
       await _db.deleteBook(book.name, book.author);
       await Provider.of<BookProvider>(context, listen: false).loadBooks();
       if (mounted) {
@@ -875,18 +923,14 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
   }
 
   Widget _buildDefaultCover(Book book, double width, double height) {
-    final color = defaultCoverPalette[book.name.hashCode.abs() % defaultCoverPalette.length];
-    return Container(
+    return DefaultCover(
+      name: book.name,
       width: width,
       height: height,
-      decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(5)),
-      child: Center(child: Padding(padding: const EdgeInsets.all(8), child: Text(book.name, maxLines: 3, textAlign: TextAlign.center, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold)))),
+      radius: 5,
+      fontSize: 12,
     );
   }
 
-  Widget _buildTag(String text) => Container(
-    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-    decoration: BoxDecoration(color: Theme.of(context).colorScheme.secondaryContainer, borderRadius: BorderRadius.circular(4)),
-    child: Text(text, style: TextStyle(fontSize: 11, color: Theme.of(context).colorScheme.onSecondaryContainer)),
-  );
+  Widget _buildTag(String text) => AppTag(text);
 }

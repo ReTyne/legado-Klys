@@ -5,6 +5,7 @@ import 'package:legado_md3/data/local/app_database.dart';
 import 'package:legado_md3/data/model/rss_source.dart';
 import 'package:legado_md3/help/source/js/legado_js_runtime.dart';
 import 'package:legado_md3/ui/browser/browser_screen.dart';
+import 'package:legado_md3/ui/widgets/app_widgets.dart';
 
 /// 订阅源登录页：对齐 legado 的 loginUi / loginUrl 机制（与书源登录页一致）。
 class RssSourceLoginScreen extends StatefulWidget {
@@ -157,6 +158,7 @@ class _RssSourceLoginScreenState extends State<RssSourceLoginScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     final loginUrl = (source.loginUrl ?? '').trim();
     final isWeb = loginUrl.startsWith('http');
     return Scaffold(
@@ -193,10 +195,8 @@ class _RssSourceLoginScreenState extends State<RssSourceLoginScreen> {
                     margin: const EdgeInsets.only(bottom: 12),
                     padding: const EdgeInsets.all(10),
                     decoration: BoxDecoration(
-                      color: Theme.of(context)
-                          .colorScheme
-                          .surfaceContainerHighest,
-                      borderRadius: BorderRadius.circular(8),
+                      color: cs.surfaceContainerHighest,
+                      borderRadius: BorderRadius.circular(12),
                     ),
                     child: Text(source.sourceComment!,
                         style: const TextStyle(fontSize: 12)),
@@ -218,15 +218,12 @@ class _RssSourceLoginScreenState extends State<RssSourceLoginScreen> {
                 ),
                 const Divider(height: 32),
                 if (_logs.isNotEmpty) ...[
-                  const Text('运行日志',
-                      style:
-                          TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
-                  const SizedBox(height: 6),
+                  const AppSectionHeader('运行日志'),
                   Container(
-                    padding: const EdgeInsets.all(8),
+                    padding: const EdgeInsets.all(12),
                     decoration: BoxDecoration(
-                      color: Colors.black.withOpacity(0.04),
-                      borderRadius: BorderRadius.circular(8),
+                      color: cs.surfaceContainerHighest,
+                      borderRadius: BorderRadius.circular(12),
                     ),
                     child: SelectableText(
                       _logs.join('\n'),

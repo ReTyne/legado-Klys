@@ -1,14 +1,28 @@
+import 'dart:async';
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
 import 'package:legado_md3/common/app_name.dart';
 import 'package:legado_md3/ui/main/main_screen.dart';
+import 'package:legado_md3/ui/welcome/welcome_config_screen.dart';
 
-/// 首次启动欢迎与隐私引导（对齐原版启动协议页）
+/// 启动欢迎页：先展示可配置的「自定义欢迎闪屏」，随后按首次启动状态展示
+/// 隐私引导（三页 Intro + Policy）。
 ///
-/// 仅在首次启动或用户尚未同意隐私政策时展示：
-/// 同意后写入 first_launch_done / privacy_agreed，之后由 LaunchGate 直接进入主界面。
+/// 自定义欢迎页 12 项配置（customWelcome / welcomeShowTime / welcomeShowCount /
+/// welcomeImagePath(+Dark) / welcomeShowText(+Dark) / welcomeShowIcon(+Dark) /
+/// welcomeImageDark / welcomeButtonText / welcomePrivacyPolicy）全部在此真实消费：
+/// 图片做背景、图标/文案/按钮文案替换、展示时长自动进入、展示次数计数、
+/// 自定义隐私政策替换正文；日/夜间按系统亮度切换。
+///
+/// [preview] 为配置页预览模式：不写任何持久化状态、递增次数或跳转主界面，
+/// 结束仅 pop 返回。
 class WelcomeScreen extends StatefulWidget {
-  const WelcomeScreen({super.key});
+  const WelcomeScreen({super.key, this.preview = false});
+
+  final bool preview;
 
   @override
   State<WelcomeScreen> createState() => _WelcomeScreenState();
@@ -19,42 +33,131 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
   int _page = 0;
   bool _agreed = false;
 
+  WelcomeConfig? _cfg;
+  bool _loadingConfig = true;
+  bool _showSplash = false;
+  Timer? _splashTimer;
+
   // 首页标题带应用显示名（随系统语言切换），故用 getter 而非 const
   List<_Intro> get _pages => [
-    _Intro(icon: Icons.menu_book, title: '欢迎使用$appDisplayName', desc: '开源网络文学阅读器，Material Design 3 风格，支持自定义书源、发现、订阅与本地导入。'),
-    _Intro(icon: Icons.travel_explore, title: '书源与发现', desc: '导入书源后即可聚合搜索、发现书目；多书源并发搜索、换源、目录解析、正文清洗一应俱全。'),
-    _Intro(icon: Icons.security, title: '隐私说明', desc: '书架、书源、阅读记录等数据仅保存在本机；网络请求仅发生在你主动使用书源/翻译/TTS 等功能时，应用不收集任何个人信息。'),
-  ];
+        _Intro(
+            icon: Icons.menu_book,
+            title: '欢迎使用$appDisplayName',
+            desc:
+                '开源网络文学阅读器，Material Design 3 风格，支持自定义书源、发现、订阅与本地导入。'),
+        const _Intro(
+            icon: Icons.travel_explore,
+            title: '书源与发现',
+            desc:
+                '导入书源后即可聚合搜索、发现书目；多书源并发搜索、换源、目录解析、正文清洗一应俱全。'),
+        const _Intro(
+            icon: Icons.security,
+            title: '隐私说明',
+            desc:
+                '书架、书源、阅读记录等数据仅保存在本机；网络请求仅发生在你主动使用书源/翻译/TTS 等功能时，应用不收集任何个人信息。'),
+      ];
 
   /// 最后一页为隐私政策正文
   int get _total => _pages.length + 1;
   bool get _isPolicyPage => _page == _pages.length;
   bool get _isFirst => _page == 0;
 
+  @override
+  void initState() {
+    super.initState();
+    _loadWelcome();
+  }
+
+  @override
+  void dispose() {
+    _splashTimer?.cancel();
+    _controller.dispose();
+    super.dispose();
+  }
+
+  Future<void> _loadWelcome() async {
+    final cfg = await WelcomeConfig.load();
+    final shown = await WelcomeConfig.shownTimes();
+    final limitReached = cfg.showCount > 0 && shown >= cfg.showCount;
+    // 预览模式忽略次数上限，始终展示自定义欢迎页，方便立即查看效果。
+    final splash = cfg.customWelcome && (widget.preview || !limitReached);
+    if (splash && !widget.preview) {
+      await WelcomeConfig.incrementShown();
+    }
+    if (!mounted) return;
+    setState(() {
+      _cfg = cfg;
+      _loadingConfig = false;
+      _showSplash = splash;
+    });
+    if (splash) {
+      _splashTimer = Timer(Duration(seconds: cfg.showTime.clamp(1, 30)),
+          () => _afterSplash());
+    }
+  }
+
+  /// 闪屏结束：预览则直接返回；非预览时若已完成首次引导则直接进主界面，
+  /// 否则进入隐私引导 PageView。
+  Future<void> _afterSplash() async {
+    _splashTimer?.cancel();
+    if (!mounted) return;
+    if (widget.preview) {
+      Navigator.pop(context);
+      return;
+    }
+    final p = await SharedPreferences.getInstance();
+    final done = p.getBool('first_launch_done') ?? false;
+    if (!mounted) return;
+    if (done) {
+      await _enter();
+    } else {
+      setState(() => _showSplash = false);
+    }
+  }
+
   Future<void> _enter() async {
+    if (widget.preview) {
+      if (mounted) Navigator.pop(context);
+      return;
+    }
     final p = await SharedPreferences.getInstance();
     await p.setBool('first_launch_done', true);
     await p.setBool('privacy_agreed', true);
-    await p.setInt('privacy_agreed_at', DateTime.now().millisecondsSinceEpoch);
+    await p.setInt(
+        'privacy_agreed_at', DateTime.now().millisecondsSinceEpoch);
     if (!mounted) return;
-    Navigator.of(context).pushReplacement(MaterialPageRoute(builder: (_) => const MainScreen()));
+    Navigator.of(context).pushReplacement(
+        MaterialPageRoute(builder: (_) => const MainScreen()));
   }
 
   void _next() {
     if (!_isPolicyPage) {
-      _controller.nextPage(duration: const Duration(milliseconds: 250), curve: Curves.easeInOut);
+      _controller.nextPage(
+          duration: const Duration(milliseconds: 250), curve: Curves.easeInOut);
     } else if (_agreed) {
       _enter();
     }
   }
 
   void _back() {
-    _controller.previousPage(duration: const Duration(milliseconds: 250), curve: Curves.easeInOut);
+    _controller.previousPage(
+        duration: const Duration(milliseconds: 250), curve: Curves.easeInOut);
   }
 
   @override
   Widget build(BuildContext context) {
-    final cs = Theme.of(context).colorScheme;
+    if (_loadingConfig) {
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    }
+    if (_showSplash && _cfg != null) {
+      return Scaffold(
+        body: _CustomWelcomeView(
+          cfg: _cfg!,
+          onEnter: _afterSplash,
+        ),
+      );
+    }
+    final cfg = _cfg ?? WelcomeConfig();
     return Scaffold(
       body: SafeArea(
         child: Column(
@@ -65,7 +168,13 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
                 itemCount: _total,
                 onPageChanged: (i) => setState(() => _page = i),
                 itemBuilder: (_, i) => i == _pages.length
-                    ? _PolicyView(agreed: _agreed, onChanged: (v) => setState(() => _agreed = v))
+                    ? _PolicyView(
+                        agreed: _agreed,
+                        onChanged: (v) => setState(() => _agreed = v),
+                        policyText: cfg.privacyPolicy.isNotEmpty
+                            ? cfg.privacyPolicy
+                            : _PolicyView.policy,
+                      )
                     : _pages[i],
               ),
             ),
@@ -74,8 +183,13 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
                 AnimatedContainer(
                   duration: const Duration(milliseconds: 200),
                   margin: const EdgeInsets.symmetric(horizontal: 4),
-                  width: i == _page ? 22 : 8, height: 8,
-                  decoration: BoxDecoration(color: i == _page ? cs.primary : cs.outlineVariant, borderRadius: BorderRadius.circular(4)),
+                  width: i == _page ? 22 : 8,
+                  height: 8,
+                  decoration: BoxDecoration(
+                      color: i == _page
+                          ? Theme.of(context).colorScheme.primary
+                          : Theme.of(context).colorScheme.outlineVariant,
+                      borderRadius: BorderRadius.circular(12)),
                 ),
             ]),
             Padding(
@@ -93,7 +207,11 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
                     icon: _isPolicyPage
                         ? const Icon(Icons.check, size: 18)
                         : const Icon(Icons.arrow_forward, size: 18),
-                    label: Text(_isPolicyPage ? '同意并开始使用' : '下一步'),
+                    label: Text(_isPolicyPage
+                        ? (cfg.buttonText.isNotEmpty
+                            ? cfg.buttonText
+                            : '同意并开始使用')
+                        : '下一步'),
                     onPressed: _isPolicyPage && !_agreed ? null : _next,
                   ),
                 ),
@@ -101,6 +219,89 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// 自定义欢迎闪屏：背景图 / 主题渐变 + 图标 + 欢迎语 + 进入按钮。
+class _CustomWelcomeView extends StatelessWidget {
+  const _CustomWelcomeView({required this.cfg, required this.onEnter});
+
+  final WelcomeConfig cfg;
+  final VoidCallback onEnter;
+
+  @override
+  Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
+    final dark = Theme.of(context).brightness == Brightness.dark;
+    final imagePath = cfg.imageFor(dark);
+    final hasImage = imagePath.isNotEmpty && File(imagePath).existsSync();
+    final text = cfg.textFor(dark).isNotEmpty
+        ? cfg.textFor(dark)
+        : '欢迎使用$appDisplayName';
+    final button = cfg.buttonText.isNotEmpty ? cfg.buttonText : '进入阅读';
+
+    Widget background = Container(
+      decoration: BoxDecoration(
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [cs.primaryContainer, cs.surface],
+        ),
+      ),
+    );
+    if (hasImage) {
+      background = Stack(fit: StackFit.expand, children: [
+        Image.file(File(imagePath), fit: BoxFit.cover),
+        Container(color: cs.surface.withOpacity(0.55)),
+      ]);
+    }
+
+    return SafeArea(
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          background,
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 32),
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                Icon(
+                  IconData(cfg.iconFor(dark), fontFamily: 'MaterialIcons'),
+                  size: 96,
+                  color: cs.primary,
+                ),
+                const SizedBox(height: 32),
+                Text(
+                  text,
+                  textAlign: TextAlign.center,
+                  style: Theme.of(context).textTheme.headlineSmall,
+                ),
+                const SizedBox(height: 16),
+                Text(
+                  '${cfg.showTime} 秒后自动进入',
+                  style: TextStyle(fontSize: 13, color: cs.onSurfaceVariant),
+                ),
+                const SizedBox(height: 32),
+                FilledButton.icon(
+                  onPressed: onEnter,
+                  icon: const Icon(Icons.arrow_forward, size: 18),
+                  label: Text(button),
+                ),
+              ],
+            ),
+          ),
+          Positioned(
+            top: 8,
+            right: 8,
+            child: TextButton(
+              onPressed: onEnter,
+              child: const Text('跳过'),
+            ),
+          ),
+        ],
       ),
     );
   }
@@ -122,20 +323,31 @@ class _Intro extends StatelessWidget {
         children: [
           Icon(icon, size: 96, color: cs.primary),
           const SizedBox(height: 32),
-          Text(title, style: Theme.of(context).textTheme.headlineSmall, textAlign: TextAlign.center),
+          Text(title,
+              style: Theme.of(context).textTheme.headlineSmall,
+              textAlign: TextAlign.center),
           const SizedBox(height: 16),
-          Text(desc, style: TextStyle(fontSize: 15, color: cs.onSurfaceVariant, height: 1.6), textAlign: TextAlign.center),
+          Text(desc,
+              style: TextStyle(
+                  fontSize: 15, color: cs.onSurfaceVariant, height: 1.6),
+              textAlign: TextAlign.center),
         ],
       ),
     );
   }
 }
 
-/// 隐私政策正文（可滚动）+ 同意勾选
+/// 隐私政策正文（可滚动）+ 同意勾选；正文可由欢迎页配置替换。
 class _PolicyView extends StatelessWidget {
   final bool agreed;
   final ValueChanged<bool> onChanged;
-  const _PolicyView({required this.agreed, required this.onChanged});
+  final String policyText;
+
+  const _PolicyView({
+    required this.agreed,
+    required this.onChanged,
+    this.policyText = policy,
+  });
 
   static const String policy = '''
 隐私政策
@@ -187,7 +399,11 @@ class _PolicyView extends StatelessWidget {
           Row(children: [
             Icon(Icons.policy_outlined, color: cs.primary, size: 22),
             const SizedBox(width: 8),
-            Text('隐私政策', style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
+            Text('隐私政策',
+                style: Theme.of(context)
+                    .textTheme
+                    .titleMedium
+                    ?.copyWith(fontWeight: FontWeight.bold)),
           ]),
           const SizedBox(height: 12),
           Expanded(
@@ -200,7 +416,9 @@ class _PolicyView extends StatelessWidget {
               child: Scrollbar(
                 child: SingleChildScrollView(
                   padding: const EdgeInsets.all(16),
-                  child: Text(policy, style: TextStyle(fontSize: 13, height: 1.7, color: cs.onSurfaceVariant)),
+                  child: Text(policyText,
+                      style: TextStyle(
+                          fontSize: 13, height: 1.7, color: cs.onSurfaceVariant)),
                 ),
               ),
             ),
@@ -210,7 +428,8 @@ class _PolicyView extends StatelessWidget {
             dense: true,
             contentPadding: EdgeInsets.zero,
             controlAffinity: ListTileControlAffinity.leading,
-            title: const Text('我已阅读并同意《隐私政策》', style: TextStyle(fontSize: 13)),
+            title: const Text('我已阅读并同意《隐私政策》',
+                style: TextStyle(fontSize: 13)),
             value: agreed,
             onChanged: (v) => onChanged(v ?? false),
           ),

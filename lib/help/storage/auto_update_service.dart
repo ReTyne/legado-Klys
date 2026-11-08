@@ -61,9 +61,19 @@ class AutoUpdateService {
   static const String keyAutoCheckUpdate = 'oc_autoCheckUpdate';
   /// 更新通道（default_version / beta_version / none）
   static const String keyUpdateVariant = 'updateToVariant';
+  /// 应用更新源：github（默认）/ gitee（对齐 Sigma AppUpdateGitee）
+  static const String keyUpdateSource = 'update_source';
 
   static const _releasesApi = 'https://api.github.com/repos/ReTyne/legado-Klys/releases';
   static const _releasesPage = 'https://github.com/ReTyne/legado-Klys/releases';
+
+  /// Gitee releases 更新源（对齐 Sigma `AppUpdateGitee.getLatestRelease`）：
+  /// beta 通道取 latest（单个对象），稳定通道取最近 3 个 release 并过滤预发布。
+  static const _giteeLatestApi =
+      'https://gitee.com/api/v5/repos/lyc486/legado/releases/latest';
+  static const _giteeReleasesApi =
+      'https://gitee.com/api/v5/repos/lyc486/legado/releases?page=1&per_page=3&direction=desc';
+  static const _giteeReleasesPage = 'https://gitee.com/lyc486/legado/releases';
 
   final DatabaseService _db = DatabaseService();
   final BookSourceEngine _engine = BookSourceEngine();
@@ -99,6 +109,14 @@ class AutoUpdateService {
     _timer = null;
   }
 
+  /// 立即执行一次「书架 + RSS 刷新」并返回有更新的书籍数。
+  /// 供定时任务（AutoTaskService 的 refresh 动作）与手动刷新入口复用，
+  /// 与 _run 共用同一套并发/开关逻辑，避免出现两条独立更新链路。
+  Future<int> runOnce() async {
+    _lastRun = null; // 绕过 _run 的 5 分钟节流，手动触发立即生效
+    return _run(null);
+  }
+
   /// 启动时检查应用更新（oc_autoCheckUpdate + updateToVariant）。
   /// 版本对比使用 package_info_plus 的真实版本号，不再写死。
   static Future<void> checkAppUpdate() async {
@@ -111,24 +129,55 @@ class AutoUpdateService {
       final info = await PackageInfo.fromPlatform();
       final current = _parseVersion(info.version);
 
+      final isGitee = (prefs.getString(keyUpdateSource) ?? 'github')
+              .toLowerCase() ==
+          'gitee';
+      final isBeta = variant == 'beta_version';
+      final api = isGitee
+          ? (isBeta ? _giteeLatestApi : _giteeReleasesApi)
+          : (isBeta ? _releasesApi : '$_releasesApi/latest');
+      final page = isGitee ? _giteeReleasesPage : _releasesPage;
+
       final dio = Dio(BaseOptions(
         connectTimeout: const Duration(seconds: 8),
         receiveTimeout: const Duration(seconds: 12),
       ));
-      final resp = variant == 'beta_version'
-          // 测试版通道：取最新一个 release（含预发布）
-          ? await dio.get(_releasesApi)
-          : await dio.get('$_releasesApi/latest');
+      final resp = await dio.get(api);
       final data = resp.data;
-      String tag = '';
-      String htmlUrl = _releasesPage;
+      Map? release;
       if (data is Map) {
-        tag = (data['tag_name'] ?? '').toString();
-        htmlUrl = (data['html_url'] ?? _releasesPage).toString();
-      } else if (data is List && data.isNotEmpty && data.first is Map) {
-        final first = data.first as Map;
-        tag = (first['tag_name'] ?? '').toString();
-        htmlUrl = (first['html_url'] ?? _releasesPage).toString();
+        release = data;
+      } else if (data is List) {
+        // Gitee 稳定通道返回最近 3 个 release：取第一个非预发布
+        // （对齐 Sigma `.first { !it.prerelease }`），全部为预发布时取首个。
+        for (final e in data) {
+          if (e is Map && e['prerelease'] != true) {
+            release = e;
+            break;
+          }
+        }
+        release ??= data.isNotEmpty && data.first is Map
+            ? data.first as Map
+            : null;
+      }
+      if (release == null) return;
+      final tag = (release['tag_name'] ?? '').toString();
+      String htmlUrl = (release['html_url'] ?? '').toString();
+      if (htmlUrl.isEmpty) htmlUrl = page;
+      if (isGitee) {
+        // 对齐 Sigma gitReleaseToAppReleaseInfo：优先用 assets 里的 apk 直链
+        final assets = release['assets'];
+        if (assets is List) {
+          for (final a in assets) {
+            if (a is Map) {
+              final u = (a['browser_download_url'] ?? '').toString();
+              if (u.isNotEmpty) {
+                htmlUrl = u;
+                break;
+              }
+            }
+          }
+        }
       }
       if (tag.isEmpty || !_hasNew(current, _parseVersion(tag))) return;
       _tip('发现新版本 $tag', actionLabel: '前往', onAction: () async {

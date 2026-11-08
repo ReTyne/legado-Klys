@@ -10,14 +10,16 @@ import 'package:legado_md3/data/model/book_chapter.dart';
 import 'package:legado_md3/data/model/book_source.dart';
 import 'package:legado_md3/data/local/app_database.dart';
 import 'package:legado_md3/help/config/video_play_config.dart';
+import 'package:legado_md3/help/device/native_bridge.dart';
 import 'package:legado_md3/help/source/source_engine.dart';
+import 'package:legado_md3/help/storage/danmaku_store.dart';
 
-/// 视频播放器（对齐 legado-E 的视频播放能力，含弹幕基础支持）。
+/// 视频播放器（对齐 legado-E 的视频播放能力，含弹幕三路与画中画）。
 ///
-/// 说明（与原生能力的差异，均为缺少插件导致的降级）：
-/// * 画中画：无 pip 插件，用「当前页面内可拖拽悬浮小窗」降级替代；
-/// * 手势调亮度：无 screen_brightness 插件，改为叠加一层黑色遮罩模拟，并持久化；
-/// * 手势调音量：无 volume_controller 插件，左侧竖向手势不生效。
+/// 画中画有两条真实通路：`NativeBridge.enterPip` 系统画中画，以及应用内
+/// 可拖拽悬浮小窗（设备不支持系统 PiP 或进入失败时自动回退，二者并存）。
+/// 弹幕支持文件缓存 / B 站 XML / JSON 三路加载，可调开关 / 透明度 / 字号。
+/// 手势调亮度用叠加黑色遮罩模拟并持久化；手势调音量走现有占位提示。
 class VideoPlayerScreen extends StatefulWidget {
   final Book book;
   final int initialChapter;
@@ -53,9 +55,16 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   int _lineIndex = 0;
   final Map<int, List<String>> _lineCache = {};
 
-  // 弹幕
+  // 弹幕（文件缓存 / B 站 XML / JSON 三路）
   List<_DanmakuItem> _danmaku = [];
   bool _danmakuOn = true;
+  double _danmakuOpacity = 0.9;
+  double _danmakuFontSize = 16;
+  bool _pipSupported = false;
+
+  static const String _prefDanmakuOn = 'video_danmaku_on';
+  static const String _prefDanmakuOpacity = 'video_danmaku_opacity';
+  static const String _prefDanmakuSize = 'video_danmaku_size';
 
   // 全屏 / 悬浮小窗 / 锁定 / 亮度遮罩
   bool _isFullscreen = false;
@@ -120,7 +129,23 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     try {
       final p = await SharedPreferences.getInstance();
       _dim = (p.getDouble(_prefDim) ?? 0.0).clamp(0.0, _maxDim).toDouble();
+      _danmakuOn = p.getBool(_prefDanmakuOn) ?? true;
+      _danmakuOpacity =
+          (p.getDouble(_prefDanmakuOpacity) ?? 0.9).clamp(0.1, 1.0).toDouble();
+      _danmakuFontSize =
+          (p.getDouble(_prefDanmakuSize) ?? 16).clamp(10.0, 32.0).toDouble();
       await VideoPlayConfig.load();
+    } catch (_) {}
+    _pipSupported = await NativeBridge.instance.isPipSupported();
+    if (mounted) setState(() {});
+  }
+
+  Future<void> _persistDanmaku() async {
+    try {
+      final p = await SharedPreferences.getInstance();
+      await p.setBool(_prefDanmakuOn, _danmakuOn);
+      await p.setDouble(_prefDanmakuOpacity, _danmakuOpacity);
+      await p.setDouble(_prefDanmakuSize, _danmakuFontSize);
     } catch (_) {}
   }
 
@@ -228,7 +253,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       _loading = true;
       _error = null;
     });
-    _tryParseDanmaku(ch.content);
+    await _loadDanmaku(ch);
     var urls = _lineCache[idx];
     if (urls == null || urls.isEmpty) {
       urls = await _resolveLines(idx);
@@ -511,14 +536,53 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
 
   // ==================== 弹幕 ====================
 
-  /// 尝试从章节内容解析弹幕（JSON 数组 [{t/time, text/content}]）。
-  void _tryParseDanmaku(String? content) {
+  /// 弹幕三路加载：① DanmakuStore 文件缓存 ② B 站 XML ③ 简单 JSON。
+  /// 优先级与 Sigma/B 组约定一致：先命中本地缓存，再解析章节内嵌内容。
+  Future<void> _loadDanmaku(BookChapter ch) async {
     final list = <_DanmakuItem>[];
-    final c = content?.trim() ?? '';
-    if (c.isEmpty || c.startsWith('http') || c.startsWith('<')) {
-      _danmaku = list;
-      return;
+    final bookUrl =
+        widget.book.bookUrl ?? widget.book.noteUrl ?? widget.book.name;
+    final chapterUrl =
+        ch.url.isNotEmpty ? ch.url : '${ch.index}_${ch.title}';
+
+    // 路 1：文件缓存（B 组 DanmakuStore，按 bookUrl + chapterUrl 三级 MD5 路径）
+    try {
+      final cached = await DanmakuStore.instance.load(bookUrl, chapterUrl);
+      for (final d in cached) {
+        list.add(_DanmakuItem(d.timeMs / 1000.0, d.text,
+            color: d.color, size: d.textSize, type: d.type));
+      }
+    } catch (_) {}
+
+    if (list.isEmpty) {
+      final content = ch.content?.trim() ?? '';
+      if (content.startsWith('<')) {
+        // 路 2：B 站 XML（BiliDanmakuParser，含实体解码 / 颜色 / 字号 / 类型）
+        final items = BiliDanmakuParser.parse(content);
+        for (final d in items) {
+          list.add(_DanmakuItem(d.timeMs / 1000.0, d.text,
+              color: d.color, size: d.textSize, type: d.type));
+        }
+        // 落文件缓存，下次进入直接命中路 1
+        if (items.isNotEmpty) {
+          try {
+            await DanmakuStore.instance.save(
+                bookUrl: bookUrl, chapterUrl: chapterUrl, xml: content);
+          } catch (_) {}
+        }
+      } else {
+        // 路 3：JSON 数组（保留原「仅简单 JSON」解析能力）
+        _parseJsonDanmaku(content, list);
+      }
     }
+
+    list.sort((a, b) => a.time.compareTo(b.time));
+    if (mounted) setState(() => _danmaku = list);
+  }
+
+  /// JSON 数组弹幕：[{t/time/seconds, text/content/m, color?, size?, type?}]
+  void _parseJsonDanmaku(String c, List<_DanmakuItem> list) {
+    if (c.isEmpty || c.startsWith('http')) return;
     try {
       final arr = jsonDecode(c);
       if (arr is List) {
@@ -527,12 +591,117 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
             final t = (e['t'] ?? e['time'] ?? e['seconds']);
             final time = t is num ? t.toDouble() : 0.0;
             final text = (e['text'] ?? e['content'] ?? e['m'] ?? '').toString();
-            if (text.isNotEmpty) list.add(_DanmakuItem(time, text));
+            if (text.isEmpty) continue;
+            list.add(_DanmakuItem(
+              time,
+              text,
+              color: e['color'] is int ? e['color'] as int : 0xFFFFFFFF,
+              size: e['size'] is num ? (e['size'] as num).toDouble() : 25,
+              type: e['type'] is int ? e['type'] as int : 1,
+            ));
           }
         }
       }
     } catch (_) {}
-    _danmaku = list;
+  }
+
+  /// 系统画中画：先探测支持性，再调原生 enterPip；不可用时回退应用内悬浮窗。
+  /// 应用内「悬浮窗」按钮与长按倍速等既有实现保持不变。
+  Future<void> _enterSystemPip() async {
+    final supported = await NativeBridge.instance.isPipSupported();
+    if (!mounted) return;
+    setState(() => _pipSupported = supported);
+    if (supported) {
+      final c = _controller;
+      final ar = c != null && c.value.isInitialized ? c.value.aspectRatio : 16 / 9;
+      final w = (ar * 100).round().clamp(1, 239).toInt();
+      final ok = await NativeBridge.instance.enterPip(
+          aspectWidth: w, aspectHeight: 100);
+      if (!ok && mounted) {
+        setState(() => _pip = true);
+        _toast('系统画中画进入失败，已切换应用内悬浮窗');
+      }
+    } else {
+      setState(() => _pip = true);
+      _toast('当前设备不支持系统画中画，已使用应用内悬浮窗');
+    }
+  }
+
+  /// 弹幕设置：开关 / 透明度 / 字号，并保留弹幕列表入口。
+  void _showDanmakuSettings() {
+    showModalBottomSheet<void>(
+      context: context,
+      builder: (c) => StatefulBuilder(builder: (c, setS) {
+        final cs = Theme.of(context).colorScheme;
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.all(16),
+            child: Column(mainAxisSize: MainAxisSize.min, children: [
+              const Text('弹幕设置',
+                  style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+              SwitchListTile(
+                contentPadding: EdgeInsets.zero,
+                title: const Text('显示弹幕'),
+                subtitle: Text('当前 ${_danmaku.length} 条（缓存/XML/JSON 三路）',
+                    style: TextStyle(color: cs.onSurfaceVariant, fontSize: 11)),
+                value: _danmakuOn,
+                onChanged: (v) {
+                  setState(() => _danmakuOn = v);
+                  setS(() {});
+                  unawaited(_persistDanmaku());
+                },
+              ),
+              Row(children: [
+                const SizedBox(width: 64, child: Text('透明度')),
+                Expanded(
+                  child: Slider(
+                    value: _danmakuOpacity,
+                    min: 0.1,
+                    max: 1.0,
+                    divisions: 9,
+                    label: '${(_danmakuOpacity * 100).round()}%',
+                    onChanged: (v) {
+                      setState(() => _danmakuOpacity = v);
+                      setS(() {});
+                    },
+                    onChangeEnd: (_) => unawaited(_persistDanmaku()),
+                  ),
+                ),
+              ]),
+              Row(children: [
+                const SizedBox(width: 64, child: Text('字号')),
+                Expanded(
+                  child: Slider(
+                    value: _danmakuFontSize,
+                    min: 10,
+                    max: 32,
+                    divisions: 22,
+                    label: _danmakuFontSize.toStringAsFixed(0),
+                    onChanged: (v) {
+                      setState(() => _danmakuFontSize = v);
+                      setS(() {});
+                    },
+                    onChangeEnd: (_) => unawaited(_persistDanmaku()),
+                  ),
+                ),
+              ]),
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: const Icon(Icons.subtitles_outlined),
+                title: const Text('查看弹幕列表'),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () {
+                  Navigator.pop(c);
+                  _showDanmakuList();
+                },
+              ),
+              Text('弹幕来源：文件缓存 / B 站 XML / JSON（按优先级自动选择）',
+                  style: TextStyle(color: cs.onSurfaceVariant, fontSize: 11)),
+            ]),
+          ),
+        );
+      }),
+    );
   }
 
   /// 当前播放位置的弹幕
@@ -560,7 +729,9 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
             ..._danmaku.map((d) => ListTile(
                   dense: true,
                   leading: Text('${d.time.toStringAsFixed(1)}s',
-                      style: const TextStyle(fontSize: 11, color: Colors.grey)),
+                      style: TextStyle(
+                          fontSize: 11,
+                          color: Theme.of(context).colorScheme.onSurfaceVariant)),
                   title: Text(d.text, style: const TextStyle(fontSize: 13)),
                 )),
           ],
@@ -722,7 +893,12 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                   child: Stack(
                     children: [
                       for (final d in _danmakuAt(c.value.position))
-                        _DanmakuText(key: ValueKey(d), text: d.text),
+                        _DanmakuText(
+                          key: ValueKey(d),
+                          item: d,
+                          opacity: _danmakuOpacity,
+                          fontSize: _danmakuFontSize,
+                        ),
                     ],
                   ),
                 ),
@@ -822,6 +998,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       child: Row(children: [
         IconButton(
           icon: const Icon(Icons.arrow_back, color: Colors.white),
+          tooltip: '返回',
           onPressed: _onBack,
         ),
         Expanded(
@@ -834,7 +1011,16 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
           icon: Icon(_danmakuOn ? Icons.subtitles : Icons.subtitles_off,
               color: Colors.white),
           tooltip: '弹幕开关',
-          onPressed: () => setState(() => _danmakuOn = !_danmakuOn),
+          onPressed: () {
+            setState(() => _danmakuOn = !_danmakuOn);
+            unawaited(_persistDanmaku());
+          },
+        ),
+        IconButton(
+          icon: const Icon(Icons.picture_in_picture_alt_outlined,
+              color: Colors.white),
+          tooltip: _pipSupported ? '进入画中画' : '画中画（不支持时用悬浮窗）',
+          onPressed: () => unawaited(_enterSystemPip()),
         ),
         IconButton(
           icon: const Icon(Icons.lock_outline, color: Colors.white),
@@ -875,10 +1061,12 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
         child: Row(children: [
           IconButton(
             icon: Icon(_playing ? Icons.pause : Icons.play_arrow, color: Colors.white),
+            tooltip: _playing ? '暂停' : '播放',
             onPressed: _togglePlay,
           ),
           IconButton(
             icon: const Icon(Icons.replay_10, color: Colors.white),
+            tooltip: '后退10秒',
             onPressed: () => _seekBy(-10),
           ),
           Expanded(
@@ -902,6 +1090,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
           ),
           IconButton(
             icon: const Icon(Icons.forward_10, color: Colors.white),
+            tooltip: '前进10秒',
             onPressed: () => _seekBy(10),
           ),
           Text(_fmt(dur), style: const TextStyle(color: Colors.white, fontSize: 12)),
@@ -920,7 +1109,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
             label: const Text('选集', style: TextStyle(color: Colors.white)),
           ),
           TextButton.icon(
-            onPressed: _showDanmakuList,
+            onPressed: _showDanmakuSettings,
             icon: const Icon(Icons.subtitles_outlined, color: Colors.white, size: 18),
             label: const Text('弹幕', style: TextStyle(color: Colors.white)),
           ),
@@ -1096,6 +1285,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                     iconSize: 16,
                     icon: Icon(_playing ? Icons.pause : Icons.play_arrow,
                         color: Colors.white),
+                    tooltip: _playing ? '暂停' : '播放',
                     onPressed: _togglePlay,
                   ),
                 ),
@@ -1138,29 +1328,42 @@ class _VideoResume {
   const _VideoResume(this.line, this.position);
 }
 
-/// 单条弹幕数据。
+/// 单条弹幕数据（兼容 B 站 DanmakuItem 的颜色 / 字号 / 类型）。
 class _DanmakuItem {
   final double time;
   final String text;
-  const _DanmakuItem(this.time, this.text);
+  final int color;
+  final double size;
+  final int type;
+  const _DanmakuItem(this.time, this.text,
+      {this.color = 0xFFFFFFFF, this.size = 25, this.type = 1});
 }
 
-/// 单条弹幕（从右向左滚动的动画文本）。
+/// 单条弹幕：按 type 滚动（1 右→左 / 6 左→右）或固定（5 顶 / 4 底）。
 class _DanmakuText extends StatefulWidget {
-  final String text;
-  const _DanmakuText({super.key, required this.text});
+  final _DanmakuItem item;
+  final double opacity;
+  final double fontSize;
+  const _DanmakuText({
+    super.key,
+    required this.item,
+    required this.opacity,
+    required this.fontSize,
+  });
 
   @override
   State<_DanmakuText> createState() => _DanmakuTextState();
 }
 
-class _DanmakuTextState extends State<_DanmakuText> with SingleTickerProviderStateMixin {
+class _DanmakuTextState extends State<_DanmakuText>
+    with SingleTickerProviderStateMixin {
   late final AnimationController _ac;
 
   @override
   void initState() {
     super.initState();
-    _ac = AnimationController(vsync: this, duration: const Duration(seconds: 6))..forward();
+    _ac = AnimationController(vsync: this, duration: const Duration(seconds: 6))
+      ..forward();
     _ac.addStatusListener((s) {
       if (s == AnimationStatus.completed && mounted) setState(() {});
     });
@@ -1174,18 +1377,44 @@ class _DanmakuTextState extends State<_DanmakuText> with SingleTickerProviderSta
 
   @override
   Widget build(BuildContext context) {
+    final d = widget.item;
+    final screen = MediaQuery.of(context).size;
+    final fixedTop = d.type == 5;
+    final fixedBottom = d.type == 4;
+    final fixed = fixedTop || fixedBottom;
+    final reverse = d.type == 6;
+    final lane = (d.text.hashCode % 8).abs().toDouble();
+    final scaled =
+        (widget.fontSize * (d.size / 25.0).clamp(0.6, 1.8)).toDouble();
+    final textWidth = d.text.length * scaled * 0.7;
     return AnimatedBuilder(
       animation: _ac,
       builder: (_, __) {
         final t = _ac.value;
+        final top = fixed
+            ? (fixedTop
+                ? 16.0 + lane * 22
+                : (screen.height - 48 - lane * 22).clamp(0.0, screen.height))
+            : 16.0 + lane * 22;
+        final left = fixed
+            ? ((screen.width - textWidth) / 2).clamp(0.0, screen.width)
+            : (reverse
+                ? (screen.width + textWidth) * t - textWidth
+                : (screen.width + textWidth) * (1 - t));
         return Positioned(
-          top: (widget.text.hashCode % 200).abs().toDouble(),
-          left: MediaQuery.of(context).size.width * (1 - t),
-          child: Text(widget.text,
-              style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 16,
-                  shadows: [Shadow(color: Colors.black, blurRadius: 2)])),
+          top: top,
+          left: left,
+          child: Opacity(
+            opacity: widget.opacity.clamp(0.0, 1.0),
+            child: Text(
+              d.text,
+              style: TextStyle(
+                color: Color(d.color),
+                fontSize: scaled,
+                shadows: const [Shadow(color: Colors.black, blurRadius: 2)],
+              ),
+            ),
+          ),
         );
       },
     );
@@ -1224,7 +1453,9 @@ class _LongPressSpeedPickerDialogState
           onChanged: (v) => setState(() => _value = v.round()),
         ),
         Text('取值范围 0.5x – 6.0x',
-            style: TextStyle(fontSize: 12, color: Colors.grey[600])),
+            style: TextStyle(
+                fontSize: 12,
+                color: Theme.of(context).colorScheme.onSurfaceVariant)),
       ]),
       actions: [
         TextButton(

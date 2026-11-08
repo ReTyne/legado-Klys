@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:legado_md3/data/model/db_models.dart';
 import 'package:legado_md3/data/local/app_database.dart';
+import 'package:legado_md3/ui/widgets/app_widgets.dart';
 
 class BookMarkingScreen extends StatefulWidget {
   final String bookName;
@@ -32,12 +33,13 @@ class _BookMarkingScreenState extends State<BookMarkingScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return Scaffold(
       appBar: AppBar(title: Text(widget.bookName.isEmpty ? '书籍标记' : '书籍标记 - ${widget.bookName}')),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : _markings.isEmpty
-              ? const Center(child: Text('暂无标记'))
+              ? const AppEmptyState(icon: Icons.bookmark_border, title: '暂无标记')
               : ListView.builder(
                   itemCount: _markings.length,
                   itemBuilder: (context, index) {
@@ -56,9 +58,9 @@ class _BookMarkingScreenState extends State<BookMarkingScreen> {
                             if (widget.bookName.isEmpty)
                               Text('《${marking.bookName}》', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
                             Text('第${marking.chapterIndex + 1}章: ${marking.chapterTitle}', maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12)),
-                            if (marking.note != null && marking.note!.isNotEmpty) Text('笔记: ${marking.note}', maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12, color: Colors.blue)),
+                            if (marking.note != null && marking.note!.isNotEmpty) Text('笔记: ${marking.note}', maxLines: 2, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 12, color: cs.primary)),
                           ]),
-                          trailing: IconButton(icon: const Icon(Icons.delete_outline, color: Colors.red), onPressed: () async {
+                          trailing: IconButton(tooltip: '删除标记', icon: Icon(Icons.delete_outline, color: cs.error), onPressed: () async {
                             if (marking.id != null) {
                               await _db.deleteBookMarking(marking.id!);
                               _loadMarkings();

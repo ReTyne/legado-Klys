@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'package:legado_md3/data/local/app_database.dart';
 import 'package:legado_md3/data/model/db_models.dart';
+import 'package:legado_md3/ui/widgets/app_widgets.dart';
 
 /// 键盘助手配置页：管理规则输入时快速插入的片段（名称 + 触发词/插入文本）。
 ///
@@ -167,18 +168,14 @@ class _KeyboardAssistScreenState extends State<KeyboardAssistScreen> {
   }
 
   Widget _buildEmptyState() {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(Icons.keyboard_outlined, size: 80, color: Colors.grey[400]),
-          const SizedBox(height: 16),
-          Text('暂无键盘助手',
-              style: TextStyle(fontSize: 18, color: Colors.grey[600])),
-          const SizedBox(height: 8),
-          Text('点击右下角添加规则',
-              style: TextStyle(color: Colors.grey[500])),
-        ],
+    return AppEmptyState(
+      icon: Icons.keyboard_outlined,
+      title: '暂无键盘助手',
+      message: '点击右下角添加规则',
+      action: FilledButton.icon(
+        onPressed: () => _showEditDialog(),
+        icon: const Icon(Icons.add),
+        label: const Text('添加规则'),
       ),
     );
   }

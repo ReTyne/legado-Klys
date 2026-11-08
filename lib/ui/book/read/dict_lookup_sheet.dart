@@ -15,14 +15,11 @@ class DictLookupSheet extends StatefulWidget {
 
   /// 在阅读页调用：[openDictLookup] 会 showModalBottomSheet。
   static Future<void> open(BuildContext context, String word) {
+    // background / 顶部圆角由全局 bottomSheetTheme 提供，不在页面里覆写。
     return showModalBottomSheet<void>(
       context: context,
       isScrollControlled: true,
       useSafeArea: true,
-      backgroundColor: Theme.of(context).colorScheme.surface,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(24)),
-      ),
       builder: (_) => DictLookupSheet(word: word),
     );
   }
@@ -91,6 +88,7 @@ class _DictLookupSheetState extends State<DictLookupSheet> {
                   ),
                 ),
                 IconButton(
+                  tooltip: '关闭',
                   icon: const Icon(Icons.close),
                   onPressed: () => Navigator.pop(context),
                 ),
@@ -126,11 +124,11 @@ class _DictLookupSheetState extends State<DictLookupSheet> {
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      const Icon(Icons.menu_book_outlined, size: 44, color: Colors.grey),
+                      Icon(Icons.menu_book_outlined, size: 44, color: theme.colorScheme.onSurfaceVariant),
                       const SizedBox(height: 8),
                       const Text('还没有可用的词典规则'),
                       const SizedBox(height: 4),
-                      const Text('当前使用在线词典兜底', style: TextStyle(fontSize: 12, color: Colors.grey)),
+                      Text('当前使用在线词典兜底', style: TextStyle(fontSize: 12, color: theme.colorScheme.onSurfaceVariant)),
                     ],
                   ),
                 ),

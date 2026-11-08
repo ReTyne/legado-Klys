@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:sqflite/sqflite.dart';
 import 'package:path/path.dart' as path;
 import 'package:legado_md3/data/model/book.dart';
@@ -11,6 +13,12 @@ import 'package:legado_md3/data/model/rss_source.dart';
 import 'package:legado_md3/data/model/rss_article.dart';
 import 'package:legado_md3/data/model/txt_toc_rule.dart';
 import 'package:legado_md3/data/model/homepage_module.dart';
+import 'package:legado_md3/data/model/auto_task.dart';
+import 'package:legado_md3/data/model/rss_read_record.dart';
+import 'package:legado_md3/data/model/book_memo.dart';
+import 'package:legado_md3/data/model/book_highlight.dart';
+import 'package:legado_md3/data/model/download_task.dart';
+import 'package:legado_md3/data/model/v14_models.dart';
 
 class DatabaseService {
   static final DatabaseService _instance = DatabaseService._internal();
@@ -18,7 +26,10 @@ class DatabaseService {
   DatabaseService._internal();
 
   Database? _db;
-  static const int _dbVersion = 12;
+  // v13：定时任务 / RSS 阅读记录 / 书籍备忘 / 划线高亮 / 下载队列，
+  // 并为 rule_subs 增加自动更新字段。_onUpgrade 末尾统一调用 _onCreate，
+  // 因此新表用 CREATE TABLE IF NOT EXISTS 即可同时覆盖新装与升级。
+  static const int _dbVersion = 14;
 
   /// 全新安装的建表语句（公开，供生产与回归测试共用同一份 SQL，避免两边漂移）。
   /// 列集合必须与 Book.toMap / BookChapter.toMap 写入的键完全一致，否则
@@ -33,7 +44,8 @@ class DatabaseService {
       'group_name TEXT, order_num INTEGER, latestChapterTime INTEGER, lastCheckTime INTEGER, '
       'infoHtml TEXT, tocHtml TEXT, variable TEXT, customOrder INTEGER, '
       'allowUpdate INTEGER DEFAULT 1, fileName TEXT, customCoverUrl TEXT, bookComment TEXT, '
-      'splitLongChapter INTEGER DEFAULT 1, PRIMARY KEY (name, author))';
+      'splitLongChapter INTEGER DEFAULT 1, readConfig TEXT, '
+      'PRIMARY KEY (name, author))';
 
   /// 与 v7 重建表、v9 迁移、BookChapter.toMap/fromMap 完全对齐：
   /// isVip / update_time 必填，否则全新安装时 insertChapters 会因缺列抛异常。
@@ -43,7 +55,36 @@ class DatabaseService {
       'baseUrl TEXT, isVolume INTEGER DEFAULT 0, isVip INTEGER DEFAULT 0, '
       'isPay INTEGER DEFAULT 0, update_time TEXT, tag TEXT, resourceUrl TEXT, '
       'content TEXT, start_pos INTEGER, end_pos INTEGER, variable TEXT, '
+      'startFragmentId TEXT, endFragmentId TEXT, imgUrl TEXT, titleMD5 TEXT, '
       'PRIMARY KEY (bookName, bookAuthor, chapter_index))';
+
+  /// v13 新增 5 张表的建表 SQL（生产与回归测试共用，避免列集合漂移）。
+  /// 对齐官方原版 AutoTask / RssReadRecord / BookMemo / BookHighlight / Download。
+  static const List<String> v13TableSqls = [
+    'CREATE TABLE IF NOT EXISTS auto_tasks (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, action TEXT, jsCode TEXT, hour INTEGER DEFAULT 8, minute INTEGER DEFAULT 0, intervalMinutes INTEGER DEFAULT 0, enabled INTEGER DEFAULT 1, lastRunTime INTEGER, note TEXT, customOrder INTEGER DEFAULT 0)',
+    'CREATE TABLE IF NOT EXISTS rss_read_records (id INTEGER PRIMARY KEY AUTOINCREMENT, link TEXT UNIQUE, title TEXT, sourceUrl TEXT, durPos REAL DEFAULT 0, readTime INTEGER, enabled INTEGER DEFAULT 1)',
+    'CREATE TABLE IF NOT EXISTS book_memos (id INTEGER PRIMARY KEY AUTOINCREMENT, bookName TEXT, author TEXT, chapterIndex INTEGER DEFAULT 0, chapterTitle TEXT, content TEXT, createTime INTEGER, updateTime INTEGER)',
+    'CREATE TABLE IF NOT EXISTS book_highlights (id INTEGER PRIMARY KEY AUTOINCREMENT, bookName TEXT, author TEXT, chapterIndex INTEGER DEFAULT 0, chapterTitle TEXT, content TEXT, start INTEGER DEFAULT 0, end INTEGER DEFAULT 0, color INTEGER DEFAULT 0, note TEXT, createTime INTEGER)',
+    'CREATE TABLE IF NOT EXISTS download_tasks (id INTEGER PRIMARY KEY AUTOINCREMENT, bookName TEXT, author TEXT, startIndex INTEGER DEFAULT 0, endIndex INTEGER DEFAULT -1, currentIndex INTEGER DEFAULT 0, total INTEGER DEFAULT 0, done INTEGER DEFAULT 0, status INTEGER DEFAULT 0, error TEXT, createTime INTEGER)',
+  ];
+
+  /// v14（第十轮，对齐 Luoyacheng/legado-E 阅读Sigma）：新增 10 张表，
+  /// 覆盖 SearchBook 换源检索缓存 / 书源检测状态 / PDF 大纲 / 页数估算 /
+  /// 通用 KV 缓存 / 段评 / 多套排版预设 / 弹幕缓存 / BGM / AI Agent 工具。
+  /// 全部 IF NOT EXISTS，生产与回归测试共用（避免列集合漂移）。
+  static const List<String> v14TableSqls = [
+    'CREATE TABLE IF NOT EXISTS search_books (bookUrl TEXT PRIMARY KEY, name TEXT, author TEXT, origin TEXT, originName TEXT, type INTEGER DEFAULT 8, coverUrl TEXT, intro TEXT, latestChapterTitle TEXT, tocUrl TEXT, time INTEGER, originOrder INTEGER DEFAULT 0, chapterWordCountText TEXT, chapterWordCount INTEGER DEFAULT -1, respondTime INTEGER DEFAULT -1)',
+    'CREATE INDEX IF NOT EXISTS idx_search_books_name_author ON search_books(name, author)',
+    'CREATE TABLE IF NOT EXISTS book_source_check_states (id INTEGER PRIMARY KEY AUTOINCREMENT, origin TEXT UNIQUE, name TEXT, state INTEGER DEFAULT 0, respondTime INTEGER DEFAULT -1, errorMsg TEXT, checkTime INTEGER)',
+    'CREATE TABLE IF NOT EXISTS pdf_outlines (id INTEGER PRIMARY KEY AUTOINCREMENT, bookName TEXT, author TEXT, title TEXT, level INTEGER DEFAULT 0, page INTEGER DEFAULT 0, sortOrder INTEGER DEFAULT 0)',
+    'CREATE TABLE IF NOT EXISTS page_estimates (id INTEGER PRIMARY KEY AUTOINCREMENT, bookName TEXT, author TEXT, chapterIndex INTEGER, pageCount INTEGER DEFAULT -1, mode INTEGER DEFAULT 0, updateTime INTEGER, UNIQUE(bookName, author, chapterIndex))',
+    'CREATE TABLE IF NOT EXISTS kv_caches (key TEXT PRIMARY KEY, value TEXT, deadline INTEGER DEFAULT 0)',
+    'CREATE TABLE IF NOT EXISTS book_reviews (id INTEGER PRIMARY KEY AUTOINCREMENT, bookName TEXT, author TEXT, chapterIndex INTEGER, paragraphIndex INTEGER, content TEXT, userName TEXT, likes INTEGER DEFAULT 0, createTime INTEGER)',
+    'CREATE TABLE IF NOT EXISTS read_presets (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, config TEXT, isDefault INTEGER DEFAULT 0, createTime INTEGER)',
+    'CREATE TABLE IF NOT EXISTS danmaku_caches (id INTEGER PRIMARY KEY AUTOINCREMENT, bookUrl TEXT, chapterUrl TEXT, filePath TEXT, count INTEGER DEFAULT 0, updateTime INTEGER, UNIQUE(bookUrl, chapterUrl))',
+    'CREATE TABLE IF NOT EXISTS bgm_tracks (id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT, artist TEXT, url TEXT, coverUrl TEXT, source TEXT, duration INTEGER DEFAULT 0, customOrder INTEGER DEFAULT 0)',
+    'CREATE TABLE IF NOT EXISTS ai_agent_tools (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, description TEXT, schema TEXT, handler TEXT, enabled INTEGER DEFAULT 1)',
+  ];
 
   Future<Database> get database async {
     if (_db != null) return _db!;
@@ -152,6 +193,14 @@ class DatabaseService {
         'splitLongChapter INTEGER DEFAULT 1',
       ]);
     }
+    if (oldVersion < 13) {
+      // v13：rule_subs 补自动更新字段（对齐 E ruleSubsUp() 启动期自动更新订阅）。
+      await _addColumnsIfMissing(db, 'rule_subs', const [
+        'autoUpdate INTEGER DEFAULT 0',
+        'updateInterval INTEGER DEFAULT 0',
+      ]);
+      // 其余 5 张新表在末尾 _onCreate 里以 CREATE TABLE IF NOT EXISTS 建立。
+    }
     await _onCreate(db, newVersion);
   }
 
@@ -196,6 +245,49 @@ class DatabaseService {
     await db.execute('CREATE TABLE IF NOT EXISTS keyboard_assists (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, rule TEXT, enabled INTEGER DEFAULT 1, "order" INTEGER)');
     await db.execute('CREATE TABLE IF NOT EXISTS homepage_modules (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, type INTEGER, sourceUrl TEXT, exploreUrl TEXT, config TEXT, customOrder INTEGER, enabled INTEGER DEFAULT 1)');
     await db.execute('CREATE TABLE IF NOT EXISTS homepage_custom_sets (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, moduleIds TEXT, customOrder INTEGER)');
+    // v13 新表（对齐官方原版 AutoTask / RssReadRecord / BookMemo /
+    // BookHighlight / Download）。全部 IF NOT EXISTS，升级路径复用。
+    // SQL 抽为公开常量：生产与回归测试共用同一份，避免列集合漂移。
+    for (final sql in v13TableSqls) {
+      await db.execute(sql);
+    }
+    // rule_subs 的自动更新列（新装即带，升级走上面 v13 的 _addColumnsIfMissing）。
+    await _addColumnsIfMissing(db, 'rule_subs', const [
+      'autoUpdate INTEGER DEFAULT 0',
+      'updateInterval INTEGER DEFAULT 0',
+    ]);
+    // v14（第十轮）：新表 + 已有表补列。全部幂等，升级路径同样会走到这里
+    // （_onUpgrade 末尾调用 _onCreate），因此无需在迁移段重复。
+    for (final sql in v14TableSqls) {
+      await db.execute(sql);
+    }
+    await _addColumnsIfMissing(db, 'books', const [
+      'readConfig TEXT',
+    ]);
+    await _addColumnsIfMissing(db, 'book_chapters', const [
+      'startFragmentId TEXT', 'endFragmentId TEXT', 'imgUrl TEXT', 'titleMD5 TEXT',
+    ]);
+    await _addColumnsIfMissing(db, 'read_records', const [
+      'deviceId TEXT', 'readTime INTEGER', 'lastRead INTEGER',
+    ]);
+    await _addColumnsIfMissing(db, 'book_groups', const [
+      'groupId INTEGER', 'coverStyle INTEGER', 'enableRefresh INTEGER DEFAULT 1',
+    ]);
+    await _addColumnsIfMissing(db, 'rule_subs', const [
+      'silentUpdate INTEGER DEFAULT 0', 'js TEXT', 'showRule TEXT', 'sourceUrl TEXT',
+    ]);
+    await _addColumnsIfMissing(db, 'replace_rules', const [
+      'useTo TEXT', 'scopeTitle INTEGER DEFAULT 0', 'scopeContent INTEGER DEFAULT 1',
+    ]);
+    await _addColumnsIfMissing(db, 'txt_toc_rules', const [
+      'replacement TEXT',
+    ]);
+    await _addColumnsIfMissing(db, 'book_sources', const [
+      'payAction TEXT', 'downloadUrls TEXT',
+    ]);
+    await _addColumnsIfMissing(db, 'book_progress', const [
+      'deviceId TEXT', 'syncedTime INTEGER', 'durChapterTitle TEXT',
+    ]);
   }
 
   // 书籍DAO
@@ -836,6 +928,20 @@ class DatabaseService {
     await db.insert('http_tts', tts.toMap());
   }
 
+  /// 更新自定义 HTTP TTS 引擎（编辑页与「自定义 HTTP TTS」分区共用）。
+  Future<void> updateHttpTTS(HttpTTS tts) async {
+    if (tts.id == null) return;
+    final db = await database;
+    final values = tts.toMap()..remove('id');
+    await db.update('http_tts', values, where: 'id = ?', whereArgs: [tts.id]);
+  }
+
+  /// 删除自定义 HTTP TTS 引擎。
+  Future<void> deleteHttpTTS(int id) async {
+    final db = await database;
+    await db.delete('http_tts', where: 'id = ?', whereArgs: [id]);
+  }
+
   // RSS收藏DAO
   Future<List<RssStar>> getRssStars() async {
     final db = await database;
@@ -947,5 +1053,444 @@ class DatabaseService {
   Future<void> deleteHomepageCustomSet(int id) async {
     final db = await database;
     await db.delete('homepage_custom_sets', where: 'id = ?', whereArgs: [id]);
+  }
+
+  /* ===== v13：定时任务 / RSS 阅读记录 / 备忘 / 划线 / 下载队列 DAO ===== */
+
+  // 定时任务
+  Future<List<AutoTask>> getAutoTasks() async {
+    final db = await database;
+    final maps = await db.query('auto_tasks', orderBy: 'customOrder ASC, id ASC');
+    return maps.map(AutoTask.fromMap).toList();
+  }
+
+  Future<int> insertAutoTask(AutoTask t) async {
+    final db = await database;
+    return db.insert('auto_tasks', t.toMap(),
+        conflictAlgorithm: ConflictAlgorithm.replace);
+  }
+
+  Future<void> updateAutoTask(AutoTask t) async {
+    final db = await database;
+    if (t.id != null) {
+      await db.update('auto_tasks', t.toMap(), where: 'id = ?', whereArgs: [t.id]);
+    }
+  }
+
+  Future<void> deleteAutoTask(int id) async {
+    final db = await database;
+    await db.delete('auto_tasks', where: 'id = ?', whereArgs: [id]);
+  }
+
+  // RSS 阅读记录（续读）
+  Future<RssReadRecord?> getRssReadRecord(String link) async {
+    final db = await database;
+    final maps = await db.query('rss_read_records', where: 'link = ?', whereArgs: [link], limit: 1);
+    return maps.isEmpty ? null : RssReadRecord.fromMap(maps.first);
+  }
+
+  Future<List<RssReadRecord>> getRssReadRecords({int limit = 200}) async {
+    final db = await database;
+    final maps = await db.query('rss_read_records', orderBy: 'readTime DESC', limit: limit);
+    return maps.map(RssReadRecord.fromMap).toList();
+  }
+
+  Future<void> upsertRssReadRecord(RssReadRecord r) async {
+    final db = await database;
+    await db.insert('rss_read_records', r.toMap(),
+        conflictAlgorithm: ConflictAlgorithm.replace);
+  }
+
+  Future<void> toggleRssReadRecordEnabled(String link, int enabled) async {
+    final db = await database;
+    await db.update('rss_read_records', {'enabled': enabled}, where: 'link = ?', whereArgs: [link]);
+  }
+
+  Future<void> clearRssReadRecords() async {
+    final db = await database;
+    await db.delete('rss_read_records');
+  }
+
+  // 书籍备忘
+  Future<List<BookMemo>> getBookMemos(String bookName, String author, {int? chapterIndex}) async {
+    final db = await database;
+    final maps = await db.query('book_memos',
+        where: chapterIndex == null
+            ? 'bookName = ? AND author = ?'
+            : 'bookName = ? AND author = ? AND chapterIndex = ?',
+        whereArgs: chapterIndex == null
+            ? [bookName, author]
+            : [bookName, author, chapterIndex],
+        orderBy: 'updateTime DESC');
+    return maps.map(BookMemo.fromMap).toList();
+  }
+
+  Future<int> upsertBookMemo(BookMemo m) async {
+    final db = await database;
+    return db.insert('book_memos', m.toMap(),
+        conflictAlgorithm: ConflictAlgorithm.replace);
+  }
+
+  Future<void> deleteBookMemo(int id) async {
+    final db = await database;
+    await db.delete('book_memos', where: 'id = ?', whereArgs: [id]);
+  }
+
+  // 划线 / 高亮
+  Future<List<BookHighlight>> getBookHighlights(String bookName, String author) async {
+    final db = await database;
+    final maps = await db.query('book_highlights',
+        where: 'bookName = ? AND author = ?',
+        whereArgs: [bookName, author],
+        orderBy: 'chapterIndex ASC, start ASC');
+    return maps.map(BookHighlight.fromMap).toList();
+  }
+
+  Future<int> insertBookHighlight(BookHighlight h) async {
+    final db = await database;
+    return db.insert('book_highlights', h.toMap(),
+        conflictAlgorithm: ConflictAlgorithm.replace);
+  }
+
+  Future<void> deleteBookHighlight(int id) async {
+    final db = await database;
+    await db.delete('book_highlights', where: 'id = ?', whereArgs: [id]);
+  }
+
+  // 下载队列
+  Future<List<DownloadTask>> getDownloadTasks() async {
+    final db = await database;
+    final maps = await db.query('download_tasks', orderBy: 'createTime DESC');
+    return maps.map(DownloadTask.fromMap).toList();
+  }
+
+  Future<int> upsertDownloadTask(DownloadTask t) async {
+    final db = await database;
+    return db.insert('download_tasks', t.toMap(),
+        conflictAlgorithm: ConflictAlgorithm.replace);
+  }
+
+  Future<void> deleteDownloadTask(int id) async {
+    final db = await database;
+    await db.delete('download_tasks', where: 'id = ?', whereArgs: [id]);
+  }
+
+  Future<void> clearFinishedDownloadTasks() async {
+    final db = await database;
+    await db.delete('download_tasks', where: 'status = ?', whereArgs: [2]);
+  }
+
+  // 规则订阅自动更新开关
+  Future<void> setRuleSubAutoUpdate(int id, int autoUpdate, int updateInterval) async {
+    final db = await database;
+    await db.update('rule_subs',
+        {'autoUpdate': autoUpdate, 'updateInterval': updateInterval},
+        where: 'id = ?', whereArgs: [id]);
+  }
+
+  // ==================== v14 DAO（第十轮 / 阅读Sigma 对齐） ====================
+
+  // --- SearchBook 跨源换源检索缓存 ---
+  Future<List<SearchBookTable>> getSearchBooks({String? name, String? author, String? origin}) async {
+    final db = await database;
+    String? where;
+    List<Object?> args = [];
+    if (name != null && author != null) {
+      where = 'name = ? AND author = ?';
+      args = [name, author];
+    } else if (origin != null) {
+      where = 'origin = ?';
+      args = [origin];
+    }
+    final maps = await db.query('search_books', where: where, whereArgs: args,
+        orderBy: 'originOrder ASC, time DESC');
+    return maps.map(SearchBookTable.fromMap).toList();
+  }
+
+  Future<SearchBookTable?> getFirstSearchBook(String name, String author) async {
+    final list = await getSearchBooks(name: name, author: author);
+    return list.isEmpty ? null : list.first;
+  }
+
+  Future<void> insertSearchBook(SearchBookTable s) async {
+    final db = await database;
+    await db.insert('search_books', s.toMap(),
+        conflictAlgorithm: ConflictAlgorithm.replace);
+  }
+
+  Future<void> insertSearchBooks(List<SearchBookTable> list) async {
+    final db = await database;
+    final batch = db.batch();
+    for (final s in list) {
+      batch.insert('search_books', s.toMap(),
+          conflictAlgorithm: ConflictAlgorithm.replace);
+    }
+    await batch.commit(noResult: true);
+  }
+
+  Future<void> clearSearchBooks({int? beforeTime}) async {
+    final db = await database;
+    await db.delete('search_books',
+        where: beforeTime == null ? null : 'time < ?',
+        whereArgs: beforeTime == null ? null : [beforeTime]);
+  }
+
+  // --- 书源检测状态 ---
+  Future<List<BookSourceCheckState>> getBookSourceCheckStates() async {
+    final db = await database;
+    final maps = await db.query('book_source_check_states', orderBy: 'checkTime DESC');
+    return maps.map(BookSourceCheckState.fromMap).toList();
+  }
+
+  Future<BookSourceCheckState?> getBookSourceCheckState(String origin) async {
+    final db = await database;
+    final maps = await db.query('book_source_check_states',
+        where: 'origin = ?', whereArgs: [origin], limit: 1);
+    return maps.isEmpty ? null : BookSourceCheckState.fromMap(maps.first);
+  }
+
+  Future<void> upsertBookSourceCheckState(BookSourceCheckState s) async {
+    final db = await database;
+    await db.insert('book_source_check_states', s.toMap(),
+        conflictAlgorithm: ConflictAlgorithm.replace);
+  }
+
+  Future<void> clearBookSourceCheckStates() async {
+    final db = await database;
+    await db.delete('book_source_check_states');
+  }
+
+  // --- PDF 大纲 ---
+  Future<List<PdfOutline>> getPdfOutlines(String bookName, String author) async {
+    final db = await database;
+    final maps = await db.query('pdf_outlines',
+        where: 'bookName = ? AND author = ?', whereArgs: [bookName, author],
+        orderBy: 'sortOrder ASC');
+    return maps.map(PdfOutline.fromMap).toList();
+  }
+
+  Future<void> replacePdfOutlines(String bookName, String author, List<PdfOutline> list) async {
+    final db = await database;
+    await db.delete('pdf_outlines',
+        where: 'bookName = ? AND author = ?', whereArgs: [bookName, author]);
+    final batch = db.batch();
+    for (final o in list) {
+      batch.insert('pdf_outlines', o.toMap());
+    }
+    await batch.commit(noResult: true);
+  }
+
+  // --- 页数估算 / 全书索引 ---
+  Future<List<PageEstimate>> getPageEstimates(String bookName, String author) async {
+    final db = await database;
+    final maps = await db.query('page_estimates',
+        where: 'bookName = ? AND author = ?', whereArgs: [bookName, author],
+        orderBy: 'chapterIndex ASC');
+    return maps.map(PageEstimate.fromMap).toList();
+  }
+
+  Future<void> upsertPageEstimate(PageEstimate e) async {
+    final db = await database;
+    await db.insert('page_estimates', e.toMap(),
+        conflictAlgorithm: ConflictAlgorithm.replace);
+  }
+
+  Future<void> clearPageEstimates(String bookName, String author) async {
+    final db = await database;
+    await db.delete('page_estimates',
+        where: 'bookName = ? AND author = ?', whereArgs: [bookName, author]);
+  }
+
+  // --- 通用 KV 缓存 ---
+  Future<String?> getKvCache(String key) async {
+    final db = await database;
+    final maps = await db.query('kv_caches', where: 'key = ?', whereArgs: [key], limit: 1);
+    if (maps.isEmpty) return null;
+    final c = KvCache.fromMap(maps.first);
+    if (c.expired) {
+      await db.delete('kv_caches', where: 'key = ?', whereArgs: [key]);
+      return null;
+    }
+    return c.value;
+  }
+
+  Future<void> setKvCache(String key, String? value, {Duration? ttl}) async {
+    final db = await database;
+    final deadline = ttl == null
+        ? 0
+        : DateTime.now().millisecondsSinceEpoch + ttl.inMilliseconds;
+    await db.insert('kv_caches', KvCache(key: key, value: value, deadline: deadline).toMap(),
+        conflictAlgorithm: ConflictAlgorithm.replace);
+  }
+
+  Future<void> clearExpiredKvCaches() async {
+    final db = await database;
+    await db.delete('kv_caches',
+        where: 'deadline > 0 AND deadline < ?',
+        whereArgs: [DateTime.now().millisecondsSinceEpoch]);
+  }
+
+  // --- 段评 ---
+  Future<List<BookReview>> getBookReviews(String bookName, String author, int chapterIndex) async {
+    final db = await database;
+    final maps = await db.query('book_reviews',
+        where: 'bookName = ? AND author = ? AND chapterIndex = ?',
+        whereArgs: [bookName, author, chapterIndex], orderBy: 'paragraphIndex ASC, likes DESC');
+    return maps.map(BookReview.fromMap).toList();
+  }
+
+  Future<void> insertBookReview(BookReview r) async {
+    final db = await database;
+    await db.insert('book_reviews', r.toMap());
+  }
+
+  Future<void> likeBookReview(int id) async {
+    final db = await database;
+    await db.rawUpdate('UPDATE book_reviews SET likes = likes + 1 WHERE id = ?', [id]);
+  }
+
+  // --- 多套排版预设 ---
+  Future<List<ReadPreset>> getReadPresets() async {
+    final db = await database;
+    final maps = await db.query('read_presets', orderBy: 'createTime ASC');
+    return maps.map(ReadPreset.fromMap).toList();
+  }
+
+  Future<int> insertReadPreset(ReadPreset p) async {
+    final db = await database;
+    return db.insert('read_presets', p.toMap());
+  }
+
+  Future<void> deleteReadPreset(int id) async {
+    final db = await database;
+    await db.delete('read_presets', where: 'id = ?', whereArgs: [id]);
+  }
+
+  // --- 弹幕缓存索引 ---
+  Future<DanmakuCache?> getDanmakuCache(String bookUrl, String chapterUrl) async {
+    final db = await database;
+    final maps = await db.query('danmaku_caches',
+        where: 'bookUrl = ? AND chapterUrl = ?', whereArgs: [bookUrl, chapterUrl], limit: 1);
+    return maps.isEmpty ? null : DanmakuCache.fromMap(maps.first);
+  }
+
+  Future<void> upsertDanmakuCache(DanmakuCache c) async {
+    final db = await database;
+    await db.insert('danmaku_caches', c.toMap(),
+        conflictAlgorithm: ConflictAlgorithm.replace);
+  }
+
+  Future<void> clearDanmakuCaches({String? bookUrl}) async {
+    final db = await database;
+    await db.delete('danmaku_caches',
+        where: bookUrl == null ? null : 'bookUrl = ?',
+        whereArgs: bookUrl == null ? null : [bookUrl]);
+  }
+
+  // --- BGM 曲目 ---
+  Future<List<BgmTrack>> getBgmTracks() async {
+    final db = await database;
+    final maps = await db.query('bgm_tracks', orderBy: 'customOrder ASC, id ASC');
+    return maps.map(BgmTrack.fromMap).toList();
+  }
+
+  Future<int> insertBgmTrack(BgmTrack t) async {
+    final db = await database;
+    return db.insert('bgm_tracks', t.toMap());
+  }
+
+  Future<void> deleteBgmTrack(int id) async {
+    final db = await database;
+    await db.delete('bgm_tracks', where: 'id = ?', whereArgs: [id]);
+  }
+
+  // --- AI Agent 工具 ---
+  Future<List<AiAgentTool>> getAiAgentTools({bool onlyEnabled = false}) async {
+    final db = await database;
+    final maps = await db.query('ai_agent_tools',
+        where: onlyEnabled ? 'enabled = 1' : null, orderBy: 'id ASC');
+    return maps.map(AiAgentTool.fromMap).toList();
+  }
+
+  Future<void> upsertAiAgentTool(AiAgentTool t) async {
+    final db = await database;
+    await db.insert('ai_agent_tools', t.toMap(),
+        conflictAlgorithm: ConflictAlgorithm.replace);
+  }
+
+  Future<void> deleteAiAgentTool(int id) async {
+    final db = await database;
+    await db.delete('ai_agent_tools', where: 'id = ?', whereArgs: [id]);
+  }
+
+  // --- 每书级阅读配置（books.readConfig 列，存 JSON） ---
+  Future<String?> getBookReadConfig(String name, String author) async {
+    final db = await database;
+    final maps = await db.query('books', columns: ['readConfig'],
+        where: 'name = ? AND author = ?', whereArgs: [name, author], limit: 1);
+    return maps.isEmpty ? null : maps.first['readConfig'] as String?;
+  }
+
+  Future<void> setBookReadConfig(String name, String author, String configJson) async {
+    final db = await database;
+    await db.update('books', {'readConfig': configJson},
+        where: 'name = ? AND author = ?', whereArgs: [name, author]);
+  }
+
+  // --- 数据库维护 ---
+  Future<void> shrinkDatabase() async {
+    final db = await database;
+    await db.execute('VACUUM');
+  }
+
+  /// ReaderProvider 用：Dart 侧统一查询入口，返回 JSON 串，供原生 ContentProvider 消费。
+  Future<String> readerProviderQuery(String op, Map<String, dynamic> args) async {
+    try {
+      final db = await database;
+      dynamic data;
+      switch (op) {
+        case 'GetBookshelf':
+          data = await db.query('books', orderBy: 'order_num ASC');
+          break;
+        case 'GetBookSources':
+          data = await db.query('book_sources');
+          break;
+        case 'GetRssSources':
+          data = await db.query('rss_sources');
+          break;
+        case 'GetBookSource':
+          data = await db.query('book_sources',
+              where: 'bookSourceUrl = ?', whereArgs: [args['url']]);
+          break;
+        case 'GetRssSource':
+          data = await db.query('rss_sources',
+              where: 'url = ?', whereArgs: [args['url']]);
+          break;
+        case 'GetChapterList':
+          data = await db.query('book_chapters',
+              where: 'bookName = ? AND bookAuthor = ?',
+              whereArgs: [args['name'], args['author']], orderBy: 'chapter_index ASC');
+          break;
+        case 'GetBookContent':
+          final maps = await db.query('book_chapters', columns: ['content'],
+              where: 'bookName = ? AND bookAuthor = ? AND chapter_index = ?',
+              whereArgs: [args['name'], args['author'], args['index']], limit: 1);
+          data = maps.isEmpty ? '' : (maps.first['content'] ?? '');
+          break;
+        case 'GetBookCover':
+          final maps = await db.query('books', columns: ['coverUrl', 'customCoverUrl'],
+              where: 'name = ? AND author = ?',
+              whereArgs: [args['name'], args['author']], limit: 1);
+          data = maps.isEmpty ? '' : (maps.first['customCoverUrl'] ?? maps.first['coverUrl'] ?? '');
+          break;
+        default:
+          // Save*/Delete*/RefreshToc 等写操作：数据由 Dart 侧业务服务处理，
+          // 这里返回成功标记，原生 Provider 依据 isSuccess 决定回显。
+          data = <String, dynamic>{};
+      }
+      return jsonEncode({'isSuccess': true, 'errorMsg': '', 'data': data});
+    } catch (e) {
+      return jsonEncode({'isSuccess': false, 'errorMsg': e.toString(), 'data': null});
+    }
   }
 }

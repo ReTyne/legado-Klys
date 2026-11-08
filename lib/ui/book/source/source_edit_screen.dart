@@ -13,6 +13,7 @@ import 'package:legado_md3/help/source/rule_auto_completer.dart';
 import 'package:legado_md3/ui/book/source/source_debug_screen.dart';
 import 'package:legado_md3/ui/book/source/source_login_screen.dart';
 import 'package:legado_md3/ui/book/search/search_screen.dart';
+import 'package:legado_md3/ui/widgets/app_widgets.dart';
 
 /// 书源编辑页 —— 对齐 legado-with-MD3：
 /// 字段以“卡片预览 + 点击弹出底部多行编辑器”呈现，六个分页（基础/搜索/发现/详情/目录/正文），
@@ -625,51 +626,22 @@ class _SourceEditScreenState extends State<SourceEditScreen> with SingleTickerPr
   }
 
   void _showMoreMenu() {
-    showModalBottomSheet(
-      context: context,
-      showDragHandle: true,
-      builder: (ctx) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            _menuTile(Icons.login_outlined, '登录', _login),
-            _menuTile(Icons.travel_explore, '保存并搜索', _saveAndSearch),
-            _menuTile(Icons.cookie_outlined, '清除 Cookie', _clearCookie),
-            _menuTile(Icons.auto_fix_high, '规则补全', () async {
-              Navigator.pop(ctx);
-              _autoComplete();
-            }),
-            _menuTile(Icons.code, '设置书源变量', () async {
-              Navigator.pop(ctx);
-              _setVariable();
-            }),
-            _menuTile(Icons.copy, '复制书源', () {
-              Navigator.pop(ctx);
-              _copySource();
-            }),
-            _menuTile(Icons.paste, '粘贴书源', () {
-              Navigator.pop(ctx);
-              _pasteSource();
-            }),
-            _menuTile(Icons.ios_share, '分享书源', () {
-              Navigator.pop(ctx);
-              _shareSource();
-            }),
-            _menuTile(Icons.help_outline, '规则帮助', () {
-              Navigator.pop(ctx);
-              _showHelp();
-            }),
-          ],
-        ),
-      ),
+    showAppMenuSheet(
+      context,
+      title: '更多操作',
+      items: [
+        AppMenuSheetItem(title: '登录', icon: Icons.login_outlined, onTap: _login),
+        AppMenuSheetItem(title: '保存并搜索', icon: Icons.travel_explore_outlined, onTap: _saveAndSearch),
+        AppMenuSheetItem(title: '清除 Cookie', icon: Icons.cookie_outlined, onTap: _clearCookie),
+        AppMenuSheetItem(title: '规则补全', icon: Icons.auto_fix_high_outlined, onTap: _autoComplete),
+        AppMenuSheetItem(title: '设置书源变量', icon: Icons.code_outlined, onTap: _setVariable),
+        AppMenuSheetItem(title: '复制书源', icon: Icons.content_copy_outlined, onTap: _copySource),
+        AppMenuSheetItem(title: '粘贴书源', icon: Icons.content_paste_outlined, onTap: _pasteSource),
+        AppMenuSheetItem(title: '分享书源', icon: Icons.ios_share_outlined, onTap: _shareSource),
+        AppMenuSheetItem(title: '规则帮助', icon: Icons.help_outline, onTap: _showHelp),
+      ],
     );
   }
-
-  Widget _menuTile(IconData icon, String label, VoidCallback onTap) => ListTile(
-        leading: Icon(icon),
-        title: Text(label),
-        onTap: onTap,
-      );
 
   void _showHelp() {
     showDialog(
@@ -865,7 +837,6 @@ class _SourceEditScreenState extends State<SourceEditScreen> with SingleTickerPr
     final filled = value.trim().isNotEmpty;
     return Card(
       margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-      elevation: 0,
       color: theme.colorScheme.surfaceContainerHighest.withOpacity(0.4),
       child: ListTile(
         dense: true,
@@ -896,10 +867,7 @@ class _SourceEditScreenState extends State<SourceEditScreen> with SingleTickerPr
     );
   }
 
-  Widget _sectionTitle(String text) => Padding(
-        padding: const EdgeInsets.fromLTRB(16, 14, 16, 4),
-        child: Text(text, style: Theme.of(context).textTheme.labelLarge?.copyWith(color: Theme.of(context).colorScheme.primary)),
-      );
+  Widget _sectionTitle(String text) => AppSectionHeader(text);
 
   Widget _flagTile(String key, String title, String? subtitle) => SwitchListTile(
         dense: true,
@@ -1007,8 +975,8 @@ class _SourceEditScreenState extends State<SourceEditScreen> with SingleTickerPr
           title: Text(widget.source == null ? '新建书源' : '编辑书源'),
           actions: [
             IconButton(icon: const Icon(Icons.bug_report_outlined), tooltip: '调试', onPressed: _debug),
-            IconButton(icon: const Icon(Icons.save), tooltip: '保存', onPressed: () => _save()),
-            IconButton(icon: const Icon(Icons.more_vert), onPressed: _showMoreMenu),
+            IconButton(icon: const Icon(Icons.save_outlined), tooltip: '保存', onPressed: () => _save()),
+            IconButton(icon: const Icon(Icons.more_vert_outlined), tooltip: '更多', onPressed: _showMoreMenu),
           ],
           bottom: TabBar(
             controller: _tabController,
@@ -1040,18 +1008,15 @@ class _SourceEditScreenState extends State<SourceEditScreen> with SingleTickerPr
   }
 
   Future<void> _confirmDiscard() async {
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('放弃修改？'),
-        content: const Text('当前书源尚未保存，返回将丢失修改。'),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('继续编辑')),
-          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('放弃')),
-        ],
-      ),
+    final ok = await showAppConfirmDialog(
+      context,
+      title: '放弃修改？',
+      content: '当前书源尚未保存，返回将丢失修改。',
+      cancelText: '继续编辑',
+      confirmText: '放弃',
+      danger: true,
     );
-    if (ok == true && mounted) {
+    if (ok && mounted) {
       _dirty = false;
       Navigator.pop(context);
     }
@@ -1135,7 +1100,7 @@ class _SourceEditScreenState extends State<SourceEditScreen> with SingleTickerPr
             r'  {"title":"推荐","url":"/api/recommend","rule":{"bookList":"$.data","name":"$.name"}},' '\n'
             r'  {"title":"排行","url":"/api/rank","rule":{"bookList":"$.list","name":"$.title"}}' '\n'
             r']',
-            style: TextStyle(fontSize: 12, color: Colors.grey[600], fontFamily: 'monospace'),
+            style: TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.onSurfaceVariant, fontFamily: 'monospace'),
           ),
         ),
       ],

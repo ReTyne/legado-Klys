@@ -2,8 +2,10 @@ import 'package:flutter/material.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:legado_md3/data/model/book.dart';
 import 'package:legado_md3/data/model/book_chapter.dart';
+import 'package:legado_md3/data/model/book_highlight.dart';
 import 'package:legado_md3/data/model/bookmark.dart';
 import 'package:legado_md3/data/model/replace_rule.dart';
+import 'package:legado_md3/ui/widgets/app_widgets.dart';
 import 'package:legado_md3/data/local/app_database.dart';
 import 'package:legado_md3/help/source/replace_rule_service.dart';
 import 'package:legado_md3/help/storage/import_book_service.dart';
@@ -11,7 +13,7 @@ import 'package:legado_md3/ui/bookmark/bookmark_export.dart';
 import 'package:legado_md3/ui/config/txt_toc_rule_screen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-/// 目录页（对齐 legado-E TocActivity）：「目录 / 书签」双 Tab，
+/// 目录页（对齐 legado-E TocActivity）：「目录 / 书签 / 高亮」三 Tab，
 /// 菜单按当前 Tab 分组切换（E: onMenuOpened 的 menu_group_toc / menu_group_bookmark / menu_group_text）。
 class ChapterListScreen extends StatefulWidget {
   final Book? book;
@@ -48,10 +50,14 @@ class _ChapterListScreenState extends State<ChapterListScreen>
   List<Bookmark> _bookmarks = [];
   String _bookmarkQuery = '';
 
+  // 高亮 Tab（对齐原版 TocActivity 的第 3 个 HighlightFragment，§3.B4）
+  List<BookHighlight> _highlights = [];
+  String _highlightQuery = '';
+
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 2, vsync: this)
+    _tabController = TabController(length: 3, vsync: this)
       ..addListener(() {
         // 对齐 E：切换 Tab 时菜单分组随之切换；搜索按当前 Tab 分流
         if (!_tabController.indexIsChanging && mounted) {
@@ -63,6 +69,7 @@ class _ChapterListScreenState extends State<ChapterListScreen>
     _loadTocUseReplace();
     _loadChapters();
     _loadBookmarks();
+    _loadHighlights();
   }
 
   @override
@@ -105,6 +112,25 @@ class _ChapterListScreenState extends State<ChapterListScreen>
     }
   }
 
+  /// 高亮 Tab 数据源：DatabaseService().getBookHighlights(bookName, author)（§3.B4）
+  Future<void> _loadHighlights() async {
+    final book = widget.book;
+    try {
+      final list = book != null
+          ? await _db.getBookHighlights(book.name, book.author)
+          : <BookHighlight>[];
+      if (mounted) setState(() => _highlights = list);
+    } catch (_) {
+      if (mounted) setState(() => _highlights = []);
+    }
+  }
+
+  Future<void> _deleteHighlight(BookHighlight h) async {
+    if (h.id == null) return;
+    await _db.deleteBookHighlight(h.id!);
+    await _loadHighlights();
+  }
+
   List<Bookmark> get _filteredBookmarks {
     if (_bookmarkQuery.isEmpty) return _bookmarks;
     final q = _bookmarkQuery.toLowerCase();
@@ -112,6 +138,17 @@ class _ChapterListScreenState extends State<ChapterListScreen>
         .where((b) =>
             b.chapterTitle.toLowerCase().contains(q) ||
             (b.content ?? '').toLowerCase().contains(q))
+        .toList();
+  }
+
+  List<BookHighlight> get _filteredHighlights {
+    if (_highlightQuery.isEmpty) return _highlights;
+    final q = _highlightQuery.toLowerCase();
+    return _highlights
+        .where((h) =>
+            h.content.toLowerCase().contains(q) ||
+            h.chapterTitle.toLowerCase().contains(q) ||
+            h.note.toLowerCase().contains(q))
         .toList();
   }
 
@@ -128,11 +165,13 @@ class _ChapterListScreenState extends State<ChapterListScreen>
   }
 
   void _onSearchChanged(String query) {
-    // 对齐 E SearchView.onQueryTextChange：目录 Tab 搜章节、书签 Tab 搜书签
+    // 对齐 E SearchView.onQueryTextChange：按当前 Tab 分流（目录 / 书签 / 高亮）
     if (_tabIndex == 0) {
       _filterChapters(query);
-    } else {
+    } else if (_tabIndex == 1) {
       setState(() => _bookmarkQuery = query);
+    } else {
+      setState(() => _highlightQuery = query);
     }
   }
 
@@ -219,14 +258,15 @@ class _ChapterListScreenState extends State<ChapterListScreen>
     final book = widget.book;
     if (book == null || !_isLocalTxt) return;
     final next = !book.splitLongChapter;
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (_) => const Center(child: Card(child: Padding(padding: EdgeInsets.all(24), child: Column(mainAxisSize: MainAxisSize.min, children: [CircularProgressIndicator(), SizedBox(height: 12), Text('正在重新解析目录...')])))),
-    );
     try {
-      await ImportBookService.toggleSplitLongChapter(book, _db);
-      final chapters = await _db.getChapters(book.name, book.author);
+      final chapters = await runWithBusyDialog<List<BookChapter>>(
+        context,
+        message: '正在重新解析目录...',
+        task: (() async {
+          await ImportBookService.toggleSplitLongChapter(book, _db);
+          return _db.getChapters(book.name, book.author);
+        })(),
+      );
       if (!mounted) return;
       setState(() {
         _allChapters = chapters;
@@ -243,8 +283,6 @@ class _ChapterListScreenState extends State<ChapterListScreen>
       }
     } catch (e) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('重新解析失败: $e')));
-    } finally {
-      if (mounted) Navigator.pop(context); // 关闭忙碌对话框
     }
   }
 
@@ -335,11 +373,17 @@ class _ChapterListScreenState extends State<ChapterListScreen>
         const PopupMenuItem<String>(value: 'log', child: Text('日志')),
       ];
     }
-    // 书签 Tab：menu_group_bookmark + menu_log（对齐 E）
+    if (_tabIndex == 1) {
+      // 书签 Tab：menu_group_bookmark + menu_log（对齐 E）
+      return <PopupMenuEntry<String>>[
+        const PopupMenuItem<String>(value: 'export', child: Text('导出')),
+        const PopupMenuItem<String>(value: 'exportMd', child: Text('导出(MD)')),
+        const PopupMenuDivider(),
+        const PopupMenuItem<String>(value: 'log', child: Text('日志')),
+      ];
+    }
+    // 高亮 Tab：仅「日志」（高亮无书签导出语义，避免死开关）
     return <PopupMenuEntry<String>>[
-      const PopupMenuItem<String>(value: 'export', child: Text('导出')),
-      const PopupMenuItem<String>(value: 'exportMd', child: Text('导出(MD)')),
-      const PopupMenuDivider(),
       const PopupMenuItem<String>(value: 'log', child: Text('日志')),
     ];
   }
@@ -382,14 +426,16 @@ class _ChapterListScreenState extends State<ChapterListScreen>
         title: Text(widget.book?.name ?? '目录'),
         actions: [
           PopupMenuButton<String>(
-            tooltip: _tabIndex == 0 ? '目录选项' : '书签选项',
+            tooltip: _tabIndex == 0
+                ? '目录选项'
+                : _tabIndex == 1 ? '书签选项' : '高亮选项',
             onSelected: _onMenuSelected,
             itemBuilder: (_) => _menuItems(),
           ),
         ],
         bottom: TabBar(
           controller: _tabController,
-          tabs: const [Tab(text: '目录'), Tab(text: '书签')],
+          tabs: const [Tab(text: '目录'), Tab(text: '书签'), Tab(text: '高亮')],
         ),
       ),
       body: Column(
@@ -400,15 +446,20 @@ class _ChapterListScreenState extends State<ChapterListScreen>
             child: TextField(
               controller: _searchController,
               decoration: InputDecoration(
-                hintText: _tabIndex == 0 ? '搜索章节...' : '搜索书签...',
+                hintText: _tabIndex == 0
+                    ? '搜索章节...'
+                    : _tabIndex == 1 ? '搜索书签...' : '搜索高亮...',
                 prefixIcon: const Icon(Icons.search),
                 suffixIcon: _searchController.text.isNotEmpty
-                    ? IconButton(icon: const Icon(Icons.clear), onPressed: () {
-                        _searchController.clear();
-                        _onSearchChanged('');
-                      })
+                    ? IconButton(
+                        icon: const Icon(Icons.clear),
+                        tooltip: '清除搜索',
+                        onPressed: () {
+                          _searchController.clear();
+                          _onSearchChanged('');
+                        })
                     : null,
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(8)),
+                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
                 isDense: true,
               ),
               onChanged: _onSearchChanged,
@@ -420,6 +471,7 @@ class _ChapterListScreenState extends State<ChapterListScreen>
               children: [
                 _buildChapterTab(),
                 _buildBookmarkTab(),
+                _buildHighlightTab(),
               ],
             ),
           ),
@@ -431,7 +483,9 @@ class _ChapterListScreenState extends State<ChapterListScreen>
   Widget _buildChapterTab() {
     if (_isLoading) return const Center(child: CircularProgressIndicator());
     final chapters = _reverse ? _filteredChapters.reversed.toList() : _filteredChapters;
-    if (chapters.isEmpty) return const Center(child: Text('暂无章节'));
+    if (chapters.isEmpty) {
+      return const AppEmptyState(icon: Icons.list_alt_outlined, title: '暂无章节');
+    }
     return ListView.builder(
       controller: _scrollController,
       itemCount: chapters.length,
@@ -473,15 +527,10 @@ class _ChapterListScreenState extends State<ChapterListScreen>
   Widget _buildBookmarkTab() {
     final items = _filteredBookmarks;
     if (items.isEmpty) {
-      return Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(Icons.bookmark_border, size: 64, color: Colors.grey[400]),
-            const SizedBox(height: 12),
-            const Text('暂无书签', style: TextStyle(color: Colors.grey)),
-          ],
-        ),
+      return const AppEmptyState(
+        icon: Icons.bookmark_border,
+        title: '暂无书签',
+        message: '阅读时点击书签按钮添加',
       );
     }
     return ListView.separated(
@@ -497,11 +546,65 @@ class _ChapterListScreenState extends State<ChapterListScreen>
               : null,
           trailing: IconButton(
             icon: const Icon(Icons.delete_outline),
+            tooltip: '删除书签',
             onPressed: () => _deleteBookmark(bm),
           ),
           onTap: () {
             // 对齐 E 书签点击跳回阅读页：返回书签所在章索引，目录未重排
             Navigator.pop(context, (bm.chapterIndex, false));
+          },
+        );
+      },
+    );
+  }
+
+  /// 高亮 Tab（对齐原版 HighlightFragment）：展示划线文本 + 章名，点击跳到该章（§3.B4）。
+  Widget _buildHighlightTab() {
+    final items = _filteredHighlights;
+    if (items.isEmpty) {
+      return const AppEmptyState(
+        icon: Icons.highlight_outlined,
+        title: '暂无高亮',
+        message: '阅读时长按选中文本可添加划线 / 高亮',
+      );
+    }
+    return ListView.separated(
+      itemCount: items.length,
+      separatorBuilder: (_, __) => const Divider(height: 1),
+      itemBuilder: (context, index) {
+        final h = items[index];
+        final chapterLabel = h.chapterTitle.isNotEmpty
+            ? h.chapterTitle
+            : '第${h.chapterIndex + 1}章';
+        return ListTile(
+          leading: Icon(Icons.format_color_text,
+              color: Theme.of(context).colorScheme.primary),
+          title: Text(
+            h.content.isNotEmpty ? h.content : '（划线内容）',
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+          ),
+          subtitle: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(chapterLabel, maxLines: 1, overflow: TextOverflow.ellipsis),
+              if (h.note.isNotEmpty)
+                Text('批注：${h.note}',
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                        fontSize: 11,
+                        color: Theme.of(context).colorScheme.onSurfaceVariant)),
+            ],
+          ),
+          trailing: IconButton(
+            icon: const Icon(Icons.delete_outline),
+            tooltip: '删除高亮',
+            onPressed: () => _deleteHighlight(h),
+          ),
+          onTap: () {
+            // 返回高亮所在章索引，目录未重排
+            Navigator.pop(context, (h.chapterIndex, false));
           },
         );
       },

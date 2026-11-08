@@ -1,22 +1,23 @@
 import 'dart:io';
 
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:legado_md3/data/local/app_database.dart';
 import 'package:legado_md3/data/model/book.dart';
+import 'package:legado_md3/data/model/book_source.dart';
 import 'package:legado_md3/di/book_provider.dart';
 import 'package:legado_md3/help/source/source_engine.dart';
+import 'package:legado_md3/help/storage/download_service.dart';
+import 'package:legado_md3/ui/widgets/app_widgets.dart';
 
 /// 书架管理 —— 对齐 legado-E `ui/book/manage/BookshelfManageActivity.kt`。
 ///
-/// 功能位置与 E 一致：
-/// - 顶栏：标题「书架管理」+ 搜索过滤（书名/作者）+ 全选/反选
-/// - 列表：勾选框 + 封面 + 书名/作者，拖动右侧手柄手动排序（持久化 order）
-/// - 底部操作栏（E 的 SelectActionBar）：移动到分组 / 缓存 / 导出 / 删除
-///
-/// 书架主页的「多选模式」「清空书架」入口已迁移到本页，与 E 的菜单结构保持一致。
+/// 顶栏：标题「书架管理」+ 搜索过滤（书名/作者）+ 全选/反选；
+/// 列表：勾选框 + 封面 + 书名/作者，拖动右侧手柄手动排序（持久化 order）；
+/// 底部操作栏（E 的 SelectActionBar）对齐 `menu/bookshelf_menage_sel.xml`：
+/// 移动分组 / 移除分组 / 缓存 / 清理缓存 / 批量换源 / 允许更新 / 禁止更新 /
+/// 导出 / 选中区间 / 删除。缓存接入 DownloadService 真实队列。
 class BookshelfManageScreen extends StatefulWidget {
   const BookshelfManageScreen({super.key});
 
@@ -105,7 +106,16 @@ class _BookshelfManageScreenState extends State<BookshelfManageScreen> {
 
   void _exitSelectMode() => setState(() => _selected.clear());
 
-  // ---------- 批量操作（与书架页批量逻辑一致，集中到管理页） ----------
+  /// 批量操作后统一刷新：reload provider → 退出多选 → 刷新本页列表
+  Future<void> _reloadAfterBatch() async {
+    if (!mounted) return;
+    final provider = Provider.of<BookProvider>(context, listen: false);
+    await provider.loadBooks();
+    _exitSelectMode();
+    await _load();
+  }
+
+  // ---------- 分组（加入 / 移除） ----------
 
   Future<void> _batchMoveGroup() async {
     final provider = Provider.of<BookProvider>(context, listen: false);
@@ -116,13 +126,23 @@ class _BookshelfManageScreenState extends State<BookshelfManageScreen> {
     if (!mounted) return;
     await showDialog(
       context: context,
-      builder: (context) => AlertDialog(
+      builder: (dialogContext) => AlertDialog(
         title: const Text('移动到分组'),
         content: Column(mainAxisSize: MainAxisSize.min, children: [
           Wrap(spacing: 8, runSpacing: 4, children: [
             for (final g in groups)
-              ActionChip(label: Text(g), onPressed: () => _doMoveGroup(g)),
-            ActionChip(label: const Text('未分组'), onPressed: () => _doMoveGroup(null)),
+              ActionChip(
+                  label: Text(g),
+                  onPressed: () {
+                    Navigator.pop(dialogContext);
+                    _applyGroupToSelected(g);
+                  }),
+            ActionChip(
+                label: const Text('未分组'),
+                onPressed: () {
+                  Navigator.pop(dialogContext);
+                  _applyGroupToSelected(null);
+                }),
           ]),
           const SizedBox(height: 12),
           TextField(
@@ -130,13 +150,15 @@ class _BookshelfManageScreenState extends State<BookshelfManageScreen> {
               decoration: const InputDecoration(labelText: '新分组名称')),
         ]),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('取消')),
+          TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('取消')),
           FilledButton(
             onPressed: () {
               final g = controller.text.trim();
               if (g.isEmpty) return;
-              Navigator.pop(context);
-              _doMoveGroup(g);
+              Navigator.pop(dialogContext);
+              _applyGroupToSelected(g);
             },
             child: const Text('确定'),
           ),
@@ -145,88 +167,194 @@ class _BookshelfManageScreenState extends State<BookshelfManageScreen> {
     );
   }
 
-  Future<void> _doMoveGroup(String? group) async {
-    final provider = Provider.of<BookProvider>(context, listen: false);
+  Future<void> _applyGroupToSelected(String? group) async {
     for (final b in _selected) {
       b.group = group;
       await _db.updateBook(b);
     }
     if (!mounted) return;
-    Navigator.pop(context);
-    await provider.loadBooks();
-    _exitSelectMode();
-    await _load();
+    await _reloadAfterBatch();
   }
 
+  Future<void> _batchRemoveGroup() async {
+    await _applyGroupToSelected(null);
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('已移除所选书籍的分组')));
+    }
+  }
+
+  // ---------- 允许 / 禁止更新 ----------
+
+  Future<void> _setUpdateEnabled(bool enabled) async {
+    final picked = List.of(_selected);
+    for (final b in picked) {
+      b.canUpdate = enabled;
+      await _db.updateBook(b);
+    }
+    if (!mounted) return;
+    await _reloadAfterBatch();
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text('${enabled ? '已允许更新' : '已禁止更新'} ${picked.length} 本')));
+  }
+
+  // ---------- 缓存 / 清理缓存 ----------
+
+  /// 批量缓存：缓存项接入 DownloadService 真实队列（enqueue），
+  /// 由队列串行逐章下载并写入 book_chapters.content。
   Future<void> _batchCache() async {
     final picked = List.of(_selected);
     _exitSelectMode();
-    int ok = 0, fail = 0, done = 0;
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (d) => StatefulBuilder(builder: (d, setP) {
-        _cacheBooks(picked, (o, f, dd) {
-          if (!mounted) return;
-          setP(() {
-            ok = o;
-            fail = f;
-            done = dd;
-          });
-        });
-        return AlertDialog(
-          title: const Text('批量缓存'),
-          content: Column(mainAxisSize: MainAxisSize.min, children: [
-            LinearProgressIndicator(value: picked.isEmpty ? 0 : done / picked.length),
-            const SizedBox(height: 12),
-            Text('进度 $done/${picked.length}，成功 $ok 章，失败 $fail 章'),
-          ]),
-        );
-      }),
-    );
-  }
-
-  Future<void> _cacheBooks(List<Book> books,
-      void Function(int ok, int fail, int done) onProgress) async {
-    int ok = 0, fail = 0;
-    for (var i = 0; i < books.length; i++) {
-      final r = await _cacheBook(books[i]);
-      ok += r.ok;
-      fail += r.fail;
-      onProgress(ok, fail, i + 1);
-    }
-    if (!mounted) return;
-    Navigator.pop(context);
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text('批量缓存完成: 成功$ok章${fail > 0 ? ', 失败$fail章' : ''}')));
-  }
-
-  Future<({int ok, int fail})> _cacheBook(Book book) async {
-    int ok = 0, fail = 0;
-    if (book.local || book.origin == null || book.noteUrl == null) {
-      return (ok: ok, fail: fail);
-    }
-    final sources = await _db.getAllSources(enabled: true);
-    final source = sources.where((s) => s.bookSourceUrl == book.origin).firstOrNull;
-    if (source == null) return (ok: ok, fail: fail);
-    final chapters = await _db.getChapters(book.name, book.author);
-    for (final ch in chapters) {
-      if (ch.isVolume || (ch.content ?? '').isNotEmpty) continue;
-      try {
-        final content = await _engine.getContent(source, ch.url,
-            bookInfo: book.jsContext(), chapter: ch.jsContext(book.bookUrl));
-        if (content != null && content.isNotEmpty) {
-          await _db.updateChapterContent(book.name, book.author, ch.index, content);
-          ok++;
-        } else {
-          fail++;
+    final queued = await runWithBusyDialog<int>(
+      context,
+      message: '正在加入缓存队列...',
+      task: () async {
+        var n = 0;
+        for (final b in picked) {
+          if (b.local || b.origin == null || b.noteUrl == null) continue;
+          final chapters = await _db.getChapters(b.name, b.author);
+          if (chapters.isEmpty) continue;
+          await DownloadService.instance.enqueue(b.name, b.author);
+          n++;
         }
-      } catch (_) {
-        fail++;
-      }
+        return n;
+      }(),
+    );
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('已将 $queued 本书加入缓存队列')));
     }
-    return (ok: ok, fail: fail);
   }
+
+  /// 清理缓存：批量缓存的反操作——逐章把已缓存正文置空，保留目录结构。
+  Future<void> _batchClearCache() async {
+    final picked = List.of(_selected);
+    _exitSelectMode();
+    final cleared = await runWithBusyDialog<int>(
+      context,
+      message: '正在清理缓存...',
+      task: () async {
+        var n = 0;
+        for (final b in picked) {
+          final chapters = await _db.getChapters(b.name, b.author);
+          for (final ch in chapters) {
+            if ((ch.content ?? '').isEmpty) continue;
+            await _db.updateChapterContent(b.name, b.author, ch.index, '');
+            n++;
+          }
+        }
+        return n;
+      }(),
+    );
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('已清理 $cleared 章缓存')));
+    }
+  }
+
+  // ---------- 批量换源 ----------
+
+  /// 选中目标书源后，对每本书在该源检索同名书并切换目录地址。
+  /// 复用 change_source_screen 的换源字段逻辑（search + deleteChapters + 重置进度）。
+  Future<void> _batchChangeSource() async {
+    final sources = await _db.getAllSources(enabled: true);
+    if (!mounted) return;
+    if (sources.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('暂无可用书源，请先在书源管理中启用')));
+      return;
+    }
+    final target = await showAppRadioDialog<BookSource>(
+      context,
+      title: '批量换源 · 选择目标书源',
+      options: [
+        for (final s in sources)
+          AppRadioOption<BookSource>(s, s.bookSourceName),
+      ],
+      groupValue: sources.first,
+    );
+    if (target == null || !mounted) return;
+    final picked = List.of(_selected);
+    _exitSelectMode();
+    var fail = 0;
+    final ok = await runWithBusyDialog<int>(
+      context,
+      message: '正在批量换源...',
+      task: () async {
+        var done = 0;
+        for (final b in picked) {
+          if (b.local) {
+            fail++;
+            continue;
+          }
+          try {
+            final list = await _engine
+                .search(target, b.name)
+                .timeout(const Duration(seconds: 15), onTimeout: () => []);
+            final hit = list
+                    .where((r) =>
+                        r.name.replaceAll(RegExp(r'\s'), '') ==
+                        b.name.replaceAll(RegExp(r'\s'), ''))
+                    .firstOrNull ??
+                (list.isNotEmpty ? list.first : null);
+            if (hit == null) {
+              fail++;
+              continue;
+            }
+            b
+              ..origin = target.bookSourceUrl
+              ..originName = target.bookSourceName
+              ..noteUrl = hit.noteUrl
+              ..bookUrl = hit.bookUrl
+              ..coverUrl = (hit.coverUrl?.isNotEmpty ?? false)
+                  ? hit.coverUrl
+                  : b.coverUrl
+              ..lastChapter = (hit.lastChapter?.isNotEmpty ?? false)
+                  ? hit.lastChapter
+                  : b.lastChapter
+              ..intro = (hit.intro?.isNotEmpty ?? false) ? hit.intro : b.intro;
+            await _db.deleteChapters(b.name, b.author);
+            b.durChapterIndex = 0;
+            b.durChapterPos = 0;
+            b.lastChapterIndex = 0;
+            await _db.updateBook(b);
+            done++;
+          } catch (_) {
+            fail++;
+          }
+        }
+        return done;
+      }(),
+    );
+    if (!mounted) return;
+    await _reloadAfterBatch();
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text('批量换源完成：成功 $ok 本，失败 $fail 本')));
+  }
+
+  // ---------- 选中区间 ----------
+
+  /// 选中区间：把当前已选书籍在可见列表中的最小/最大索引之间的书全部选中。
+  void _selectRange() {
+    if (_selected.isEmpty) return;
+    final indices = <int>[];
+    for (var i = 0; i < _visible.length; i++) {
+      if (_selected.contains(_visible[i])) indices.add(i);
+    }
+    if (indices.isEmpty) return;
+    indices.sort();
+    final from = indices.first;
+    final to = indices.last;
+    setState(() {
+      for (var i = from; i <= to; i++) {
+        _selected.add(_visible[i]);
+      }
+    });
+  }
+
+  // ---------- 导出 ----------
 
   Future<void> _batchExport() async {
     final picked = List.of(_selected);
@@ -257,32 +385,23 @@ class _BookshelfManageScreenState extends State<BookshelfManageScreen> {
     }
   }
 
+  // ---------- 删除 ----------
+
   Future<void> _batchDelete() async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (c) => AlertDialog(
-        title: const Text('删除书籍'),
-        content: Text('确定删除选中的 ${_selected.length} 本书吗？将同时删除已缓存章节。'),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('取消')),
-          FilledButton(
-            style: FilledButton.styleFrom(
-                backgroundColor: Theme.of(context).colorScheme.error,
-                foregroundColor: Theme.of(context).colorScheme.onError),
-            onPressed: () => Navigator.pop(c, true),
-            child: const Text('删除'),
-          ),
-        ],
-      ),
+    final confirmed = await showAppConfirmDialog(
+      context,
+      title: '删除书籍',
+      content: '确定删除选中的 ${_selected.length} 本书吗？将同时删除已缓存章节。',
+      confirmText: '删除',
+      danger: true,
     );
-    if (confirmed == true) {
-      for (final book in _selected) {
+    if (confirmed) {
+      final picked = List.of(_selected);
+      for (final book in picked) {
         await _db.deleteBook(book.name, book.author);
       }
-      final provider = Provider.of<BookProvider>(context, listen: false);
-      await provider.loadBooks();
-      _exitSelectMode();
-      await _load();
+      if (!mounted) return;
+      await _reloadAfterBatch();
     }
   }
 
@@ -295,10 +414,8 @@ class _BookshelfManageScreenState extends State<BookshelfManageScreen> {
     list.insert(newIndex, item);
     setState(() {
       _visible = list;
-      // 同步回全量列表，保持两者顺序一致
       _books = list;
     });
-    // 持久化 order：按当前可见顺序连续赋值（置顶书籍 order<0 保持不变）
     int seq = 0;
     for (final b in _visible) {
       if ((b.order ?? 0) < 0) continue;
@@ -316,9 +433,10 @@ class _BookshelfManageScreenState extends State<BookshelfManageScreen> {
             ? const Text('书架管理')
             : Text('已选 ${_selected.length} 本'),
         actions: [
-          if (_selected.isEmpty) ...[
+          if (_selected.isEmpty)
             IconButton(
-              icon: const Icon(Icons.search),
+              icon: const Icon(Icons.search_outlined),
+              tooltip: '搜索',
               onPressed: () async {
                 final q = await showSearch<String>(
                   context: context,
@@ -330,11 +448,20 @@ class _BookshelfManageScreenState extends State<BookshelfManageScreen> {
                   _applyFilter();
                 }
               },
-            ),
-          ] else ...[
-            IconButton(icon: const Icon(Icons.select_all), tooltip: '全选', onPressed: _selectAll),
-            IconButton(icon: const Icon(Icons.flip), tooltip: '反选', onPressed: _invert),
-            IconButton(icon: const Icon(Icons.close), tooltip: '退出多选', onPressed: _exitSelectMode),
+            )
+          else ...[
+            IconButton(
+                icon: const Icon(Icons.select_all_outlined),
+                tooltip: '全选',
+                onPressed: _selectAll),
+            IconButton(
+                icon: const Icon(Icons.flip_outlined),
+                tooltip: '反选',
+                onPressed: _invert),
+            IconButton(
+                icon: const Icon(Icons.close_outlined),
+                tooltip: '退出多选',
+                onPressed: _exitSelectMode),
           ],
         ],
       ),
@@ -379,12 +506,33 @@ class _BookshelfManageScreenState extends State<BookshelfManageScreen> {
           : SafeArea(
               child: Column(mainAxisSize: MainAxisSize.min, children: [
                 const Divider(height: 1),
-                Row(mainAxisAlignment: MainAxisAlignment.spaceEvenly, children: [
-                  _batchBtn(Icons.drive_file_move_outline, '移动分组', _batchMoveGroup),
-                  _batchBtn(Icons.cloud_download_outlined, '缓存', _batchCache),
-                  _batchBtn(Icons.file_upload_outlined, '导出', _batchExport),
-                  _batchBtn(Icons.delete_sweep_outlined, '删除', _batchDelete, danger: true),
-                ]),
+                SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                  child: Row(children: [
+                    _batchBtn(Icons.drive_file_move_outline, '移动分组',
+                        _batchMoveGroup),
+                    _batchBtn(Icons.folder_off_outlined, '移除分组',
+                        _batchRemoveGroup),
+                    _batchBtn(Icons.cloud_download_outlined, '缓存',
+                        _batchCache),
+                    _batchBtn(Icons.delete_sweep_outlined, '清理缓存',
+                        _batchClearCache),
+                    _batchBtn(Icons.swap_horiz_outlined, '批量换源',
+                        _batchChangeSource),
+                    _batchBtn(Icons.update_outlined, '允许更新',
+                        () => _setUpdateEnabled(true)),
+                    _batchBtn(Icons.update_disabled_outlined, '禁止更新',
+                        () => _setUpdateEnabled(false)),
+                    _batchBtn(Icons.file_upload_outlined, '导出',
+                        _batchExport),
+                    _batchBtn(Icons.segment_outlined, '选中区间',
+                        _selectRange),
+                    _batchBtn(Icons.delete_sweep_outlined, '删除',
+                        _batchDelete,
+                        danger: true),
+                  ]),
+                ),
               ]),
             ),
     );
@@ -394,31 +542,12 @@ class _BookshelfManageScreenState extends State<BookshelfManageScreen> {
     final url = (book.customCoverUrl != null && book.customCoverUrl!.isNotEmpty)
         ? book.customCoverUrl
         : book.coverUrl;
-    if (url == null || url.isEmpty) {
-      return Container(
-        width: 36,
-        height: 50,
-        decoration: BoxDecoration(
-          color: const Color(0xFF607D8B),
-          borderRadius: BorderRadius.circular(4),
-        ),
-        child: const Icon(Icons.book, size: 18, color: Colors.white),
-      );
-    }
-    return ClipRRect(
-      borderRadius: BorderRadius.circular(4),
-      child: CachedNetworkImage(
-        imageUrl: url,
-        width: 36,
-        height: 50,
-        fit: BoxFit.cover,
-        errorWidget: (_, __, ___) => Container(
-          width: 36,
-          height: 50,
-          color: const Color(0xFF607D8B),
-          child: const Icon(Icons.book, size: 18, color: Colors.white),
-        ),
-      ),
+    return BookCover(
+      name: book.name,
+      coverUrl: url,
+      width: 36,
+      height: 50,
+      radius: 4,
     );
   }
 
@@ -441,13 +570,15 @@ class _BookSearchDelegate extends SearchDelegate<String> {
   @override
   List<Widget> buildActions(BuildContext context) => [
         IconButton(
-            icon: const Icon(Icons.clear),
+            icon: const Icon(Icons.clear_outlined),
+            tooltip: '清空',
             onPressed: () => query = ''),
       ];
 
   @override
   Widget buildLeading(BuildContext context) => IconButton(
         icon: const Icon(Icons.arrow_back),
+        tooltip: '返回',
         onPressed: () => close(context, ''),
       );
 

@@ -38,14 +38,16 @@ jobs:
       - name: Run tests
         run: flutter test
 
+      # 欢迎页图标来自运行时 IconData 码点（配置驱动），无法静态 tree-shake；
+      # 不加 --no-tree-shake-icons 会在 icon tree shaking 阶段直接构建失败。
       - name: Build Release APK (universal)
         run: |
-          flutter build apk --release
+          flutter build apk --release --no-tree-shake-icons
           cp build/app/outputs/flutter-apk/app-release.apk /tmp/app-universal-release.apk
 
       - name: Build arm64 APK
         run: |
-          flutter build apk --release --target-platform android-arm64
+          flutter build apk --release --no-tree-shake-icons --target-platform android-arm64
           cp build/app/outputs/flutter-apk/app-release.apk /tmp/app-arm64-release.apk
 
       - name: Upload APK artifact
@@ -106,7 +108,7 @@ jobs:
         run: flutter pub get
 
       - name: Build iOS (release, unsigned)
-        run: flutter build ios --release --no-codesign
+        run: flutter build ios --release --no-codesign --no-tree-shake-icons
 
       - name: Package unsigned IPA
         run: |

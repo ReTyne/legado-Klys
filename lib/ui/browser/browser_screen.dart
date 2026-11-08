@@ -11,6 +11,7 @@ import 'package:share_plus/share_plus.dart';
 
 import 'package:legado_md3/data/local/app_database.dart';
 import 'package:legado_md3/data/model/book_source.dart';
+import 'package:legado_md3/help/device/native_bridge.dart';
 import 'package:legado_md3/help/source/source_engine.dart';
 import 'package:legado_md3/help/storage/import_book_service.dart';
 
@@ -240,6 +241,7 @@ class _BrowserScreenState extends State<BrowserScreen> {
                 title: Text(t.title, maxLines: 1, overflow: TextOverflow.ellipsis),
                 subtitle: Text(t.url, maxLines: 1, overflow: TextOverflow.ellipsis),
                 trailing: IconButton(
+                  tooltip: '关闭标签',
                   icon: const Icon(Icons.close),
                   onPressed: () => _closeTab(i),
                 ),
@@ -460,6 +462,155 @@ class _BrowserScreenState extends State<BrowserScreen> {
     }
   }
 
+  // ---------- 多格式下载（按 MIME 保存 EPUB/PDF/图片/视频等） ----------
+  static const Map<String, String> _mimeExt = <String, String>{
+    'application/epub+zip': 'epub',
+    'application/pdf': 'pdf',
+    'text/plain': 'txt',
+    'text/html': 'html',
+    'application/json': 'json',
+    'application/xml': 'xml',
+    'image/jpeg': 'jpg',
+    'image/png': 'png',
+    'image/gif': 'gif',
+    'image/webp': 'webp',
+    'video/mp4': 'mp4',
+    'video/x-matroska': 'mkv',
+    'video/webm': 'webm',
+    'audio/mpeg': 'mp3',
+    'audio/mp4': 'm4a',
+    'application/zip': 'zip',
+    'application/x-rar-compressed': 'rar',
+    'application/octet-stream': 'bin',
+  };
+  static const Set<String> _knownExt = <String>{
+    'epub', 'pdf', 'txt', 'html', 'htm', 'json', 'xml', 'jpg', 'jpeg', 'png',
+    'gif', 'webp', 'mp4', 'mkv', 'webm', 'mp3', 'm4a', 'zip', 'cbz', 'rar',
+    '7z', 'mobi', 'azw3',
+  };
+
+  /// 依据 URL 文件名与响应 Content-Type 推断保存扩展名。
+  String _extensionFor(String mime, String name) {
+    final dot = name.lastIndexOf('.');
+    if (dot >= 0) {
+      final e = name.substring(dot + 1).toLowerCase();
+      if (_knownExt.contains(e)) return e;
+    }
+    final m = mime.toLowerCase().split(';').first.trim();
+    final mapped = _mimeExt[m];
+    if (mapped != null) return mapped;
+    if (m.startsWith('image/')) return m.substring(6);
+    if (m.startsWith('video/')) return m.substring(6);
+    if (m.startsWith('audio/')) return m.substring(6);
+    return 'bin';
+  }
+
+  /// 下载任意资源并按真实 MIME 落盘；随后可选择打开 / 分享（走 NativeBridge）。
+  Future<void> _downloadAndSave(
+    String url, {
+    String? suggestedName,
+    String? mimeHint,
+  }) async {
+    final target = _normalize(url);
+    _toast('正在下载资源…');
+    HttpClient? client;
+    try {
+      client = HttpClient();
+      final uri = Uri.parse(target);
+      final req = await client.getUrl(uri);
+      req.headers.set(HttpHeaders.userAgentHeader, _uaMobile);
+      final resp = await req.close();
+      if (resp.statusCode != 200) {
+        throw Exception('HTTP ${resp.statusCode}');
+      }
+      final reported = resp.headers.contentType?.mimeType ?? '';
+      final mime = (mimeHint != null && mimeHint.isNotEmpty)
+          ? mimeHint
+          : (reported.isNotEmpty ? reported : 'application/octet-stream');
+      final bytes = await resp.fold<List<int>>(<int>[], (acc, chunk) {
+        acc.addAll(chunk);
+        return acc;
+      });
+      client.close();
+      client = null;
+
+      final segments = uri.pathSegments.where((s) => s.isNotEmpty).toList();
+      var baseName = (suggestedName != null && suggestedName.isNotEmpty)
+          ? suggestedName
+          : (segments.isNotEmpty ? segments.last : 'download');
+      baseName = baseName.replaceAll(RegExp(r'[\\/:*?"<>|]'), '_');
+      final ext = _extensionFor(mime, baseName);
+      if (!baseName.toLowerCase().endsWith('.$ext')) {
+        baseName = '$baseName.$ext';
+      }
+      final dir = await getApplicationDocumentsDirectory();
+      final targetDir = Directory(p.join(dir.path, 'download'));
+      if (!await targetDir.exists()) await targetDir.create(recursive: true);
+      final file = File(p.join(targetDir.path,
+          '${p.basenameWithoutExtension(baseName)}_${DateTime.now().millisecondsSinceEpoch}.$ext'));
+      await file.writeAsBytes(bytes);
+      if (!mounted) return;
+      final action = await showDialog<String>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('资源已保存'),
+          content: Text('$baseName\n${bytes.length} 字节 · $mime\n${file.path}'),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(ctx, 'save'),
+                child: const Text('仅保存')),
+            TextButton(
+                onPressed: () => Navigator.pop(ctx, 'open'),
+                child: const Text('打开')),
+            FilledButton(
+                onPressed: () => Navigator.pop(ctx, 'share'),
+                child: const Text('分享')),
+          ],
+        ),
+      );
+      if (action == 'open') {
+        final ok =
+            await NativeBridge.instance.openFile(file.path, mime: mime);
+        _toast(ok ? '已请求外部应用打开' : '当前平台不支持外部打开，已保存到本地');
+      } else if (action == 'share') {
+        final ok = await NativeBridge.instance.shareFile(file.path,
+            mime: mime, title: baseName);
+        _toast(ok ? '已打开系统分享面板' : '当前平台不支持系统分享，已保存到本地');
+      }
+    } catch (e) {
+      client?.close();
+      _toast('下载失败：$e');
+    }
+  }
+
+  /// 菜单入口：输入资源 URL（默认当前页），按格式保存。
+  Future<void> _promptDownload() async {
+    final ctl = TextEditingController(text: _tab.url);
+    final v = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('下载文件（多格式）'),
+        content: TextField(
+          controller: ctl,
+          decoration: const InputDecoration(
+            hintText: 'EPUB / PDF / 图片 / 视频等资源地址',
+            labelText: '资源 URL',
+          ),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx), child: const Text('取消')),
+          FilledButton(
+              onPressed: () => Navigator.pop(ctx, ctl.text),
+              child: const Text('下载')),
+        ],
+      ),
+    );
+    if (v != null && v.trim().isNotEmpty) {
+      await _downloadAndSave(v.trim());
+    }
+  }
+
   // ---------- 保存网页为 txt ----------
   Future<void> _savePageAsTxt() async {
     final html = await _currentHtml();
@@ -535,6 +686,7 @@ class _BrowserScreenState extends State<BrowserScreen> {
               label: const Text('完成'),
             ),
           IconButton(
+              tooltip: '刷新',
               icon: const Icon(Icons.refresh), onPressed: _reload),
           IconButton(
             icon: const Icon(Icons.search),
@@ -542,6 +694,7 @@ class _BrowserScreenState extends State<BrowserScreen> {
             onPressed: _sniff,
           ),
           PopupMenuButton<String>(
+            tooltip: '更多',
             onSelected: (v) async {
               switch (v) {
                 case 'ua_desktop':
@@ -552,6 +705,9 @@ class _BrowserScreenState extends State<BrowserScreen> {
                   break;
                 case 'save_txt':
                   await _savePageAsTxt();
+                  break;
+                case 'download_file':
+                  await _promptDownload();
                   break;
                 case 'copy':
                   Clipboard.setData(ClipboardData(text: _tab.url));
@@ -581,6 +737,8 @@ class _BrowserScreenState extends State<BrowserScreen> {
               ),
               const PopupMenuItem<String>(
                   value: 'save_txt', child: Text('保存网页为 TXT')),
+              const PopupMenuItem<String>(
+                  value: 'download_file', child: Text('下载文件（多格式）')),
               const PopupMenuDivider(),
               ..._quickLinks.map((e) => PopupMenuItem<String>(
                     value: e['url'],
@@ -598,11 +756,13 @@ class _BrowserScreenState extends State<BrowserScreen> {
           preferredSize: const Size.fromHeight(44),
           child: Row(children: [
             IconButton(
+              tooltip: '后退',
               iconSize: 20,
               icon: const Icon(Icons.arrow_back),
               onPressed: _canGoBack ? () => _goBack() : null,
             ),
             IconButton(
+              tooltip: '前进',
               iconSize: 20,
               icon: const Icon(Icons.arrow_forward),
               onPressed: _canGoForward ? () => _goForward() : null,
@@ -620,7 +780,7 @@ class _BrowserScreenState extends State<BrowserScreen> {
                     contentPadding:
                         const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
                     border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(20)),
+                        borderRadius: BorderRadius.circular(12)),
                   ),
                 ),
               ),
@@ -635,6 +795,7 @@ class _BrowserScreenState extends State<BrowserScreen> {
               ),
             ),
             IconButton(
+              tooltip: '标签页',
               iconSize: 20,
               icon: const Icon(Icons.tab),
               onPressed: _showTabs,
@@ -653,12 +814,22 @@ class _BrowserScreenState extends State<BrowserScreen> {
               javaScriptEnabled: true,
               domStorageEnabled: true,
               useShouldOverrideUrlLoading: true,
+              useOnDownloadStart: true,
               mixedContentMode: MixedContentMode.MIXED_CONTENT_ALWAYS_ALLOW,
               userAgent: _uaMobile,
               blockNetworkImage: _noImage,
               loadsImagesAutomatically: !_noImage,
             ),
             onWebViewCreated: (c) => _controller = c,
+            // 点击 EPUB/PDF/图片/视频等下载链接时，按真实 MIME 拦截并落盘，
+            // 随后可打开/分享（走 NativeBridge）。
+            onDownloadStartRequest: (c, req) {
+              _downloadAndSave(
+                req.url.toString(),
+                suggestedName: req.suggestedFilename,
+                mimeHint: req.mimeType,
+              );
+            },
             onProgressChanged: (c, v) {
               if (mounted) setState(() => _progress = v);
             },
@@ -736,6 +907,7 @@ class _BrowserScreenState extends State<BrowserScreen> {
             if (r.bookUrl != null)
               TextButton(onPressed: _sniffBook, child: const Text('嗅探书籍')),
             IconButton(
+              tooltip: '关闭',
               icon: const Icon(Icons.close, size: 18),
               onPressed: () => setState(() => _sniffResult = null),
             ),

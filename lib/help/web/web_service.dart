@@ -9,6 +9,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:shelf/shelf.dart';
 import 'package:shelf/shelf_io.dart' as shelf_io;
 import 'package:shelf_router/shelf_router.dart';
+import 'package:legado_md3/help/http/rss_service.dart';
 import 'package:legado_md3/data/model/book_source.dart';
 import 'package:legado_md3/data/model/book.dart';
 import 'package:legado_md3/data/model/book_chapter.dart';
@@ -19,11 +20,17 @@ import 'package:legado_md3/di/book_provider.dart';
 import 'package:legado_md3/help/source/source_engine.dart';
 import 'package:legado_md3/help/storage/import_book_service.dart';
 import '../../data/local/app_database.dart';
+import 'web_socket_handlers.dart';
 
-/// Web 远程控制服务（对齐 legado-E 的 HttpServer 路由）。
-/// 说明：legado-E 的 /bookSourceDebug、/rssSourceDebug、/searchBook 走 WebSocket
-/// 推送，本项目没有 web_socket_channel / shelf_web_socket 依赖，降级为
-/// Server-Sent Events：GET /debug/stream + WebService.broadcastDebug()。
+/// Web 远程控制服务（对齐 legado-E 的 HttpServer 26 个路由 + 3 个 WebSocket）。
+///
+/// * HTTP：shelf + shelf_router，26 个端点全部实现（另多做若干管理端点）；
+/// * WebSocket：/bookSourceDebug、/rssSourceDebug、/searchBook 走标准 RFC6455
+///   升级（见 [WebSocketHandlers]），按 `WebSocketServer.kt:11-22` 分派，
+///   30s 协议级 ping 保活；原 `/searchBook` HTTP 端点与 `/debug/stream` SSE
+///   一并保留兼容；
+/// * Sigma 把 WS 放在 port+1 独立端口，这里复用同一端口按路径分派升级，
+///   避免 Web 管理端需要连两个端口（能力等价，属「不同方式已实现」）。
 class WebService {
   final DatabaseService _db = DatabaseService();
   final BookSourceEngine _engine = BookSourceEngine();
@@ -75,7 +82,7 @@ class WebService {
     this.port = port;
     final router = Router();
 
-    // ---- 实时调试推送（WebSocket 降级为 SSE），必须先于静态资源通配路由 ----
+    // ---- 实时调试推送（SSE 兼容端点；并列 /bookSourceDebug 真 WebSocket），必须先于静态资源通配路由 ----
     router.get('/debug/stream', _debugStream);
     router.post('/debug/log', _debugLog);
     router.get('/debug/history', _debugHistoryApi);
@@ -99,7 +106,7 @@ class WebService {
     router.post('/saveBookProgress', _saveBookProgress);
     router.get('/analyzeBookUrl', _analyzeBookUrl);
 
-    // 搜索（legado-E 走 WebSocket，此处降级为 HTTP）
+    // 搜索（HTTP 兼容端点；并列 /searchBook 真 WebSocket）
     router.get('/searchBook', _searchBook);
     router.post('/searchBook', _searchBook);
     router.get('/searchBookMulti', _searchBookMulti);
@@ -141,13 +148,30 @@ class WebService {
     router.get('/index.html', _serveIndex);
     router.get(r'/<asset|.*>', _serveAsset);
 
-    final handler = const Pipeline()
+    // 3 个真正的 WebSocket 端点：调试日志复用 SSE 的广播流，消息动作走
+    // 真实书源搜索 / 书源校验 / RSS 拉取（见 _handleWsMessage）。
+    final wsHandlers = WebSocketHandlers(
+      debugStream: _debugController.stream,
+      onMessage: _handleWsMessage,
+    );
+
+    final httpHandler = const Pipeline()
         .addMiddleware(logRequests())
         .addMiddleware(_corsMiddleware())
         .addMiddleware(_authMiddleware())
         .addHandler(router.call);
 
-    _server = await shelf_io.serve(handler, InternetAddress.anyIPv4, port);
+    // WebSocket 升级必须在所有 async 中间件之外同步分派：shelf 的
+    // request.hijack 靠同步抛 HijackException 接管 socket，一旦进入
+    // CORS/auth 中间件的 await，就无法完成 101 协议切换。
+    FutureOr<Response> rootHandler(Request request) {
+      if (wsHandlers.shouldHandle(request)) {
+        return wsHandlers.dispatch(request)!;
+      }
+      return httpHandler(request);
+    }
+
+    _server = await shelf_io.serve(rootHandler, InternetAddress.anyIPv4, port);
   }
 
   /// 访问鉴权中间件：设置了 web_password 时，要求 ?key= 或 Authorization 头匹配
@@ -218,10 +242,27 @@ class WebService {
     return '127.0.0.1';
   }
 
+  /// Sigma `HttpServer.kt` 对 `List<*> > 3000` 采用 chunked 分块响应。
+  /// shelf 在 body 为 Stream 时自动使用 `Transfer-Encoding: chunked`，
+  /// 客户端仍收到完整 JSON，仅传输层分块，避免一次性编码超大列表。
   Response _jsonResponse(dynamic data, {int statusCode = 200}) {
+    final headers = {'Content-Type': 'application/json; charset=utf-8'};
+    if (data is List && data.length > 3000) {
+      final bytes = utf8.encode(jsonEncode(data));
+      const chunkSize = 64 * 1024;
+      Stream<List<int>> chunked() async* {
+        for (var i = 0; i < bytes.length; i += chunkSize) {
+          final end =
+              i + chunkSize > bytes.length ? bytes.length : i + chunkSize;
+          yield bytes.sublist(i, end);
+        }
+      }
+
+      return Response(statusCode, headers: headers, body: chunked());
+    }
     return Response(
       statusCode,
-      headers: {'Content-Type': 'application/json; charset=utf-8'},
+      headers: headers,
       body: jsonEncode(data),
     );
   }
@@ -272,7 +313,7 @@ class WebService {
     }
   }
 
-  // === SSE 调试日志（WebSocket 降级） ===
+  // === SSE 调试日志（兼容端点，并列 3 个真 WebSocket） ===
   Response _debugStream(Request request) {
     late final StreamController<List<int>> ctl;
     Timer? heartbeat;
@@ -335,6 +376,126 @@ class WebService {
   }
 
   Response _debugHistoryApi(Request request) => _rd(_debugHistory.toList());
+
+  // === 3 个 WebSocket 端点（对齐 WebSocketServer.kt:11-22） ===
+
+  /// 统一分派：搜索端点逐批推结果，调试端点触发真实校验并回推日志。
+  Future<void> _handleWsMessage(
+    WsEndpoint endpoint,
+    Map<String, dynamic> message,
+    void Function(String text) send,
+    void Function(String reason) close,
+  ) async {
+    switch (endpoint) {
+      case WsEndpoint.searchBook:
+        await _wsSearch(message, send, close);
+        break;
+      case WsEndpoint.bookSourceDebug:
+      case WsEndpoint.rssSourceDebug:
+        await _wsDebug(endpoint, message, send, close);
+        break;
+    }
+  }
+
+  /// `/searchBook`：收到 `{key, bookSourceUrl?}` 后逐源搜索、逐批回推。
+  /// 对齐 `BookSearchWebSocket.onSearchSuccess`（每批 send JSON 数组）与
+  /// `onSearchFinish`（结束态文本 + NormalClosure 关闭）。
+  Future<void> _wsSearch(
+    Map<String, dynamic> message,
+    void Function(String text) send,
+    void Function(String reason) close,
+  ) async {
+    final key = (message['key'] ?? '').toString();
+    if (key.trim().isEmpty) {
+      send('参数key不能为空');
+      close('Search finish');
+      return;
+    }
+    final urls = <String>[];
+    final raw = message['bookSourceUrl'] ?? message['url'];
+    if (raw is String && raw.isNotEmpty) urls.add(raw);
+    final sources = await _targetSources(urls);
+    if (sources.isEmpty) {
+      send('没有可用书源');
+      close('Search finish');
+      return;
+    }
+    await Future.wait(sources.map((s) async {
+      try {
+        final books = await _engine
+            .search(s, key)
+            .timeout(const Duration(seconds: 30));
+        final batch = <Map<String, dynamic>>[];
+        for (final b in books) {
+          final j = b.toJson();
+          j['originName'] = s.bookSourceName;
+          j['origin'] = s.bookSourceUrl;
+          batch.add(j);
+        }
+        send(jsonEncode(batch));
+      } catch (e) {
+        logDebug('[${s.bookSourceName}] WebSocket 搜索失败: $e');
+      }
+    }));
+    send('Search finish');
+    close('Search finish');
+  }
+
+  /// `/bookSourceDebug` 与 `/rssSourceDebug`：收到 `{tag, key?}` 后按 tag
+  /// 找源，用真实书源搜索 / RSS 拉取触发一次调试，日志经 [logDebug] 进入
+  /// 全局广播流回推给所有调试连接；结束态 state=1000 对齐 `printLog`。
+  Future<void> _wsDebug(
+    WsEndpoint endpoint,
+    Map<String, dynamic> message,
+    void Function(String text) send,
+    void Function(String reason) close,
+  ) async {
+    final tag = (message['tag'] ?? '').toString();
+    if (tag.trim().isEmpty) {
+      send('tag 不能为空');
+      close('调试结束');
+      return;
+    }
+    final key = (message['key'] ?? '').toString();
+    final isBook = endpoint == WsEndpoint.bookSourceDebug;
+    logDebug('${isBook ? '书源' : 'RSS源'}调试开始: $tag'
+        '${key.isNotEmpty ? ' · 关键词=$key' : ''}');
+    try {
+      if (isBook) {
+        final source = await _db.getSource(tag);
+        if (source == null) {
+          logDebug('未找到书源: $tag');
+        } else {
+          final probeKey = key.isNotEmpty ? key : '测试';
+          final books = await _engine
+              .search(source, probeKey)
+              .timeout(const Duration(seconds: 30));
+          logDebug(
+              '[${source.bookSourceName}] 搜索「$probeKey」返回 ${books.length} 条');
+        }
+      } else {
+        RssSource? rss;
+        for (final s in await _db.getRssSources()) {
+          if (s.sourceUrl == tag || s.sourceName == tag) {
+            rss = s;
+            break;
+          }
+        }
+        if (rss == null) {
+          logDebug('未找到 RSS 源: $tag');
+        } else {
+          final articles = await RssService()
+              .fetchRss(rss)
+              .timeout(const Duration(seconds: 30));
+          logDebug('[${rss.sourceName}] 拉取到 ${articles.length} 篇文章');
+        }
+      }
+    } catch (e) {
+      logDebug('调试异常: $e');
+    }
+    send(jsonEncode({'state': 1000, 'msg': '调试结束', 'tag': tag}));
+    close('调试结束');
+  }
 
   // === 书源API ===
   Future<Response> _getBookSources(Request request) async {
@@ -707,7 +868,7 @@ class WebService {
     return _rdError('没有书源匹配该链接');
   }
 
-  // === 搜索（legado-E 走 WebSocket /bookSourceDebug、/searchBook，此处降级 HTTP） ===
+  // === 搜索（HTTP 兼容端点；并列 /bookSourceDebug、/searchBook 真 WebSocket） ===
   Future<List<BookSource>> _targetSources(List<String> urls) async {
     final all = await _db.getAllSources(enabled: true);
     if (urls.isEmpty) return all;

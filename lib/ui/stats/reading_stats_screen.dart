@@ -1,8 +1,12 @@
 import 'package:flutter/material.dart';
+import 'package:legado_md3/data/local/app_database.dart';
 import 'package:legado_md3/help/readaloud/reading_record.dart';
+import 'package:legado_md3/ui/config/read_record_config.dart';
+import 'package:legado_md3/ui/widgets/app_widgets.dart';
 
-// 对齐 E：legado-E 无「阅读统计」独立界面，本页无任何主入口引用（我的页/设置页/主导航均未接入），
-// 页面文件保留仅供潜在复用，避免删除导致编译断裂。
+// 对齐 E：legado-E 无独立「阅读统计」界面，本页为本项目增强页。
+// 主入口在 lib/ui/main/my/profile_screen.dart 的「阅读统计」（我的页），
+// 并非「无任何主入口引用」。统计开关 / 书籍分布明细 / 点击开书为第十轮补齐。
 class ReadingStatsScreen extends StatefulWidget {
   const ReadingStatsScreen({super.key});
 
@@ -10,20 +14,25 @@ class ReadingStatsScreen extends StatefulWidget {
   State<ReadingStatsScreen> createState() => _ReadingStatsScreenState();
 }
 
-class _ReadingStatsScreenState extends State<ReadingStatsScreen> with SingleTickerProviderStateMixin {
+class _ReadingStatsScreenState extends State<ReadingStatsScreen>
+    with SingleTickerProviderStateMixin {
   final ReadingRecordService _recordService = ReadingRecordService();
+  final DatabaseService _db = DatabaseService();
   late TabController _tabController;
   int _todayDuration = 0;
   int _totalDuration = 0;
   int _readingDays = 0;
   int _continuousDays = 0;
   Map<String, int> _recentStats = {};
+  List<_BookStat> _bookStats = [];
+  bool _statsEnabled = true;
+  bool _recordEnabled = true;
   bool _isLoading = true;
 
   @override
   void initState() {
     super.initState();
-    _tabController = TabController(length: 2, vsync: this);
+    _tabController = TabController(length: 3, vsync: this);
     _loadStats();
   }
 
@@ -40,7 +49,29 @@ class _ReadingStatsScreenState extends State<ReadingStatsScreen> with SingleTick
     _readingDays = await _recordService.getReadingDays();
     _continuousDays = await _recordService.getContinuousDays();
     _recentStats = await _recordService.getRecentStats(30);
+    _statsEnabled = await ReadRecordConfig.isStatsEnabled();
+    _recordEnabled = await ReadRecordConfig.isRecordEnabled();
+    _bookStats = await _loadBookStats();
     if (mounted) setState(() => _isLoading = false);
+  }
+
+  /// 按 (书名, 作者) 聚合阅读时长，避免用字符串拼接键时作者含下划线被误拆。
+  Future<List<_BookStat>> _loadBookStats() async {
+    final records = await _db.getReadRecords();
+    final agg = <String, _BookStat>{};
+    for (final r in records) {
+      final key = '${r.bookName}\u0000${r.author}';
+      final stat =
+          agg.putIfAbsent(key, () => _BookStat(r.bookName, r.author, 0));
+      stat.seconds += r.duration;
+    }
+    return agg.values.toList()
+      ..sort((a, b) => b.seconds.compareTo(a.seconds));
+  }
+
+  Future<void> _setStatsEnabled(bool v) async {
+    setState(() => _statsEnabled = v);
+    await ReadRecordConfig.setStatsEnabled(v);
   }
 
   @override
@@ -53,6 +84,7 @@ class _ReadingStatsScreenState extends State<ReadingStatsScreen> with SingleTick
           tabs: const [
             Tab(text: '概览'),
             Tab(text: '时间轴'),
+            Tab(text: '书籍分布'),
           ],
         ),
       ),
@@ -63,6 +95,7 @@ class _ReadingStatsScreenState extends State<ReadingStatsScreen> with SingleTick
               children: [
                 _buildOverviewTab(),
                 _buildTimelineTab(),
+                _buildBooksTab(),
               ],
             ),
     );
@@ -72,26 +105,55 @@ class _ReadingStatsScreenState extends State<ReadingStatsScreen> with SingleTick
     return ListView(
       padding: const EdgeInsets.all(16),
       children: [
+        AppSwitchTile(
+          title: '启用阅读统计',
+          subtitle: _statsEnabled
+              ? 'enableReadingStats：汇总时长、天数与趋势'
+              : '已关闭：暂停汇总统计（记录本身仍保留）',
+          value: _statsEnabled,
+          onChanged: _setStatsEnabled,
+        ),
+        if (!_recordEnabled)
+          _buildPausedBanner('阅读记录已暂停（enableReadRecord），统计不再累加'),
+        const SizedBox(height: 12),
         Row(
           children: [
-            Expanded(child: _buildStatCard('今日阅读', ReadingRecordService.formatDuration(_todayDuration), Icons.today)),
+            Expanded(child: _buildStatCard('今日阅读', ReadingRecordService.formatDuration(_statsEnabled ? _todayDuration : 0), Icons.today)),
             const SizedBox(width: 12),
-            Expanded(child: _buildStatCard('累计阅读', ReadingRecordService.formatDuration(_totalDuration), Icons.menu_book)),
+            Expanded(child: _buildStatCard('累计阅读', ReadingRecordService.formatDuration(_statsEnabled ? _totalDuration : 0), Icons.menu_book)),
           ],
         ),
         const SizedBox(height: 12),
         Row(
           children: [
-            Expanded(child: _buildStatCard('阅读天数', '$_readingDays 天', Icons.calendar_today)),
+            Expanded(child: _buildStatCard('阅读天数', '${_statsEnabled ? _readingDays : 0} 天', Icons.calendar_today)),
             const SizedBox(width: 12),
-            Expanded(child: _buildStatCard('连续阅读', '$_continuousDays 天', Icons.local_fire_department)),
+            Expanded(child: _buildStatCard('连续阅读', '${_statsEnabled ? _continuousDays : 0} 天', Icons.local_fire_department)),
           ],
         ),
         const SizedBox(height: 24),
         Text('近30天阅读趋势', style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
         const SizedBox(height: 16),
-        _buildChart(),
+        _statsEnabled ? _buildChart() : const AppEmptyState(
+          icon: Icons.bar_chart_outlined,
+          title: '统计已暂停',
+          message: '开启「启用阅读统计」后显示趋势图',
+        ),
       ],
+    );
+  }
+
+  Widget _buildPausedBanner(String text) {
+    final cs = Theme.of(context).colorScheme;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: cs.errorContainer,
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Text(text,
+          style: TextStyle(fontSize: 12, color: cs.onErrorContainer)),
     );
   }
 
@@ -116,7 +178,11 @@ class _ReadingStatsScreenState extends State<ReadingStatsScreen> with SingleTick
 
   Widget _buildChart() {
     if (_recentStats.isEmpty) {
-      return const Center(child: Text('暂无数据'));
+      return const AppEmptyState(
+        icon: Icons.bar_chart_outlined,
+        title: '暂无数据',
+        message: '开始阅读后这里会显示统计图表',
+      );
     }
     final entries = _recentStats.entries.toList()..sort((a, b) => a.key.compareTo(b.key));
     final maxDuration = entries.map((e) => e.value).fold<int>(0, (a, b) => a > b ? a : b);
@@ -137,7 +203,7 @@ class _ReadingStatsScreenState extends State<ReadingStatsScreen> with SingleTick
                     height: height,
                     decoration: BoxDecoration(
                       color: Theme.of(context).colorScheme.primary,
-                      borderRadius: BorderRadius.circular(2),
+                      borderRadius: BorderRadius.circular(12),
                     ),
                   ),
                 ],
@@ -150,18 +216,11 @@ class _ReadingStatsScreenState extends State<ReadingStatsScreen> with SingleTick
   }
 
   Widget _buildTimelineTab() {
-    if (_recentStats.isEmpty) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.bar_chart_outlined, size: 80, color: Colors.grey[400]),
-            const SizedBox(height: 16),
-            Text('暂无阅读记录', style: TextStyle(fontSize: 18, color: Colors.grey[600])),
-            const SizedBox(height: 8),
-            const Text('开始阅读后这里会显示记录'),
-          ],
-        ),
+    if (_recentStats.isEmpty || !_statsEnabled) {
+      return const AppEmptyState(
+        icon: Icons.bar_chart_outlined,
+        title: '暂无阅读记录',
+        message: '开始阅读并开启统计后这里会显示记录',
       );
     }
 
@@ -190,4 +249,64 @@ class _ReadingStatsScreenState extends State<ReadingStatsScreen> with SingleTick
       },
     );
   }
+
+  /// 书籍分布明细：每本书累计时长 + 占比，点击开书 / 无书搜书名。
+  Widget _buildBooksTab() {
+    if (!_statsEnabled || !_recordEnabled) {
+      return const AppEmptyState(
+        icon: Icons.pie_chart_outline,
+        title: '统计已暂停',
+        message: '开启「启用阅读统计」与阅读记录后显示书籍分布',
+      );
+    }
+    if (_bookStats.isEmpty) {
+      return const AppEmptyState(
+        icon: Icons.menu_book_outlined,
+        title: '暂无书籍阅读数据',
+        message: '阅读任意书籍后这里会按书名汇总时长',
+      );
+    }
+    final maxVal = _bookStats.first.seconds;
+    return ListView.builder(
+      padding: const EdgeInsets.all(16),
+      itemCount: _bookStats.length,
+      itemBuilder: (context, index) {
+        final s = _bookStats[index];
+        return Card(
+          child: ListTile(
+            leading: BookCover(name: s.name, width: 36, height: 50, radius: 6),
+            title: Text(s.name, maxLines: 1, overflow: TextOverflow.ellipsis),
+            subtitle: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(s.author,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(fontSize: 11)),
+                const SizedBox(height: 4),
+                LinearProgressIndicator(
+                    value: maxVal > 0 ? s.seconds / maxVal : 0),
+              ],
+            ),
+            trailing: Text(
+              ReadingRecordService.formatDuration(s.seconds),
+              style: TextStyle(
+                  color: Theme.of(context).colorScheme.primary,
+                  fontWeight: FontWeight.bold,
+                  fontSize: 12),
+            ),
+            onTap: () =>
+                ReadRecordConfig.openBookOrSearch(context, s.name, s.author),
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _BookStat {
+  final String name;
+  final String author;
+  int seconds;
+  _BookStat(this.name, this.author, this.seconds);
 }

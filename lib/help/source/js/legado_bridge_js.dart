@@ -35,8 +35,15 @@ import 'package:flutter/services.dart';
 import '../../../constant/app_theme.dart';
 import '../../../data/model/read_config.dart';
 
+import 'js_packages.dart';
+
 class LegadoBridgeJs {
-  static const String code = r'''
+  /// 注入脚本 = 桥主体 + [JsPackages.definition]（Rhino `Packages.*` 真实映射）
+  /// + IIFE 闭合。映射段放在主体末尾，是为了能直接引用桥里已定义好的
+  /// java / cookie / cache / __b64Unicode 等工具，而不是恒 null 的死 Proxy。
+  static const String code = _codeHead + JsPackages.definition + _codeTail;
+
+  static const String _codeHead = r'''
 (function () {
   if (globalThis.__legadoBridgeReady) return;
   globalThis.__legadoBridgeReady = true;
@@ -195,15 +202,15 @@ class LegadoBridgeJs {
 
   globalThis.__pendings = {};
 
-  // ---- Rhino（legado 安卓）Java 互操作垫片：V8 无 Java，
-  // 让 jsLib 顶部的 JavaImporter/CompatibilityUtils 能安全加载；
-  // 真正访问 Packages.xxx 的分支会抛错并被书源自身 try/catch 捕获后回退。----
+  // ---- Rhino（legado 安卓）Java 互操作垫片：V8 无 Java 虚拟机，
+  // JavaImporter / importClass / importPackage 给空实现让 jsLib 顶部能安全加载。
+  // Packages.* 不再在此处恒返回 null：真实「Java/工具包映射」由 js_packages.dart
+  // 的 JsPackages.definition 在 IIFE 末尾注入（见 code 的拼接顺序），已实现的
+  // 工具类按原类名映射为等价 JS 值，未实现的类取值为 undefined。----
   function JavaImporterShim() { this.importClass = function () {}; this.importPackage = function () {}; }
   globalThis.JavaImporter = JavaImporterShim;
   globalThis.importClass = function () {};
   globalThis.importPackage = function () {};
-  // 任意 Packages.xxx 取值返回 null：hasJavaClass 判定为 false、new Packages.x() 抛错（被捕获）
-  globalThis.Packages = new Proxy({}, { get: function () { return null; } });
 
   function __hostOf(url) {
     if (!url) return "";
@@ -1339,18 +1346,40 @@ class LegadoBridgeJs {
     getSource: function () { return source; },
     getTag: function () { return __state.meta.name; },
 
-    // 并发请求（legado 返回 Array<StrResponse>，元素 .body() 取正文）
+    // 并发请求（legado 返回 Array<StrResponse>，元素 .body() 取正文）。
+    // 串行逐个同步 XHR 会让总耗时等于各请求之和；这里把整批 URL 一次性
+    // POST 给原生，由 Dart 侧用 Future.wait 真并发发起，并按入参顺序回传，
+    // 既保持返回顺序，又把总耗时压缩到「最慢的那个请求」。
     ajaxAll: function (urlList) {
-      var results = [];
-      for (var i = 0; i < urlList.length; i++) {
-        var u = urlList[i];
-        try {
-          results.push(__strResponse(u, __doXhr(u, { method: "GET" })));
-        } catch (e) {
-          results.push(__strResponse(u, String(e), 502, "Error", {}));
+      var list = Array.isArray(urlList) ? urlList : [];
+      if (list.length === 0) return [];
+      // 兼容字符串数组与 {url, method, headers, body} 对象数组两种书源写法
+      var urls = list.map(function (u) {
+        if (typeof u === "string") return { url: u, method: "GET" };
+        if (u && typeof u === "object") {
+          return {
+            url: String(u.url == null ? "" : u.url),
+            method: String(u.method || "GET"),
+            headers: u.headers || {},
+            body: u.body === undefined ? null : u.body
+          };
         }
-      }
-      return results;
+        return { url: String(u), method: "GET" };
+      });
+      try {
+        var raw = __doXhr("legado://ajaxall", { method: "POST", body: JSON.stringify(urls) });
+        var arr = JSON.parse(raw);
+        if (Array.isArray(arr)) {
+          // Future.wait 已保证元素顺序与 urls 一致，逐个还原为 StrResponse
+          return arr.map(function (r) {
+            return __strResponse(r.url, r.body, r.code, r.message, r.headers || {});
+          });
+        }
+      } catch (e) {}
+      // 内部协议异常时逐项如实回报 502（不假装成功，也不退回串行桩）
+      return urls.map(function (o) {
+        return __strResponse(o.url, "", 502, "Error", {});
+      });
     },
     ajaxTestAll: function (urlList, timeout) { return this.ajaxAll(urlList); },
 
@@ -1370,7 +1399,25 @@ class LegadoBridgeJs {
         return __doXhr("legado://webview?url=" + encodeURIComponent(target), { method: "GET" });
       } catch (e) { return ""; }
     },
-    webViewGetOverrideUrl: function (html, url, js, overrideUrlRegex, cacheFirst, delayTime) { return url || ""; },
+    // WebView 重定向 / 资源嗅探（对齐 legado java.webViewGetOverrideUrl）：
+    // 交给真实无头 WebView 加载 url，捕获匹配 overrideUrlRegex 的请求地址，
+    // 无命中时返回页面最终落地 URL；不再是「直接返回入参 url」的空实现。
+    webViewGetOverrideUrl: function (html, url, js, overrideUrlRegex, cacheFirst, delayTime) {
+      try {
+        var target = url || "";
+        if (!target) return html || "";
+        var payload = JSON.stringify({
+          url: target,
+          html: html == null ? "" : String(html),
+          js: js == null ? "" : String(js),
+          regex: overrideUrlRegex == null ? "" : String(overrideUrlRegex),
+          cacheFirst: !!cacheFirst,
+          delayMs: Number(delayTime) || 0
+        });
+        var result = __doXhr("legado://overrideurl", { method: "POST", body: payload });
+        return result || "";
+      } catch (e) { return ""; }
+    },
     // 验证码识别：弹出人工输入界面（对齐 E SourceVerificationHelp.getVerificationResult），
     // 返回 Promise，用户提交后 resolve 输入的字符；未提交/取消 resolve 空串。
     getVerificationCode: function (imageUrl) {
@@ -1684,6 +1731,11 @@ class LegadoBridgeJs {
       error: err ? ((err && err.stack) ? String(err.stack) : String(err)) : null
     });
   };
+''';
+
+  /// IIFE 闭合：位于 JsPackages.definition 之后，保证 Packages 在 java /
+  /// cookie / __b64Unicode 等全部桥工具就绪后才被定义。
+  static const String _codeTail = r'''
 })();
 ''';
 

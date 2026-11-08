@@ -1,7 +1,21 @@
+import 'package:shared_preferences/shared_preferences.dart';
+
 import 'package:legado_md3/data/local/app_database.dart';
 
 /// 阅读记录服务
 class ReadingRecordService {
+  /// 对齐 legado-E `AppConfig.enableReadRecord`：关闭后不再落库任何阅读/听书
+  /// 时长记录。键名与 `ReadRecordConfig.keyEnableReadRecord` 一致（明文键，
+  /// 由「阅读记录」页开关写入；此处不 import ui 层以避免 help→ui 循环依赖）。
+  Future<bool> _recordEnabled() async {
+    try {
+      final p = await SharedPreferences.getInstance();
+      return p.getBool('enableReadRecord') ?? true;
+    } catch (_) {
+      return true;
+    }
+  }
+
   final DatabaseService _db = DatabaseService();
   DateTime? _sessionStart;
   String? _currentBook;
@@ -19,13 +33,35 @@ class ReadingRecordService {
     if (_sessionStart == null || _currentBook == null) return;
 
     final duration = DateTime.now().difference(_sessionStart!).inSeconds;
-    if (duration < 5) {
-      _sessionStart = null;
-      return;
-    }
+    _sessionStart = null;
+    if (duration < 5) return;
+    // enableReadRecord 关闭时只结束会话、不落库记录
+    if (!await _recordEnabled()) return;
 
     await _db.addReadRecord(_currentBook!, _currentAuthor!, duration, DateTime.now().millisecondsSinceEpoch);
-    _sessionStart = null;
+  }
+
+  /// 记录一次「听书」朗读时长到 `read_records`（供 tts_service 的
+  /// play/pause/complete 挂钩）。与手动阅读会话共用同一张表与统计口径
+  /// （[duration] 单位为秒，见 [getTodayDuration] / [getTotalDuration]）。
+  ///
+  /// 与 [startSession]/[endSession] 的区别：朗读由 TTS 累计「实际播放」
+  /// 毫秒数（暂停不计），由调用方精确传入，避免会话式 5 秒门槛把短时
+  /// 朗读片段全部丢弃。
+  Future<void> recordListening(
+    String bookName,
+    String author,
+    int seconds,
+  ) async {
+    if (bookName.isEmpty || seconds <= 0) return;
+    // enableReadRecord 关闭时不落库听书时长记录
+    if (!await _recordEnabled()) return;
+    await _db.addReadRecord(
+      bookName,
+      author,
+      seconds,
+      DateTime.now().millisecondsSinceEpoch,
+    );
   }
 
   /// 获取今日阅读时长（秒）

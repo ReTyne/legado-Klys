@@ -4,7 +4,6 @@ import 'package:provider/provider.dart';
 import 'package:collection/collection.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:legado_md3/constant/app_theme.dart';
 import 'package:legado_md3/data/model/search_book.dart';
 import 'package:legado_md3/data/model/book.dart';
 import 'package:legado_md3/data/model/book_source.dart';
@@ -16,6 +15,7 @@ import 'package:legado_md3/help/net/network_monitor.dart';
 import 'package:legado_md3/help/source/search_scope.dart';
 import 'package:legado_md3/help/source/source_engine.dart';
 import 'package:legado_md3/ui/book/detail/book_detail_screen.dart';
+import 'package:legado_md3/ui/widgets/app_widgets.dart';
 
 class SearchScreen extends StatefulWidget {
   /// 外部入口预设关键词（书源 JS java.searchBook(key) 跳转时携带，进入即搜索）
@@ -447,7 +447,7 @@ class _SearchScreenState extends State<SearchScreen> {
             hintText: '搜索书籍...',
             border: InputBorder.none,
             suffixIcon: _controller.text.isNotEmpty
-                ? IconButton(icon: const Icon(Icons.clear), onPressed: () { _controller.clear(); setState(() { _results = []; _searchKeyword = null; }); })
+                ? IconButton(icon: const Icon(Icons.clear_outlined), tooltip: '清除', onPressed: () { _controller.clear(); setState(() { _results = []; _searchKeyword = null; }); })
                 : null,
           ),
           onSubmitted: _search,
@@ -460,9 +460,9 @@ class _SearchScreenState extends State<SearchScreen> {
               onPressed: _stopSearch,
             )
           else
-            IconButton(icon: const Icon(Icons.search), onPressed: () => _search(_controller.text)),
+            IconButton(icon: const Icon(Icons.search_outlined), tooltip: '搜索', onPressed: () => _search(_controller.text)),
           IconButton(
-            icon: const Icon(Icons.filter_list),
+            icon: const Icon(Icons.filter_list_outlined),
             tooltip: '搜索范围：${_scope.display}',
             onPressed: _showSearchScopeDialog,
           ),
@@ -523,13 +523,11 @@ class _SearchScreenState extends State<SearchScreen> {
       ]));
     }
     if (_results.isEmpty) {
-      final cs = Theme.of(context).colorScheme;
-      return Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-        // 装饰性大图标保留 grey，弱化视觉权重
-        Icon(Icons.search_off, size: 64, color: Colors.grey[400]),
-        const SizedBox(height: 16),
-        Text('未找到"$_searchKeyword"相关结果', style: TextStyle(color: cs.onSurfaceVariant)),
-      ]));
+      return AppEmptyState(
+        icon: Icons.find_in_page_outlined,
+        title: '未找到"$_searchKeyword"相关结果',
+        message: '换个关键词，或到「书源管理」启用更多书源后重试',
+      );
     }
     final display = _displayResults;
     final cs = Theme.of(context).colorScheme;
@@ -568,7 +566,7 @@ class _SearchScreenState extends State<SearchScreen> {
               Text('共找到 ${display.length} 条', style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
               TextButton.icon(
                 style: ButtonStyle(visualDensity: VisualDensity.compact),
-                icon: const Icon(Icons.filter_list, size: 14),
+                icon: const Icon(Icons.filter_list_outlined, size: 14),
                 label: Text(_scope.display, style: const TextStyle(fontSize: 12)),
                 onPressed: _showSearchScopeDialog,
               ),
@@ -577,7 +575,7 @@ class _SearchScreenState extends State<SearchScreen> {
                 visualDensity: VisualDensity.compact,
                 iconSize: 18,
                 padding: EdgeInsets.zero,
-                icon: Icon(_groupBySource ? Icons.view_agenda : Icons.sort, color: cs.primary),
+                icon: Icon(_groupBySource ? Icons.view_agenda_outlined : Icons.sort_outlined, color: cs.primary),
                 tooltip: _groupBySource ? '按时间排序' : '按书源分组',
                 onPressed: () => setState(() => _groupBySource = !_groupBySource),
               ),
@@ -591,11 +589,39 @@ class _SearchScreenState extends State<SearchScreen> {
     );
   }
 
-  Widget _buildFlatList(List<SearchBook> items) => ListView.separated(
-    itemCount: items.length,
-    separatorBuilder: (_, __) => const Divider(height: 1),
-    itemBuilder: (c, i) => _buildResultTile(items[i]),
-  );
+  void _openDetail(SearchBook book) => Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => BookDetailScreen(
+            book: Book(
+              name: book.name,
+              author: book.author,
+              coverUrl: book.coverUrl,
+              intro: book.intro,
+              kind: book.kind,
+              origin: book.origin,
+              bookUrl: book.bookUrl,
+              noteUrl: book.noteUrl,
+              lastChapter: book.lastChapter,
+              local: false,
+            ),
+          ),
+        ),
+      );
+
+  Widget _buildFlatList(List<SearchBook> items, {bool shrinkWrap = false}) => GridView.builder(
+        shrinkWrap: shrinkWrap,
+        physics: shrinkWrap ? const NeverScrollableScrollPhysics() : null,
+        padding: EdgeInsets.fromLTRB(12, 8, 12, shrinkWrap ? 0 : 12),
+        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: 3,
+          childAspectRatio: 0.62,
+          crossAxisSpacing: 10,
+          mainAxisSpacing: 10,
+        ),
+        itemCount: items.length,
+        itemBuilder: (c, i) => _buildResultCard(items[i]),
+      );
 
   Widget _buildGroupedList(List<SearchBook> items) {
     final groups = groupBy(items, (SearchBook b) => b.originName ?? b.origin ?? '未知来源');
@@ -604,73 +630,106 @@ class _SearchScreenState extends State<SearchScreen> {
       itemCount: entries.length,
       itemBuilder: (c, gi) {
         final e = entries[gi];
+        final isLast = gi == entries.length - 1;
         return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Container(
-            width: double.infinity, color: Theme.of(c).colorScheme.surfaceContainerHighest,
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-            child: Text('${e.key} (${e.value.length})', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Theme.of(c).colorScheme.primary)),
-          ),
-          ...e.value.map(_buildResultTile),
-          const Divider(height: 1),
+          AppSectionHeader('${e.key} (${e.value.length})'),
+          _buildFlatList(e.value, shrinkWrap: true),
+          if (!isLast) const Divider(height: 1),
         ]);
       },
     );
   }
 
-  Widget _buildResultTile(SearchBook book) => ListTile(
-    leading: book.coverUrl != null && book.coverUrl!.isNotEmpty
-        ? ClipRRect(borderRadius: BorderRadius.circular(4), child: Image.network(book.coverUrl!, width: 50, height: 70, fit: BoxFit.cover, errorBuilder: (_, __, ___) => _buildDefaultCover(book.name)))
-        : _buildDefaultCover(book.name),
-    title: Text(book.name, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w500)),
-    subtitle: Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text('${book.author} · ${book.kind ?? ''}', maxLines: 1, style: const TextStyle(fontSize: 12)),
-        const SizedBox(height: 2),
-        Text(book.lastChapter ?? '', maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 11, color: Theme.of(context).colorScheme.primary)),
-        if (book.origins.length > 1)
-          Text('${book.origins.length} 个来源', maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 10, color: Theme.of(context).colorScheme.primary))
-        else if ((book.originName ?? '').isNotEmpty)
-          Text('来源: ${book.originName}', maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 10, color: Theme.of(context).colorScheme.onSurfaceVariant)),
-      ],
-    ),
-    trailing: IconButton(icon: const Icon(Icons.add), onPressed: () => _addToShelf(book), tooltip: '加入书架'),
-    onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => BookDetailScreen(book: Book(name: book.name, author: book.author, coverUrl: book.coverUrl, intro: book.intro, kind: book.kind, origin: book.origin, bookUrl: book.bookUrl, noteUrl: book.noteUrl, lastChapter: book.lastChapter, local: false)))),
-    onLongPress: () => _showResultMenu(book),
-  );
-
-  Widget _buildDefaultCover(String name) {
-    final color = defaultCoverPalette[name.hashCode.abs() % defaultCoverPalette.length];
-    return Container(width: 50, height: 70, decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(4)), child: Center(child: Padding(padding: const EdgeInsets.all(4), child: Text(name, maxLines: 3, textAlign: TextAlign.center, overflow: TextOverflow.ellipsis, style: const TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.bold)))));
+  /// 搜索结果卡片：大封面 + 书名/作者/最新章（对齐阅读 Sigma 搜索页网格布局）。
+  Widget _buildResultCard(SearchBook book) {
+    final cs = Theme.of(context).colorScheme;
+    final coverW = (MediaQuery.of(context).size.width - 12 * 2 - 10 * 2) / 3;
+    final coverH = coverW / 0.72; // 约 3:4 封面比例
+    return InkWell(
+      borderRadius: BorderRadius.circular(8),
+      onTap: () => _openDetail(book),
+      onLongPress: () => _showResultMenu(book),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Stack(
+            children: [
+              BookCover(
+                name: book.name,
+                coverUrl: book.coverUrl,
+                width: coverW,
+                height: coverH,
+                radius: 6,
+              ),
+              Positioned(
+                top: 2,
+                right: 2,
+                child: Material(
+                  color: cs.surfaceContainerHighest.withOpacity(0.82),
+                  shape: const CircleBorder(),
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(16),
+                    onTap: () => _addToShelf(book),
+                    child: Padding(
+                      padding: const EdgeInsets.all(3),
+                      child: Icon(Icons.add, size: 18, color: cs.primary),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 5),
+          Text(book.name,
+              maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500)),
+          const SizedBox(height: 1),
+          Text(book.author,
+              maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant)),
+          const SizedBox(height: 1),
+          Text(book.lastChapter ?? '',
+              maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 10, color: cs.primary)),
+          if (book.origins.length > 1)
+            Text('${book.origins.length} 个来源',
+                maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 10, color: cs.tertiary)),
+        ],
+      ),
+    );
   }
 
   void _showResultMenu(SearchBook book) {
-    showModalBottomSheet(context: context, builder: (context) => SafeArea(child: Column(mainAxisSize: MainAxisSize.min, children: [
-      ListTile(
-        leading: const Icon(Icons.info_outline),
-        title: const Text('查看详情'),
-        onTap: () { Navigator.pop(context); Navigator.push(context, MaterialPageRoute(builder: (_) => BookDetailScreen(book: Book(name: book.name, author: book.author, coverUrl: book.coverUrl, intro: book.intro, kind: book.kind, origin: book.origin, bookUrl: book.bookUrl, noteUrl: book.noteUrl, lastChapter: book.lastChapter, local: false)))); },
-      ),
-      ListTile(
-        leading: const Icon(Icons.add),
-        title: const Text('加入书架'),
-        onTap: () { Navigator.pop(context); _addToShelf(book); },
-      ),
-      ListTile(
-        leading: const Icon(Icons.swap_horiz),
-        title: const Text('换源'),
-        onTap: () { Navigator.pop(context); Navigator.push(context, MaterialPageRoute(builder: (_) => ChangeSourceScreen(book: Book(name: book.name, author: book.author, coverUrl: book.coverUrl, intro: book.intro, kind: book.kind, origin: book.origin, bookUrl: book.bookUrl, noteUrl: book.noteUrl, lastChapter: book.lastChapter, local: false)))); },
-      ),
-      ListTile(
-        leading: const Icon(Icons.content_copy),
-        title: const Text('复制书名'),
-        onTap: () async { Navigator.pop(context); await Clipboard.setData(ClipboardData(text: book.name)); if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('已复制'))); },
-      ),
-      ListTile(
-        leading: const Icon(Icons.share),
-        title: const Text('分享'),
-        onTap: () { Navigator.pop(context); Share.share('《${book.name}》 - ${book.author}'); },
-      ),
-    ])));
+    showAppMenuSheet(
+      context,
+      title: book.name,
+      items: [
+        AppMenuSheetItem(
+          title: '查看详情',
+          icon: Icons.info_outline,
+          onTap: () => _openDetail(book),
+        ),
+        AppMenuSheetItem(
+          title: '加入书架',
+          icon: Icons.add_outlined,
+          onTap: () => _addToShelf(book),
+        ),
+        AppMenuSheetItem(
+          title: '换源',
+          icon: Icons.swap_horiz_outlined,
+          onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => ChangeSourceScreen(book: Book(name: book.name, author: book.author, coverUrl: book.coverUrl, intro: book.intro, kind: book.kind, origin: book.origin, bookUrl: book.bookUrl, noteUrl: book.noteUrl, lastChapter: book.lastChapter, local: false)))),
+        ),
+        AppMenuSheetItem(
+          title: '复制书名',
+          icon: Icons.content_copy_outlined,
+          onTap: () async {
+            await Clipboard.setData(ClipboardData(text: book.name));
+            if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('已复制')));
+          },
+        ),
+        AppMenuSheetItem(
+          title: '分享',
+          icon: Icons.share_outlined,
+          onTap: () => Share.share('《${book.name}》 - ${book.author}'),
+        ),
+      ],
+    );
   }
 }

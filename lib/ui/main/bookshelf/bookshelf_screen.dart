@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:dio/dio.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
@@ -28,6 +27,8 @@ import 'package:legado_md3/ui/book/detail/change_cover_screen.dart';
 import 'package:legado_md3/ui/cache/cache_manage_screen.dart';
 import 'package:legado_md3/ui/main/bookshelf/bookshelf_manage_screen.dart';
 import 'package:legado_md3/ui/main/bookshelf/group_manage_screen.dart';
+import 'package:legado_md3/ui/widgets/app_widgets.dart';
+import 'package:legado_md3/help/net/network_monitor.dart';
 
 /// 书架视图配置（来自 SharedPreferences，由书架配置页写入）
 class _ViewCfg {
@@ -134,45 +135,29 @@ class _ViewCfg {
 
 /// 封面配置（来自 SharedPreferences，由封面配置页 CoverConfigScreen 写入）
 class _CoverCfg {
-  /// cover_onlyWifi：仅 WiFi 下加载封面。
-  /// Flutter 端无轻量 WiFi 判断方式（不新增依赖），此处降级为仅记录、不阻断加载。
+  /// cover_onlyWifi：仅在 WiFi 下加载网络封面。
+  /// 由 NetworkMonitor.isWifi（原生 ConnectivityManager 通道 legado/network）
+  /// 精确判断；非 Android 平台回退为不加载网络封面（保守）。
   final bool onlyWifi;
-  /// cover_useDefault：无封面/封面加载失败时使用默认占位
-  final bool useDefault;
-  /// cover_showName：封面区域叠加显示书名
+  /// cover_showName / cover_showAuthor：封面区域叠加显示书名 / 作者。
+  /// 叠加文字统一交给 BookCover.overlay（白色随组件自带渐变墨层），不再引入
+  /// cover_defaultColor / cover_dayTextColor / cover_nightTextColor 这套第二套
+  /// 封面配色；默认占位统一由 DefaultCover（defaultCoverPalette）承担。
   final bool showName;
-  /// cover_showAuthor：封面区域叠加显示作者
   final bool showAuthor;
-  /// cover_defaultColor：默认占位背景色
-  final int defaultColor;
-  /// cover_dayTextColor / cover_nightTextColor：叠加文字颜色（按日夜间取用）
-  final int dayTextColor;
-  final int nightTextColor;
-  /// 默认封面图片路径（可选键 cover_defaultImage，本版本配置页未提供，读取仅作容错扩展）
-  final String? defaultImage;
 
   const _CoverCfg({
     this.onlyWifi = false,
-    this.useDefault = false,
     this.showName = true,
     this.showAuthor = true,
-    this.defaultColor = 0xFF607D8B,
-    this.dayTextColor = 0xFFFFFFFF,
-    this.nightTextColor = 0xFFB0BEC5,
-    this.defaultImage,
   });
 
   static Future<_CoverCfg> load() async {
     final p = await SharedPreferences.getInstance();
     return _CoverCfg(
       onlyWifi: p.getBool('cover_onlyWifi') ?? false,
-      useDefault: p.getBool('cover_useDefault') ?? false,
       showName: p.getBool('cover_showName') ?? true,
       showAuthor: p.getBool('cover_showAuthor') ?? true,
-      defaultColor: p.getInt('cover_defaultColor') ?? 0xFF607D8B,
-      dayTextColor: p.getInt('cover_dayTextColor') ?? 0xFFFFFFFF,
-      nightTextColor: p.getInt('cover_nightTextColor') ?? 0xFFB0BEC5,
-      defaultImage: p.getString('cover_defaultImage'),
     );
   }
 }
@@ -194,6 +179,8 @@ class _BookshelfScreenState extends State<BookshelfScreen> {
   final ScrollController _scrollController = ScrollController();
   _ViewCfg _cfg = _ViewCfg();
   _CoverCfg _coverCfg = const _CoverCfg();
+  /// 当前是否 WiFi（由 _reloadCfg 预取，供同步的 _buildCover 消费）。
+  bool _wifiOk = false;
 
   int _sortBy = 3;
   bool _sortAsc = false;
@@ -230,10 +217,15 @@ class _BookshelfScreenState extends State<BookshelfScreen> {
   Future<void> _reloadCfg() async {
     final cfg = await _ViewCfg.load();
     final coverCfg = await _CoverCfg.load();
+    // 精确 WiFi 判断（原生通道）；开关未开时不必发起平台调用。
+    final wifiOk = coverCfg.onlyWifi
+        ? await NetworkMonitor.instance.isWifi
+        : false;
     if (!mounted) return;
     setState(() {
       _cfg = cfg;
       _coverCfg = coverCfg;
+      _wifiOk = wifiOk;
       _sortBy = _ViewCfg.sortMap[cfg.sortType.clamp(0, 4)];
       _sortAsc = cfg.sortAscending;
       // 配置可能影响过滤条件，作废 _filteredBooks 缓存
@@ -1217,8 +1209,14 @@ class _BookshelfScreenState extends State<BookshelfScreen> {
               const Divider(),
               ListTile(leading: Icon(Icons.delete_outline, color: cs.error), title: Text('删除', style: TextStyle(color: cs.error)), onTap: () async {
                 Navigator.pop(context);
-                final confirmed = await showDialog<bool>(context: context, builder: (context) => AlertDialog(title: Text('删除《${book.name}》'), content: const Text('确定要删除这本书吗？将同时删除已缓存章节。'), actions: [TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('取消')), FilledButton(style: FilledButton.styleFrom(backgroundColor: cs.error, foregroundColor: cs.onError), onPressed: () => Navigator.pop(context, true), child: const Text('删除'))]));
-                if (confirmed == true) {
+                final confirmed = await showAppConfirmDialog(
+                  context,
+                  title: '删除《${book.name}》',
+                  content: '确定要删除这本书吗？将同时删除已缓存章节。',
+                  confirmText: '删除',
+                  danger: true,
+                );
+                if (confirmed) {
                   await _db.deleteBook(book.name, book.author);
                   await Provider.of<BookProvider>(context, listen: false).loadBooks();
                 }
@@ -1549,11 +1547,13 @@ class _BookshelfScreenState extends State<BookshelfScreen> {
         actions: [
           if (!_searching)
             IconButton(
-                icon: const Icon(Icons.search),
+                icon: const Icon(Icons.search_outlined),
+                tooltip: '搜索',
                 onPressed: () => setState(() => _searching = true)),
           if (_searching)
             IconButton(
-                icon: const Icon(Icons.clear),
+                icon: const Icon(Icons.clear_outlined),
+                tooltip: '清除搜索',
                 onPressed: () {
                   _searchDebounce?.cancel();
                   _searchController.clear();
@@ -1563,7 +1563,10 @@ class _BookshelfScreenState extends State<BookshelfScreen> {
                   });
                 }),
           if (!_searching)
-            IconButton(icon: const Icon(Icons.more_vert), onPressed: _showMoreMenu),
+            IconButton(
+                icon: const Icon(Icons.more_vert_outlined),
+                tooltip: '更多',
+                onPressed: _showMoreMenu),
         ],
         bottom: _cfg.showTabMenu
             ? PreferredSize(
@@ -1574,15 +1577,17 @@ class _BookshelfScreenState extends State<BookshelfScreen> {
       body: _isUpdating
           ? const Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [CircularProgressIndicator(), SizedBox(height: 16), Text('正在更新...')]))
           : books.isEmpty
-              ? Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
-                  Icon(Icons.menu_book_outlined, size: 64, color: Colors.grey[400]),
-                  const SizedBox(height: 16),
-                  Text('书架为空', style: TextStyle(color: Colors.grey[600], fontSize: 16)),
-                  const SizedBox(height: 8),
-                  Text('去搜索或发现页面添加书籍', style: TextStyle(color: Colors.grey[500])),
-                  const SizedBox(height: 24),
-                  FilledButton.icon(onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const SearchScreen())), icon: const Icon(Icons.search), label: const Text('去搜索')),
-                ]))
+              ? AppEmptyState(
+                  icon: Icons.menu_book_outlined,
+                  title: '书架为空',
+                  message: '去搜索或发现页面添加书籍',
+                  action: FilledButton.icon(
+                    onPressed: () => Navigator.push(context,
+                        MaterialPageRoute(builder: (_) => const SearchScreen())),
+                    icon: const Icon(Icons.search_outlined),
+                    label: const Text('去搜索'),
+                  ),
+                )
               : _wrapFastScroller(_buildBody(provider, books, layout)),
     );
   }
@@ -1604,22 +1609,13 @@ class _BookshelfScreenState extends State<BookshelfScreen> {
     if (_cfg.showWaitUpdateCount) {
       _ensureWaitUpdateCache(provider);
     }
-    return Container(
-      height: 48,
-      padding: const EdgeInsets.symmetric(horizontal: 8),
-      child: ListView(
-        scrollDirection: Axis.horizontal,
-        children: [
-          for (var i = 0; i < groups.length; i++) ...[
-            FilterChip(
-              label: Text(_chipLabel(groups[i], countOf(groups[i]), provider)),
-              selected: provider.currentGroup == groups[i],
-              onSelected: (_) => provider.setCurrentGroup(groups[i]),
-            ),
-            const SizedBox(width: 8),
-          ],
-        ],
-      ),
+    // 横向 FilterChip 页签统一收敛到 AppChipTabs<int>（按索引选中）。
+    final selectedIdx = groups.indexOf(provider.currentGroup);
+    return AppChipTabs<int>(
+      items: List.generate(groups.length, (i) => i),
+      selected: selectedIdx, // -1 表示当前分组不在列表中，全部不选中
+      labelOf: (i) => _chipLabel(groups[i], countOf(groups[i]), provider),
+      onSelected: (i) => provider.setCurrentGroup(groups[i]),
     );
   }
 
@@ -1955,7 +1951,7 @@ class _BookshelfScreenState extends State<BookshelfScreen> {
         onTap: () => _openBook(book),
         onLongPress: () => _showBookMenu(book),
         child: ClipRRect(
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: BorderRadius.circular(8),
           child: _buildCover(book,
               width: double.infinity, height: double.infinity, radius: 0),
         ),
@@ -1963,41 +1959,23 @@ class _BookshelfScreenState extends State<BookshelfScreen> {
     );
   }
 
-  /// 未读角标。width/height 为有限值时用 SizedBox 固定，无限值（网格）时填满父级
-  Widget _withBadge(Book book, Widget child, double width, double height) {
-    final unread = _unread(book);
-    bool badge = false;
-    bool dot = false;
-    if (_cfg.showUnread && unread > 0) {
-      badge = true;
-    } else if (_cfg.showUnreadNew && unread > 0) {
-      dot = true;
-    }
-    if (!badge && !dot) return child;
-    final badgeWidget = Positioned(
-      right: 2,
-      top: 2,
-      child: badge
-          ? Container(
-              padding: const EdgeInsets.symmetric(horizontal: 5, vertical: 1),
-              constraints: const BoxConstraints(minWidth: 18, minHeight: 18),
-              decoration: BoxDecoration(
-                  color: const Color(0xFFB3261E),
-                  borderRadius: BorderRadius.circular(9)),
-              child: Text(unread > 99 ? '99+' : '$unread',
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 10,
-                      fontWeight: FontWeight.bold)),
-            )
-          : Container(
-              width: 10,
-              height: 10,
-              decoration: const BoxDecoration(
-                  color: Color(0xFFB3261E), shape: BoxShape.circle)),
-    );
-    final stack = Stack(fit: StackFit.expand, children: [child, badgeWidget]);
+  /// 「有未读只显示小红点」（bs_showUnreadNew）的角标形态。
+  /// 数字角标（bs_showUnread）已交给 BookCover.badge（组件内部用 cs.error），
+  /// 这里同样不再硬编码 Color(0xFFB3261E)，危险色统一取 cs.error。
+  Widget _withUnreadDot(Widget child, double width, double height) {
+    final cs = Theme.of(context).colorScheme;
+    final stack = Stack(fit: StackFit.expand, children: [
+      child,
+      Positioned(
+        right: 2,
+        top: 2,
+        child: Container(
+          width: 10,
+          height: 10,
+          decoration: BoxDecoration(color: cs.error, shape: BoxShape.circle),
+        ),
+      ),
+    ]);
     if (width.isFinite && height.isFinite) {
       return SizedBox(width: width, height: height, child: stack);
     }
@@ -2009,185 +1987,95 @@ class _BookshelfScreenState extends State<BookshelfScreen> {
     final url = (book.customCoverUrl != null && book.customCoverUrl!.isNotEmpty)
         ? book.customCoverUrl
         : book.coverUrl;
-    Widget img;
-    if (url != null && url.isNotEmpty) {
-      // 注意：cover_onlyWifi（仅 WiFi 加载封面）已降级为仅记录（见 _CoverCfg.onlyWifi），
-      // 不阻断网络封面加载，避免新增依赖。
-      // CachedNetworkImage：磁盘 + 内存缓存，并按设备像素比限制解码尺寸，
-      // 避免大图全尺寸解码导致滑动掉帧。
-      final dpr = MediaQuery.of(context).devicePixelRatio;
-      img = CachedNetworkImage(
-        imageUrl: url,
-        width: width,
-        height: height,
-        fit: BoxFit.cover,
-        memCacheWidth: (100 * dpr).round(),
-        memCacheHeight: (133 * dpr).round(),
-        placeholder: (_, __) => _buildDefaultCover(book, width, height, radius),
-        errorWidget: (_, __, ___) =>
-            _buildDefaultCover(book, width, height, radius),
-      );
-    } else {
-      img = _buildDefaultCover(book, width, height, radius);
-    }
-    // 封面叠加书名/作者文字（cover_showName / cover_showAuthor）
-    final overlay = _buildCoverTextOverlay(book);
-    if (overlay != null) {
-      img = Stack(fit: StackFit.expand, children: [img, overlay]);
-    }
-    final rounded = ClipRRect(
-      borderRadius: BorderRadius.circular(radius),
-      child: img,
-    );
-    final shadowed = _cfg.coverShadow
-        ? Container(
-            width: width,
-            height: height,
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(radius),
-              boxShadow: const [
-                BoxShadow(
-                    color: Color(0x33000000),
-                    blurRadius: 4,
-                    offset: Offset(1, 2)),
-              ],
-            ),
-            child: rounded,
-          )
-        : rounded;
-    // 未读角标依赖 durChapterIndex（阅读进度），随 readingRevision 局部重建
-    return _revAware(_withBadge(book, shadowed, width, height));
-  }
 
-  /// 封面底部叠加的文字（书名/作者），受封面配置 cover_showName / cover_showAuthor 控制
-  Widget? _buildCoverTextOverlay(Book book) {
-    if (!_coverCfg.showName && !_coverCfg.showAuthor) return null;
-    final dark = Theme.of(context).brightness == Brightness.dark;
-    final textColor = Color(dark ? _coverCfg.nightTextColor : _coverCfg.dayTextColor);
-    final lines = <Widget>[
-      if (_coverCfg.showName)
-        Text(book.name,
-            maxLines: 2,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-                color: textColor,
-                fontSize: 10,
-                fontWeight: FontWeight.bold,
-                shadows: const [Shadow(blurRadius: 2)])),
-      if (_coverCfg.showAuthor)
-        Text(book.author,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: TextStyle(
-                color: textColor,
-                fontSize: 9,
-                shadows: const [Shadow(blurRadius: 2)])),
-    ];
-    return Align(
-      alignment: Alignment.bottomCenter,
-      child: Container(
-        width: double.infinity,
-        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 3),
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [Color(0x00000000), Color(0x99000000)],
-          ),
-        ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: lines,
-        ),
-      ),
-    );
-  }
+    // cover_onlyWifi：仅 WiFi 下加载网络封面。
+    // _wifiOk 由 NetworkMonitor.isWifi（原生 ConnectivityManager 通道）在
+    // _reloadCfg 中预取；非 WiFi / 离线 / 非 Android 时交给 BookCover 回退
+    // DefaultCover，不发起网络请求。
+    final blockNetwork = _coverCfg.onlyWifi &&
+        url != null &&
+        url.startsWith('http') &&
+        (!_wifiOk || !NetworkMonitor.instance.online.value);
 
-  Widget _buildDefaultCover(
-      Book book, double width, double height, double radius) {
-    // 封面配置 cover_useDefault：无封面/加载失败时显示统一默认占位。
-    // 本版本封面配置页仅提供默认颜色（cover_defaultColor）与可选的本地图片路径
-    // （cover_defaultImage，配置页暂未提供入口），故：有图片路径则用 Image.file
-    // 容错加载，否则用配置颜色 + Icons.book 图标占位。
-    if (_coverCfg.useDefault) {
-      final bg = Color(_coverCfg.defaultColor);
-      final iconSize = (width.isFinite ? width : 48.0) * 0.4;
-      final imgPath = _coverCfg.defaultImage;
-      Widget placeholder = Container(
-        width: width,
-        height: height,
-        decoration:
-            BoxDecoration(color: bg, borderRadius: BorderRadius.circular(radius)),
-        child: Center(
-          child: Icon(Icons.book,
-              size: iconSize.clamp(16.0, 64.0), color: Colors.white70),
-        ),
+    // 数字未读角标交给 BookCover.badge（组件内部用 cs.error，不再硬编码）。
+    final unread = _unread(book);
+    final int? badge = (_cfg.showUnread && unread > 0) ? unread : null;
+
+    // 封面叠加文字交给 BookCover.overlay（组件自带底部渐变墨层）；
+    // 文字统一用白色（与 DefaultCover 白字一致，不再引入第二套日夜配色）。
+    Widget? overlay;
+    if (_coverCfg.showName || _coverCfg.showAuthor) {
+      overlay = Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (_coverCfg.showName)
+            Text(book.name,
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 10,
+                    fontWeight: FontWeight.bold,
+                    shadows: [Shadow(blurRadius: 2)])),
+          if (_coverCfg.showAuthor)
+            Text(book.author,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                    color: Colors.white,
+                    fontSize: 9,
+                    shadows: [Shadow(blurRadius: 2)])),
+        ],
       );
-      if (imgPath != null && imgPath.isNotEmpty) {
-        // 本地图片路径容错：文件不存在或解码失败时回退到图标占位
-        return Image.file(
-          File(imgPath),
-          width: width,
-          height: height,
-          fit: BoxFit.cover,
-          errorBuilder: (_, __, ___) => placeholder,
-        );
-      }
-      return placeholder;
     }
-    // 默认占位色板：低饱和深色（与 Material 3 on-surface 体系协调）
-    const colors = [
-      Color(0xFF5B6B76),
-      Color(0xFF6E5F56),
-      Color(0xFF4F6B5E),
-      Color(0xFF575F7E),
-      Color(0xFF7E5B57),
-      Color(0xFF6B5B7E),
-    ];
-    final color = colors[book.name.hashCode.abs() % colors.length];
-    return Container(
+
+    Widget cover = BookCover(
+      name: book.name,
+      coverUrl: blockNetwork ? null : url,
       width: width,
       height: height,
-      decoration:
-          BoxDecoration(color: color, borderRadius: BorderRadius.circular(radius)),
-      child: Center(
-        child: Padding(
-          padding: const EdgeInsets.all(4),
-          child: Text(book.name,
-              maxLines: 3,
-              textAlign: TextAlign.center,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 10,
-                  fontWeight: FontWeight.bold)),
-        ),
-      ),
+      radius: radius,
+      badge: badge,
+      overlay: overlay,
     );
+
+    // 封面阴影（bs_coverShadow）：属内容/图像层墨色阴影，保留既有硬编码。
+    if (_cfg.coverShadow) {
+      cover = Container(
+        width: width,
+        height: height,
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(radius),
+          boxShadow: const [
+            BoxShadow(
+                color: Color(0x33000000),
+                blurRadius: 4,
+                offset: Offset(1, 2)),
+          ],
+        ),
+        child: cover,
+      );
+    }
+
+    // bs_showUnreadNew 小红点是 BookCover.badge 之外的第二种角标形态，保留。
+    final showDot = !(_cfg.showUnread && unread > 0) &&
+        _cfg.showUnreadNew &&
+        unread > 0;
+    if (showDot) cover = _withUnreadDot(cover, width, height);
+
+    // 角标依赖 durChapterIndex（阅读进度），随 readingRevision 局部重建。
+    return _revAware(cover);
   }
 
-  /// 单本缓存（书籍菜单「缓存全部」与书架管理页批量缓存共用逻辑）
+  /// 单本缓存（书籍菜单「缓存全部」）。忙碌态统一走 runWithBusyDialog。
   Future<void> _cacheOneBook(Book book) async {
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (d) => const Center(
-        child: Card(
-          child: Padding(
-            padding: EdgeInsets.all(24),
-            child: Column(mainAxisSize: MainAxisSize.min, children: [
-              CircularProgressIndicator(),
-              SizedBox(height: 12),
-              Text('正在缓存章节...'),
-            ]),
-          ),
-        ),
-      ),
+    final r = await runWithBusyDialog(
+      context,
+      message: '正在缓存章节...',
+      task: _cacheBook(book),
     );
-    final r = await _cacheBook(book);
     if (mounted) {
-      Navigator.pop(context);
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
           content: Text('缓存完成: 成功${r.ok}章${r.fail > 0 ? ', 失败${r.fail}章' : ''}')));
     }

@@ -1,11 +1,11 @@
 import 'dart:io';
 
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import 'package:legado_md3/help/source/opds_engine.dart';
 import 'package:legado_md3/help/storage/import_book_service.dart';
+import 'package:legado_md3/ui/widgets/app_widgets.dart';
 
 /// OPDS 目录浏览页：让 OpdsEngine 的目录 / 搜索 / 下载能力真正接入发现流，
 /// 下载的书籍经 ImportBookService 入库，形成 UI → 引擎 → 书架 的完整闭环。
@@ -252,7 +252,8 @@ class _OpdsCatalogScreenState extends State<OpdsCatalogScreen> {
                   border: const OutlineInputBorder(),
                   isDense: true,
                   suffixIcon: IconButton(
-                    icon: const Icon(Icons.arrow_forward),
+                    icon: const Icon(Icons.arrow_forward_outlined),
+                    tooltip: '搜索目录',
                     onPressed: () => _search(_searchController.text),
                   ),
                 ),
@@ -273,16 +274,17 @@ class _OpdsCatalogScreenState extends State<OpdsCatalogScreen> {
 
   Widget _buildList() {
     if (_engine == null) {
-      return const Center(
-        child: Padding(
-          padding: EdgeInsets.all(24),
-          child: Text('输入 OPDS 目录地址后点击「打开」，即可浏览、搜索并导入书籍',
-              textAlign: TextAlign.center),
-        ),
+      return const AppEmptyState(
+        icon: Icons.explore_outlined,
+        title: '尚未打开目录',
+        message: '输入 OPDS 目录地址后点击「打开」，即可浏览、搜索并导入书籍',
       );
     }
     if (!_loading && _entries.isEmpty && _error == null) {
-      return const Center(child: Text('该目录暂无条目'));
+      return const AppEmptyState(
+        icon: Icons.folder_off_outlined,
+        title: '该目录暂无条目',
+      );
     }
     return ListView.builder(
       itemCount: _entries.length,
@@ -291,17 +293,12 @@ class _OpdsCatalogScreenState extends State<OpdsCatalogScreen> {
         final nav = e.navigationUrl;
         final downloading = _importing == e.title;
         return ListTile(
-          leading: SizedBox(
+          leading: BookCover(
+            name: e.title.isEmpty ? '书籍' : e.title,
+            coverUrl: e.cover,
             width: 44,
             height: 60,
-            child: e.cover != null
-                ? CachedNetworkImage(
-                    imageUrl: e.cover!,
-                    fit: BoxFit.cover,
-                    errorWidget: (_, __, ___) =>
-                        const Icon(Icons.book_outlined),
-                  )
-                : const Icon(Icons.book_outlined),
+            radius: 4,
           ),
           title: Text(e.title.isEmpty ? '（无标题）' : e.title),
           subtitle: Text(

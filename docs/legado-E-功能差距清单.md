@@ -172,3 +172,28 @@ Klys 对 legado-E 的**主体功能已完成度约 85%**：书源规则引擎（
 
 ### 边界（不变）
 MOBI HUFF/CDIC、PDF 首页封面、视频悬浮窗、`BookHighlight`/`AutoTaskRule` 等实体与活跃下载队列仍属原生/整链路移植范围；iOS 因 Linux 无 Xcode 未构建。
+
+---
+
+## 第九轮：三基准通读 + 全量 UI 重构 + 功能闭环
+
+**通读范围**：官方原版（LegadoTeam/legado，1068 kt）、legado_NG（1567 kt）、legado-with-MD3（1944 kt）三基准逐字比对，产出 4 份报告（原版 UI 结构 / 功能差距 / 风格规范 / fork 特性）。
+
+### 核心变更
+
+| 编号 | 项 | 内容 |
+|---|---|---|
+| K-1 | 公共组件库 | 新建 `lib/ui/widgets/` 4 文件 11 个 MD3 组件（`BookCover`/`DefaultCover`/`AppEmptyState`/`AppErrorState`/`AppSectionHeader`/`AppSwitchTile`/`AppStepTile`/`AppJumpTile`/`AppMenuItem`/`AppSettingsGroup`/`AppChipTabs` + `runWithBusyDialog`/`showAppConfirmDialog`/`showAppColorPicker`/`showAppRadioDialog`/`showAppMenuSheet`），消除 5 份 `defaultCoverPalette` 复制与 14 处忙碌对话框手写 |
+| K-2 | 数据层 v13 | 新增 `auto_tasks`/`rss_read_records`/`book_memos`/`book_highlights`/`download_tasks` 5 表 + 全量 DAO；`rule_subs` 补 `autoUpdate`/`updateInterval` 列 |
+| K-3 | 共享服务 | `AutoTaskService`（定时调度 + 每日定点/间隔 + MiniLegadoJs 执行器）、`DownloadService`（活跃下载队列，ChangeNotifier）、`RuleSubAutoUpdate`（订阅自动更新，消除两处解析分叉） |
+| K-4 | 五路并行分域重构 | 73 个 UI 文件全量覆盖：硬编码色 → colorScheme、空/错态 → `AppEmptyState`/`AppErrorState`、IconButton 补 tooltip、图标线框化、圆角收敛 12~16 |
+| K-5 | 功能补齐 | 定时任务全链路 UI、首页模块化页、HTTP TTS 编辑 + `getVoices()` 下拉、下载队列管理页、RSS 阅读记录/续读、书源订阅自动更新、换源进度保留、换封面按书源搜封面、目录页第 3 个「高亮」Tab、阅读备忘弹窗、书架批量操作（4→9 项）、书源导入高级选项 |
+| K-6 | 主代理接线 | `http_tts` 表经 `HttpTtsProvider` 接入朗读链路；`NetworkMonitor.isWifi` + 原生 `legado/network` 通道让 `cover_onlyWifi` 真正生效；`_addMarking` 双写 `book_highlights`；`main.dart` 启动期注册调度/JS/订阅更新；「我的」页新增 6 入口；深链补 `autoTask`/`highlightRule` 分支 |
+
+### 验证
+- `dart analyze lib/ test/` **0 error**（173 info，较上轮 183 减少 10）。
+- `flutter test --no-pub` **+230 ~1 All passed**（新增 16 项；5 项过期 UI 契约测试随重构同步更新）。
+- `flutter build apk --release` **成功** → `/workspace/legado-release.apk`（50.1MB）。
+
+### 边界（仍未完成，未假完成）
+ReaderProvider、ShortCuts、MediaButton、MCP 服务、PDF 大纲、局域网备份、视频应用内 PiP、PDF 首页封面 `PdfRenderer`、MOBI HUFF/CDIC 解压；fork 实验性大功能（AI Agent 工具链、BGM 在线库、EPUB 自绘阅读器）；Web 服务 3 个 WebSocket 端点仍为 HTTP/SSE 降级；iOS 因 Linux 无 Xcode 未构建。

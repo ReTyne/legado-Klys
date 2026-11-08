@@ -6,6 +6,7 @@ import 'package:dio/dio.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:legado_md3/data/local/app_database.dart';
+import 'package:legado_md3/ui/widgets/app_widgets.dart';
 
 class TxtTocRuleScreen extends StatefulWidget {
   const TxtTocRuleScreen({super.key});
@@ -131,8 +132,8 @@ class _TxtTocRuleScreenState extends State<TxtTocRuleScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text('TXT目录规则'), actions: [
-        IconButton(icon: const Icon(Icons.add), onPressed: () => _showEditDialog()),
-        PopupMenuButton<String>(onSelected: _onMenu, itemBuilder: (_) => const [
+        IconButton(tooltip: '新增规则', icon: const Icon(Icons.add), onPressed: () => _showEditDialog()),
+        PopupMenuButton<String>(tooltip: '更多', onSelected: _onMenu, itemBuilder: (_) => const [
           PopupMenuItem(value: 'import', child: Text('网络导入')),
           PopupMenuItem(value: 'local', child: Text('本地导入')),
           PopupMenuItem(value: 'export', child: Text('导出')),
@@ -141,7 +142,11 @@ class _TxtTocRuleScreenState extends State<TxtTocRuleScreen> {
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : _rules.isEmpty
-              ? const Center(child: Text('暂无规则'))
+              ? const AppEmptyState(
+                  icon: Icons.list_alt_outlined,
+                  title: '暂无 TXT 目录规则',
+                  message: '点击右上角新增，或导入规则',
+                )
               : ListView.builder(
                   itemCount: _rules.length,
                   itemBuilder: (context, index) {
@@ -154,13 +159,16 @@ class _TxtTocRuleScreenState extends State<TxtTocRuleScreen> {
                         onChanged: (v) => setState(() => _rules[index] = TxtTocRule(id: rule.id, name: rule.name, chapterRule: rule.chapterRule, enable: v)),
                       ),
                       onTap: () => _showEditDialog(rule: rule),
-                      onLongPress: () => showDialog(
-                        context: context,
-                        builder: (context) => AlertDialog(title: const Text('删除规则'), content: Text('确定删除"${rule.name}"吗？'), actions: [
-                          TextButton(onPressed: () => Navigator.pop(context), child: const Text('取消')),
-                          FilledButton(style: FilledButton.styleFrom(backgroundColor: Colors.red), onPressed: () { setState(() => _rules.removeAt(index)); Navigator.pop(context); }, child: const Text('删除')),
-                        ]),
-                      ),
+                      onLongPress: () async {
+                        final ok = await showAppConfirmDialog(
+                          context,
+                          title: '删除规则',
+                          content: '确定删除"${rule.name}"吗？',
+                          confirmText: '删除',
+                          danger: true,
+                        );
+                        if (ok) setState(() => _rules.removeAt(index));
+                      },
                     );
                   },
                 ),

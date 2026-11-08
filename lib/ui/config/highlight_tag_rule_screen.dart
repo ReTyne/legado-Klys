@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:legado_md3/ui/widgets/app_widgets.dart';
 
 class HighlightTagRuleScreen extends StatefulWidget {
   const HighlightTagRuleScreen({super.key});
@@ -65,7 +66,7 @@ class _HighlightTagRuleScreenState extends State<HighlightTagRuleScreen> {
               const SizedBox(height: 8),
               TextField(controller: _ruleController, decoration: const InputDecoration(labelText: '匹配规则(正则)', border: OutlineInputBorder())),
               const SizedBox(height: 8),
-              SizedBox(height: 40, child: ListView(scrollDirection: Axis.horizontal, children: _colors.map((c) => GestureDetector(onTap: () => setState(() => _selectedColor = c), child: Container(width: 32, height: 32, margin: const EdgeInsets.symmetric(horizontal: 4), decoration: BoxDecoration(color: c, shape: BoxShape.circle, border: _selectedColor == c ? Border.all(color: Colors.black, width: 2) : null)))).toList())),
+              SizedBox(height: 40, child: ListView(scrollDirection: Axis.horizontal, children: _colors.map((c) => GestureDetector(onTap: () => setState(() => _selectedColor = c), child: Container(width: 32, height: 32, margin: const EdgeInsets.symmetric(horizontal: 4), decoration: BoxDecoration(color: c, shape: BoxShape.circle, border: _selectedColor == c ? Border.all(color: Theme.of(context).colorScheme.primary, width: 2) : null)))).toList())),
               const SizedBox(height: 8),
               SizedBox(width: double.infinity, child: FilledButton(onPressed: _addRule, child: const Text('添加规则'))),
             ]),
@@ -73,7 +74,11 @@ class _HighlightTagRuleScreenState extends State<HighlightTagRuleScreen> {
           const Divider(),
           Expanded(
             child: _rules.isEmpty
-                ? const Center(child: Text('暂无高亮规则'))
+                ? const AppEmptyState(
+                    icon: Icons.highlight_outlined,
+                    title: '暂无高亮规则',
+                    message: '填写名称与匹配规则后可添加',
+                  )
                 : ListView.builder(
                     itemCount: _rules.length,
                     itemBuilder: (context, index) {
@@ -82,7 +87,7 @@ class _HighlightTagRuleScreenState extends State<HighlightTagRuleScreen> {
                         leading: Container(width: 16, height: 16, color: Color(rule['color'])),
                         title: Text(rule['name']),
                         subtitle: Text(rule['rule'], style: const TextStyle(fontFamily: 'monospace', fontSize: 12)),
-                        trailing: IconButton(icon: const Icon(Icons.delete, color: Colors.red), onPressed: () => setState(() { _rules.removeAt(index); _saveRules(); })),
+                        trailing: IconButton(tooltip: '删除', icon: Icon(Icons.delete, color: Theme.of(context).colorScheme.error), onPressed: () => setState(() { _rules.removeAt(index); _saveRules(); })),
                       );
                     },
                   ),

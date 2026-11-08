@@ -77,12 +77,14 @@ class _SourceLoginScreenState extends State<SourceLoginScreen> {
 
   void _buildUi() {
     final loginUrl = (source.loginUrl ?? '').trim();
-    // URL 型登录：交给专用 WebView 登录页（对齐 E WebViewLoginFragment）
-    if (loginUrl.startsWith('http://') || loginUrl.startsWith('https://')) {
+    final uiText = (source.loginUi ?? '').trim();
+    // 对齐 E SourceLoginActivity：仅当没有自定义 loginUi 且 loginUrl 为
+    // http(s) 时才自动进入 WebView；有 loginUi 时优先渲染自定义登录表单。
+    if (uiText.isEmpty &&
+        (loginUrl.startsWith('http://') || loginUrl.startsWith('https://'))) {
       WidgetsBinding.instance.addPostFrameCallback((_) => _openWebLogin(loginUrl));
       return;
     }
-    final uiText = (source.loginUi ?? '').trim();
     // 动态 loginUi：先留空，由 _maybeLoadDynamicUi 求值后重建（对齐 E evalUiJs）
     if (_extractLoginUiJs(uiText) != null) return;
     List<dynamic> items = [];
@@ -438,17 +440,18 @@ class _SourceLoginScreenState extends State<SourceLoginScreen> {
   Widget _loginStatusBanner() {
     // 未配置 loginCheckJs 时不展示
     if ((source.loginCheckJs ?? '').trim().isEmpty) return const SizedBox.shrink();
+    final cs = Theme.of(context).colorScheme;
     final ok = _loggedIn == true;
     final color = _checkingLogin
-        ? Colors.grey
-        : (ok ? const Color(0xFF2E7D32) : const Color(0xFFEF6C00));
+        ? cs.onSurfaceVariant
+        : (ok ? cs.primary : cs.error);
     final text = _checkingLogin ? '正在检测登录状态…' : (ok ? '已登录' : '未登录');
     return Container(
       margin: const EdgeInsets.only(bottom: 12),
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
       decoration: BoxDecoration(
         color: color.withOpacity(0.08),
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: BorderRadius.circular(12),
         border: Border.all(color: color.withOpacity(0.4)),
       ),
       child: ListTile(
@@ -466,7 +469,7 @@ class _SourceLoginScreenState extends State<SourceLoginScreen> {
         subtitle: const Text('由 loginCheckJs 检测', style: TextStyle(fontSize: 11)),
         trailing: IconButton(
           tooltip: '重新检测',
-          icon: const Icon(Icons.refresh, size: 20),
+          icon: const Icon(Icons.refresh_outlined, size: 20),
           onPressed: _checkingLogin ? null : _checkLoginStatus,
         ),
       ),
@@ -484,13 +487,22 @@ class _SourceLoginScreenState extends State<SourceLoginScreen> {
   @override
   Widget build(BuildContext context) {
     final loginUrl = (source.loginUrl ?? '').trim();
-    final isWeb = loginUrl.startsWith('http');
+    final isWeb = loginUrl.startsWith('http') &&
+        (source.loginUi ?? '').trim().isEmpty;
     return Scaffold(
       appBar: AppBar(
         title: Text('登录 - ${source.bookSourceName}', maxLines: 1, overflow: TextOverflow.ellipsis),
         actions: [
+          // 有自定义 loginUi 且 loginUrl 为网页时，仍保留 WebView 登录入口
+          if (!isWeb && loginUrl.startsWith('http'))
+            IconButton(
+              tooltip: '网页登录',
+              icon: const Icon(Icons.open_in_browser_outlined),
+              onPressed: () => _openWebLogin(loginUrl),
+            ),
           // 对齐 E source_login.xml：查看登录头 / 删除登录头 / 日志
           PopupMenuButton<String>(
+            tooltip: '登录选项',
             onSelected: (v) {
               switch (v) {
                 case 'show_header':
@@ -514,7 +526,7 @@ class _SourceLoginScreenState extends State<SourceLoginScreen> {
           ),
           IconButton(
             tooltip: '重新载入',
-            icon: const Icon(Icons.refresh),
+            icon: const Icon(Icons.refresh_outlined),
             onPressed: _busy ? null : () async {
               await JsRuntimeManager.instance.invalidate(source.bookSourceUrl);
               if (mounted) setState(() => _logs.clear());
@@ -555,7 +567,7 @@ class _SourceLoginScreenState extends State<SourceLoginScreen> {
                           padding: const EdgeInsets.all(10),
                           decoration: BoxDecoration(
                             color: Theme.of(context).colorScheme.surfaceContainerHighest,
-                            borderRadius: BorderRadius.circular(8),
+                            borderRadius: BorderRadius.circular(12),
                           ),
                           child: Text(
                             source.bookSourceComment!,
@@ -584,8 +596,8 @@ class _SourceLoginScreenState extends State<SourceLoginScreen> {
                         Container(
                           padding: const EdgeInsets.all(8),
                           decoration: BoxDecoration(
-                            color: Colors.black.withOpacity(0.04),
-                            borderRadius: BorderRadius.circular(8),
+                            color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                            borderRadius: BorderRadius.circular(12),
                           ),
                           child: SelectableText(
                             _logs.join('\n'),

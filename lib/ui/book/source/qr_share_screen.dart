@@ -1,11 +1,13 @@
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math' as math;
-import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:legado_md3/common/deep_link_service.dart';
 import 'package:legado_md3/data/model/book_source.dart';
+import 'package:legado_md3/ui/book/source/source_manage_screen.dart';
+import 'package:legado_md3/ui/widgets/app_widgets.dart';
 import 'package:share_plus/share_plus.dart';
 
 /// 二维码内容超出容量（版本 1-10 + 纠错等级 M 上限约 271 字节）时抛出
@@ -738,6 +740,32 @@ class _QrShareScreenState extends State<QrShareScreen> {
     }
   }
 
+  /// 扫码导入：复用 QrScannerScreen 识别二维码，内容交给
+  /// DeepLinkService.importRaw 自动识别类型并落库，与「二维码分享」形成双向闭环。
+  Future<void> _scanImport() async {
+    final code = await Navigator.push<String>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => const QrScannerScreen(title: '扫描导入二维码'),
+      ),
+    );
+    if (code == null || code.trim().isEmpty) return;
+    try {
+      await DeepLinkService.instance.importRaw(code.trim());
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('扫码内容已提交导入')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('导入失败：$e')),
+        );
+      }
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
@@ -747,7 +775,13 @@ class _QrShareScreenState extends State<QrShareScreen> {
         title: const Text('二维码分享'),
         actions: [
           IconButton(
-              icon: const Icon(Icons.copy_all), tooltip: '复制 JSON', onPressed: _copyJson),
+              icon: const Icon(Icons.qr_code_scanner_outlined),
+              tooltip: '扫码导入',
+              onPressed: _scanImport),
+          IconButton(
+              icon: const Icon(Icons.copy_all_outlined),
+              tooltip: '复制 JSON',
+              onPressed: _copyJson),
         ],
       ),
       body: Padding(
@@ -757,10 +791,14 @@ class _QrShareScreenState extends State<QrShareScreen> {
             Expanded(
               child: Center(
                 child: qr == null
-                    ? _buildErrorState(theme)
-                    : Card(
-                        color: Colors.white,
-                        elevation: 2,
+                    ? _buildErrorState()
+                    // 二维码必须保持「浅底深模块」的高对比度才能被扫码器识别，
+                    // 故此处固定浅色底，不随主题反色；其余容器仍走主题语义色。
+                    : DecoratedBox(
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(16),
+                        ),
                         child: Padding(
                           padding: const EdgeInsets.all(12),
                           child: SizedBox(
@@ -791,16 +829,16 @@ class _QrShareScreenState extends State<QrShareScreen> {
                     Text('二维码版本：${(qr != null ? (qr.size - 17) ~/ 4 : '-')}（纠错等级 M）',
                         style: theme.textTheme.bodySmall),
                     if (_compact)
-                      const Padding(
-                        padding: EdgeInsets.only(top: 4),
+                      Padding(
+                        padding: const EdgeInsets.only(top: 4),
                         child: Text('书源字段较多，二维码内为精简 JSON（省略空字段），可正常导入',
-                            style: TextStyle(fontSize: 11, color: Colors.orange)),
+                            style: TextStyle(fontSize: 11, color: theme.colorScheme.tertiary)),
                       ),
                     if (_error != null)
                       Padding(
                         padding: const EdgeInsets.only(top: 4),
                         child: Text(_error!,
-                            style: const TextStyle(fontSize: 11, color: Colors.red)),
+                            style: TextStyle(fontSize: 11, color: theme.colorScheme.error)),
                       ),
                   ],
                 ),
@@ -811,7 +849,7 @@ class _QrShareScreenState extends State<QrShareScreen> {
               children: [
                 Expanded(
                   child: FilledButton.icon(
-                    icon: const Icon(Icons.image),
+                    icon: const Icon(Icons.image_outlined),
                     label: const Text('分享二维码图片'),
                     onPressed: qr == null ? null : _shareImage,
                   ),
@@ -819,7 +857,7 @@ class _QrShareScreenState extends State<QrShareScreen> {
                 const SizedBox(width: 12),
                 Expanded(
                   child: OutlinedButton.icon(
-                    icon: const Icon(Icons.content_copy),
+                    icon: const Icon(Icons.content_copy_outlined),
                     label: const Text('复制 JSON'),
                     onPressed: _copyJson,
                   ),
@@ -832,23 +870,18 @@ class _QrShareScreenState extends State<QrShareScreen> {
     );
   }
 
-  Widget _buildErrorState(ThemeData theme) {
-    return Column(
-      mainAxisAlignment: MainAxisAlignment.center,
-      children: [
-        Icon(Icons.qr_code_2, size: 72, color: Colors.grey[400]),
-        const SizedBox(height: 12),
-        const Text('无法生成二维码', style: TextStyle(fontSize: 16)),
-        const SizedBox(height: 8),
-        const Text('书源 JSON 超出二维码（版本 10 / 纠错 M）容量上限，\n请改用「复制 JSON」或分享 JSON 文本。',
-            textAlign: TextAlign.center,
-            style: TextStyle(fontSize: 12, color: Colors.grey)),
-      ],
+  Widget _buildErrorState() {
+    return const AppEmptyState(
+      icon: Icons.qr_code_2_outlined,
+      title: '无法生成二维码',
+      message: '书源 JSON 超出二维码（版本 10 / 纠错 M）容量上限，请改用「复制 JSON」或分享 JSON 文本。',
     );
   }
 }
 
-/// 二维码绘制（含 2 模块静默区，深色模块按主题色绘制）
+/// 二维码绘制（含 2 模块静默区）。
+/// 二维码为功能性编码：固定白底 + 深色模块，保证任意主题下均可被扫码，
+/// 不随 ColorScheme 反色。
 class _QrPainter extends CustomPainter {
   final QrCode qr;
   final Color color;

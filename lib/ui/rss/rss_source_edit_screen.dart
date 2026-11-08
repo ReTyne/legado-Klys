@@ -7,6 +7,7 @@ import 'package:legado_md3/data/local/app_database.dart';
 import 'package:legado_md3/help/http/rss_service.dart';
 import 'package:legado_md3/help/source/rule_auto_completer.dart';
 import 'package:legado_md3/help/source/js/legado_js_runtime.dart';
+import 'package:legado_md3/ui/widgets/app_widgets.dart';
 
 /// RSS源编辑页面 —— 与书源编辑页同款 MD3 卡片式交互（4 分页）。
 /// 字段以“卡片预览 + 点击弹出底部多行编辑器”呈现；顶栏提供 测试 / 保存 / 更多
@@ -325,29 +326,21 @@ class _RssSourceEditScreenState extends State<RssSourceEditScreen>
   }
 
   void _showMoreMenu() {
-    showModalBottomSheet<void>(
-      context: context,
-      showDragHandle: true,
-      builder: (ctx) => SafeArea(
-        child: Column(mainAxisSize: MainAxisSize.min, children: [
-          _menuTile(Icons.auto_fix_high, '规则补全', () {
-            Navigator.pop(ctx);
+    showAppMenuSheet(context, title: '更多操作', items: [
+      AppMenuSheetItem(
+          title: '规则补全',
+          icon: Icons.auto_fix_high,
+          onTap: () {
             _tabController.animateTo(2);
             _autoComplete();
           }),
-          _menuTile(Icons.copy, '复制RSS源', () { Navigator.pop(ctx); _copy(); }),
-          _menuTile(Icons.paste, '粘贴RSS源', () { Navigator.pop(ctx); _paste(); }),
-          _menuTile(Icons.ios_share, '分享RSS源', () { Navigator.pop(ctx); _share(); }),
-        ]),
-      ),
-    );
+      AppMenuSheetItem(title: '复制RSS源', icon: Icons.copy, onTap: _copy),
+      AppMenuSheetItem(
+          title: '粘贴RSS源', icon: Icons.content_paste, onTap: _paste),
+      AppMenuSheetItem(
+          title: '分享RSS源', icon: Icons.ios_share, onTap: _share),
+    ]);
   }
-
-  Widget _menuTile(IconData icon, String label, VoidCallback onTap) => ListTile(
-        leading: Icon(icon),
-        title: Text(label),
-        onTap: onTap,
-      );
 
   void _toast(String msg) {
     if (!mounted) return;
@@ -356,13 +349,7 @@ class _RssSourceEditScreenState extends State<RssSourceEditScreen>
 
   // ===================== 卡片 / 编辑器 =====================
 
-  Widget _sectionTitle(String t) => Padding(
-        padding: const EdgeInsets.fromLTRB(4, 16, 4, 8),
-        child: Text(t, style: Theme.of(context).textTheme.titleSmall?.copyWith(
-              color: Theme.of(context).colorScheme.primary,
-              fontWeight: FontWeight.bold,
-            )),
-      );
+  Widget _sectionTitle(String t) => AppSectionHeader(t);
 
   Widget _fieldCard(_F f) {
     final c = _c[f.key]!;
@@ -474,18 +461,15 @@ class _RssSourceEditScreenState extends State<RssSourceEditScreen>
   }
 
   Future<void> _confirmDiscard() async {
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        title: const Text('放弃修改？'),
-        content: const Text('当前 RSS 源尚未保存，返回将丢失修改。'),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('继续编辑')),
-          FilledButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('放弃')),
-        ],
-      ),
+    final ok = await showAppConfirmDialog(
+      context,
+      title: '放弃修改？',
+      content: '当前 RSS 源尚未保存，返回将丢失修改。',
+      cancelText: '继续编辑',
+      confirmText: '放弃',
+      danger: true,
     );
-    if (ok == true && mounted) {
+    if (ok && mounted) {
       _dirty = false;
       Navigator.pop(context);
     }
@@ -530,7 +514,7 @@ class _RssSourceEditScreenState extends State<RssSourceEditScreen>
           actions: [
             IconButton(icon: const Icon(Icons.wifi_tethering), tooltip: '测试', onPressed: _test),
             IconButton(icon: const Icon(Icons.save), tooltip: '保存', onPressed: _save),
-            IconButton(icon: const Icon(Icons.more_vert), onPressed: _showMoreMenu),
+            IconButton(icon: const Icon(Icons.more_vert), tooltip: '更多', onPressed: _showMoreMenu),
           ],
           bottom: TabBar(
             controller: _tabController,

@@ -18,8 +18,18 @@ import 'package:legado_md3/ui/config/replace_rule_screen.dart';
 import 'package:legado_md3/ui/config/settings_screen.dart';
 import 'package:legado_md3/ui/config/theme_manage_screen.dart';
 import 'package:legado_md3/ui/config/txt_toc_rule_screen.dart';
+import 'package:legado_md3/ui/config/auto_task_screen.dart';
+import 'package:legado_md3/ui/config/homepage_module_screen.dart';
+import 'package:legado_md3/ui/config/cloud_tts_screen.dart';
+import 'package:legado_md3/ui/cache/download_manage_screen.dart';
 import 'package:legado_md3/ui/file/file_manage_screen.dart';
 import 'package:legado_md3/ui/stats/read_record_screen.dart';
+import 'package:legado_md3/ui/stats/reading_stats_screen.dart';
+import 'package:legado_md3/ui/ai/ai_chat_screen.dart';
+import 'package:legado_md3/ui/ai/agent_tool_screen.dart';
+import 'package:legado_md3/ui/welcome/welcome_config_screen.dart';
+import 'package:legado_md3/ui/config/app_icon_screen.dart';
+import 'package:legado_md3/ui/config/video_setting_screen.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -109,6 +119,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
           _buildMenuItem(context, Icons.list_alt_outlined, 'TXT目录规则', '本地TXT目录识别', () => Navigator.push(context, MaterialPageRoute(builder: (_) => const TxtTocRuleScreen()))),
           _buildMenuItem(context, Icons.find_replace_outlined, '替换净化', '正文内容替换规则', () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ReplaceRuleScreen()))),
           _buildMenuItem(context, Icons.translate_outlined, '词典规则', '文字替换字典', () => Navigator.push(context, MaterialPageRoute(builder: (_) => const DictRuleScreen()))),
+          _buildMenuItem(context, Icons.dashboard_customize_outlined, '首页模块', '自定义发现首页的模块与排序', () => Navigator.push(context, MaterialPageRoute(builder: (_) => const HomepageModuleScreen()))),
+          _buildMenuItem(context, Icons.schedule_outlined, '定时任务', '定时刷新书架 / 缓存 / 备份 / 脚本', () => Navigator.push(context, MaterialPageRoute(builder: (_) => const AutoTaskScreen()))),
           _buildThemeModeTile(context),
           SwitchListTile(
             secondary: const Icon(Icons.web_outlined),
@@ -129,12 +141,20 @@ class _ProfileScreenState extends State<ProfileScreen> {
           _buildMenuItem(context, Icons.backup_outlined, '备份与恢复', 'WebDAV云同步与本地备份', () => Navigator.push(context, MaterialPageRoute(builder: (_) => const BackupScreen()))),
           _buildMenuItem(context, Icons.palette_outlined, '主题设置', '自定义主题', () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ThemeManageScreen()))),
           _buildMenuItem(context, Icons.settings_outlined, '其他设置', '应用设置', () => Navigator.push(context, MaterialPageRoute(builder: (_) => const SettingsScreen()))),
+          _buildMenuItem(context, Icons.record_voice_over_outlined, '朗读引擎', '云端 / 自定义 HTTP TTS 与语音', () => Navigator.push(context, MaterialPageRoute(builder: (_) => const CloudTtsScreen()))),
+          _buildMenuItem(context, Icons.download_outlined, '下载管理', '离线缓存队列与进度', () => Navigator.push(context, MaterialPageRoute(builder: (_) => const DownloadManageScreen()))),
+          _buildMenuItem(context, Icons.smart_toy_outlined, 'AI 助手', '对话与智能体', () => Navigator.push(context, MaterialPageRoute(builder: (_) => const AiChatScreen()))),
+          _buildMenuItem(context, Icons.build_circle_outlined, '智能体工具', 'AI 工具注册与启停', () => Navigator.push(context, MaterialPageRoute(builder: (_) => const AgentToolScreen()))),
+          _buildMenuItem(context, Icons.waving_hand_outlined, '欢迎页设置', '首次启动引导与展示配置', () => Navigator.push(context, MaterialPageRoute(builder: (_) => const WelcomeConfigScreen()))),
+          _buildMenuItem(context, Icons.apps_outlined, '桌面图标', '切换应用图标样式', () => Navigator.push(context, MaterialPageRoute(builder: (_) => const AppIconScreen()))),
+          _buildMenuItem(context, Icons.video_settings_outlined, '视频设置', '播放、弹幕与画中画', () => Navigator.push(context, MaterialPageRoute(builder: (_) => const VideoSettingScreen()))),
 
           const Divider(),
 
           _buildSectionHeader('其他'),
           _buildMenuItem(context, Icons.bookmark_border, '书签', '所有书签', () => Navigator.push(context, MaterialPageRoute(builder: (_) => const BookmarkScreen()))),
           _buildMenuItem(context, Icons.history_outlined, '阅读记录', '每本书的阅读明细', () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ReadRecordScreen()))),
+          _buildMenuItem(context, Icons.bar_chart_outlined, '阅读统计', '时长与书籍分布', () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ReadingStatsScreen()))),
           _buildMenuItem(context, Icons.folder_outlined, '文件管理', '本地文件', () => Navigator.push(context, MaterialPageRoute(builder: (_) => const FileManageScreen()))),
           _buildMenuItem(context, Icons.info_outline, '关于', '应用信息', () => _showAbout(context)),
           _buildMenuItem(context, Icons.exit_to_app_outlined, '退出', '退出应用', () => SystemNavigator.pop()),

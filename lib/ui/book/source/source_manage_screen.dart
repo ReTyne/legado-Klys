@@ -6,6 +6,7 @@ import 'package:dio/dio.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:legado_md3/common/deep_link_service.dart';
 import 'package:legado_md3/data/local/app_database.dart';
 import 'package:legado_md3/data/model/book_source.dart';
@@ -18,6 +19,74 @@ import 'package:legado_md3/ui/book/source/source_login_screen.dart';
 import 'package:legado_md3/ui/book/source/qr_share_screen.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 import 'package:share_plus/share_plus.dart';
+import 'package:legado_md3/ui/widgets/app_widgets.dart';
+
+/// 书源导入高级选项（对齐 legado-E `res/menu/import_source.xml` 的 7 项菜单：
+/// menu_new_group / menu_select_new_source / menu_select_update_source /
+/// menu_keep_original_name / menu_keep_group / menu_keep_enable / menu_show_comment）。
+/// 另保留 1 项扩展「导入时自动替换同名」（官方原版能力）。
+/// 早期注释所称「12 项菜单」是官方原版口径，不适用于 Sigma 基准。
+///
+/// 每一项都真实参与 [_SourceManageScreenState._importSourcesFromData] 的落库或渲染：
+/// - [keepOriginalName] / [keepGroup] / [keepEnabled]：更新同名 URL 书源时保留本地字段；
+/// - [selectNewSource] / [selectUpdateSource]：控制新增 / 已存在书源是否落库；
+/// - [newGroup] / [addGroup]：menu_new_group，导入时统一分组（整体替换或追加）；
+/// - [showComment]：menu_show_comment，书源列表显示备注；
+/// - [autoReplaceSameName]：存在同名但不同 URL 的旧源时先删除再导入。
+/// 全部持久化到 SharedPreferences，默认值保持「全量导入」的原有行为。
+class SourceImportOptions {
+  const SourceImportOptions({
+    this.keepOriginalName = false,
+    this.keepGroup = false,
+    this.keepEnabled = false,
+    this.selectNewSource = true,
+    this.selectUpdateSource = true,
+    this.autoReplaceSameName = false,
+    this.showComment = false,
+    this.newGroup = '',
+    this.addGroup = false,
+  });
+
+  final bool keepOriginalName;
+  final bool keepGroup;
+  final bool keepEnabled;
+  final bool selectNewSource;
+  final bool selectUpdateSource;
+  final bool autoReplaceSameName;
+  final bool showComment;
+  final String newGroup;
+  final bool addGroup;
+
+  static const String _keyPrefix = 'source_import_opt_';
+
+  static Future<SourceImportOptions> load() async {
+    final prefs = await SharedPreferences.getInstance();
+    return SourceImportOptions(
+      keepOriginalName: prefs.getBool('${_keyPrefix}keep_original_name') ?? false,
+      keepGroup: prefs.getBool('${_keyPrefix}keep_group') ?? false,
+      keepEnabled: prefs.getBool('${_keyPrefix}keep_enabled') ?? false,
+      selectNewSource: prefs.getBool('${_keyPrefix}select_new_source') ?? true,
+      selectUpdateSource: prefs.getBool('${_keyPrefix}select_update_source') ?? true,
+      autoReplaceSameName: prefs.getBool('${_keyPrefix}auto_replace_same_name') ?? false,
+      showComment: prefs.getBool('${_keyPrefix}show_comment') ?? false,
+      newGroup: prefs.getString('${_keyPrefix}new_group') ?? '',
+      addGroup: prefs.getBool('${_keyPrefix}add_group') ?? false,
+    );
+  }
+
+  Future<void> save() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('${_keyPrefix}keep_original_name', keepOriginalName);
+    await prefs.setBool('${_keyPrefix}keep_group', keepGroup);
+    await prefs.setBool('${_keyPrefix}keep_enabled', keepEnabled);
+    await prefs.setBool('${_keyPrefix}select_new_source', selectNewSource);
+    await prefs.setBool('${_keyPrefix}select_update_source', selectUpdateSource);
+    await prefs.setBool('${_keyPrefix}auto_replace_same_name', autoReplaceSameName);
+    await prefs.setBool('${_keyPrefix}show_comment', showComment);
+    await prefs.setString('${_keyPrefix}new_group', newGroup);
+    await prefs.setBool('${_keyPrefix}add_group', addGroup);
+  }
+}
 
 class SourceManageScreen extends StatefulWidget {
   const SourceManageScreen({super.key});
@@ -40,6 +109,8 @@ class _SourceManageScreenState extends State<SourceManageScreen> {
   bool _sortAsc = true;
   bool _selectMode = false;
   bool _groupByDomain = false;
+  /// menu_show_comment：书源列表是否显示备注（由导入选项持久化）。
+  bool _showComment = false;
   final Set<String> _selectedIds = {};
   List<String> _groups = [];
 
@@ -47,6 +118,12 @@ class _SourceManageScreenState extends State<SourceManageScreen> {
   void initState() {
     super.initState();
     _loadSources();
+    _loadShowComment();
+  }
+
+  Future<void> _loadShowComment() async {
+    final options = await SourceImportOptions.load();
+    if (mounted) setState(() => _showComment = options.showComment);
   }
 
   @override
@@ -149,116 +226,100 @@ class _SourceManageScreenState extends State<SourceManageScreen> {
   }
 
   void _showAddMenu() {
-    showModalBottomSheet(
-      context: context,
-      builder: (context) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ListTile(
-              leading: const Icon(Icons.add_link),
-              title: const Text('网络导入'),
-              subtitle: const Text('从URL导入书源JSON'),
-              onTap: () {
-                Navigator.pop(context);
-                _showImportDialog();
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.edit),
-              title: const Text('新建书源'),
-              onTap: () {
-                Navigator.pop(context);
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(builder: (_) => const SourceEditScreen()),
-                ).then((_) => _loadSources());
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.content_paste),
-              title: const Text('剪贴板导入'),
-              subtitle: const Text('从剪贴板粘贴书源JSON'),
-              onTap: () {
-                Navigator.pop(context);
-                _importFromClipboard();
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.folder_open),
-              title: const Text('本地导入'),
-              subtitle: const Text('从JSON文件导入'),
-              onTap: () {
-                Navigator.pop(context);
-                _importFromFile();
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.ios_share),
-              title: const Text('导出书源'),
-              subtitle: const Text('导出所有书源为JSON'),
-              onTap: () {
-                Navigator.pop(context);
-                _exportSources();
-              },
-            ),
-            const Divider(),
-            ListTile(
-              leading: const Icon(Icons.qr_code_scanner),
-              title: const Text('二维码导入'),
-              subtitle: const Text('扫描二维码导入书源'),
-              onTap: () async {
-                Navigator.pop(context);
-                final code = await Navigator.push<String>(context, MaterialPageRoute(builder: (_) => const QrScannerScreen(title: '扫描书源二维码')));
-                if (code == null || code.isEmpty) return;
-                final text = code.trim();
-                if (text.startsWith('http')) {
-                  _importFromUrl(text);
-                } else {
-                  final n = await _importSourcesFromString(text);
-                  if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('导入 $n 个书源')));
-                }
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.domain),
-              title: const Text('按域名分组'),
-              subtitle: const Text('自动按域名分组显示'),
-              onTap: () {
-                Navigator.pop(context);
-                setState(() => _groupByDomain = !_groupByDomain);
-                ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(_groupByDomain ? '已按域名分组' : '已取消域名分组')));
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.verified_outlined),
-              title: const Text('书源校验'),
-              subtitle: Text(CheckSourceConfig.summary),
-              onTap: () {
-                Navigator.pop(context);
-                _validateSources();
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.tune),
-              title: const Text('校验设置'),
-              subtitle: const Text('超时时间与校验项'),
-              onTap: () {
-                Navigator.pop(context);
-                _showCheckSourceConfigDialog();
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.folder_special),
-              title: const Text('分组管理'),
-              onTap: () {
-                Navigator.pop(context);
-                _showGroupManageDialog();
-              },
-            ),
-          ],
+    showAppMenuSheet(
+      context,
+      title: '书源',
+      items: [
+        AppMenuSheetItem(
+          title: '网络导入',
+          icon: Icons.add_link_outlined,
+          subtitle: '从URL导入书源JSON',
+          onTap: _showImportDialog,
         ),
-      ),
+        AppMenuSheetItem(
+          title: '新建书源',
+          icon: Icons.add_outlined,
+          onTap: () => Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => const SourceEditScreen()),
+          ).then((_) => _loadSources()),
+        ),
+        AppMenuSheetItem(
+          title: '剪贴板导入',
+          icon: Icons.content_paste_outlined,
+          subtitle: '从剪贴板粘贴书源JSON',
+          onTap: _importFromClipboard,
+        ),
+        AppMenuSheetItem(
+          title: '本地导入',
+          icon: Icons.folder_open_outlined,
+          subtitle: '从JSON文件导入',
+          onTap: _importFromFile,
+        ),
+        AppMenuSheetItem(
+          title: '导出书源',
+          icon: Icons.ios_share_outlined,
+          subtitle: '导出所有书源为JSON',
+          onTap: _exportSources,
+        ),
+        AppMenuSheetItem(
+          title: '二维码导入',
+          icon: Icons.qr_code_scanner_outlined,
+          subtitle: '扫描二维码导入书源',
+          onTap: () async {
+            final code = await Navigator.push<String>(context,
+                MaterialPageRoute(builder: (_) => const QrScannerScreen(title: '扫描书源二维码')));
+            if (code == null || code.isEmpty) return;
+            final text = code.trim();
+            if (text.startsWith('http')) {
+              _importFromUrl(text);
+            } else {
+              final n = await runWithBusyDialog<int>(
+                context,
+                message: '正在导入书源…',
+                task: _importSourcesFromString(text),
+              );
+              if (mounted) {
+                ScaffoldMessenger.of(context)
+                    .showSnackBar(SnackBar(content: Text('导入 $n 个书源')));
+              }
+            }
+          },
+        ),
+        AppMenuSheetItem(
+          title: '导入选项',
+          icon: Icons.rule_outlined,
+          subtitle: '保留字段、导入范围、自定义分组、显示备注、同名替换',
+          onTap: _showImportOptionsDialog,
+        ),
+        AppMenuSheetItem(
+          title: '按域名分组',
+          icon: Icons.domain_outlined,
+          subtitle: '自动按域名分组显示',
+          onTap: () {
+            setState(() => _groupByDomain = !_groupByDomain);
+            ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                content: Text(_groupByDomain ? '已按域名分组' : '已取消域名分组')));
+          },
+        ),
+        AppMenuSheetItem(
+          title: '书源校验',
+          icon: Icons.verified_outlined,
+          subtitle: CheckSourceConfig.summary,
+          onTap: () => _validateSources(),
+        ),
+        AppMenuSheetItem(
+          title: '校验设置',
+          icon: Icons.tune_outlined,
+          subtitle: '超时时间与校验项',
+          onTap: _showCheckSourceConfigDialog,
+        ),
+        AppMenuSheetItem(
+          title: '分组管理',
+          icon: Icons.folder_special_outlined,
+          onTap: _showGroupManageDialog,
+        ),
+      ],
     );
   }
 
@@ -282,7 +343,11 @@ class _SourceManageScreenState extends State<SourceManageScreen> {
         // 指定类型：走统一导入分派
         await DeepLinkService.instance.importRaw(body, type: type);
       } else {
-        final count = await _importSourcesFromString(body);
+        final count = await runWithBusyDialog<int>(
+          context,
+          message: '正在导入书源…',
+          task: _importSourcesFromString(body),
+        );
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(content: Text(count > 0 ? '成功导入 $count 个书源' : '未识别到有效书源')),
@@ -318,7 +383,9 @@ class _SourceManageScreenState extends State<SourceManageScreen> {
       }
       decoded = arr;
     }
-    return _importSourcesFromData(decoded);
+    // 导入选项每次从 SharedPreferences 读取，保证「导入选项」对话框保存后立即生效
+    final options = await SourceImportOptions.load();
+    return _importSourcesFromData(decoded, options);
   }
 
   Future<void> _importFromFile() async {
@@ -337,7 +404,11 @@ class _SourceManageScreenState extends State<SourceManageScreen> {
       } else {
         content = utf8.decode(bytes);
       }
-      int count = await _importSourcesFromString(content);
+      final count = await runWithBusyDialog<int>(
+        context,
+        message: '正在导入书源…',
+        task: _importSourcesFromString(content),
+      );
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('成功导入 $count 个书源')),
@@ -362,7 +433,11 @@ class _SourceManageScreenState extends State<SourceManageScreen> {
         );
         return;
       }
-      int count = await _importSourcesFromString(clipboardData.text!);
+      final count = await runWithBusyDialog<int>(
+        context,
+        message: '正在导入书源…',
+        task: _importSourcesFromString(clipboardData.text!),
+      );
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('成功导入 $count 个书源')),
@@ -410,7 +485,10 @@ class _SourceManageScreenState extends State<SourceManageScreen> {
     }
   }
 
-  Future<int> _importSourcesFromData(dynamic data) async {
+  /// 按 [SourceImportOptions] 真实落库：新增/更新分流、保留本地字段、同名自动替换。
+  /// insertSource 使用 ConflictAlgorithm.replace，故同名 URL 天然为覆盖更新。
+  Future<int> _importSourcesFromData(
+      dynamic data, SourceImportOptions options) async {
     // 解包常见订阅格式：{data:[...]} / {bookSources:[...]} / {result:[...]}
     dynamic unwrapped = data;
     if (unwrapped is Map && !unwrapped.containsKey('bookSourceUrl')) {
@@ -418,15 +496,62 @@ class _SourceManageScreenState extends State<SourceManageScreen> {
         if (unwrapped[key] is List) { unwrapped = unwrapped[key]; break; }
       }
     }
+    // 现有书源快照：按 URL 精确匹配（更新场景）+ 按名称匹配（同名替换场景）
+    final existing = await _db.getAllSources();
+    final existingByUrl = <String, BookSource>{
+      for (final s in existing) s.bookSourceUrl: s,
+    };
     int count = 0;
     final list = unwrapped is List ? unwrapped : [unwrapped];
     for (final item in list) {
       if (item is Map) {
         try {
           final m = Map<String, dynamic>.from(item);
-          if ((m['bookSourceUrl'] ?? '').toString().isEmpty) continue;
+          final url = (m['bookSourceUrl'] ?? '').toString();
+          if (url.isEmpty) continue;
           final source = BookSource.fromJson(m);
+          final old = existingByUrl[url];
+          if (old == null) {
+            // 新增源：受「选中新增源」控制
+            if (!options.selectNewSource) continue;
+          } else {
+            // 更新源：受「选中更新源」控制，并按选项保留本地字段
+            if (!options.selectUpdateSource) continue;
+            if (options.keepOriginalName) source.bookSourceName = old.bookSourceName;
+            if (options.keepGroup) source.bookSourceGroup = old.bookSourceGroup;
+            if (options.keepEnabled) {
+              source.enabled = old.enabled;
+              source.enabledExplore = old.enabledExplore;
+            }
+          }
+          // menu_new_group：把导入的书源统一归入指定分组（追加或整体替换）。
+          // 对齐 Sigma ImportBookSourceViewModel.importSelect：groupName 在
+          // keepGroup 之后应用，isAddGroup 时保留原分组并追加新分组。
+          final group = options.newGroup.trim();
+          if (group.isNotEmpty) {
+            if (options.addGroup) {
+              final parts = (source.bookSourceGroup ?? '')
+                  .split(RegExp(r'[,，;；\s]+'))
+                  .map((g) => g.trim())
+                  .where((g) => g.isNotEmpty)
+                  .toList();
+              if (!parts.contains(group)) parts.add(group);
+              source.bookSourceGroup = parts.join(',');
+            } else {
+              source.bookSourceGroup = group;
+            }
+          }
+          // 导入时自动替换同名：删除同名但不同 URL 的旧书源
+          if (options.autoReplaceSameName) {
+            for (final s in existing) {
+              if (s.bookSourceUrl != source.bookSourceUrl &&
+                  s.bookSourceName == source.bookSourceName) {
+                await _db.deleteSource(s.bookSourceUrl);
+              }
+            }
+          }
           await _db.insertSource(source);
+          existingByUrl[source.bookSourceUrl] = source;
           count++;
         } catch (_) {}
       }
@@ -441,6 +566,126 @@ class _SourceManageScreenState extends State<SourceManageScreen> {
     Navigator.of(context)
         .push(MaterialPageRoute(builder: (_) => const OnlineImportScreen()))
         .then((_) => _loadSources());
+  }
+
+  /// 导入高级选项：对齐 legado-E `res/menu/import_source.xml` 的 7 项菜单
+  /// （new_group / select_new_source / select_update_source / keep_original_name /
+  /// keep_group / keep_enable / show_comment），另含 1 项扩展「自动替换同名」。
+  /// 早期所写「12 项菜单」是官方原版口径，不适用于 Sigma 基准。
+  Future<void> _showImportOptionsDialog() async {
+    final current = await SourceImportOptions.load();
+    if (!mounted) return;
+    var keepOriginalName = current.keepOriginalName;
+    var keepGroup = current.keepGroup;
+    var keepEnabled = current.keepEnabled;
+    var selectNewSource = current.selectNewSource;
+    var selectUpdateSource = current.selectUpdateSource;
+    var autoReplaceSameName = current.autoReplaceSameName;
+    var showComment = current.showComment;
+    var addGroup = current.addGroup;
+    final groupCtl = TextEditingController(text: current.newGroup);
+    await showDialog<void>(
+      context: context,
+      builder: (d) => StatefulBuilder(
+        builder: (d, setS) => AlertDialog(
+          title: const Text('导入选项'),
+          content: SingleChildScrollView(
+            child: Column(mainAxisSize: MainAxisSize.min, children: [
+              const AppSectionHeader('保留本地字段（menu_keep_*，同名 URL 更新时生效）'),
+              SwitchListTile(
+                title: const Text('保留原名'),
+                subtitle: const Text('更新已有书源时不覆盖本地书源名称'),
+                value: keepOriginalName,
+                onChanged: (v) => setS(() => keepOriginalName = v),
+              ),
+              SwitchListTile(
+                title: const Text('保留分组'),
+                subtitle: const Text('更新已有书源时不覆盖本地分组'),
+                value: keepGroup,
+                onChanged: (v) => setS(() => keepGroup = v),
+              ),
+              SwitchListTile(
+                title: const Text('保留启用状态'),
+                subtitle: const Text('更新已有书源时不覆盖启用/发现开关'),
+                value: keepEnabled,
+                onChanged: (v) => setS(() => keepEnabled = v),
+              ),
+              const Divider(),
+              const AppSectionHeader('导入范围（menu_select_*）'),
+              SwitchListTile(
+                title: const Text('选中新增源'),
+                subtitle: const Text('导入书源库中尚不存在的书源'),
+                value: selectNewSource,
+                onChanged: (v) => setS(() => selectNewSource = v),
+              ),
+              SwitchListTile(
+                title: const Text('选中更新源'),
+                subtitle: const Text('覆盖更新书源库中已存在的书源'),
+                value: selectUpdateSource,
+                onChanged: (v) => setS(() => selectUpdateSource = v),
+              ),
+              const Divider(),
+              const AppSectionHeader('自定义分组（menu_new_group）'),
+              TextField(
+                controller: groupCtl,
+                decoration: const InputDecoration(
+                  labelText: '导入分组名',
+                  hintText: '留空则不改分组',
+                  isDense: true,
+                  border: OutlineInputBorder(),
+                ),
+              ),
+              SwitchListTile(
+                title: const Text('追加到原分组'),
+                subtitle: const Text('关闭则整体替换书源分组'),
+                value: addGroup,
+                onChanged: (v) => setS(() => addGroup = v),
+              ),
+              const Divider(),
+              const AppSectionHeader('显示与扩展'),
+              SwitchListTile(
+                title: const Text('显示书源备注（menu_show_comment）'),
+                subtitle: const Text('在书源列表中显示书源注释'),
+                value: showComment,
+                onChanged: (v) => setS(() => showComment = v),
+              ),
+              SwitchListTile(
+                title: const Text('导入时自动替换同名（扩展）'),
+                subtitle: const Text('存在同名但不同 URL 的旧源时先删除再导入'),
+                value: autoReplaceSameName,
+                onChanged: (v) => setS(() => autoReplaceSameName = v),
+              ),
+            ]),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(d), child: const Text('取消')),
+            FilledButton(
+              onPressed: () async {
+                await SourceImportOptions(
+                  keepOriginalName: keepOriginalName,
+                  keepGroup: keepGroup,
+                  keepEnabled: keepEnabled,
+                  selectNewSource: selectNewSource,
+                  selectUpdateSource: selectUpdateSource,
+                  autoReplaceSameName: autoReplaceSameName,
+                  showComment: showComment,
+                  newGroup: groupCtl.text.trim(),
+                  addGroup: addGroup,
+                ).save();
+                if (d.mounted) Navigator.pop(d);
+                await _loadShowComment();
+                if (mounted) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('导入选项已保存')));
+                }
+              },
+              child: const Text('保存'),
+            ),
+          ],
+        ),
+      ),
+    );
+    groupCtl.dispose();
   }
 
   void _showSortDialog() {
@@ -467,10 +712,10 @@ class _SourceManageScreenState extends State<SourceManageScreen> {
         content: SizedBox(
           width: double.maxFinite,
           child: Column(mainAxisSize: MainAxisSize.min, children: [
-            const Padding(
-              padding: EdgeInsets.only(bottom: 8),
+            Padding(
+              padding: const EdgeInsets.only(bottom: 8),
               child: Text('分组来源于书源；可在此重命名或解散（解散后书源回到未分组）。新建分组请在编辑书源或多选“添加分组”中设置。',
-                  style: TextStyle(fontSize: 12, color: Colors.grey)),
+                  style: TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.onSurfaceVariant)),
             ),
             if (_groups.isEmpty)
               const Padding(padding: EdgeInsets.all(16), child: Text('暂无分组'))
@@ -483,7 +728,7 @@ class _SourceManageScreenState extends State<SourceManageScreen> {
                     title: Text(g),
                     trailing: Row(mainAxisSize: MainAxisSize.min, children: [
                       IconButton(icon: const Icon(Icons.drive_file_rename_outline, size: 18), tooltip: '重命名', onPressed: () => _renameGroup(g)),
-                      IconButton(icon: const Icon(Icons.delete, size: 18), tooltip: '解散分组', onPressed: () async {
+                      IconButton(icon: const Icon(Icons.delete_outline, size: 18), tooltip: '解散分组', onPressed: () async {
                         for (final s in _sources.where((s) => s.bookSourceGroup == g)) {
                           s.bookSourceGroup = null;
                           await _db.updateSource(s);
@@ -613,12 +858,12 @@ class _SourceManageScreenState extends State<SourceManageScreen> {
     return Scaffold(
       appBar: AppBar(
         title: _selectMode ? Text('已选 ${_selectedIds.length} 个') : Text('书源管理 (${_sources.length})'),
-        leading: _selectMode ? IconButton(icon: const Icon(Icons.close), onPressed: () => setState(() { _selectMode = false; _selectedIds.clear(); })) : null,
+        leading: _selectMode ? IconButton(icon: const Icon(Icons.close), tooltip: '取消多选', onPressed: () => setState(() { _selectMode = false; _selectedIds.clear(); })) : null,
         actions: _selectMode ? [
-          IconButton(icon: const Icon(Icons.select_all), tooltip: '全选', onPressed: () => setState(() => _selectedIds.addAll(_filteredSources.map((s) => s.bookSourceUrl)))),
+          IconButton(icon: const Icon(Icons.select_all_outlined), tooltip: '全选', onPressed: () => setState(() => _selectedIds.addAll(_filteredSources.map((s) => s.bookSourceUrl)))),
           IconButton(icon: const Icon(Icons.check_circle_outline), tooltip: '启用', onPressed: () => _batchEnable(true)),
           IconButton(icon: const Icon(Icons.remove_circle_outline), tooltip: '禁用', onPressed: () => _batchEnable(false)),
-          IconButton(icon: const Icon(Icons.ios_share), tooltip: '导出', onPressed: _batchExport),
+          IconButton(icon: const Icon(Icons.ios_share_outlined), tooltip: '导出', onPressed: _batchExport),
           PopupMenuButton<String>(
             onSelected: (v) => _batchAction(v),
             itemBuilder: (context) => const [
@@ -632,10 +877,24 @@ class _SourceManageScreenState extends State<SourceManageScreen> {
               PopupMenuItem(value: 'invert', child: Text('反选')),
             ],
           ),
-          IconButton(icon: const Icon(Icons.delete_outline, color: Colors.red), tooltip: '删除', onPressed: () => showDialog(context: context, builder: (context) => AlertDialog(title: const Text('删除选中'), content: Text('确定删除${_selectedIds.length}个书源吗？'), actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('取消')), FilledButton(style: FilledButton.styleFrom(backgroundColor: Colors.red), onPressed: () { Navigator.pop(context); _batchDelete(); }, child: const Text('删除'))]))),
+          IconButton(
+            icon: Icon(Icons.delete_outline, color: Theme.of(context).colorScheme.error),
+            tooltip: '删除',
+            onPressed: () async {
+              final ok = await showAppConfirmDialog(
+                context,
+                title: '删除选中',
+                content: '确定删除${_selectedIds.length}个书源吗？',
+                confirmText: '删除',
+                danger: true,
+              );
+              if (ok) _batchDelete();
+            },
+          ),
         ] : [
           IconButton(
-            icon: const Icon(Icons.search),
+            icon: const Icon(Icons.search_outlined),
+            tooltip: '搜索',
             onPressed: () {
               showSearch(
                 context: context,
@@ -719,28 +978,12 @@ class _SourceManageScreenState extends State<SourceManageScreen> {
               ),
             ),
           if (_groups.isNotEmpty)
-            Container(
-              height: 48,
-              padding: const EdgeInsets.symmetric(horizontal: 8),
-              child: ListView(
-                scrollDirection: Axis.horizontal,
-                children: [
-                  FilterChip(
-                    label: const Text('全部'),
-                    selected: _selectedGroup == null,
-                    onSelected: (_) => setState(() => _selectedGroup = null),
-                  ),
-                  const SizedBox(width: 8),
-                  ..._groups.map((g) => Padding(
-                    padding: const EdgeInsets.only(right: 8),
-                    child: FilterChip(
-                      label: Text(g),
-                      selected: _selectedGroup == g,
-                      onSelected: (_) => setState(() => _selectedGroup = g),
-                    ),
-                  )),
-                ],
-              ),
+            AppChipTabs<String>(
+              items: ['全部', ..._groups],
+              selected: _selectedGroup ?? '全部',
+              labelOf: (g) => g,
+              onSelected: (g) =>
+                  setState(() => _selectedGroup = g == '全部' ? null : g),
             ),
           Expanded(
             child: _isLoading
@@ -765,7 +1008,7 @@ class _SourceManageScreenState extends State<SourceManageScreen> {
                               : Theme.of(context).colorScheme.surfaceContainerHighest,
                           child: Text(
                             source.bookSourceName.isNotEmpty ? source.bookSourceName[0] : '?',
-                            style: TextStyle(color: source.enabled == true ? Theme.of(context).colorScheme.primary : Colors.grey),
+                            style: TextStyle(color: source.enabled == true ? Theme.of(context).colorScheme.primary : Theme.of(context).colorScheme.onSurfaceVariant),
                           ),
                         ),
                         title: Text(source.bookSourceName, maxLines: 1, overflow: TextOverflow.ellipsis),
@@ -775,6 +1018,12 @@ class _SourceManageScreenState extends State<SourceManageScreen> {
                             Text(source.bookSourceUrl, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 11)),
                             if (source.bookSourceGroup != null && source.bookSourceGroup!.isNotEmpty)
                               Text('分组: ${source.bookSourceGroup}', style: TextStyle(fontSize: 11, color: Theme.of(context).colorScheme.primary)),
+                            // menu_show_comment：开关开启时在书源列表显示备注
+                            if (_showComment && (source.bookSourceComment ?? '').isNotEmpty)
+                              Text('备注: ${source.bookSourceComment}',
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: TextStyle(fontSize: 11, color: Theme.of(context).colorScheme.onSurfaceVariant)),
                           ],
                         ),
                         trailing: _selectMode ? null : Switch(
@@ -803,20 +1052,11 @@ class _SourceManageScreenState extends State<SourceManageScreen> {
     );
   }
 
-  Widget _buildEmptyState() {
-    return Center(
-      child: Column(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
-          Icon(Icons.source_outlined, size: 80, color: Colors.grey[400]),
-          const SizedBox(height: 16),
-          Text('暂无书源', style: TextStyle(fontSize: 18, color: Colors.grey[600])),
-          const SizedBox(height: 8),
-          Text('点击右下角添加或导入书源', style: TextStyle(color: Colors.grey[500])),
-        ],
-      ),
-    );
-  }
+  Widget _buildEmptyState() => const AppEmptyState(
+        icon: Icons.source_outlined,
+        title: '暂无书源',
+        message: '点击右下角添加或导入书源',
+      );
 
   /// 书源校验（对齐 legado-E CheckSourceService：七项校验 + 失效分组 + 响应时间）
   Future<void> _validateSources([List<BookSource>? targets]) async {
@@ -855,7 +1095,7 @@ class _SourceManageScreenState extends State<SourceManageScreen> {
               const SizedBox(height: 4),
               Text('正在校验：$current',
                   maxLines: 1, overflow: TextOverflow.ellipsis,
-                  style: TextStyle(color: Colors.grey[600], fontSize: 12)),
+                  style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 12)),
             ],
           ]),
           actions: [
@@ -1040,147 +1280,135 @@ class _SourceManageScreenState extends State<SourceManageScreen> {
   }
 
   void _showSourceOptions(BookSource source) {
-    showModalBottomSheet(
-      context: context,
-      builder: (context) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ListTile(
-              leading: const Icon(Icons.edit),
-              title: const Text('编辑'),
-              onTap: () {
-                Navigator.pop(context);
-                Navigator.push(context, MaterialPageRoute(builder: (_) => SourceEditScreen(source: source))).then((_) => _loadSources());
-              },
-            ),
-            ListTile(
-              leading: Icon(source.enabled == true ? Icons.toggle_off : Icons.toggle_on),
-              title: Text(source.enabled == true ? '禁用' : '启用'),
-              onTap: () {
-                Navigator.pop(context);
-                _toggleSource(source, !(source.enabled == true));
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.content_copy),
-              title: const Text('复制书源JSON'),
-              onTap: () async {
-                Navigator.pop(context);
-                final jsonStr = const JsonEncoder.withIndent('  ').convert(source.toJson());
-                await Clipboard.setData(ClipboardData(text: jsonStr));
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('书源JSON已复制到剪贴板')),
-                );
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.bug_report),
-              title: const Text('调试书源'),
-              onTap: () {
-                Navigator.pop(context);
-                Navigator.push(context, MaterialPageRoute(builder: (_) => SourceDebugScreen(source: source)));
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.share),
-              title: const Text('分享书源'),
-              onTap: () async {
-                Navigator.pop(context);
-                final jsonStr = const JsonEncoder.withIndent('  ').convert(source.toJson());
-                await Share.share(jsonStr, subject: source.bookSourceName);
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.qr_code_2),
-              title: const Text('分享二维码'),
-              subtitle: const Text('生成书源二维码，供其它设备扫码导入'),
-              onTap: () {
-                Navigator.pop(context);
-                Navigator.push(context, MaterialPageRoute(builder: (_) => QrShareScreen(source: source)));
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.push_pin_outlined),
-              title: Text(source.customOrder > 0 ? '取消置顶' : '置顶'),
-              onTap: () {
-                Navigator.pop(context);
-                source.customOrder = source.customOrder > 0 ? 0 : -1;
-                _db.updateSource(source);
-                _loadSources();
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.vertical_align_bottom),
-              title: const Text('置底'),
-              onTap: () {
-                Navigator.pop(context);
-                source.customOrder = 1;
-                _db.updateSource(source);
-                _loadSources();
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.login),
-              title: const Text('登录'),
-              onTap: () {
-                Navigator.pop(context);
-                _showSourceLogin(source);
-              },
-            ),
-            ListTile(
-              leading: Icon(source.enabledExplore ? Icons.explore_off : Icons.explore),
-              title: Text(source.enabledExplore ? '禁用发现' : '启用发现'),
-              onTap: () {
-                Navigator.pop(context);
-                source.enabledExplore = !source.enabledExplore;
-                _db.updateSource(source);
-                _loadSources();
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.info_outline),
-              title: const Text('书源详情'),
-              onTap: () {
-                Navigator.pop(context);
-                showDialog(context: context, builder: (context) => AlertDialog(
-                  title: Text(source.bookSourceName),
-                  content: SingleChildScrollView(child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text('URL: ${source.bookSourceUrl}'),
-                      const SizedBox(height: 8),
-                      Text('分组: ${source.bookSourceGroup ?? "默认"}'),
-                      const SizedBox(height: 8),
-                      Text('类型: ${source.bookSourceType == 0 ? "文本" : source.bookSourceType == 1 ? "音频" : source.bookSourceType == 2 ? "图片" : source.bookSourceType == 3 ? "文件" : "视频"}'),
-                      const SizedBox(height: 8),
-                      Text('搜索URL: ${source.searchUrl ?? "无"}'),
-                      const SizedBox(height: 8),
-                      Text('发现URL: ${source.exploreUrl ?? "无"}'),
-                      const SizedBox(height: 8),
-                      Text('响应时间: ${source.respondTime}ms'),
-                      const SizedBox(height: 8),
-                      Text('权重: ${source.weight}'),
-                      const SizedBox(height: 8),
-                      Text('备注: ${source.bookSourceComment ?? "无"}'),
-                    ],
-                  )),
-                  actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('关闭'))],
-                ));
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.delete_outline),
-              title: const Text('删除', style: TextStyle(color: Colors.red)),
-              onTap: () {
-                Navigator.pop(context);
-                _deleteSource(source);
-              },
-            ),
-          ],
+    showAppMenuSheet(
+      context,
+      title: source.bookSourceName,
+      items: [
+        AppMenuSheetItem(
+          title: '编辑',
+          icon: Icons.edit_outlined,
+          onTap: () => Navigator.push(context,
+                  MaterialPageRoute(builder: (_) => SourceEditScreen(source: source)))
+              .then((_) => _loadSources()),
         ),
-      ),
+        AppMenuSheetItem(
+          title: source.enabled == true ? '禁用' : '启用',
+          icon: source.enabled == true ? Icons.toggle_off : Icons.toggle_on,
+          onTap: () => _toggleSource(source, !(source.enabled == true)),
+        ),
+        AppMenuSheetItem(
+          title: '复制书源JSON',
+          icon: Icons.content_copy_outlined,
+          onTap: () async {
+            final jsonStr = const JsonEncoder.withIndent('  ').convert(source.toJson());
+            await Clipboard.setData(ClipboardData(text: jsonStr));
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('书源JSON已复制到剪贴板')),
+              );
+            }
+          },
+        ),
+        AppMenuSheetItem(
+          title: '调试书源',
+          icon: Icons.bug_report_outlined,
+          onTap: () => Navigator.push(context,
+              MaterialPageRoute(builder: (_) => SourceDebugScreen(source: source))),
+        ),
+        AppMenuSheetItem(
+          title: '分享书源',
+          icon: Icons.share_outlined,
+          onTap: () async {
+            final jsonStr = const JsonEncoder.withIndent('  ').convert(source.toJson());
+            await Share.share(jsonStr, subject: source.bookSourceName);
+          },
+        ),
+        AppMenuSheetItem(
+          title: '分享二维码',
+          icon: Icons.qr_code_2_outlined,
+          subtitle: '生成书源二维码，供其它设备扫码导入',
+          onTap: () => Navigator.push(context,
+              MaterialPageRoute(builder: (_) => QrShareScreen(source: source))),
+        ),
+        AppMenuSheetItem(
+          title: source.customOrder > 0 ? '取消置顶' : '置顶',
+          icon: Icons.push_pin_outlined,
+          onTap: () {
+            source.customOrder = source.customOrder > 0 ? 0 : -1;
+            _db.updateSource(source);
+            _loadSources();
+          },
+        ),
+        AppMenuSheetItem(
+          title: '置底',
+          icon: Icons.vertical_align_bottom_outlined,
+          onTap: () {
+            source.customOrder = 1;
+            _db.updateSource(source);
+            _loadSources();
+          },
+        ),
+        AppMenuSheetItem(
+          title: '登录',
+          icon: Icons.login_outlined,
+          onTap: () => _showSourceLogin(source),
+        ),
+        AppMenuSheetItem(
+          title: source.enabledExplore ? '禁用发现' : '启用发现',
+          icon: source.enabledExplore ? Icons.explore_off_outlined : Icons.explore_outlined,
+          onTap: () {
+            source.enabledExplore = !source.enabledExplore;
+            _db.updateSource(source);
+            _loadSources();
+          },
+        ),
+        AppMenuSheetItem(
+          title: '书源详情',
+          icon: Icons.info_outline,
+          onTap: () => showDialog(
+            context: context,
+            builder: (c) => AlertDialog(
+              title: Text(source.bookSourceName),
+              content: SingleChildScrollView(child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text('URL: ${source.bookSourceUrl}'),
+                  const SizedBox(height: 8),
+                  Text('分组: ${source.bookSourceGroup ?? "默认"}'),
+                  const SizedBox(height: 8),
+                  Text('类型: ${source.bookSourceType == 0 ? "文本" : source.bookSourceType == 1 ? "音频" : source.bookSourceType == 2 ? "图片" : source.bookSourceType == 3 ? "文件" : "视频"}'),
+                  const SizedBox(height: 8),
+                  Text('搜索URL: ${source.searchUrl ?? "无"}'),
+                  const SizedBox(height: 8),
+                  Text('发现URL: ${source.exploreUrl ?? "无"}'),
+                  const SizedBox(height: 8),
+                  Text('响应时间: ${source.respondTime}ms'),
+                  const SizedBox(height: 8),
+                  Text('权重: ${source.weight}'),
+                  const SizedBox(height: 8),
+                  Text('备注: ${source.bookSourceComment ?? "无"}'),
+                ],
+              )),
+              actions: [TextButton(onPressed: () => Navigator.pop(c), child: const Text('关闭'))],
+            ),
+          ),
+        ),
+        AppMenuSheetItem(
+          title: '删除',
+          icon: Icons.delete_outline,
+          onTap: () async {
+            final ok = await showAppConfirmDialog(
+              context,
+              title: '删除书源',
+              content: '确定要删除「${source.bookSourceName}」吗？',
+              confirmText: '删除',
+              danger: true,
+            );
+            if (ok) _deleteSource(source);
+          },
+        ),
+      ],
     );
   }
 }
@@ -1193,12 +1421,13 @@ class SourceSearchDelegate extends SearchDelegate<BookSource> {
 
   @override
   List<Widget> buildActions(BuildContext context) => [
-    IconButton(icon: const Icon(Icons.clear), onPressed: () => query = ''),
+    IconButton(icon: const Icon(Icons.clear_outlined), tooltip: '清除', onPressed: () => query = ''),
   ];
 
   @override
   Widget buildLeading(BuildContext context) => IconButton(
     icon: const Icon(Icons.arrow_back),
+    tooltip: '返回',
     onPressed: () => Navigator.pop(context),
   );
 
@@ -1283,20 +1512,21 @@ class _QrScannerScreenState extends State<QrScannerScreen> {
         actions: [
           IconButton(icon: const Icon(Icons.photo_library_outlined), tooltip: '从相册选择',
             onPressed: _pickFromGallery),
-          IconButton(icon: const Icon(Icons.flash_on), tooltip: '闪光灯',
+          IconButton(icon: const Icon(Icons.flash_on_outlined), tooltip: '闪光灯',
             onPressed: () => _controller.toggleTorch()),
-          IconButton(icon: const Icon(Icons.cameraswitch), tooltip: '切换镜头',
+          IconButton(icon: const Icon(Icons.cameraswitch_outlined), tooltip: '切换镜头',
             onPressed: () => _controller.switchCamera()),
         ],
       ),
       body: Stack(alignment: Alignment.center, children: [
         MobileScanner(controller: _controller, onDetect: _onDetect),
-        // 取景框
+        // 取景框与提示条叠加在实时相机预览上，背景明暗不可控，
+        // 故固定高对比「白描边 / 半透黑底白字」，不随主题反色（功能性例外）。
         Container(width: 240, height: 240,
           decoration: BoxDecoration(border: Border.all(color: Colors.white.withOpacity(0.8), width: 3), borderRadius: BorderRadius.circular(12))),
         Positioned(bottom: 48, child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-          decoration: BoxDecoration(color: Colors.black54, borderRadius: BorderRadius.circular(20)),
+          decoration: BoxDecoration(color: Colors.black54, borderRadius: BorderRadius.circular(12)),
           child: const Text('将二维码放入框内自动识别', style: TextStyle(color: Colors.white, fontSize: 13)),
         )),
       ]),

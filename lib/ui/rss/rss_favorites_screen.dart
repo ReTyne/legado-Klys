@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:legado_md3/data/local/app_database.dart';
 import 'package:legado_md3/data/model/rss_article.dart';
 import 'package:legado_md3/ui/rss/rss_read_screen.dart';
+import 'package:legado_md3/ui/widgets/app_widgets.dart';
 
 /// RSS收藏文章页面 - 对齐原版RssFavoritesScreen
 class RssFavoritesScreen extends StatefulWidget {
@@ -33,12 +34,14 @@ class _RssFavoritesScreenState extends State<RssFavoritesScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return Scaffold(
       appBar: AppBar(
         title: const Text('收藏文章'),
         actions: [
           if (_articles.isNotEmpty)
             PopupMenuButton<String>(
+              tooltip: '更多',
               onSelected: (v) {
                 if (v == 'clear') _showClearDialog();
               },
@@ -51,11 +54,10 @@ class _RssFavoritesScreenState extends State<RssFavoritesScreen> {
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : _articles.isEmpty
-              ? const Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
-                  Icon(Icons.star_border, size: 64, color: Colors.grey),
-                  SizedBox(height: 16),
-                  Text('暂无收藏文章', style: TextStyle(fontSize: 16, color: Colors.grey)),
-                ]))
+              ? const AppEmptyState(
+                  icon: Icons.star_border,
+                  title: '暂无收藏文章',
+                )
               : RefreshIndicator(
                   onRefresh: _loadFavorites,
                   child: ListView.builder(
@@ -65,27 +67,48 @@ class _RssFavoritesScreenState extends State<RssFavoritesScreen> {
                       return Dismissible(
                         key: ValueKey(article.id ?? index),
                         direction: DismissDirection.endToStart,
-                        background: Container(color: Colors.red, alignment: Alignment.centerRight, padding: const EdgeInsets.only(right: 16), child: const Icon(Icons.delete, color: Colors.white)),
+                        background: Container(
+                            color: cs.error,
+                            alignment: Alignment.centerRight,
+                            padding: const EdgeInsets.only(right: 16),
+                            child: Icon(Icons.delete, color: cs.onError)),
                         onDismissed: (_) async {
-                          if (article.id != null) await _db.toggleRssFavorite(article.id!, 0);
+                          if (article.id != null) {
+                            await _db.toggleRssFavorite(article.id!, 0);
+                          }
                           _loadFavorites();
                         },
                         child: ListTile(
-                          title: Text(article.title, maxLines: 2, overflow: TextOverflow.ellipsis),
-                          subtitle: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                            if (article.description != null)
-                              Text(article.description!, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12)),
-                            const SizedBox(height: 4),
-                            Text(article.sourceName ?? '', style: TextStyle(fontSize: 11, color: Theme.of(context).colorScheme.primary)),
-                          ]),
+                          title: Text(article.title,
+                              maxLines: 2, overflow: TextOverflow.ellipsis),
+                          subtitle: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                if (article.description != null)
+                                  Text(article.description!,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      style: const TextStyle(fontSize: 12)),
+                                const SizedBox(height: 4),
+                                Text(article.sourceName ?? '',
+                                    style: TextStyle(
+                                        fontSize: 11, color: cs.primary)),
+                              ]),
                           trailing: IconButton(
-                            icon: const Icon(Icons.star, color: Colors.amber),
+                            tooltip: '取消收藏',
+                            icon: Icon(Icons.star, color: cs.primary),
                             onPressed: () async {
-                              if (article.id != null) await _db.toggleRssFavorite(article.id!, 0);
+                              if (article.id != null) {
+                                await _db.toggleRssFavorite(article.id!, 0);
+                              }
                               _loadFavorites();
                             },
                           ),
-                          onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => RssReadScreen(article: article))),
+                          onTap: () => Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                  builder: (_) =>
+                                      RssReadScreen(article: article))),
                         ),
                       );
                     },
@@ -94,19 +117,18 @@ class _RssFavoritesScreenState extends State<RssFavoritesScreen> {
     );
   }
 
-  void _showClearDialog() {
-    showDialog(context: context, builder: (context) => AlertDialog(
-      title: const Text('清空收藏'),
-      content: const Text('确定清空所有收藏文章吗？'),
-      actions: [
-        TextButton(onPressed: () => Navigator.pop(context), child: const Text('取消')),
-        FilledButton(onPressed: () async {
-          for (final a in _articles) {
-            if (a.id != null) await _db.toggleRssFavorite(a.id!, 0);
-          }
-          if (mounted) { Navigator.pop(context); _loadFavorites(); }
-        }, child: const Text('确定')),
-      ],
-    ));
+  Future<void> _showClearDialog() async {
+    final ok = await showAppConfirmDialog(
+      context,
+      title: '清空收藏',
+      content: '确定清空所有收藏文章吗？',
+      confirmText: '清空',
+      danger: true,
+    );
+    if (!ok) return;
+    for (final a in _articles) {
+      if (a.id != null) await _db.toggleRssFavorite(a.id!, 0);
+    }
+    if (mounted) _loadFavorites();
   }
 }

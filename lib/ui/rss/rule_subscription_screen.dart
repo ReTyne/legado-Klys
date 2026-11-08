@@ -2,13 +2,11 @@ import 'dart:convert';
 import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:legado_md3/data/local/app_database.dart';
-import 'package:legado_md3/data/model/book_source.dart';
-import 'package:legado_md3/data/model/rss_source.dart';
-import 'package:legado_md3/data/model/replace_rule.dart';
+import 'package:legado_md3/help/storage/rule_sub_auto_update.dart';
+import 'package:legado_md3/ui/widgets/app_widgets.dart';
 
 /// 规则订阅页面 - 对齐原版RuleSubScreen
-/// 订阅远程规则URL，可定时更新书源/RSS源/替换规则
+/// 订阅远程规则URL，可手动/自动更新书源/RSS源/替换规则
 class RuleSubscriptionScreen extends StatefulWidget {
   const RuleSubscriptionScreen({super.key});
 
@@ -21,9 +19,39 @@ class _RuleSub {
   String url;
   int type; // 0书源 1RSS源 2替换规则 3自动检测
   int? lastUpdate;
-  _RuleSub({required this.name, required this.url, this.type = 3, this.lastUpdate});
-  Map<String, dynamic> toJson() => {'name': name, 'url': url, 'type': type, 'lastUpdate': lastUpdate};
-  factory _RuleSub.fromJson(Map<String, dynamic> j) => _RuleSub(name: j['name'] ?? '', url: j['url'] ?? '', type: j['type'] ?? 3, lastUpdate: j['lastUpdate'] as int?);
+  /// 是否自动更新（对齐 RuleSubAutoUpdate.runDue 读取的 autoUpdate 键）
+  int autoUpdate;
+  /// 自动更新间隔（小时，0=每次检查都更新）
+  int updateInterval;
+
+  _RuleSub({
+    required this.name,
+    required this.url,
+    this.type = 3,
+    this.lastUpdate,
+    this.autoUpdate = 0,
+    this.updateInterval = 0,
+  });
+
+  Map<String, dynamic> toJson() => {
+        'name': name,
+        'url': url,
+        'type': type,
+        'lastUpdate': lastUpdate,
+        'autoUpdate': autoUpdate,
+        'updateInterval': updateInterval,
+      };
+
+  factory _RuleSub.fromJson(Map<String, dynamic> j) => _RuleSub(
+        name: (j['name'] ?? '') as String,
+        url: (j['url'] ?? '') as String,
+        type: (j['type'] ?? 3) as int,
+        lastUpdate: j['lastUpdate'] as int?,
+        autoUpdate: (j['autoUpdate'] == true || j['autoUpdate'] == 1) ? 1 : 0,
+        updateInterval: (j['updateInterval'] ?? 0) is int
+            ? (j['updateInterval'] ?? 0) as int
+            : 0,
+      );
 }
 
 class _RuleSubscriptionScreenState extends State<RuleSubscriptionScreen> {
@@ -38,148 +66,228 @@ class _RuleSubscriptionScreenState extends State<RuleSubscriptionScreen> {
 
   Future<void> _load() async {
     final p = await SharedPreferences.getInstance();
-    final list = p.getStringList('rule_subscriptions') ?? [];
-    setState(() => _subs = list.map((s) => _RuleSub.fromJson(jsonDecode(s))).toList());
+    final list = p.getStringList(RuleSubAutoUpdate.prefsKey) ?? [];
+    if (!mounted) return;
+    setState(() => _subs = list
+        .map((s) => _RuleSub.fromJson(jsonDecode(s) as Map<String, dynamic>))
+        .toList());
   }
 
   Future<void> _save() async {
     final p = await SharedPreferences.getInstance();
-    await p.setStringList('rule_subscriptions', _subs.map((e) => jsonEncode(e.toJson())).toList());
+    await p.setStringList(RuleSubAutoUpdate.prefsKey,
+        _subs.map((e) => jsonEncode(e.toJson())).toList());
   }
 
   void _edit([_RuleSub? sub]) {
     final nameCtl = TextEditingController(text: sub?.name ?? '');
     final urlCtl = TextEditingController(text: sub?.url ?? '');
+    final intervalCtl =
+        TextEditingController(text: '${sub?.updateInterval ?? 0}');
     int type = sub?.type ?? 3;
-    showDialog(context: context, builder: (context) => StatefulBuilder(builder: (context, setD) => AlertDialog(
-      title: Text(sub == null ? '添加订阅' : '编辑订阅'),
-      content: Column(mainAxisSize: MainAxisSize.min, children: [
-        TextField(controller: nameCtl, decoration: const InputDecoration(labelText: '名称')),
-        const SizedBox(height: 12),
-        TextField(controller: urlCtl, maxLines: 2, decoration: const InputDecoration(labelText: '订阅URL')),
-        const SizedBox(height: 12),
-        DropdownButtonFormField<int>(
-          value: type,
-          decoration: const InputDecoration(labelText: '规则类型'),
-          items: List.generate(4, (i) => DropdownMenuItem(value: i, child: Text(_typeNames[i]))),
-          onChanged: (v) => setD(() => type = v ?? 3),
+    bool autoUpdate = sub?.autoUpdate == 1;
+    showDialog(
+      context: context,
+      builder: (context) => StatefulBuilder(
+        builder: (context, setD) => AlertDialog(
+          title: Text(sub == null ? '添加订阅' : '编辑订阅'),
+          content: SingleChildScrollView(
+            child: Column(mainAxisSize: MainAxisSize.min, children: [
+              TextField(controller: nameCtl,
+                  decoration: const InputDecoration(labelText: '名称')),
+              const SizedBox(height: 12),
+              TextField(controller: urlCtl, maxLines: 2,
+                  decoration: const InputDecoration(labelText: '订阅URL')),
+              const SizedBox(height: 12),
+              DropdownButtonFormField<int>(
+                value: type,
+                decoration: const InputDecoration(labelText: '规则类型'),
+                items: List.generate(4,
+                    (i) => DropdownMenuItem(value: i, child: Text(_typeNames[i]))),
+                onChanged: (v) => setD(() => type = v ?? 3),
+              ),
+              const SizedBox(height: 8),
+              SwitchListTile(
+                contentPadding: EdgeInsets.zero,
+                title: const Text('自动更新'),
+                subtitle: const Text('启动或到间隔时自动拉取该订阅',
+                    style: TextStyle(fontSize: 11)),
+                value: autoUpdate,
+                onChanged: (v) => setD(() => autoUpdate = v),
+              ),
+              TextField(
+                controller: intervalCtl,
+                keyboardType: TextInputType.number,
+                decoration: const InputDecoration(
+                    labelText: '更新间隔（小时，0=每次检查都更新）'),
+              ),
+            ]),
+          ),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(context),
+                child: const Text('取消')),
+            FilledButton(
+              onPressed: () async {
+                if (urlCtl.text.trim().isEmpty) return;
+                final hours = int.tryParse(intervalCtl.text.trim()) ?? 0;
+                final s = _RuleSub(
+                  name: nameCtl.text.trim().isEmpty
+                      ? urlCtl.text.trim()
+                      : nameCtl.text.trim(),
+                  url: urlCtl.text.trim(),
+                  type: type,
+                  lastUpdate: sub?.lastUpdate,
+                  autoUpdate: autoUpdate ? 1 : 0,
+                  updateInterval: hours < 0 ? 0 : hours,
+                );
+                setState(() {
+                  if (sub == null) {
+                    _subs.add(s);
+                  } else {
+                    final i = _subs.indexOf(sub);
+                    if (i >= 0) _subs[i] = s;
+                  }
+                });
+                await _save();
+                if (context.mounted) Navigator.pop(context);
+              },
+              child: const Text('保存'),
+            ),
+          ],
         ),
-      ]),
-      actions: [
-        TextButton(onPressed: () => Navigator.pop(context), child: const Text('取消')),
-        FilledButton(onPressed: () async {
-          if (urlCtl.text.isEmpty) return;
-          final s = _RuleSub(name: nameCtl.text.isEmpty ? urlCtl.text : nameCtl.text, url: urlCtl.text, type: type);
-          setState(() {
-            if (sub == null) { _subs.add(s); } else { final i = _subs.indexOf(sub); if (i >= 0) _subs[i] = s; }
-          });
-          await _save();
-          if (mounted) Navigator.pop(context);
-        }, child: const Text('保存')),
-      ],
-    )));
+      ),
+    );
   }
 
   Future<void> _update(_RuleSub sub) async {
     final messenger = ScaffoldMessenger.of(context);
     messenger.showSnackBar(SnackBar(content: Text('正在更新订阅: ${sub.name}')));
     try {
-      final dio = Dio(BaseOptions(connectTimeout: const Duration(seconds: 15), receiveTimeout: const Duration(seconds: 30),
-        headers: {'User-Agent': 'Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 Mobile'}));
+      final dio = Dio(BaseOptions(
+        connectTimeout: const Duration(seconds: 15),
+        receiveTimeout: const Duration(seconds: 30),
+        headers: {
+          'User-Agent':
+              'Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 Mobile'
+        },
+      ));
       final resp = await dio.get<String>(sub.url);
-      final body = resp.data ?? '';
-      final count = await _importByType(sub.type, body);
+      // 直接复用共享服务的解析逻辑，避免与自动更新分叉
+      final count = await _importByType(sub.type, resp.data ?? '');
       sub.lastUpdate = DateTime.now().millisecondsSinceEpoch;
       await _save();
-      if (mounted) messenger.showSnackBar(SnackBar(content: Text('${sub.name} 更新完成，导入 $count 条')));
+      if (mounted) {
+        setState(() {});
+        messenger.showSnackBar(
+            SnackBar(content: Text('${sub.name} 更新完成，导入 $count 条')));
+      }
     } catch (e) {
-      if (mounted) messenger.showSnackBar(SnackBar(content: Text('${sub.name} 更新失败: $e')));
+      if (mounted) {
+        messenger.showSnackBar(
+            SnackBar(content: Text('${sub.name} 更新失败: $e')));
+      }
     }
   }
 
-  /// 按类型解析并入库，返回导入条数；type=3 自动检测
-  Future<int> _importByType(int type, String body) async {
-    final text = body.trim();
-    if (text.isEmpty) return 0;
-    dynamic decoded;
-    try {
-      decoded = jsonDecode(text);
-    } catch (_) {
-      // JSONL 兼容
-      final lines = text.split(RegExp(r'[\r\n]+')).where((l) => l.trim().startsWith('{')).toList();
-      if (lines.isEmpty) return 0;
-      decoded = [for (final l in lines) jsonDecode(l)];
+  /// 按类型解析并入库：直接复用共享服务 [RuleSubAutoUpdate.importByType]，
+  /// 消除订阅页与自动更新的两处解析分叉（type=3 自动检测）。
+  Future<int> _importByType(int type, String body) =>
+      RuleSubAutoUpdate.importByType(type, body);
+
+  Future<void> _updateAll() async {
+    for (final s in _subs) {
+      await _update(s);
     }
-    // 解包常见外层
-    dynamic data = decoded;
-    if (data is Map && !(data.containsKey('bookSourceUrl') || data.containsKey('sourceUrl') || data.containsKey('regex'))) {
-      for (final k in ['data', 'bookSources', 'rssSources', 'replaceRules', 'sources', 'result', 'list']) {
-        if (data[k] is List) { data = data[k]; break; }
-      }
-    }
-    final list = data is List ? data : [data];
-    final db = DatabaseService();
-    int count = 0;
-    // 自动检测：根据首个对象的特征字段判断类型
-    int realType = type;
-    if (realType == 3 && list.isNotEmpty && list.first is Map) {
-      final m = Map<String, dynamic>.from(list.first);
-      if (m.containsKey('bookSourceUrl')) { realType = 0; }
-      else if (m.containsKey('sourceUrl') || m.containsKey('sourceName') && m.containsKey('articleStyle')) { realType = 1; }
-      else if (m.containsKey('regex') || m.containsKey('replacement')) { realType = 2; }
-    }
-    for (final item in list) {
-      if (item is! Map) continue;
-      final m = Map<String, dynamic>.from(item);
-      try {
-        if (realType == 0 && (m['bookSourceUrl'] ?? '').toString().isNotEmpty) {
-          await db.insertSource(BookSource.fromJson(m)); count++;
-        } else if (realType == 1 && (m['sourceUrl'] ?? '').toString().isNotEmpty) {
-          await db.insertRssSource(RssSource.fromJson(m)); count++;
-        } else if (realType == 2 && (m['regex'] ?? m['pattern'] ?? '').toString().isNotEmpty) {
-          await db.insertReplaceRule(ReplaceRule.fromMap(m)); count++;
-        }
-      } catch (_) {}
-    }
-    return count;
+  }
+
+  /// 「立即检查自动更新」：调用共享服务的启动期调度逻辑（runDue）。
+  Future<void> _runAutoUpdate() async {
+    final messenger = ScaffoldMessenger.of(context);
+    final count = await runWithBusyDialog<int>(
+      context,
+      message: '正在检查自动更新…',
+      task: RuleSubAutoUpdate.runDue(),
+    );
+    await _load();
+    messenger.showSnackBar(SnackBar(content: Text('已自动更新 $count 条订阅')));
   }
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return Scaffold(
-      appBar: AppBar(title: const Text('规则订阅'), actions: [
-        if (_subs.isNotEmpty) TextButton.icon(
-          onPressed: () async {
-            for (final s in _subs) { await _update(s); }
-          },
-          icon: const Icon(Icons.sync, size: 18), label: const Text('全部更新'),
-        ),
-      ]),
-      floatingActionButton: FloatingActionButton(onPressed: () => _edit(), child: const Icon(Icons.add)),
-      body: _subs.isEmpty
-        ? const Center(child: Padding(padding: EdgeInsets.all(32), child: Text('暂无规则订阅\n\n订阅远程规则链接，可一键更新书源、RSS源、替换规则', textAlign: TextAlign.center, style: TextStyle(color: Colors.grey))))
-        : ListView.separated(
-            itemCount: _subs.length,
-            separatorBuilder: (_, __) => const Divider(height: 1),
-            itemBuilder: (context, i) {
-              final s = _subs[i];
-              return ListTile(
-                leading: CircleAvatar(child: Text(_typeNames[s.type].substring(0, 1))),
-                title: Text(s.name),
-                subtitle: Text(s.url, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 11)),
-                trailing: PopupMenuButton<String>(onSelected: (v) async {
-                  if (v == 'update') _update(s);
-                  if (v == 'edit') _edit(s);
-                  if (v == 'delete') { setState(() => _subs.removeAt(i)); await _save(); }
-                }, itemBuilder: (_) => const [
-                  PopupMenuItem(value: 'update', child: Text('更新')),
-                  PopupMenuItem(value: 'edit', child: Text('编辑')),
-                  PopupMenuItem(value: 'delete', child: Text('删除')),
-                ]),
-                onTap: () => _update(s),
-              );
-            },
+      appBar: AppBar(
+        title: const Text('规则订阅'),
+        actions: [
+          IconButton(
+            tooltip: '立即检查自动更新',
+            icon: const Icon(Icons.update_outlined),
+            onPressed: _runAutoUpdate,
           ),
+          if (_subs.isNotEmpty)
+            TextButton.icon(
+              onPressed: _updateAll,
+              icon: const Icon(Icons.sync, size: 18),
+              label: const Text('全部更新'),
+            ),
+        ],
+      ),
+      floatingActionButton: FloatingActionButton(
+        tooltip: '添加订阅',
+        onPressed: () => _edit(),
+        child: const Icon(Icons.add),
+      ),
+      body: _subs.isEmpty
+          ? AppEmptyState(
+              icon: Icons.dynamic_feed_outlined,
+              title: '暂无规则订阅',
+              message: '订阅远程规则链接，可一键更新书源、RSS源、替换规则',
+              action: FilledButton.icon(
+                onPressed: () => _edit(),
+                icon: const Icon(Icons.add),
+                label: const Text('添加订阅'),
+              ),
+            )
+          : ListView.separated(
+              itemCount: _subs.length,
+              separatorBuilder: (_, __) => const Divider(height: 1),
+              itemBuilder: (context, i) {
+                final s = _subs[i];
+                final autoLabel = s.autoUpdate == 1
+                    ? ' · 自动更新${s.updateInterval > 0 ? ' ${s.updateInterval}h' : ''}'
+                    : '';
+                return ListTile(
+                  leading: CircleAvatar(
+                    backgroundColor: cs.secondaryContainer,
+                    child: Text(_typeNames[s.type].substring(0, 1),
+                        style: TextStyle(color: cs.onSecondaryContainer)),
+                  ),
+                  title: Text(s.name),
+                  subtitle: Text('${s.url}$autoLabel',
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontSize: 11)),
+                  trailing: PopupMenuButton<String>(
+                    tooltip: '订阅操作',
+                    onSelected: (v) async {
+                      if (v == 'update') _update(s);
+                      if (v == 'edit') _edit(s);
+                      if (v == 'delete') {
+                        setState(() => _subs.removeAt(i));
+                        await _save();
+                      }
+                    },
+                    itemBuilder: (_) => const [
+                      PopupMenuItem(value: 'update', child: Text('更新')),
+                      PopupMenuItem(value: 'edit', child: Text('编辑')),
+                      PopupMenuItem(value: 'delete', child: Text('删除')),
+                    ],
+                  ),
+                  onTap: () => _update(s),
+                );
+              },
+            ),
     );
   }
 }

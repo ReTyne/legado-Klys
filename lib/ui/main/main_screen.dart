@@ -23,6 +23,13 @@ class MainScreen extends StatefulWidget {
 /// 所以页签列表是运行时动态计算的。
 enum _HomeTab { bookshelf, discovery, subscribe, profile }
 
+/// 外部（动态快捷方式 / 深链 / 媒体入口）请求切换主页签的全局入口。
+/// 由 [_MainScreenState] 在 initState 注册，dispose 注销。
+class MainScreenSwitch {
+  MainScreenSwitch._();
+  static void Function(int index)? requestTab;
+}
+
 class _MainScreenState extends State<MainScreen> {
   static const List<_HomeTab> _allTabs = [
     _HomeTab.bookshelf,
@@ -47,6 +54,7 @@ class _MainScreenState extends State<MainScreen> {
   void initState() {
     super.initState();
     _pageController = PageController(initialPage: 0);
+    MainScreenSwitch.requestTab = _onItemTapped;
     _loadTabConfig();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       Provider.of<BookProvider>(context, listen: false).loadBooks();
@@ -100,6 +108,9 @@ class _MainScreenState extends State<MainScreen> {
 
   @override
   void dispose() {
+    if (MainScreenSwitch.requestTab == _onItemTapped) {
+      MainScreenSwitch.requestTab = null;
+    }
     _pageController.dispose();
     super.dispose();
   }
@@ -226,16 +237,48 @@ class _MainScreenState extends State<MainScreen> {
   }
 
   Widget _buildMainScaffold() {
+    // 自适应导航（对齐 fork MD3 MainAdaptiveLayout / NG 浮动侧栏）：
+    // 手机 / 窄窗口用底部 NavigationBar；平板 / 宽窗口用左侧 NavigationRail。
+    final width = MediaQuery.of(context).size.width;
+    final useRail = width >= 720;
+    final pageView = PageView(
+      controller: _pageController,
+      onPageChanged: _onPageChanged,
+      children: _tabs.map(_screenFor).toList(),
+    );
+    if (!useRail) {
+      return Scaffold(
+        body: pageView,
+        bottomNavigationBar: NavigationBar(
+          selectedIndex: _currentIndex.clamp(0, _tabs.length - 1),
+          onDestinationSelected: _onItemTapped,
+          destinations: _tabs.map(_destinationFor).toList(),
+        ),
+      );
+    }
+    final cs = Theme.of(context).colorScheme;
     return Scaffold(
-      body: PageView(
-        controller: _pageController,
-        onPageChanged: _onPageChanged,
-        children: _tabs.map(_screenFor).toList(),
-      ),
-      bottomNavigationBar: NavigationBar(
-        selectedIndex: _currentIndex.clamp(0, _tabs.length - 1),
-        onDestinationSelected: _onItemTapped,
-        destinations: _tabs.map(_destinationFor).toList(),
+      body: Row(
+        children: [
+          SafeArea(
+            child: NavigationRail(
+              backgroundColor: cs.surfaceContainerLow,
+              selectedIndex: _currentIndex.clamp(0, _tabs.length - 1),
+              onDestinationSelected: _onItemTapped,
+              labelType: NavigationRailLabelType.all,
+              destinations: _tabs.map((t) {
+                final d = _destinationFor(t);
+                return NavigationRailDestination(
+                  icon: d.icon,
+                  selectedIcon: d.selectedIcon,
+                  label: Text(d.label),
+                );
+              }).toList(),
+            ),
+          ),
+          VerticalDivider(width: 1, color: cs.outlineVariant),
+          Expanded(child: pageView),
+        ],
       ),
     );
   }

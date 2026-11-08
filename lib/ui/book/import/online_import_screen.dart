@@ -3,6 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:legado_md3/common/deep_link_service.dart';
+import 'package:legado_md3/ui/widgets/app_widgets.dart';
 
 /// 在线导入 / 一键导入界面（对齐 legado-E ui/association/OnLineImportActivity.kt）。
 ///
@@ -125,6 +126,33 @@ class _OnlineImportScreenState extends State<OnlineImportScreen> {
     }
   }
 
+  /// 按书籍地址链接加入书架（E: legado://import/addToBookshelf?src=）。
+  /// 复用 DeepLinkService 的 _addToBookshelf：匹配书源 → 抓详情 → 入库，
+  /// 让「导入到书架」链路在本页有可达入口。
+  Future<void> _addToShelf() async {
+    final text = _urlController.text.trim();
+    if (!text.startsWith('http://') && !text.startsWith('https://')) {
+      _setStatus('请输入 http(s) 书籍链接');
+      return;
+    }
+    if (_busy) return;
+    setState(() {
+      _busy = true;
+      _status = '正在加入书架…';
+    });
+    try {
+      await DeepLinkService.instance.handleLink(
+        'legado://import/addToBookshelf?src=${Uri.encodeComponent(text)}',
+      );
+      await _saveHistory(text);
+      _setStatus('已提交加入书架');
+    } catch (e) {
+      _setStatus('加入书架失败：$e');
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
@@ -147,11 +175,12 @@ class _OnlineImportScreenState extends State<OnlineImportScreen> {
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
               color: cs.primaryContainer.withOpacity(0.35),
-              borderRadius: BorderRadius.circular(10),
+              borderRadius: BorderRadius.circular(12),
             ),
             child: const Text(
               '粘贴书源 / 订阅 / 替换规则 / TXT目录 / 在线TTS / 字典 / 主题 / '
-              '阅读配置的 URL、JSON，或 legado:// 导入链接，一键导入。',
+              '阅读配置的 URL、JSON，或 legado:// 导入链接，一键导入；'
+              '填入 http(s) 书籍链接还可直接加入书架。',
               style: TextStyle(fontSize: 12),
             ),
           ),
@@ -198,6 +227,12 @@ class _OnlineImportScreenState extends State<OnlineImportScreen> {
                 : const Icon(Icons.download_rounded),
             label: Text(_busy ? '导入中…' : '一键导入'),
           ),
+          const SizedBox(height: 8),
+          OutlinedButton.icon(
+            onPressed: _busy ? null : _addToShelf,
+            icon: const Icon(Icons.menu_book_outlined),
+            label: const Text('按书籍链接加入书架'),
+          ),
           if (_status.isNotEmpty) ...[
             const SizedBox(height: 12),
             Row(
@@ -213,8 +248,7 @@ class _OnlineImportScreenState extends State<OnlineImportScreen> {
           ],
           if (_history.isNotEmpty) ...[
             const SizedBox(height: 24),
-            const Text('最近导入',
-                style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold)),
+            const AppSectionHeader('最近导入'),
             const SizedBox(height: 8),
             Wrap(
               spacing: 8,

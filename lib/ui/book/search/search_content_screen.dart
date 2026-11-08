@@ -3,6 +3,7 @@ import 'package:legado_md3/data/local/app_database.dart';
 import 'package:legado_md3/data/model/book.dart';
 import 'package:legado_md3/data/model/book_chapter.dart';
 import 'package:legado_md3/help/source/source_engine.dart';
+import 'package:legado_md3/ui/widgets/app_widgets.dart';
 
 /// 正文搜索结果跳转载体：章节下标 + 章内匹配偏移（正文 indexOf 位置）
 class ContentSearchHit {
@@ -125,6 +126,7 @@ class _SearchContentScreenState extends State<SearchContentScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return Scaffold(
       appBar: AppBar(
         title: TextField(
@@ -135,15 +137,15 @@ class _SearchContentScreenState extends State<SearchContentScreen> {
           onSubmitted: _search,
         ),
         actions: [
-          IconButton(icon: const Icon(Icons.search), onPressed: () => _search(_controller.text)),
+          IconButton(icon: const Icon(Icons.search_outlined), tooltip: '搜索', onPressed: () => _search(_controller.text)),
         ],
       ),
       body: _searching && _results.isEmpty
         ? Center(child: Column(mainAxisSize: MainAxisSize.min, children: [const CircularProgressIndicator(), const SizedBox(height: 12), Text(_progress.isEmpty ? '搜索中...' : _progress)]))
         : _results.isNotEmpty
           ? Column(children: [
-              if (_searching) LinearProgressIndicator(minHeight: 2, backgroundColor: Colors.grey.shade200),
-              if (_progress.isNotEmpty) Padding(padding: const EdgeInsets.all(4), child: Text(_progress, style: const TextStyle(fontSize: 11, color: Colors.grey))),
+              if (_searching) LinearProgressIndicator(minHeight: 2, backgroundColor: cs.surfaceContainerHighest),
+              if (_progress.isNotEmpty) Padding(padding: const EdgeInsets.all(4), child: Text(_progress, style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant))),
               Expanded(child: _buildResultList()),
             ])
           : _buildEmpty(),
@@ -182,6 +184,10 @@ class _SearchContentScreenState extends State<SearchContentScreen> {
         )),
       ]);
     }
-    return const Center(child: Text('输入关键词搜索本书内容（未缓存章节将联网搜索）', textAlign: TextAlign.center, style: TextStyle(color: Colors.grey)));
+    return const AppEmptyState(
+      icon: Icons.find_in_page_outlined,
+      title: '搜索本书内容',
+      message: '输入关键词搜索本书内容（未缓存章节将联网搜索）',
+    );
   }
 }

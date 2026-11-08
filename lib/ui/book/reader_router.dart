@@ -5,9 +5,15 @@ import 'package:legado_md3/ui/book/manga/manga_reader_screen.dart';
 import 'package:legado_md3/ui/book/video/video_player_screen.dart';
 import 'package:legado_md3/ui/book/read/pdf_reader_screen.dart';
 import 'package:legado_md3/ui/book/read/reading_screen.dart';
+import 'package:legado_md3/ui/book/epub/epub_reader_screen.dart';
 
 /// 漫画界面开关（oc_showMangaUi），启动时由 main() 初始化，阅读路由据此分流。
 bool showMangaUi = true;
+
+/// EPUB 保版式阅读开关（ui_epubLayoutReader）。开启后本地 EPUB 走
+/// HTML+WebView 保版式阅读器；关闭则沿用通用文本阅读器（保持向后兼容）。
+/// 阅读页 menu 提供「切换保版式/文本阅读」入口时可 flip 此值。
+bool useEpubLayoutReader = false;
 
 /// 判断是否为 PDF 本地书：本地书统一标记为 [Book.typeLocal]（1），
 /// 需再按 [Book.fileName] 的扩展名区分 PDF 与 txt/epub/mobi 等。
@@ -34,6 +40,10 @@ Widget readerForBook(Book book, {int? initialChapter}) {
   // PDF 本地书优先分流到 PDF 阅读器（type 与普通本地书相同，需按文件名判断）
   if (isPdfBook(book)) {
     return PdfReaderScreen(book: book);
+  }
+  // 本地 EPUB：开关开启时用保版式阅读器（HTML+WebView，保留 CSS/图片/fragment）
+  if (useEpubLayoutReader && EpubReaderScreen.canOpen(book)) {
+    return EpubReaderScreen(book: book, initialChapter: start);
   }
   switch (book.type) {
     case Book.typeAudio:

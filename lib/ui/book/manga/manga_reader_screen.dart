@@ -3,11 +3,14 @@ import 'dart:async';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:legado_md3/data/local/app_database.dart';
 import 'package:legado_md3/data/model/book.dart';
 import 'package:legado_md3/data/model/book_chapter.dart';
 import 'package:legado_md3/data/model/book_source.dart';
 import 'package:legado_md3/help/source/source_engine.dart';
+import 'package:legado_md3/help/storage/book_progress_sync.dart';
+import 'package:legado_md3/help/translate/manga_translate_overlay.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 /// 当前翻页模式的总页数：单页=图片数；双页=相邻两页拼一屏（ceil(n/2)）。
@@ -58,6 +61,18 @@ class _MangaReaderScreenState extends State<MangaReaderScreen> {
   int _preDownload = 3;     // manga_preDownload：预下载后续章节图片数
   double _sidePadding = 0;  // manga_sidePadding：条漫两侧边距
 
+  // Sigma 漫画专属补充键（manga_config_screen 写入，逐项消费到渲染分支）
+  int _threshold = 128;     // manga_threshold：二值化阈值
+  int _colorFilter = 0;     // manga_colorFilter：0 无 / 1 护眼 / 2 复古 / 3 冷色
+  int _scaleMax = 4;        // manga_scaleMax：InteractiveViewer 最大缩放
+  int _pageAnim = 0;        // manga_pageAnim：0 滑动 / 1 淡入 / 2 瞬切
+  bool _noScrollAnim = false;  // manga_noScrollAnim
+  bool _noCrossFade = false;   // manga_noCrossFade
+  bool _volumeKeyPage = false; // manga_volumeKey
+  bool _reverseVolumeKey = false; // manga_reverseVolumeKey
+  bool _aiTranslate = false;   // manga_translate_enabled
+  List<MangaTextRegion> _translateRegions = const [];
+
   // ==================== 运行状态 ====================
   // 每章图片 URL 缓存：key 为章节下标，value 为图片地址列表（null/缺失表示尚未加载）
   final Map<int, List<String>> _imageUrls = {};
@@ -65,6 +80,10 @@ class _MangaReaderScreenState extends State<MangaReaderScreen> {
   final Set<int> _fetching = {};
   // 每章拉取失败原因，用于空白页提示与重试
   final Map<int, String> _fetchErrors = {};
+  // 自动换源：候选书源列表（现有书源表）与当前生效源下标
+  List<BookSource> _candidateSources = const [];
+  int _activeSourceIndex = 0;
+  String _activeSourceName = '';
   // 条漫滚动 / 翻页控制器
   final ScrollController _scrollController = ScrollController();
   final PageController _pageController = PageController();
@@ -87,6 +106,7 @@ class _MangaReaderScreenState extends State<MangaReaderScreen> {
     _autoScrollTimer?.cancel();
     _scrollController.dispose();
     _pageController.dispose();
+    unawaited(_syncProgress());
     super.dispose();
   }
 
@@ -105,7 +125,47 @@ class _MangaReaderScreenState extends State<MangaReaderScreen> {
         _autoSpeed = p.getInt('manga_autoSpeed') ?? 5;
         _preDownload = p.getInt('manga_preDownload') ?? 3;
         _sidePadding = p.getDouble('manga_sidePadding') ?? 0;
+        _threshold = p.getInt('manga_threshold') ?? 128;
+        _colorFilter = p.getInt('manga_colorFilter') ?? 0;
+        _scaleMax = p.getInt('manga_scaleMax') ?? 4;
+        _pageAnim = p.getInt('manga_pageAnim') ?? 0;
+        _noScrollAnim = p.getBool('manga_noScrollAnim') ?? false;
+        _noCrossFade = p.getBool('manga_noCrossFade') ?? false;
+        _volumeKeyPage = p.getBool('manga_volumeKey') ?? false;
+        _reverseVolumeKey = p.getBool('manga_reverseVolumeKey') ?? false;
       });
+    } catch (_) {}
+    await _loadTranslateRegions();
+  }
+
+  /// 载入「按书源翻译规则替换图内文字」配置并预先翻译（真实调翻译服务）。
+  Future<void> _loadTranslateRegions() async {
+    final store = MangaTranslateStore.instance;
+    final origin = widget.book.origin ?? '';
+    await store.load(origin);
+    if (!store.enabled) {
+      if (mounted) {
+        setState(() {
+          _aiTranslate = false;
+          _translateRegions = const [];
+        });
+      }
+      return;
+    }
+    final regions = await store.translatedRegions(origin);
+    if (mounted) {
+      setState(() {
+        _aiTranslate = true;
+        _translateRegions = regions;
+      });
+    }
+  }
+
+  Future<void> _syncProgress() async {
+    try {
+      await BookProgressSync.instance.record(widget.book,
+          chapterIndex: _currentChapter, pagePos: _imageIndex);
+      await BookProgressSync.instance.push();
     } catch (_) {}
   }
 
@@ -116,24 +176,46 @@ class _MangaReaderScreenState extends State<MangaReaderScreen> {
       _chapters = chapters;
       _loading = false;
     });
+    // 云进度：拉取较新的阅读位置并跳章
+    final changed = await BookProgressSync.instance.pull();
+    if (changed > 0 && mounted && _chapters.isNotEmpty) {
+      final books = await _db.getAllBooks();
+      final mine = books
+          .where((b) =>
+              b.name == widget.book.name && b.author == widget.book.author)
+          .firstOrNull;
+      if (mine != null) {
+        final idx = mine.durChapterIndex.clamp(0, _chapters.length - 1).toInt();
+        if (idx != _currentChapter) setState(() => _currentChapter = idx);
+      }
+    }
     // 加载当前章图片：优先本地缓存，缓存为空再走书源引擎
     await _ensureImages(_currentChapter);
     if (mounted) setState(() {});
     unawaited(_prefetchImages(_currentChapter));
   }
 
-  /// 根据 book.origin 查找书源；先按 URL 精确查，失败再全表扫描兜底。
-  Future<BookSource?> _findSource() async {
-    final origin = widget.book.origin;
-    if (origin == null || origin.isEmpty) return null;
-    try {
-      final exact = await _db.getSource(origin);
-      if (exact != null) return exact;
-      final all = await _db.getAllSources();
-      return all.where((s) => s.bookSourceUrl == origin).firstOrNull;
-    } catch (_) {
-      return null;
-    }
+  /// 现有书源列表：当前书源优先，其余图片书源（type==2）靠前，供自动换源逐个尝试。
+  Future<List<BookSource>> _candidateSourcesList() async {
+    if (_candidateSources.isNotEmpty) return _candidateSources;
+    final all = await _db.getAllSources(enabled: true);
+    final origin = widget.book.origin ?? '';
+    final ordered = <BookSource>[
+      for (final s in all)
+        if (origin.isNotEmpty && s.bookSourceUrl == origin) s,
+    ];
+    final rest = all.where((s) => !ordered.contains(s)).toList()
+      ..sort((a, b) => (b.bookSourceType == 2 ? 1 : 0)
+          .compareTo(a.bookSourceType == 2 ? 1 : 0));
+    ordered.addAll(rest);
+    _candidateSources = ordered;
+    _activeSourceName = ordered.isNotEmpty ? ordered.first.bookSourceName : '';
+    return ordered;
+  }
+
+  void _toast(String msg) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
   }
 
   /// 确保指定章节的图片列表已加载。
@@ -169,37 +251,52 @@ class _MangaReaderScreenState extends State<MangaReaderScreen> {
     _fetching.add(index);
     if (index == _currentChapter && mounted) setState(() {});
     try {
-      final source = await _findSource();
-      if (source == null) {
+      // 自动换源：从当前生效源起，逐个尝试现有书源列表，任一成功即消费
+      final sources = await _candidateSourcesList();
+      if (sources.isEmpty) {
         _imageUrls[index] = const [];
-        _fetchErrors[index] = '未找到书源：${widget.book.origin ?? "未知"}';
+        _fetchErrors[index] = '书源列表为空，无法加载漫画图片';
         return;
       }
-      final content = await _engine.getImageContent(
-        source,
-        chapter.url,
-        bookInfo: widget.book.jsContext(),
-        chapter: chapter.jsContext(widget.book.bookUrl),
-      );
-      if (content != null && content.trim().isNotEmpty) {
-        final urls = content
-            .split('\n')
-            .map((e) => e.trim())
-            .where((e) => e.isNotEmpty)
-            .toList();
-        _imageUrls[index] = urls;
-        _fetchErrors.remove(index);
-        // 写回数据库缓存，并同步内存中的章节内容，下次阅读直接走缓存
-        chapter.content = content;
-        await _db.updateChapterContent(
-            widget.book.name, widget.book.author, chapter.index, content);
-      } else {
-        _imageUrls[index] = const [];
-        _fetchErrors[index] = '未获取到图片，请检查书源图片规则';
+      Object? lastError;
+      for (var attempt = 0; attempt < sources.length; attempt++) {
+        final si = (_activeSourceIndex + attempt) % sources.length;
+        final source = sources[si];
+        try {
+          final content = await _engine.getImageContent(
+            source,
+            chapter.url,
+            bookInfo: widget.book.jsContext(),
+            chapter: chapter.jsContext(widget.book.bookUrl),
+          );
+          final urls = (content ?? '')
+              .split('\n')
+              .map((e) => e.trim())
+              .where((e) => e.isNotEmpty)
+              .toList();
+          if (urls.isEmpty) {
+            lastError = '书源「${source.bookSourceName}」未返回图片';
+            continue; // 图片加载失败 → 切下一书源
+          }
+          _activeSourceIndex = si;
+          _activeSourceName = source.bookSourceName;
+          _imageUrls[index] = urls;
+          _fetchErrors.remove(index);
+          // 写回数据库缓存，下次阅读直接走缓存
+          chapter.content = content;
+          await _db.updateChapterContent(
+              widget.book.name, widget.book.author, chapter.index, content!);
+          if (attempt > 0 && index == _currentChapter && mounted) {
+            _toast('已自动换源到：${source.bookSourceName}');
+          }
+          return;
+        } catch (e) {
+          lastError = e;
+        }
       }
-    } catch (e) {
       _imageUrls[index] = const [];
-      _fetchErrors[index] = '加载失败：$e';
+      _fetchErrors[index] = '全部 ${sources.length} 个书源均未取到图片'
+          '${lastError != null ? '（最后错误：$lastError）' : ''}';
     } finally {
       _fetching.remove(index);
       if (mounted) setState(() {});
@@ -218,31 +315,65 @@ class _MangaReaderScreenState extends State<MangaReaderScreen> {
     }
   }
 
+  /// manga_pageAnim / manga_noScrollAnim 真实消费到翻页与滚动动画。
+  Duration get _pageDuration => (_pageAnim == 2 || _noScrollAnim)
+      ? Duration.zero
+      : Duration(milliseconds: _pageAnim == 1 ? 450 : 300);
+
+  Curve get _pageCurve => _pageAnim == 1 ? Curves.easeInOut : Curves.easeOut;
+
+  /// manga_volumeKey / manga_reverseVolumeKey：音量键翻页。
+  KeyEventResult _onKeyEvent(FocusNode node, KeyEvent event) {
+    if (!_volumeKeyPage || event is! KeyDownEvent) {
+      return KeyEventResult.ignored;
+    }
+    final k = event.logicalKey;
+    final up = k == LogicalKeyboardKey.audioVolumeUp;
+    final down = k == LogicalKeyboardKey.audioVolumeDown;
+    if (!up && !down) return KeyEventResult.ignored;
+    final forward = _reverseVolumeKey ? down : up;
+    if (forward) {
+      _nextChapter();
+    } else {
+      _prevChapter();
+    }
+    return KeyEventResult.handled;
+  }
+
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.black,
-      body: GestureDetector(
-        // 点击行为：未禁用「点击滚动」时，条漫模式点击向下滚动一屏（菜单改由长按唤出）；
-        // 禁用点击滚动或翻页模式下，点击照旧唤出/隐藏菜单。
-        onTap: () {
-          if (!_noClickScroll && _scrollMode == 0 && _scrollController.hasClients) {
-            final pos = _scrollController.position;
-            final target =
-                (_scrollController.offset + pos.viewportDimension).clamp(0.0, pos.maxScrollExtent);
-            _scrollController.animateTo(target,
-                duration: const Duration(milliseconds: 250), curve: Curves.easeOut);
-          } else {
-            setState(() => _showMenu = !_showMenu);
-          }
-        },
-        // 长按始终可以唤出/隐藏菜单（点击滚动开启时的菜单入口）
-        onLongPress: () => setState(() => _showMenu = !_showMenu),
-        child: Stack(
-          children: [
-            _buildContent(),
-            if (_showMenu) _buildMenu(),
-          ],
+    return Focus(
+      autofocus: true,
+      onKeyEvent: _onKeyEvent,
+      child: Scaffold(
+        backgroundColor: Colors.black,
+        body: GestureDetector(
+          // 点击行为：未禁用「点击滚动」时，条漫模式点击向下滚动一屏（菜单改由长按唤出）；
+          // 禁用点击滚动或翻页模式下，点击照旧唤出/隐藏菜单。
+          onTap: () {
+            if (!_noClickScroll &&
+                _scrollMode == 0 &&
+                _scrollController.hasClients) {
+              final pos = _scrollController.position;
+              final target = (_scrollController.offset + pos.viewportDimension)
+                  .clamp(0.0, pos.maxScrollExtent);
+              _scrollController.animateTo(target,
+                  duration: _noScrollAnim
+                      ? Duration.zero
+                      : const Duration(milliseconds: 250),
+                  curve: _noScrollAnim ? Curves.linear : Curves.easeOut);
+            } else {
+              setState(() => _showMenu = !_showMenu);
+            }
+          },
+          // 长按始终可以唤出/隐藏菜单（点击滚动开启时的菜单入口）
+          onLongPress: () => setState(() => _showMenu = !_showMenu),
+          child: Stack(
+            children: [
+              _buildContent(),
+              if (_showMenu) _buildMenu(),
+            ],
+          ),
         ),
       ),
     );
@@ -323,16 +454,22 @@ class _MangaReaderScreenState extends State<MangaReaderScreen> {
               style: const TextStyle(color: Colors.white70), textAlign: TextAlign.center),
           if (error != null) ...[
             const SizedBox(height: 12),
-            FilledButton(
-              onPressed: () {
-                // 重试：清除失败标记后重新拉取
-                _fetchErrors.remove(_currentChapter);
-                _imageUrls.remove(_currentChapter);
-                unawaited(_ensureImages(_currentChapter));
-              },
-              child: const Text('重试'),
-            ),
-          ],
+                FilledButton(
+                  onPressed: () {
+                    // 重试：清除失败标记后重新拉取
+                    _fetchErrors.remove(_currentChapter);
+                    _imageUrls.remove(_currentChapter);
+                    unawaited(_ensureImages(_currentChapter));
+                  },
+                  child: const Text('重试'),
+                ),
+                const SizedBox(height: 8),
+                TextButton.icon(
+                  onPressed: () => unawaited(_switchToNextSource()),
+                  icon: const Icon(Icons.autorenew_outlined),
+                  label: const Text('换源重试', style: TextStyle(color: Colors.white70)),
+                ),
+              ],
         ],
       ),
     );
@@ -340,14 +477,26 @@ class _MangaReaderScreenState extends State<MangaReaderScreen> {
 
   /// 渲染单张漫画图片，应用灰度/墨水屏滤镜，并包一层 InteractiveViewer 支持双指缩放。
   Widget _buildImage(String url, BoxFit fit, bool dark) {
-    return _MangaImage(
+    final img = _MangaImage(
       url: url,
       fit: fit,
       dark: dark,
       gray: _gray,
       eink: _eink,
       noScale: _noScale,
+      threshold: _threshold,
+      colorFilter: _colorFilter,
+      scaleMax: _scaleMax.toDouble(),
+      fadeIn: !_noCrossFade && _pageAnim != 2,
     );
+    // 漫画 AI 翻译：OCR 框 / 书源规则译文覆盖层（真实盖回图内文字）
+    if (!_aiTranslate || _translateRegions.isEmpty) return img;
+    return Stack(children: [
+      img,
+      Positioned.fill(
+        child: MangaTranslationOverlay(regions: _translateRegions),
+      ),
+    ]);
   }
 
   /// 从缓存内容中正则抽取 `<img src>`（兼容单双引号与 data-src）。
@@ -369,9 +518,9 @@ class _MangaReaderScreenState extends State<MangaReaderScreen> {
               child: SafeArea(
                 child: Row(
                   children: [
-                    IconButton(icon: const Icon(Icons.arrow_back, color: Colors.white), onPressed: () => Navigator.pop(context)),
+                    IconButton(icon: const Icon(Icons.arrow_back, color: Colors.white), tooltip: '返回', onPressed: () => Navigator.pop(context)),
                     Expanded(child: Text(_chapters.isNotEmpty ? _chapters[_currentChapter].title : '', style: const TextStyle(color: Colors.white, fontSize: 16), maxLines: 1, overflow: TextOverflow.ellipsis)),
-                    IconButton(icon: const Icon(Icons.list, color: Colors.white), onPressed: _showChapterList),
+                    IconButton(icon: const Icon(Icons.list, color: Colors.white), tooltip: '章节列表', onPressed: _showChapterList),
                   ],
                 ),
               ),
@@ -399,8 +548,26 @@ class _MangaReaderScreenState extends State<MangaReaderScreen> {
                   ],
                 ),
                 const SizedBox(height: 8),
-                // 展示当前生效的自动滚动速度，便于用户理解 manga_autoSpeed 配置
-                Text('自动滚动速度：$_autoSpeed 秒/次',
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                  children: [
+                    _buildMenuButton(Icons.autorenew_outlined, '换源',
+                        () => unawaited(_switchToNextSource())),
+                    _buildMenuButton(Icons.cloud_sync_outlined, '云进度',
+                        () => unawaited(_manualSyncProgress())),
+                    _buildMenuButton(
+                        _aiTranslate
+                            ? Icons.translate
+                            : Icons.translate_outlined,
+                        'AI 翻译',
+                        () => unawaited(_toggleAiTranslate())),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                // 展示当前生效的自动滚动速度与书源
+                Text(
+                    '自动滚动速度：$_autoSpeed 秒/次 · 当前书源：'
+                    '${_activeSourceName.isEmpty ? "自动" : _activeSourceName}',
                     style: const TextStyle(color: Colors.white54, fontSize: 11)),
                 const SizedBox(height: 16),
                 Row(
@@ -440,6 +607,44 @@ class _MangaReaderScreenState extends State<MangaReaderScreen> {
         ),
       ),
     );
+  }
+
+  /// 手动切到下一书源：清当前章缓存后重新走自动换源链路。
+  Future<void> _switchToNextSource() async {
+    final sources = await _candidateSourcesList();
+    if (sources.isEmpty) {
+      _toast('当前没有可用书源');
+      return;
+    }
+    _activeSourceIndex = (_activeSourceIndex + 1) % sources.length;
+    if (_chapters.isNotEmpty) {
+      final ch = _chapters[_currentChapter];
+      ch.content = null;
+      await _db.updateChapterContent(
+          widget.book.name, widget.book.author, ch.index, '');
+    }
+    _imageUrls.remove(_currentChapter);
+    _fetchErrors.remove(_currentChapter);
+    if (mounted) setState(() {});
+    await _ensureImages(_currentChapter);
+    if (mounted) setState(() {});
+    _toast('已切换到书源：${sources[_activeSourceIndex].bookSourceName}');
+  }
+
+  /// 手动云进度：拉取较新的云端进度 + 上传本地进度。
+  Future<void> _manualSyncProgress() async {
+    final changed = await BookProgressSync.instance.pull();
+    await _syncProgress();
+    _toast(changed > 0 ? '云进度已拉取并同步（更新 $changed 本）' : '本地进度已上传');
+  }
+
+  /// 漫画 AI 翻译开关：切换后重新按书源规则翻译并刷新覆盖层。
+  Future<void> _toggleAiTranslate() async {
+    final store = MangaTranslateStore.instance;
+    await store.setEnabled(!_aiTranslate);
+    store.clearCache();
+    await _loadTranslateRegions();
+    _toast(_aiTranslate ? 'AI 翻译已开启' : 'AI 翻译已关闭');
   }
 
   /// 切换滚动模式并持久化到 manga_scrollMode，保持与漫画配置页一致。
@@ -502,8 +707,7 @@ class _MangaReaderScreenState extends State<MangaReaderScreen> {
         _nextChapter();
         return;
       }
-      _pageController.nextPage(
-          duration: const Duration(milliseconds: 300), curve: Curves.easeOut);
+      _pageController.nextPage(duration: _pageDuration, curve: _pageCurve);
     }
   }
 
@@ -559,6 +763,10 @@ class _MangaImage extends StatefulWidget {
   final bool gray;
   final bool eink;
   final bool noScale;
+  final int threshold;
+  final int colorFilter;
+  final double scaleMax;
+  final bool fadeIn;
 
   const _MangaImage({
     required this.url,
@@ -567,6 +775,10 @@ class _MangaImage extends StatefulWidget {
     required this.gray,
     required this.eink,
     required this.noScale,
+    this.threshold = 128,
+    this.colorFilter = 0,
+    this.scaleMax = 4,
+    this.fadeIn = true,
   });
 
   @override
@@ -650,12 +862,66 @@ class _MangaImageState extends State<_MangaImage> {
         child: img,
       );
     }
+    // manga_threshold：二值化阈值（灰度/墨水屏之后按阈值拉开黑白对比）
+    if (widget.eink || widget.gray) {
+      final bias = -((widget.threshold.clamp(0, 255) - 128) * 1.8).toDouble();
+      img = ColorFiltered(
+        colorFilter: ColorFilter.matrix(<double>[
+          3, 0, 0, 0, bias,
+          0, 3, 0, 0, bias,
+          0, 0, 3, 0, bias,
+          0, 0, 0, 1, 0,
+        ]),
+        child: img,
+      );
+    }
+    // manga_colorFilter：0 无 / 1 护眼 / 2 复古 / 3 冷色
+    if (widget.colorFilter == 1) {
+      img = ColorFiltered(
+        colorFilter: const ColorFilter.matrix(<double>[
+          0.95, 0, 0, 0, 10,
+          0, 0.95, 0, 0, 8,
+          0, 0, 0.85, 0, 0,
+          0, 0, 0, 1, 0,
+        ]),
+        child: img,
+      );
+    } else if (widget.colorFilter == 2) {
+      img = ColorFiltered(
+        colorFilter: const ColorFilter.matrix(<double>[
+          0.393, 0.769, 0.189, 0, 0,
+          0.349, 0.686, 0.168, 0, 0,
+          0.272, 0.534, 0.131, 0, 0,
+          0, 0, 0, 1, 0,
+        ]),
+        child: img,
+      );
+    } else if (widget.colorFilter == 3) {
+      img = ColorFiltered(
+        colorFilter: const ColorFilter.matrix(<double>[
+          0.9, 0, 0, 0, 0,
+          0, 0.95, 0, 0, 0,
+          0, 0, 1.1, 0, 10,
+          0, 0, 0, 1, 0,
+        ]),
+        child: img,
+      );
+    }
+    // manga_noCrossFade / manga_pageAnim：图片淡入
+    if (widget.fadeIn) {
+      img = TweenAnimationBuilder<double>(
+        tween: Tween<double>(begin: 0.0, end: 1.0),
+        duration: const Duration(milliseconds: 260),
+        builder: (context, v, child) => Opacity(opacity: v, child: child),
+        child: img,
+      );
+    }
     // manga_noScale：禁用双指缩放时直接返回图片
     if (widget.noScale) return img;
     return InteractiveViewer(
       transformationController: _transformController,
       minScale: 1.0,
-      maxScale: 4.0,
+      maxScale: widget.scaleMax.clamp(2.0, 8.0).toDouble(),
       panEnabled: _panEnabled,
       // 结束交互时若缩放已回到 1 倍以内则复位，并恢复「禁用平移」
       onInteractionEnd: (_) {

@@ -1,12 +1,21 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/material.dart';
-import 'package:legado_md3/data/model/book.dart';
 import 'package:legado_md3/data/local/app_database.dart';
+import 'package:legado_md3/data/model/book.dart';
+import 'package:legado_md3/data/model/db_models.dart';
 import 'package:legado_md3/help/storage/backup_service.dart';
+import 'package:legado_md3/help/storage/download_service.dart';
 import 'package:legado_md3/ui/cache/export_config_screen.dart';
+import 'package:legado_md3/ui/widgets/app_widgets.dart';
+import 'package:path/path.dart' as p;
+import 'package:path_provider/path_provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+/// 缓存管理：精确统计 caches 表 content 长度、章节正文真实字节与本地文件体积，
+/// 并接入 [DownloadService] 写缓存 LRU 的两个阈值键
+/// （imageRetainNum / cache_contentMaxMB），提供手动 LRU 清理。
 class CacheManageScreen extends StatefulWidget {
   const CacheManageScreen({super.key});
 
@@ -20,9 +29,18 @@ class _CacheManageScreenState extends State<CacheManageScreen> {
   Map<String, int> _chapterCounts = {};
   bool _isLoading = true;
 
-  /// 正文内容缓存上限（MB，cache_contentMaxMB）
+  /// 正文内容缓存上限（MB，cache_contentMaxMB，与 DownloadService 共用）
   int _cacheMaxMB = 500;
-  /// 当前正文缓存估算字节数（与设置页一致：字符数 × 2）
+  /// 缓存保留章节数上限（imageRetainNum，与 DownloadService 写缓存 LRU 共用）
+  int _imageRetainNum = 0;
+
+  /// caches 表 content 的真实 UTF-8 字节数
+  int _cacheTableBytes = 0;
+  /// book_chapters.content 的真实 UTF-8 字节数
+  int _chapterBytes = 0;
+  /// 本地缓存 / 导入 / 导出目录文件的真实体积
+  int _fileBytes = 0;
+  /// 总缓存占用 = 表 + 章节正文 + 文件（不再用字符数 ×2 估算）
   int _cacheSizeBytes = 0;
 
   // 本地备份信息（backup_path / 保留份数）
@@ -42,22 +60,66 @@ class _CacheManageScreenState extends State<CacheManageScreen> {
   Future<void> _loadCache() async {
     setState(() => _isLoading = true);
     final prefs = await SharedPreferences.getInstance();
-    _cacheMaxMB = prefs.getInt('cache_contentMaxMB') ?? 500;
+    _cacheMaxMB =
+        prefs.getInt(DownloadService.keyCacheContentMaxMB) ?? 500;
+    _imageRetainNum = prefs.getInt(DownloadService.keyImageRetainNum) ?? 0;
+
     _books = await _db.getAllBooks();
     _chapterCounts = {};
-    var bytes = 0;
+    var chapterBytes = 0;
     for (final book in _books) {
       final chapters = await _db.getChapters(book.name, book.author);
-      final cached = chapters.where((c) => c.content != null && c.content!.isNotEmpty).toList();
+      final cached = chapters
+          .where((c) => c.content != null && c.content!.isNotEmpty)
+          .toList();
       _chapterCounts['${book.name}_${book.author}'] = cached.length;
       for (final c in cached) {
-        bytes += c.content!.length;
+        // 真实 UTF-8 字节，替代旧的 content.length × 2 粗估
+        chapterBytes += utf8.encode(c.content!).length;
       }
     }
-    _cacheSizeBytes = bytes * 2;
+
+    var tableBytes = 0;
+    for (final c in await _db.getCaches()) {
+      tableBytes += c.content != null && c.content!.isNotEmpty
+          ? utf8.encode(c.content!).length
+          : c.size;
+    }
+
+    _chapterBytes = chapterBytes;
+    _cacheTableBytes = tableBytes;
+    _fileBytes = await _localFileBytes();
+    _cacheSizeBytes = tableBytes + chapterBytes + _fileBytes;
+
     await _loadBackupInfo();
     if (mounted) setState(() => _isLoading = false);
   }
+
+  /// 统计应用文档目录下 import / download / book_cache / export 里真实文件体积。
+  Future<int> _localFileBytes() async {
+    try {
+      final base = await getApplicationDocumentsDirectory();
+      var total = 0;
+      for (final name in ['import', 'download', 'book_cache', 'export']) {
+        final dir = Directory(p.join(base.path, name));
+        if (!dir.existsSync()) continue;
+        await for (final e in dir.list(recursive: true, followLinks: false)) {
+          if (e is File) {
+            try {
+              total += await e.length();
+            } catch (_) {}
+          }
+        }
+      }
+      return total;
+    } catch (_) {
+      return 0;
+    }
+  }
+
+  static int _cacheRowBytes(Cache c) => c.content != null && c.content!.isNotEmpty
+      ? utf8.encode(c.content!).length
+      : c.size;
 
   /// 读取备份目录（backup_path）与备份文件列表；路径不可用时记录提示
   Future<void> _loadBackupInfo() async {
@@ -73,14 +135,46 @@ class _CacheManageScreenState extends State<CacheManageScreen> {
     }
   }
 
-  /// 按 `cache_contentMaxMB` 上限执行 LRU 清理：
-  /// book_chapters 表无 content 的访问时间字段（accessTime 不存在，且数据库文件不可改），
-  /// 因此以 book_progress.lastReadTime 作为「最近使用」信号做书籍级 LRU：
-  /// 从最久未读（含从未读过）的书开始清缓存，保留最近阅读的一本书。
-  Future<void> _enforceCacheLimit() async {
+  /// 手动 LRU 清理 caches 表：按 saveTime 从最旧开始删，直到同时满足
+  /// imageRetainNum（条目数）与 cache_contentMaxMB（体积）两个阈值。
+  /// 与 [DownloadService] 写缓存时的自动 LRU 使用完全相同的键与判定口径。
+  Future<int> _manualLruClean() async {
+    final db = await _db.database;
+    final caches = await _db.getCaches(); // saveTime DESC
     final limitBytes = _cacheMaxMB * 1024 * 1024;
+    var bytes = 0;
+    for (final c in caches) {
+      bytes += _cacheRowBytes(c);
+    }
+    final oldest = List<Cache>.from(caches)
+      ..sort((a, b) => a.saveTime.compareTo(b.saveTime));
+    var count = caches.length;
+    var deleted = 0;
+    for (final c in oldest) {
+      final overCount = _imageRetainNum > 0 && count > _imageRetainNum;
+      final overSize = bytes > limitBytes;
+      if (!overCount && !overSize) break;
+      if (c.id != null) {
+        await db.delete('caches', where: 'id = ?', whereArgs: [c.id]);
+      }
+      bytes -= _cacheRowBytes(c);
+      count--;
+      deleted++;
+    }
+    return deleted;
+  }
+
+  /// 阈值触发的 LRU：先清 caches 行，再按 book_progress.lastReadTime 做书籍级
+  /// 章节正文 LRU（保留最近阅读的一本书），最后重算精确体积。
+  Future<void> _enforceCacheLimit() async {
     if (!_overLimit) {
       _tip('当前缓存未超过上限（${_formatBytes(_cacheSizeBytes)} / ${_cacheMaxMB}MB）');
+      return;
+    }
+    final deletedRows = await _manualLruClean();
+    await _loadCache();
+    if (!_overLimit) {
+      _tip('已按 LRU 清理 $deletedRows 条缓存记录，当前 ${_formatBytes(_cacheSizeBytes)} / ${_cacheMaxMB}MB');
       return;
     }
     // 每本书最近一次阅读时间（无记录按 0 处理，最优先清理）
@@ -93,26 +187,38 @@ class _CacheManageScreenState extends State<CacheManageScreen> {
         final tb = progressMap['${b.name}_${b.author}'] ?? 0;
         return ta.compareTo(tb);
       });
-    // 保护最近阅读的一本书（通常是正在读的书），其余按 LRU 顺序清理
-    final clearable = sorted.length > 1 ? sorted.sublist(0, sorted.length - 1) : <Book>[];
-    var remaining = _cacheSizeBytes;
+    final clearable =
+        sorted.length > 1 ? sorted.sublist(0, sorted.length - 1) : <Book>[];
     var clearedBooks = 0;
     for (final book in clearable) {
-      if (remaining <= limitBytes) break;
       final chapters = await _db.getChapters(book.name, book.author);
-      for (final c in chapters) {
-        if (c.content != null && c.content!.isNotEmpty) remaining -= c.content!.length * 2;
+      if (chapters.every((c) => c.content == null || c.content!.isEmpty)) {
+        continue;
       }
       await _db.clearBookChapterContent(book.name, book.author);
       clearedBooks++;
+      await _loadCache();
+      if (!_overLimit) break;
     }
     await _loadCache();
     if (!mounted) return;
     if (_overLimit) {
-      _tip('已清理 $clearedBooks 本书缓存，仍超出上限（保留最近阅读书籍），当前 ${_formatBytes(_cacheSizeBytes)} / ${_cacheMaxMB}MB');
+      _tip('已清理 $deletedRows 条缓存、$clearedBooks 本书正文，仍超出上限（保留最近阅读书籍），当前 ${_formatBytes(_cacheSizeBytes)} / ${_cacheMaxMB}MB');
     } else {
-      _tip('已按 LRU 清理 $clearedBooks 本书缓存，当前 ${_formatBytes(_cacheSizeBytes)} / ${_cacheMaxMB}MB');
+      _tip('已按 LRU 清理 $deletedRows 条缓存、$clearedBooks 本书正文，当前 ${_formatBytes(_cacheSizeBytes)} / ${_cacheMaxMB}MB');
     }
+  }
+
+  Future<void> _setMaxMB(int v) async {
+    setState(() => _cacheMaxMB = v);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt(DownloadService.keyCacheContentMaxMB, v);
+  }
+
+  Future<void> _setRetainNum(int v) async {
+    setState(() => _imageRetainNum = v);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt(DownloadService.keyImageRetainNum, v);
   }
 
   Future<void> _cleanOldBackups() async {
@@ -128,42 +234,30 @@ class _CacheManageScreenState extends State<CacheManageScreen> {
   }
 
   Future<void> _clearBookCache(Book book) async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('清除缓存'),
-        content: Text('确定要清除《${book.name}》的所有章节缓存吗？'),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('取消')),
-          FilledButton(onPressed: () => Navigator.pop(context, true), child: const Text('清除')),
-        ],
-      ),
+    final confirmed = await showAppConfirmDialog(
+      context,
+      title: '清除缓存',
+      content: '确定要清除《${book.name}》的所有章节缓存吗？',
+      confirmText: '清除',
+      danger: true,
     );
-    if (confirmed == true) {
+    if (confirmed) {
       await _db.clearBookChapterContent(book.name, book.author);
       _loadCache();
     }
   }
 
   Future<void> _clearAllCache() async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('清除全部缓存'),
-        content: const Text('确定要清除所有书籍的章节缓存吗？此操作不可恢复。'),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('取消')),
-          FilledButton(
-            style: FilledButton.styleFrom(backgroundColor: Colors.red),
-            onPressed: () => Navigator.pop(context, true),
-            child: const Text('全部清除'),
-          ),
-        ],
-      ),
+    final confirmed = await showAppConfirmDialog(
+      context,
+      title: '清除全部缓存',
+      content: '确定要清除所有书籍的章节缓存吗？此操作不可恢复。',
+      confirmText: '全部清除',
+      danger: true,
     );
-    if (confirmed == true) {
-      // 清空全部章节正文缓存（与具体书籍无关，执行一次即可）
+    if (confirmed) {
       await _db.clearChapterContent();
+      await _db.clearCaches();
       _loadCache();
     }
   }
@@ -196,7 +290,6 @@ class _CacheManageScreenState extends State<CacheManageScreen> {
       appBar: AppBar(
         title: const Text('缓存管理'),
         actions: [
-          // 对齐 E book_cache.xml：缓存页提供导出配置入口（导出全部/导出选项/日志）
           IconButton(
             icon: const Icon(Icons.ios_share_outlined),
             tooltip: '导出配置',
@@ -226,7 +319,7 @@ class _CacheManageScreenState extends State<CacheManageScreen> {
                       children: [
                         Expanded(
                           child: Text(
-                            '正文缓存已超出上限：${_formatBytes(_cacheSizeBytes)} / ${_cacheMaxMB}MB',
+                            '缓存已超出上限：${_formatBytes(_cacheSizeBytes)} / ${_cacheMaxMB}MB',
                             style: TextStyle(color: theme.colorScheme.onErrorContainer, fontSize: 13),
                           ),
                         ),
@@ -239,7 +332,7 @@ class _CacheManageScreenState extends State<CacheManageScreen> {
                   ),
                 Container(
                   padding: const EdgeInsets.all(16),
-                  color: Theme.of(context).colorScheme.primaryContainer,
+                  color: theme.colorScheme.primaryContainer,
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
@@ -248,15 +341,71 @@ class _CacheManageScreenState extends State<CacheManageScreen> {
                     ],
                   ),
                 ),
+                // 精确体积明细（真实 UTF-8 字节与文件体积，不再 ×2 估算）
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      _sizeRow('caches 表正文', _cacheTableBytes),
+                      _sizeRow('章节正文缓存', _chapterBytes),
+                      _sizeRow('本地文件', _fileBytes),
+                      const SizedBox(height: 4),
+                      Text(
+                        '体积按 content 的真实 UTF-8 字节与文件实际大小统计；'
+                        '写缓存时 DownloadService 依下列阈值自动 LRU。',
+                        style: TextStyle(fontSize: 11, color: theme.colorScheme.onSurfaceVariant),
+                      ),
+                    ],
+                  ),
+                ),
+                const Divider(height: 1),
+                const AppSectionHeader('LRU 阈值（与写缓存共用）'),
+                ListTile(
+                  dense: true,
+                  title: Text('缓存体积上限: ${_cacheMaxMB}MB'),
+                  subtitle: Slider(
+                    value: _cacheMaxMB.clamp(50, 2048).toDouble(),
+                    min: 50, max: 2048, divisions: 39,
+                    label: '${_cacheMaxMB}MB',
+                    onChanged: (v) => setState(
+                        () => _cacheMaxMB = (v / 50).round() * 50),
+                    onChangeEnd: (v) => _setMaxMB((v / 50).round() * 50),
+                  ),
+                ),
+                ListTile(
+                  dense: true,
+                  title: Text('缓存保留章节数: ${_imageRetainNum == 0 ? "不限" : _imageRetainNum}'),
+                  subtitle: Slider(
+                    value: _imageRetainNum.clamp(0, 500).toDouble(),
+                    min: 0, max: 500, divisions: 25,
+                    label: '$_imageRetainNum',
+                    onChanged: (v) =>
+                        setState(() => _imageRetainNum = (v / 20).round() * 20),
+                    onChangeEnd: (v) => _setRetainNum((v / 20).round() * 20),
+                  ),
+                ),
+                ListTile(
+                  dense: true,
+                  leading: const Icon(Icons.cleaning_services_outlined),
+                  title: const Text('立即按 LRU 手动清理'),
+                  subtitle: const Text('按 saveTime 从最旧开始删 caches 行，直至满足两个阈值',
+                      style: TextStyle(fontSize: 11)),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: () async {
+                    final deleted = await _manualLruClean();
+                    await _loadCache();
+                    _tip('已按 LRU 清理 $deleted 条缓存记录，当前 ${_formatBytes(_cacheSizeBytes)}');
+                  },
+                ),
+                const Divider(height: 1),
                 if (_books.isEmpty)
-                  const Padding(
-                    padding: EdgeInsets.symmetric(vertical: 48),
-                    child: Column(
-                      children: [
-                        Icon(Icons.cleaning_services, size: 64, color: Colors.grey),
-                        SizedBox(height: 16),
-                        Text('没有缓存的书籍', style: TextStyle(color: Colors.grey)),
-                      ],
+                  const SizedBox(
+                    height: 200,
+                    child: AppEmptyState(
+                      icon: Icons.cleaning_services_outlined,
+                      title: '没有缓存的书籍',
+                      message: '缓存章节后可在此查看与清理',
                     ),
                   )
                 else
@@ -269,12 +418,30 @@ class _CacheManageScreenState extends State<CacheManageScreen> {
     );
   }
 
+  Widget _sizeRow(String label, int bytes) => Padding(
+        padding: const EdgeInsets.symmetric(vertical: 2),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(label, style: const TextStyle(fontSize: 12)),
+            Text(_formatBytes(bytes), style: const TextStyle(fontSize: 12)),
+          ],
+        ),
+      );
+
   Widget _buildBookTile(Book book) {
     final cached = _chapterCounts['${book.name}_${book.author}'] ?? 0;
     return ListTile(
-      leading: book.coverUrl != null && book.coverUrl!.isNotEmpty
-          ? Image.network(book.coverUrl!, width: 40, height: 60, fit: BoxFit.cover, errorBuilder: (_, __, ___) => _buildDefaultCover())
-          : _buildDefaultCover(),
+      leading: BookCover(
+        name: book.name,
+        coverUrl: book.coverUrl,
+        localPath: book.coverUrl != null && book.coverUrl!.startsWith('/')
+            ? book.coverUrl
+            : null,
+        width: 40,
+        height: 60,
+        radius: 6,
+      ),
       title: Text(book.name, maxLines: 1, overflow: TextOverflow.ellipsis),
       subtitle: Text('${book.author} · 已缓存 $cached 章'),
       trailing: cached > 0
@@ -282,7 +449,7 @@ class _CacheManageScreenState extends State<CacheManageScreen> {
               onPressed: () => _clearBookCache(book),
               child: const Text('清除'),
             )
-          : const Text('无缓存', style: TextStyle(color: Colors.grey, fontSize: 12)),
+          : Text('无缓存', style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 12)),
     );
   }
 
@@ -297,7 +464,7 @@ class _CacheManageScreenState extends State<CacheManageScreen> {
           const SizedBox(height: 8),
           Text(
             _backupDirPath.isEmpty ? '目录读取中…' : '目录: $_backupDirPath',
-            style: const TextStyle(fontSize: 11, color: Colors.grey),
+            style: TextStyle(fontSize: 11, color: theme.colorScheme.onSurfaceVariant),
           ),
           if (_backupDirWarning != null)
             Padding(
@@ -310,7 +477,7 @@ class _CacheManageScreenState extends State<CacheManageScreen> {
           const SizedBox(height: 4),
           Text(
             '${_backupFiles.length} 个备份 · ${_formatBytes(_backupTotalBytes)} · 保留最近 $_keepCount 份',
-            style: const TextStyle(fontSize: 11, color: Colors.grey),
+            style: TextStyle(fontSize: 11, color: theme.colorScheme.onSurfaceVariant),
           ),
           const SizedBox(height: 8),
           Align(
@@ -323,18 +490,6 @@ class _CacheManageScreenState extends State<CacheManageScreen> {
           ),
         ],
       ),
-    );
-  }
-
-  Widget _buildDefaultCover() {
-    return Container(
-      width: 40,
-      height: 60,
-      decoration: BoxDecoration(
-        color: Colors.grey[300],
-        borderRadius: BorderRadius.circular(4),
-      ),
-      child: const Icon(Icons.book, size: 20, color: Colors.grey),
     );
   }
 }

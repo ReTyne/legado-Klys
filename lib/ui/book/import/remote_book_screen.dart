@@ -10,6 +10,7 @@ import 'package:legado_md3/data/model/book_chapter.dart';
 import 'package:legado_md3/help/source/txt_parser.dart';
 import 'package:legado_md3/help/storage/epub_parser.dart';
 import 'package:legado_md3/help/storage/import_book_service.dart';
+import 'package:legado_md3/ui/widgets/app_widgets.dart';
 
 /// 远程书籍导入（WebDAV 书库浏览），对齐原版 import/remote/RemoteBookActivity
 class RemoteBookScreen extends StatefulWidget {
@@ -119,7 +120,10 @@ class _RemoteBookScreenState extends State<RemoteBookScreen> {
         // 与 ImportBookService/读取侧保持同一套编码识别与长章节拆分
         final content = await TxtParserService.readFileAutoDetect(local);
         final info = _parser.extractBookInfo(content, file);
-        var chapters = _parser.parseChapters(content);
+        // 注意：这里必须赋值给外层的 late chapters，不能用 var 声明局部变量遮蔽，
+        // 否则文件末尾 saveChapters(book.name, book.author, chapters) 会读到未初始化
+        // 的外层变量而抛 LateInitializationError，TXT 导入书架链路中断。
+        chapters = _parser.parseChapters(content);
         book = Book(name: info['name'] ?? file, author: info['author'] ?? '未知', intro: info['intro'], origin: 'local', originName: '本地书籍', noteUrl: 'local://${local.path}', bookUrl: 'local://${local.path}', type: 1, local: true, fileName: local.path, lastChapter: chapters.isNotEmpty ? chapters.last.title : null, wordCount: content.length);
         if (book.splitLongChapter) {
           chapters = TxtParserService.splitLongChapters(
@@ -179,11 +183,15 @@ class _RemoteBookScreenState extends State<RemoteBookScreen> {
       appBar: AppBar(
         title: Text(_pathStack.isEmpty ? '远程书籍' : _pathStack.last),
         leading: _pathStack.isNotEmpty
-            ? IconButton(icon: const Icon(Icons.arrow_back), onPressed: _goUp)
+            ? IconButton(
+                icon: const Icon(Icons.arrow_back),
+                tooltip: '返回上级',
+                onPressed: _goUp)
             : null,
         actions: [
           IconButton(icon: const Icon(Icons.dns_outlined), tooltip: '服务器配置', onPressed: _configServer),
           PopupMenuButton<int>(
+            tooltip: '排序',
             initialValue: _sortKey,
             onSelected: (v) { setState(() => _sortKey = v); _loadFiles(); },
             itemBuilder: (_) => const [
@@ -197,15 +205,12 @@ class _RemoteBookScreenState extends State<RemoteBookScreen> {
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : _error != null
-              ? Center(child: Padding(padding: const EdgeInsets.all(24), child: Column(mainAxisSize: MainAxisSize.min, children: [
-                  const Icon(Icons.cloud_off, size: 56, color: Colors.grey),
-                  const SizedBox(height: 12),
-                  Text(_error!, textAlign: TextAlign.center),
-                  const SizedBox(height: 16),
-                  FilledButton.icon(onPressed: _configServer, icon: const Icon(Icons.settings), label: const Text('配置服务器')),
-                ])))
+              ? AppErrorState(message: _error!, onRetry: _loadFiles)
               : _entries.isEmpty
-                  ? const Center(child: Text('当前目录没有可导入的书籍文件'))
+                  ? const AppEmptyState(
+                      icon: Icons.folder_outlined,
+                      title: '当前目录没有可导入的书籍文件',
+                    )
                   : RefreshIndicator(onRefresh: _loadFiles, child: ListView.separated(
                       itemCount: _entries.length,
                       separatorBuilder: (_, __) => const Divider(height: 1),

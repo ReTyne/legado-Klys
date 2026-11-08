@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:legado_md3/ui/widgets/app_widgets.dart';
 
 /// 图片验证码输入界面（对齐 legado-E ui/association/VerificationCodeDialog.kt）
 ///
@@ -28,11 +29,16 @@ class _VerificationCodeScreenState extends State<VerificationCodeScreen> {
   final TextEditingController _controller = TextEditingController();
   bool _submitted = false;
 
+  // 换一张/重试时替换 key，强制 Image 重新发起请求（避免沿用失败结果）。
+  Key _imageKey = UniqueKey();
+
   @override
   void dispose() {
     _controller.dispose();
     super.dispose();
   }
+
+  void _reloadImage() => setState(() => _imageKey = UniqueKey());
 
   void _submit(String code) {
     if (_submitted) return;
@@ -53,6 +59,13 @@ class _VerificationCodeScreenState extends State<VerificationCodeScreen> {
               Text(widget.sourceName!, style: Theme.of(context).textTheme.bodySmall),
           ],
         ),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.refresh_outlined),
+            tooltip: '换一张',
+            onPressed: _reloadImage,
+          ),
+        ],
       ),
       body: Padding(
         padding: const EdgeInsets.all(16),
@@ -67,11 +80,12 @@ class _VerificationCodeScreenState extends State<VerificationCodeScreen> {
                 height: 140,
                 decoration: BoxDecoration(
                   border: Border.all(color: cs.outlineVariant),
-                  borderRadius: BorderRadius.circular(8),
+                  borderRadius: BorderRadius.circular(12),
                 ),
                 clipBehavior: Clip.antiAlias,
                 child: Image.network(
                   widget.imageUrl,
+                  key: _imageKey,
                   // 对齐 E VerificationCodeDialog 带书源 origin 加载验证码图
                   headers: widget.headers,
                   fit: BoxFit.contain,
@@ -85,7 +99,7 @@ class _VerificationCodeScreenState extends State<VerificationCodeScreen> {
                         const SizedBox(height: 4),
                         Text('图片加载失败', style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
                         TextButton(
-                          onPressed: () => setState(() {}),
+                          onPressed: _reloadImage,
                           child: const Text('重试'),
                         ),
                       ],
@@ -141,14 +155,21 @@ class _VerificationCodeScreenState extends State<VerificationCodeScreen> {
       context,
       MaterialPageRoute(
         builder: (_) => Scaffold(
-          backgroundColor: Colors.black,
-          appBar: AppBar(backgroundColor: Colors.black, foregroundColor: Colors.white),
+          appBar: AppBar(title: const Text('验证码大图')),
           body: Center(
             child: InteractiveViewer(
               minScale: 1,
               maxScale: 5,
-              child: Image.network(url,
-                  fit: BoxFit.contain, headers: widget.headers),
+              child: Image.network(
+                url,
+                fit: BoxFit.contain,
+                headers: widget.headers,
+                errorBuilder: (c, e, s) => const AppEmptyState(
+                  icon: Icons.broken_image_outlined,
+                  title: '图片加载失败',
+                  message: '请返回后点击重试重新加载验证码',
+                ),
+              ),
             ),
           ),
         ),

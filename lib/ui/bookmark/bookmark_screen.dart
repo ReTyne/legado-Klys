@@ -3,6 +3,7 @@ import 'package:share_plus/share_plus.dart';
 import 'package:legado_md3/data/model/bookmark.dart';
 import 'package:legado_md3/data/local/app_database.dart';
 import 'package:legado_md3/ui/bookmark/bookmark_export.dart';
+import 'package:legado_md3/ui/widgets/app_widgets.dart';
 
 class BookmarkScreen extends StatefulWidget {
   final String? bookName;
@@ -85,6 +86,7 @@ class _BookmarkScreenState extends State<BookmarkScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return Scaffold(
       appBar: AppBar(
         title: Text(widget.bookName != null ? '《${widget.bookName}》书签' : '全部书签'),
@@ -110,17 +112,10 @@ class _BookmarkScreenState extends State<BookmarkScreen> {
       body: _isLoading
           ? const Center(child: CircularProgressIndicator())
           : _bookmarks.isEmpty
-              ? const Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Icon(Icons.bookmark_border, size: 64, color: Colors.grey),
-                      SizedBox(height: 16),
-                      Text('暂无书签', style: TextStyle(color: Colors.grey)),
-                      SizedBox(height: 8),
-                      Text('阅读时点击书签按钮添加', style: TextStyle(color: Colors.grey, fontSize: 12)),
-                    ],
-                  ),
+              ? const AppEmptyState(
+                  icon: Icons.bookmark_border,
+                  title: '暂无书签',
+                  message: '阅读时点击书签按钮添加',
                 )
               : ListView.separated(
                   itemCount: _bookmarks.length,
@@ -132,10 +127,10 @@ class _BookmarkScreenState extends State<BookmarkScreen> {
                       direction: DismissDirection.endToStart,
                       onDismissed: (_) => _deleteBookmark(bookmark),
                       background: Container(
-                        color: Colors.red,
+                        color: cs.error,
                         alignment: Alignment.centerRight,
                         padding: const EdgeInsets.only(right: 16),
-                        child: const Icon(Icons.delete, color: Colors.white),
+                        child: Icon(Icons.delete, color: cs.onError),
                       ),
                       child: ListTile(
                         leading: const Icon(Icons.bookmark),
@@ -148,7 +143,7 @@ class _BookmarkScreenState extends State<BookmarkScreen> {
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             if (widget.bookName == null)
-                              Text(bookmark.bookName, style: const TextStyle(fontSize: 12, color: Colors.grey)),
+                              Text(bookmark.bookName, style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
                             if (bookmark.content != null && bookmark.content!.isNotEmpty)
                               Text(
                                 bookmark.content!,
@@ -158,13 +153,14 @@ class _BookmarkScreenState extends State<BookmarkScreen> {
                               ),
                             Text(
                               DateTime.fromMillisecondsSinceEpoch(bookmark.createTime).toString().substring(0, 16),
-                              style: const TextStyle(fontSize: 11, color: Colors.grey),
+                              style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant),
                             ),
                           ],
                         ),
                         trailing: widget.onSelect != null
                             ? const Icon(Icons.chevron_right)
                             : IconButton(
+                                tooltip: '删除书签',
                                 icon: const Icon(Icons.delete_outline),
                                 onPressed: () => _deleteBookmark(bookmark),
                               ),

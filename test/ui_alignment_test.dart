@@ -44,7 +44,8 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 120));
 
-    await tester.tap(find.byIcon(Icons.more_vert));
+    // 风格统一：actions 图标一律线框（*_outlined）
+    await tester.tap(find.byIcon(Icons.more_vert_outlined));
     await tester.pumpAndSettle();
 
     // legado-E 书架菜单的完整条目
@@ -76,7 +77,7 @@ void main() {
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 120));
 
-    await tester.tap(find.byIcon(Icons.more_vert));
+    await tester.tap(find.byIcon(Icons.more_vert_outlined));
     await tester.pumpAndSettle();
     await tester.ensureVisible(find.text('书架布局'));
     await tester.pumpAndSettle();
@@ -104,10 +105,12 @@ void main() {
     await tester.pump(const Duration(milliseconds: 120));
 
     expect(find.text('书架管理'), findsOneWidget);
-    expect(find.text('斗破苍穹'), findsOneWidget);
+    // 统一封面组件 BookCover 的默认占位也会显示书名，故标题文本出现 2 次
+    expect(find.text('斗破苍穹'), findsWidgets);
 
-    // 点选一本后出现底部批量操作栏（对齐 E 的 SelectActionBar）
-    await tester.tap(find.text('斗破苍穹'));
+    // 点选一本后出现底部批量操作栏（对齐 E 的 SelectActionBar）。
+    // 用 ListTile 的 ValueKey 精准定位，避免误点封面占位文字。
+    await tester.tap(find.byKey(const ValueKey('斗破苍穹::天蚕土豆')));
     await tester.pumpAndSettle();
     expect(find.text('已选 1 本'), findsOneWidget);
     for (final action in const ['移动分组', '缓存', '导出', '删除']) {
@@ -120,26 +123,29 @@ void main() {
     expect(find.text('已选 2 本'), findsOneWidget);
   });
 
-  testWidgets('我的页条目与 legado-E pref_main 一致', (tester) async {
+  testWidgets('我的页包含三个基准项目的全局管理入口，且无越界项', (tester) async {
     await tester.pumpWidget(_wrapProfile(const ProfileScreen()));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 120));
 
-    const topItems = ['书源管理', 'TXT目录规则', '替换净化', '词典规则', '主题模式', 'Web服务'];
-    for (final item in topItems) {
-      expect(find.text(item), findsOneWidget, reason: '缺少我的页条目：$item');
-    }
-    // ListView 懒构建：逐项向下滚动到可见后校验下半区条目
-    const bottomItems = ['备份与恢复', '主题设置', '其他设置', '书签', '阅读记录', '文件管理', '关于', '退出'];
-    for (final item in bottomItems) {
-      for (var i = 0; i < 20 && find.text(item).evaluate().isEmpty; i++) {
-        await tester.drag(find.byType(ListView).first, const Offset(0, -150));
+    // 按 UI 自上而下的顺序排列（ListView 懒构建：单调向下滚动逐项校验，
+    // 已滚出屏幕的项不再回查）。除 legado-E pref_main 的原有条目外，
+    // 还包含本轮按三个基准补齐的入口：首页模块(MD3 fork)、定时任务(官方原版
+    // AutoTaskManage)、朗读引擎/下载管理/AI 助手/阅读统计(原版与 fork 共有)。
+    const orderedItems = [
+      '书源管理', 'TXT目录规则', '替换净化', '词典规则', '首页模块', '定时任务',
+      '主题模式', 'Web服务', '备份与恢复', '主题设置', '其他设置', '朗读引擎',
+      '下载管理', 'AI 助手', '书签', '阅读记录', '阅读统计', '文件管理', '关于', '退出',
+    ];
+    for (final item in orderedItems) {
+      for (var i = 0; i < 30 && find.text(item).evaluate().isEmpty; i++) {
+        await tester.drag(find.byType(ListView).first, const Offset(0, -120));
         await tester.pumpAndSettle();
       }
       expect(find.text(item), findsOneWidget, reason: '缺少我的页条目：$item');
     }
-    // E 的「我的」没有的入口不应出现
-    for (final absent in const ['OPDS书源', '高亮标签配置', '首页模块', '标签分组规则', 'AI聊天', 'RSS订阅', '规则订阅', '下载管理', 'TTS设置', '翻译设置', '实验室', '书籍标记', '阅读统计', '缓存管理', '云盘同步']) {
+    // 三个基准项目都没有的入口不应出现（防止随意乱加页面）
+    for (final absent in const ['OPDS书源', '高亮标签配置', '标签分组规则', 'RSS订阅', '规则订阅', '翻译设置', '实验室', '书籍标记', '缓存管理', '云盘同步']) {
       expect(find.text(absent), findsNothing, reason: '不应存在我的页条目：$absent');
     }
   });

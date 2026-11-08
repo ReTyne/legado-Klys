@@ -2,13 +2,20 @@ import 'dart:async';
 import 'package:flutter_tts/flutter_tts.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:audioplayers/audioplayers.dart';
+import 'package:legado_md3/data/model/book.dart';
 import 'package:legado_md3/data/model/book_chapter.dart';
 import 'package:legado_md3/data/local/app_database.dart';
 import 'package:legado_md3/help/readaloud/cloud_tts_providers.dart';
+import 'package:legado_md3/help/storage/book_progress_sync.dart';
+import 'reading_record.dart';
 
 /// TTS朗读服务
 /// 支持系统TTS和云端HTTP TTS（含免费谷歌朗读）
 class TtsService {
+  /// 当前活动的朗读实例（由 init 注册、dispose 注销）。
+  /// 媒体按键 / 系统快捷入口通过它控制正在朗读的会话，而非新建空实例。
+  static TtsService? active;
+
   final FlutterTts _flutterTts = FlutterTts();
   final DatabaseService _db = DatabaseService();
   CloudTtsProvider? _cloudProvider;
@@ -35,6 +42,15 @@ class TtsService {
   int _currentIndex = 0;
   // 单段朗读守卫：划词朗读时不自动续播下一章
   bool _onceGuard = false;
+
+  // === 听书进度计入阅读记录（对齐 Sigma 阅读统计闭环） ===
+  final ReadingRecordService _readingRecord = ReadingRecordService();
+  /// 朗读所属书籍：由阅读页在 setChapters 后通过 [bindBook] 注入；
+  /// 未注入（如 RSS 朗读）时回退到「最近阅读」的书。
+  Book? _boundBook;
+  DateTime? _playingSince;
+  int _accumulatedMs = 0;
+
   Function(String)? onProgress;
   Function()? onComplete;
   Function(String)? onError;
@@ -137,6 +153,7 @@ class TtsService {
   /// 初始化TTS
   Future<void> init() async {
     if (_isInitialized) return;
+    active = this;
     try {
       await loadPrefs(); // 应用设置页保存的语速/音调
       await _flutterTts.setLanguage(_language ?? 'zh-CN');
@@ -150,6 +167,8 @@ class TtsService {
         _isPlaying = false;
         if (_onceGuard) {
           _onceGuard = false; // 单段朗读结束，不自动续播
+          _accumulate();
+          unawaited(_flushListening());
           return;
         }
         // 自动播放下一章
@@ -157,11 +176,16 @@ class TtsService {
           _currentIndex++;
           _speakCurrent();
         } else {
+          // complete：整本读完，结算听书时长并同步进度
+          _accumulate();
+          unawaited(_flushListening());
           onComplete?.call();
         }
       });
 
       _flutterTts.setErrorHandler((msg) {
+        _accumulate();
+        unawaited(_flushListening());
         _isPlaying = false;
         onError?.call(msg.toString());
       });
@@ -196,6 +220,7 @@ class TtsService {
     if (!_isInitialized && !_cloudMode) await init();
     if (_chapters.isEmpty) return;
     _isPaused = false;
+    _markPlaying(); // play：开始累计听书时长
     await _speakCurrent();
   }
   bool _cloudModeResolved = false;
@@ -207,6 +232,7 @@ class TtsService {
     _onceGuard = true;
     _isPlaying = true;
     _isPaused = false;
+    _markPlaying();
     _currentText = text;
     try {
       await _ensureRateApplied();
@@ -218,7 +244,12 @@ class TtsService {
     }
   }
 
-  /// 解析启用的云端 TTS 引擎；无则回退系统 TTS
+  /// 解析启用的云端 / 自定义 HTTP TTS 引擎；无则回退系统 TTS。
+  ///
+  /// 优先级：内置云厂商引擎（cloud_tts_engines）→ 用户自定义 HTTP TTS
+  /// （http_tts 表，经 HttpTtsProvider 适配）→ 系统 TTS。此前 http_tts
+  /// 表「能导入、能备份、能编辑，但既不展示也不参与朗读」，这里补上
+  /// 最后一环，让 UI 配置的引擎真正进入朗读链路。
   Future<void> resolveCloudEngine() async {
     try {
       final engines = await _db.getCloudTtsEngines();
@@ -229,6 +260,18 @@ class TtsService {
         }
       }
     } catch (_) {}
+    if (!_cloudMode) {
+      try {
+        final httpEngines = await _db.getHttpTTS();
+        for (final h in httpEngines) {
+          if (h.enabled == 1 && h.url.trim().isNotEmpty) {
+            _cloudProvider = HttpTtsProvider(h);
+            _cloudMode = true;
+            break;
+          }
+        }
+      } catch (_) {}
+    }
     if (_cloudMode) {
       _cloudPlayer ??= AudioPlayer();
       _cloudPlayer?.onPlayerComplete.listen((_) {
@@ -309,6 +352,8 @@ class TtsService {
         _currentIndex++;
         _speakCurrent();
       } else {
+        _accumulate();
+        unawaited(_flushListening());
         onComplete?.call();
       }
       return;
@@ -331,6 +376,7 @@ class TtsService {
 
   /// 暂停
   Future<void> pause() async {
+    _accumulate(); // pause：结算本段播放时长（暂停期间不计入阅读记录）
     if (_cloudMode) {
       await _cloudPlayer?.pause();
       _isPaused = true; _isPlaying = false;
@@ -346,6 +392,7 @@ class TtsService {
 
   /// 恢复
   Future<void> resume() async {
+    _markPlaying(); // resume：恢复计时（与 _accumulate 配对，暂停不计时）
     if (_cloudMode) {
       await _cloudPlayer?.resume();
       _isPaused = false; _isPlaying = true;
@@ -371,6 +418,8 @@ class TtsService {
 
   /// 停止
   Future<void> stop() async {
+    _accumulate();
+    unawaited(_flushListening()); // complete/stop：写 read_records + 同步进度
     _cloudSpeaking = false;
     if (_cloudMode) { await _cloudPlayer?.stop(); _isPlaying = false; _isPaused = false; return; }
     try {
@@ -461,6 +510,67 @@ class TtsService {
     }
   }
 
+  // === 听书进度计入阅读记录（play/pause/complete 挂钩） ===
+
+  /// 绑定当前朗读书籍（供阅读页在 setChapters 后调用，把听书时长归入该书）。
+  void bindBook(Book book) => _boundBook = book;
+
+  /// 清除书籍绑定（RSS 朗读等无书籍上下文场景）。
+  void clearBook() => _boundBook = null;
+
+  /// 解析朗读归属书籍：优先显式绑定，否则取「最近阅读」的书
+  /// （对齐 Sigma MediaButtonReceiver 的 appDb.bookDao.lastReadBook 语义）。
+  Future<Book?> _resolveBook() async {
+    final bound = _boundBook;
+    if (bound != null) return bound;
+    try {
+      Book? best;
+      for (final b in await _db.getAllBooks()) {
+        if (best == null || b.durChapterTime > best.durChapterTime) best = b;
+      }
+      return best;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// play / resume：开始（或恢复）累计听书时长。
+  void _markPlaying() {
+    _playingSince ??= DateTime.now();
+  }
+
+  /// pause / complete / stop：把「正在播放」这段时长累加进本次会话，
+  /// 暂停期间不计时，避免阅读记录里混入静止时间。
+  void _accumulate() {
+    final since = _playingSince;
+    if (since != null) {
+      _accumulatedMs += DateTime.now().difference(since).inMilliseconds;
+      _playingSince = null;
+    }
+  }
+
+  /// 结算一次听书会话：朗读时长写进 `read_records`，并调
+  /// [BookProgressSync.record] 记录进度（阅读统计 / 续读闭环）。
+  /// 一次会话只落一条进度，避免 saveBookProgress 的 insert 无限膨胀。
+  Future<void> _flushListening() async {
+    final ms = _accumulatedMs;
+    _accumulatedMs = 0;
+    if (ms <= 0) return;
+    try {
+      final book = await _resolveBook();
+      if (book == null) return;
+      final seconds = ms ~/ 1000;
+      if (seconds > 0) {
+        await _readingRecord.recordListening(book.name, book.author, seconds);
+      }
+      await BookProgressSync.instance.record(
+        book,
+        chapterIndex: _currentIndex,
+        durationMs: ms,
+      );
+    } catch (_) {}
+  }
+
   /// 释放资源
   Future<void> dispose() async {
     await stop();
@@ -468,6 +578,7 @@ class TtsService {
     _isInitialized = false;
     await _cloudPlayer?.dispose();
     _cloudPlayer = null;
+    if (active == this) active = null;
   }
 }
 

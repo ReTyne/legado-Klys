@@ -6,6 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:legado_md3/data/local/app_database.dart';
 import 'package:legado_md3/data/model/db_models.dart';
+import 'package:legado_md3/ui/widgets/app_widgets.dart';
 import 'package:legado_md3/help/source/content_services.dart';
 
 /// 字典面板：两个 Tab 分别管理两套不同语义的「字典规则」。
@@ -186,7 +187,11 @@ class _ReplaceTabState extends State<_ReplaceTab> {
         const Divider(height: 1),
         Expanded(
           child: _rules.isEmpty
-              ? const Center(child: Text('暂无替换规则'))
+              ? const AppEmptyState(
+                  icon: Icons.menu_book_outlined,
+                  title: '暂无词典规则',
+                  message: '可网络导入或新增词典规则',
+                )
               : ListView.builder(
                   itemCount: _rules.length,
                   itemBuilder: (context, index) {
@@ -195,7 +200,8 @@ class _ReplaceTabState extends State<_ReplaceTab> {
                       title: Text(r['rule']!, style: const TextStyle(fontFamily: 'monospace')),
                       subtitle: Text('→ ${r['replacement']}', style: const TextStyle(fontFamily: 'monospace', fontSize: 12)),
                       trailing: IconButton(
-                        icon: const Icon(Icons.delete, color: Colors.red),
+                        tooltip: '删除',
+                        icon: Icon(Icons.delete, color: Theme.of(context).colorScheme.error),
                         onPressed: () async {
                           setState(() => _rules.removeAt(index));
                           await _save();
@@ -329,10 +335,10 @@ class _DictSourceTabState extends State<_DictSourceTab> {
           padding: const EdgeInsets.all(12),
           child: Row(
             children: [
-              const Icon(Icons.info_outline, size: 16, color: Colors.grey),
+              Icon(Icons.info_outline, size: 16, color: Theme.of(context).colorScheme.onSurfaceVariant),
               const SizedBox(width: 6),
-              const Expanded(
-                child: Text('阅读页选中文字后点「查词」即可调用', style: TextStyle(fontSize: 12, color: Colors.grey)),
+              Expanded(
+                child: Text('阅读页选中文字后点「查词」即可调用', style: TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.onSurfaceVariant)),
               ),
               TextButton.icon(
                 onPressed: _importNetwork,
@@ -347,20 +353,13 @@ class _DictSourceTabState extends State<_DictSourceTab> {
           child: _loading
               ? const Center(child: CircularProgressIndicator())
               : _rules.isEmpty
-                  ? Center(
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          const Icon(Icons.menu_book_outlined, size: 48, color: Colors.grey),
-                          const SizedBox(height: 12),
-                          const Text('暂无词典规则'),
-                          const SizedBox(height: 16),
-                          FilledButton.icon(
-                            onPressed: _editRule,
-                            icon: const Icon(Icons.add),
-                            label: const Text('新增规则'),
-                          ),
-                        ],
+                  ? AppEmptyState(
+                      icon: Icons.menu_book_outlined,
+                      title: '暂无词典规则',
+                      action: FilledButton.icon(
+                        onPressed: _editRule,
+                        icon: const Icon(Icons.add),
+                        label: const Text('新增规则'),
                       ),
                     )
                   : ReorderableListView.builder(
@@ -372,7 +371,7 @@ class _DictSourceTabState extends State<_DictSourceTab> {
                           key: ValueKey('dict_${r.id ?? index}'),
                           leading: Icon(
                             r.enabled == 1 ? Icons.check_circle : Icons.radio_button_unchecked,
-                            color: r.enabled == 1 ? Colors.green : Colors.grey,
+                            color: r.enabled == 1 ? Theme.of(context).colorScheme.primary : Theme.of(context).colorScheme.onSurfaceVariant,
                           ),
                           title: Text(r.name),
                           subtitle: Text(
@@ -389,7 +388,8 @@ class _DictSourceTabState extends State<_DictSourceTab> {
                                 onChanged: (v) => _save(r.copyWith(enabled: v ? 1 : 0)),
                               ),
                               IconButton(
-                                icon: const Icon(Icons.delete_outline, color: Colors.red),
+                                tooltip: '删除',
+                                icon: Icon(Icons.delete_outline, color: Theme.of(context).colorScheme.error),
                                 onPressed: () => _delete(r),
                               ),
                               const ReorderableDragStartListener(index: 0, child: Icon(Icons.drag_handle)),

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:legado_md3/data/local/app_database.dart';
 import 'package:legado_md3/data/model/db_models.dart';
+import 'package:legado_md3/ui/widgets/app_widgets.dart';
 /// 标签分组规则页面 - 对齐原版TagGroupRuleScreen
 class TagGroupRuleScreen extends StatefulWidget {
   const TagGroupRuleScreen({super.key});
@@ -61,13 +62,22 @@ class _TagGroupRuleScreenState extends State<TagGroupRuleScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text('标签分组规则'), actions: [
-        PopupMenuButton<String>(onSelected: (v) {
+        PopupMenuButton<String>(tooltip: '更多', onSelected: (v) {
           if (v == 'help') showDialog(context: context, builder: (c) => const AlertDialog(title: Text('说明'), content: Text('标签分组规则可根据书籍标签自动将书籍归入指定分组。使用正则表达式匹配标签内容。')));
         }, itemBuilder: (_) => const [PopupMenuItem(value: 'help', child: Text('帮助'))]),
       ]),
-      floatingActionButton: FloatingActionButton(onPressed: () => _edit(), child: const Icon(Icons.add)),
+      floatingActionButton: FloatingActionButton(tooltip: '新增规则', onPressed: () => _edit(), child: const Icon(Icons.add)),
       body: _loading ? const Center(child: CircularProgressIndicator()) : _rules.isEmpty
-        ? const Center(child: Text('暂无标签分组规则', style: TextStyle(color: Colors.grey)))
+        ? AppEmptyState(
+            icon: Icons.label_outline,
+            title: '暂无标签分组规则',
+            message: '点击右下角新增规则，按标签正则自动分组',
+            action: FilledButton.icon(
+              onPressed: () => _edit(),
+              icon: const Icon(Icons.add),
+              label: const Text('新增规则'),
+            ),
+          )
         : ListView.separated(
             itemCount: _rules.length,
             separatorBuilder: (_, __) => const Divider(height: 1),
@@ -81,8 +91,8 @@ class _TagGroupRuleScreenState extends State<TagGroupRuleScreen> {
                 ]),
                 trailing: Row(mainAxisSize: MainAxisSize.min, children: [
                   Switch(value: r.enabled == 1, onChanged: (v) async { r.enabled = v ? 1 : 0; await _db.updateTagGroupRule(r); _load(); }),
-                  IconButton(icon: const Icon(Icons.copy, size: 20), onPressed: () { Clipboard.setData(ClipboardData(text: r.pattern)); ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('已复制'))); }),
-                  IconButton(icon: const Icon(Icons.delete_outline, size: 20), onPressed: () async { if (r.id != null) await _db.deleteTagGroupRule(r.id!); _load(); }),
+                  IconButton(tooltip: '复制规则', icon: const Icon(Icons.copy, size: 20), onPressed: () { Clipboard.setData(ClipboardData(text: r.pattern)); ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('已复制'))); }),
+                  IconButton(tooltip: '删除', icon: const Icon(Icons.delete_outline, size: 20), onPressed: () async { if (r.id != null) await _db.deleteTagGroupRule(r.id!); _load(); }),
                 ]),
                 onTap: () => _edit(r),
               );

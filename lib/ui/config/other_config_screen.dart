@@ -1,9 +1,14 @@
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
+import 'package:legado_md3/data/local/app_database.dart';
 import 'package:legado_md3/help/config/app_config.dart';
+import 'package:legado_md3/help/device/native_bridge.dart';
+import 'package:legado_md3/help/storage/download_service.dart';
 import 'package:legado_md3/help/storage/import_old_data.dart';
 import 'package:legado_md3/ui/config/direct_link_upload_config.dart';
+import 'package:legado_md3/ui/config/video_setting_screen.dart';
+import 'package:legado_md3/ui/widgets/app_widgets.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 /// 其他设置 - 对齐原版OtherConfigScreen
@@ -49,6 +54,8 @@ class _OtherConfigScreenState extends State<OtherConfigScreen> {
       _prefs['readAloudByMediaButton'] = p.getBool('readAloudByMediaButton') ?? false;
       _prefs['ignoreAudioFocus'] = p.getBool('ignoreAudioFocus') ?? false;
       _prefs['updateToVariant'] = p.getString('updateToVariant') ?? 'default_version';
+      // 图片保留数量：DownloadService 写缓存 LRU 读取同一个键
+      _prefs['imageRetainNum'] = p.getInt(DownloadService.keyImageRetainNum) ?? 0;
     });
   }
 
@@ -64,14 +71,15 @@ class _OtherConfigScreenState extends State<OtherConfigScreen> {
     await p.setString(prefKey, v);
   }
 
-  Widget _section(String t) => Padding(padding: const EdgeInsets.fromLTRB(16, 20, 16, 8),
-    child: Text(t, style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Theme.of(context).colorScheme.primary)));
+  Widget _section(String t) => AppSectionHeader(t);
 
   Widget _sw(String title, String key, String prefKey, {String? sub}) =>
-    SwitchListTile(dense: true, contentPadding: const EdgeInsets.symmetric(horizontal: 16),
-      title: Text(title, style: const TextStyle(fontSize: 14)),
-      subtitle: sub != null ? Text(sub, style: const TextStyle(fontSize: 11)) : null,
-      value: _prefs[key] ?? false, onChanged: (v) => _setBool(key, prefKey, v));
+    AppSwitchTile(
+      title: title,
+      subtitle: sub,
+      value: _prefs[key] ?? false,
+      onChanged: (v) => _setBool(key, prefKey, v),
+    );
 
   /// 基于 AppPrefs 静态配置的滑条（写入即经 AppPrefs setter 落盘）
   Widget _appSlider(String title, int value, double min, double max, int divisions,
@@ -161,7 +169,7 @@ class _OtherConfigScreenState extends State<OtherConfigScreen> {
           }),
         _section('网络和封面'),
         _sw('仅WiFi下加载封面', 'loadCoverOnlyWifi', 'cover_onlyWifi',
-          sub: '移动网络下不请求网络封面（cover_onlyWifi）'),
+          sub: '移动数据下不加载网络封面（cover_onlyWifi，Android 原生判断）'),
         _section('网络与存储（对照原版）'),
         ListTile(
           dense: true,
@@ -206,15 +214,7 @@ class _OtherConfigScreenState extends State<OtherConfigScreen> {
             AppPrefs.defaultBookTreeUri.isEmpty ? '未设置，使用应用默认目录' : AppPrefs.defaultBookTreeUri,
             maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 11)),
           trailing: const Icon(Icons.edit),
-          onTap: () async {
-            final v = await _textDialog(
-              title: '默认书籍保存目录',
-              initial: AppPrefs.defaultBookTreeUri,
-              hint: '本地书籍默认保存/导入目录',
-            );
-            if (v == null) return;
-            setState(() => AppPrefs.defaultBookTreeUri = v);
-          },
+          onTap: _pickBookTreeUri,
         ),
         ListTile(dense: true, leading: const Icon(Icons.cloud_upload_outlined), title: const Text('上传规则'),
           subtitle: const Text('书籍/备份分享到网盘的直链上传规则（uploadRule）', style: TextStyle(fontSize: 11)),
@@ -242,6 +242,46 @@ class _OtherConfigScreenState extends State<OtherConfigScreen> {
         _sw('自动清理过期内容', 'autoClearExpired', 'oc_autoClearExpired'),
         _sw('显示加入书架提示', 'showAddShelfTip', 'oc_showAddShelfTip'),
         _sw('显示漫画界面', 'showMangaUi', 'oc_showMangaUi'),
+        _section('缓存与维护（对照 pref_config_other）'),
+        ListTile(
+          dense: true,
+          leading: const Icon(Icons.image_outlined),
+          title: Text('图片/正文缓存保留章节数: ${_prefs['imageRetainNum'] ?? 0}'),
+          subtitle: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            const Text(
+              'imageRetainNum：写缓存时 DownloadService 自动 LRU 按条目清理，0 = 不限条目',
+              style: TextStyle(fontSize: 11)),
+            Slider(
+              value: (_prefs['imageRetainNum'] ?? 0).clamp(0, 200).toDouble(),
+              min: 0, max: 200, divisions: 20,
+              label: '${_prefs['imageRetainNum'] ?? 0}',
+              onChanged: (v) => setState(() => _prefs['imageRetainNum'] = v.toInt()),
+              onChangeEnd: (v) async {
+                final p = await SharedPreferences.getInstance();
+                await p.setInt(DownloadService.keyImageRetainNum, v.toInt());
+              },
+            ),
+          ]),
+        ),
+        ListTile(
+          dense: true,
+          leading: const Icon(Icons.compress_outlined),
+          title: const Text('压缩数据库'),
+          subtitle: const Text('shrinkDatabase：执行 VACUUM 回收已删除数据占用的空间',
+              style: TextStyle(fontSize: 11)),
+          trailing: const Icon(Icons.chevron_right),
+          onTap: _shrinkDatabase,
+        ),
+        ListTile(
+          dense: true,
+          leading: const Icon(Icons.video_settings_outlined),
+          title: const Text('视频播放器设置'),
+          subtitle: const Text('videoSetting：自动播放 / 直接全屏 / 长按倍速 / 底部进度条',
+              style: TextStyle(fontSize: 11)),
+          trailing: const Icon(Icons.chevron_right),
+          onTap: () => Navigator.push(context,
+              MaterialPageRoute(builder: (_) => const VideoSettingScreen())),
+        ),
         _section('其他'),
         _sw('Web服务唤醒锁', 'webWakeLock', 'oc_webWakeLock'),
         ListTile(dense: true, title: Text('源编辑文本最大行数: ${_prefs['sourceEditMaxLine']}'),
@@ -264,40 +304,27 @@ class _OtherConfigScreenState extends State<OtherConfigScreen> {
           subtitle: const Text('导入 legado 3.x 旧版导出的书架/书源/替换规则（选择含 myBookShelf.json 等的目录）', style: TextStyle(fontSize: 11)),
           trailing: const Icon(Icons.chevron_right),
           onTap: _importOldData),
-        ListTile(dense: true, leading: const Icon(Icons.cleaning_services_outlined), title: const Text('清理WebView数据'),
-          onTap: () async {
-            try {
-              await InAppWebViewController.clearAllCache();
-              await CookieManager.instance().deleteAllCookies();
-              if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('WebView数据已清理')));
-            } catch (e) {
-              if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('清理失败: $e')));
-            }
-          }),
+        ListTile(dense: true,
+          leading: const Icon(Icons.cleaning_services_outlined),
+          title: const Text('清理WebView数据'),
+          subtitle: const Text('clearWebViewData：缓存 / Cookie / Web Storage',
+              style: TextStyle(fontSize: 11)),
+          trailing: const Icon(Icons.chevron_right),
+          onTap: _clearWebViewData),
         _sw('记录日志', 'recordLog', 'oc_recordLog'),
-        SwitchListTile(
-          dense: true,
-          contentPadding: const EdgeInsets.symmetric(horizontal: 16),
-          title: const Text('系统文本菜单入口', style: TextStyle(fontSize: 14)),
-          subtitle: Text(
-            AppPrefs.processText ? '已注册：在任意应用中选中文本后可通过「阅读」菜单导入' : '将本应用加入系统文本选择菜单（PROCESS_TEXT），保存后重启生效',
-            style: const TextStyle(fontSize: 11)),
-          value: AppPrefs.processText,
-          onChanged: (v) async {
-            setState(() => AppPrefs.processText = v);
-            if (!mounted) return;
-            ScaffoldMessenger.of(context).showSnackBar(
-              SnackBar(content: Text(v ? '已开启文本菜单入口（重启应用后生效）' : '已关闭文本菜单入口（重启应用后生效）')),
-            );
-          },
-        ),
-        SwitchListTile(
-          dense: true,
-          contentPadding: const EdgeInsets.symmetric(horizontal: 16),
-          title: const Text('性能监测记录堆转储', style: TextStyle(fontSize: 14)),
-          subtitle: const Text('开启性能监测时同时记录堆转储，便于分析内存占用（recordHeapDump）', style: TextStyle(fontSize: 11)),
-          value: AppPrefs.recordHeapDump,
-          onChanged: (v) => setState(() => AppPrefs.recordHeapDump = v),
+        // 下线说明：process_text（系统文本菜单入口）与 recordHeapDump（堆转储）
+        // 在 AppPrefs 中仅持久化、全库无消费方，属记账式死开关，已从本页下架。
+        // 原生 ACTION_PROCESS_TEXT 由 N 组在 Manifest 无条件注册，能力本身不受 Dart
+        // 布尔开关影响；残留字段 AppPrefs.processText / AppPrefs.recordHeapDump
+        // 建议主代理从 app_config.dart 清理（见交付报告「已删除字段清单」）。
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+          child: Text(
+            '说明：系统文本菜单入口（PROCESS_TEXT）由原生层统一注册，无需应用内开关；'
+            '堆转储记录无对应采集链路。两项记账式开关已从本页下架，避免留下无效开关。',
+            style: TextStyle(
+                fontSize: 11, color: Theme.of(context).colorScheme.onSurfaceVariant),
+          ),
         ),
         const SizedBox(height: 24),
       ]),
@@ -315,29 +342,119 @@ class _OtherConfigScreenState extends State<OtherConfigScreen> {
     }
   }
 
+  void _tip(String msg) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+  }
+
+  /// defaultBookTreeUri：优先走 SAF（原生 ACTION_OPEN_DOCUMENT_TREE）真实授权目录，
+  /// 不支持 SAF 的平台可手动输入路径或清除。
+  Future<void> _pickBookTreeUri() async {
+    await showAppMenuSheet(
+      context,
+      title: '默认书籍保存目录',
+      items: [
+        AppMenuSheetItem(
+          title: '通过系统文件选择器授权目录',
+          icon: Icons.folder_open_outlined,
+          subtitle: 'SAF content URI（推荐）',
+          onTap: () async {
+            final uri = await NativeBridge.instance.pickDocumentTree();
+            if (uri == null || uri.isEmpty) {
+              _tip('未选择目录，或当前平台不支持 SAF');
+              return;
+            }
+            setState(() => AppPrefs.defaultBookTreeUri = uri);
+            _tip('已设置默认书籍目录：$uri');
+          },
+        ),
+        AppMenuSheetItem(
+          title: '手动输入路径',
+          icon: Icons.edit_outlined,
+          onTap: () async {
+            final v = await _textDialog(
+              title: '默认书籍保存目录',
+              initial: AppPrefs.defaultBookTreeUri,
+              hint: '本地书籍默认保存/导入目录',
+            );
+            if (v == null) return;
+            setState(() => AppPrefs.defaultBookTreeUri = v);
+          },
+        ),
+        AppMenuSheetItem(
+          title: '清除（使用应用默认目录）',
+          icon: Icons.delete_outline,
+          onTap: () => setState(() => AppPrefs.defaultBookTreeUri = ''),
+        ),
+      ],
+    );
+  }
+
+  /// shrinkDatabase：真实执行 VACUUM 重整数据库文件。
+  Future<void> _shrinkDatabase() async {
+    final ok = await showAppConfirmDialog(
+      context,
+      title: '压缩数据库',
+      content: '将执行 VACUUM 回收已删除数据占用的空闲页，过程中请勿退出应用。',
+      confirmText: '压缩',
+    );
+    if (!ok || !mounted) return;
+    try {
+      await runWithBusyDialog<void>(
+        context,
+        message: '正在压缩数据库…',
+        task: DatabaseService().shrinkDatabase(),
+      );
+      if (!mounted) return;
+      _tip('数据库已压缩（VACUUM 完成）');
+    } catch (e) {
+      _tip('压缩失败：$e');
+    }
+  }
+
+  /// clearWebViewData：清 WebView 缓存 + Cookie + Web Storage（三项真实生效）。
+  Future<void> _clearWebViewData() async {
+    final ok = await showAppConfirmDialog(
+      context,
+      title: '清理 WebView 数据',
+      content: '将清除网页缓存、Cookie 与 Web Storage（localStorage / IndexedDB）。'
+          '已登录的书源 / RSS 站点可能需要重新登录。',
+      confirmText: '清理',
+      danger: true,
+    );
+    if (!ok) return;
+    var cleared = 0;
+    try {
+      await InAppWebViewController.clearAllCache();
+      cleared++;
+    } catch (_) {}
+    try {
+      await CookieManager.instance().deleteAllCookies();
+      cleared++;
+    } catch (_) {}
+    try {
+      await WebStorageManager.instance().deleteAllData();
+      cleared++;
+    } catch (_) {}
+    _tip('WebView 数据已清理（完成 $cleared/3 项：缓存 / Cookie / Web Storage）');
+  }
+
   /// 导入 legado 3.x 旧版数据（E: ImportOldData.importUri）
   Future<void> _importOldData() async {
     final dir = await FilePicker.platform.getDirectoryPath();
     if (dir == null || !mounted) return;
-    // 忙碌提示
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (_) => const Center(child: Card(child: Padding(padding: EdgeInsets.all(24), child: Column(mainAxisSize: MainAxisSize.min, children: [CircularProgressIndicator(), SizedBox(height: 12), Text('正在导入旧版数据...')])))),
-    );
+    String summary;
     try {
-      final result = await ImportOldData.importDir(dir);
-      if (!mounted) return;
-      Navigator.pop(context);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(result.summary())),
+      final result = await runWithBusyDialog(
+        context,
+        message: '正在导入旧版数据...',
+        task: ImportOldData.importDir(dir),
       );
+      summary = result.summary();
     } catch (e) {
-      if (!mounted) return;
-      Navigator.pop(context);
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text('导入失败: $e')),
-      );
+      summary = '导入失败: $e';
     }
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(summary)));
   }
 }

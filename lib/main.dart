@@ -18,6 +18,11 @@ import 'package:legado_md3/common/app_navigator.dart';
 import 'package:legado_md3/common/app_name.dart';
 import 'package:legado_md3/common/deep_link_service.dart';
 import 'package:legado_md3/help/net/network_monitor.dart';
+import 'package:legado_md3/help/storage/auto_task_service.dart';
+import 'package:legado_md3/help/storage/auto_task_js_source.dart';
+import 'package:legado_md3/help/storage/rule_sub_auto_update.dart';
+import 'package:legado_md3/help/storage/bootstrap_service.dart';
+import 'package:legado_md3/help/source/js/legado_js_runtime.dart';
 import 'package:legado_md3/ui/book/reader_router.dart';
 
 /// 应用语言（oc_language：0 跟随系统 / 1 简体中文 / 2 English）
@@ -35,6 +40,8 @@ void main() async {
   }
   // 漫画界面开关（oc_showMangaUi）
   showMangaUi = prefs.getBool('oc_showMangaUi') ?? true;
+  // EPUB 保版式阅读开关（ui_epubLayoutReader）
+  useEpubLayoutReader = prefs.getBool('ui_epubLayoutReader') ?? false;
   // 语言设置（oc_language）
   final lang = prefs.getInt('oc_language') ?? 0;
   appLocale = lang == 1
@@ -50,6 +57,28 @@ void main() async {
     BackupService.scheduleAutoBackup();
     // 网络状态监听：搜索/校验/上传前的快速离线判断（E: NetworkUtils.isAvailable）
     NetworkMonitor.instance.start();
+    // 第十轮启动期统一接线：原生桥（电量/亮度/媒体键/网络事件/ReaderProvider）、
+    // RAR/7z 归档解码器、动态快捷方式、ACTION_PROCESS_TEXT、剪贴板口令 #L:、
+    // 媒体键→朗读、网络变化→Web 服务重绑、云进度拉取。
+    BootstrapService.instance.run(prefs);
+    // 定时任务调度（对齐 legado-E AutoTaskScheduler）：应用存活期间按分钟轮询，
+    // 并注入纯 Dart JS 执行器，让「执行自定义脚本」动作真正跑起来而非空壳。
+    AutoTaskService.instance.jsRunner = (code) async {
+      final js = MiniLegadoJs();
+      try {
+        final r = await js.eval(JsEvalRequest(
+          source: AutoTaskJsSource(),
+          script: code,
+        ));
+        if (r.error != null && r.error!.isNotEmpty) return '脚本错误：${r.error}';
+        return r.stringValue ?? '执行完成（无返回值）';
+      } finally {
+        await js.dispose();
+      }
+    };
+    AutoTaskService.instance.start();
+    // 启动期自动更新有「自动更新」标记的规则订阅（对齐 legado-E ruleSubsUp()）。
+    RuleSubAutoUpdate.runDue();
     if (prefs.getBool('oc_autoClearExpired') ?? false) {
       DatabaseService().clearExpiredChapterContent().catchError((_) => 0);
     }

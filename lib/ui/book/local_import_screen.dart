@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:legado_md3/help/storage/import_book_service.dart';
 import 'package:legado_md3/ui/book/import/remote_book_screen.dart';
+import 'package:legado_md3/ui/widgets/app_widgets.dart';
 
 class LocalImportScreen extends StatefulWidget {
   const LocalImportScreen({super.key});
@@ -104,18 +105,10 @@ class _LocalImportScreenState extends State<LocalImportScreen> {
             LinearProgressIndicator(value: _progress),
           Expanded(
             child: _selectedFiles.isEmpty
-                ? Center(
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(Icons.folder_open, size: 64, color: Colors.grey),
-                        const SizedBox(height: 16),
-                        const Text('还没有选择文件', style: TextStyle(color: Colors.grey)),
-                        const SizedBox(height: 8),
-                        const Text('支持TXT / EPUB / UMD / MOBI / PDF / ZIP',
-                            style: TextStyle(color: Colors.grey, fontSize: 12)),
-                      ],
-                    ),
+                ? const AppEmptyState(
+                    icon: Icons.folder_outlined,
+                    title: '还没有选择文件',
+                    message: '支持 TXT / EPUB / UMD / MOBI / PDF / ZIP',
                   )
                 : ListView.builder(
                     itemCount: _selectedFiles.length,
@@ -127,6 +120,7 @@ class _LocalImportScreenState extends State<LocalImportScreen> {
                         subtitle: Text('${(file.lengthSync() / 1024).toStringAsFixed(1)} KB'),
                         trailing: IconButton(
                           icon: const Icon(Icons.close),
+                          tooltip: '移除',
                           onPressed: () => setState(() => _selectedFiles.removeAt(index)),
                         ),
                       );

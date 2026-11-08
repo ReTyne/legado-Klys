@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  FileProvider 路径映射（Manifest 注册 ${applicationId}.fileProvider）。
+  root-path 覆盖设备存储，配合 legado/saf 的 getUriForFile / shareFile / openFile
+  把本地书籍、备份、缓存文件以 content:// 形式安全暴露给外部 App。
+-->
+<paths xmlns:android="http://schemas.android.com/apk/res/android">
+    <root-path name="root" path="." />
+    <files-path name="files" path="." />
+    <cache-path name="cache" path="." />
+    <external-path name="external" path="." />
+    <external-files-path name="external_files" path="." />
+    <external-cache-path name="external_cache" path="." />
+</paths>

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:legado_md3/ui/widgets/app_widgets.dart';
 import 'package:legado_md3/data/model/book.dart';
 import 'package:legado_md3/data/model/book_chapter.dart';
 import 'package:legado_md3/data/model/book_source.dart';
@@ -524,7 +525,7 @@ class _SourceDebugScreenState extends State<SourceDebugScreen>
     String statusText;
     switch (step.status) {
       case _StepStatus.idle:
-        statusColor = Colors.grey;
+        statusColor = colorScheme.onSurfaceVariant;
         statusText = '未执行';
         break;
       case _StepStatus.running:
@@ -532,11 +533,11 @@ class _SourceDebugScreenState extends State<SourceDebugScreen>
         statusText = '执行中…';
         break;
       case _StepStatus.ok:
-        statusColor = const Color(0xFF2E7D32);
+        statusColor = colorScheme.primary;
         statusText = '成功';
         break;
       case _StepStatus.fail:
-        statusColor = const Color(0xFFC62828);
+        statusColor = colorScheme.error;
         statusText = '失败';
         break;
     }
@@ -561,7 +562,7 @@ class _SourceDebugScreenState extends State<SourceDebugScreen>
                       const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                   decoration: BoxDecoration(
                     color: statusColor.withOpacity(0.12),
-                    borderRadius: BorderRadius.circular(10),
+                    borderRadius: BorderRadius.circular(12),
                   ),
                   child: Text(statusText,
                       style: TextStyle(color: statusColor, fontSize: 11)),
@@ -570,9 +571,9 @@ class _SourceDebugScreenState extends State<SourceDebugScreen>
                 // 耗时统计（Stopwatch）
                 if (step.durationMs > 0)
                   Text('${step.durationMs} ms',
-                      style: const TextStyle(
+                      style: TextStyle(
                           fontSize: 11,
-                          color: Colors.grey,
+                          color: colorScheme.onSurfaceVariant,
                           fontFamily: 'monospace')),
                 const SizedBox(width: 8),
                 FilledButton.tonalIcon(
@@ -610,16 +611,16 @@ class _SourceDebugScreenState extends State<SourceDebugScreen>
                     width: double.infinity,
                     padding: const EdgeInsets.all(8),
                     decoration: BoxDecoration(
-                      color: Colors.black.withOpacity(0.04),
-                      borderRadius: BorderRadius.circular(6),
+                      color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                      borderRadius: BorderRadius.circular(12),
                     ),
                     child: SelectableText(
                       step.engineLogs.join('\n'),
-                      style: const TextStyle(
+                      style: TextStyle(
                           fontSize: 10.5,
                           height: 1.3,
                           fontFamily: 'monospace',
-                          color: Color(0xFF555555)),
+                          color: colorScheme.onSurfaceVariant),
                     ),
                   ),
                 ],
@@ -641,15 +642,10 @@ class _SourceDebugScreenState extends State<SourceDebugScreen>
     ];
     final any = items.any((e) => e.$2 != null && e.$2!.isNotEmpty);
     if (!any) {
-      return Center(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Text(
-            '尚未抓取到源码。\n执行「一键调试」后，这里会展示各阶段的原始 HTML/JSON。',
-            textAlign: TextAlign.center,
-            style: TextStyle(color: Colors.grey.shade600, fontSize: 13, height: 1.6),
-          ),
-        ),
+      return const AppEmptyState(
+        icon: Icons.code_outlined,
+        title: '尚未抓取到源码',
+        message: '执行「一键调试」后，这里会展示各阶段的原始 HTML/JSON。',
       );
     }
     return ListView(
@@ -668,16 +664,16 @@ class _SourceDebugScreenState extends State<SourceDebugScreen>
                   Container(
                     width: double.infinity,
                     padding: const EdgeInsets.all(8),
-                    color: Colors.black.withOpacity(0.04),
+                    color: Theme.of(context).colorScheme.surfaceContainerHighest,
                     child: SelectableText(
                       e.$2!.length > 20000
                           ? '${e.$2!.substring(0, 20000)}\n…（已截断，共 ${e.$2!.length} 字符）'
                           : e.$2!,
-                      style: const TextStyle(
+                      style: TextStyle(
                           fontSize: 10.5,
                           height: 1.35,
                           fontFamily: 'monospace',
-                          color: Color(0xFF333333)),
+                          color: Theme.of(context).colorScheme.onSurface),
                     ),
                   ),
                 ],
@@ -692,7 +688,7 @@ class _SourceDebugScreenState extends State<SourceDebugScreen>
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(label, style: TextStyle(fontSize: 11, color: Colors.grey.shade600)),
+        Text(label, style: TextStyle(fontSize: 11, color: Theme.of(context).colorScheme.onSurfaceVariant)),
         const SizedBox(height: 2),
         SelectableText(
           value,
@@ -700,7 +696,9 @@ class _SourceDebugScreenState extends State<SourceDebugScreen>
             fontSize: 11.5,
             height: 1.35,
             fontFamily: 'monospace',
-            color: error ? const Color(0xFFC62828) : const Color(0xFF333333),
+            color: error
+                ? Theme.of(context).colorScheme.error
+                : Theme.of(context).colorScheme.onSurface,
           ),
         ),
       ],
@@ -716,7 +714,7 @@ class _SourceDebugScreenState extends State<SourceDebugScreen>
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
           child: Text(
             '每步可单独执行并统计耗时；「详情 / 目录 / 正文」依赖前序步骤结果，请按顺序执行。',
-            style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+            style: TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.onSurfaceVariant),
           ),
         ),
         ..._steps.map(_stepCard),
@@ -726,17 +724,18 @@ class _SourceDebugScreenState extends State<SourceDebugScreen>
   }
 
   Color _colorOf(_LogLevel level) {
+    final cs = Theme.of(context).colorScheme;
     switch (level) {
       case _LogLevel.stage:
-        return const Color(0xFF1565C0);
+        return cs.primary;
       case _LogLevel.ok:
-        return const Color(0xFF2E7D32);
+        return cs.tertiary;
       case _LogLevel.error:
-        return const Color(0xFFC62828);
+        return cs.error;
       case _LogLevel.detail:
-        return const Color(0xFF777777);
+        return cs.onSurfaceVariant;
       case _LogLevel.info:
-        return const Color(0xFF333333);
+        return cs.onSurface;
     }
   }
 
@@ -811,7 +810,11 @@ class _SourceDebugScreenState extends State<SourceDebugScreen>
                 Container(
                   color: Theme.of(context).colorScheme.surfaceContainerHighest,
                   child: _logs.isEmpty
-                      ? const Center(child: Text('输入关键词后点击「开始调试」', style: TextStyle(color: Colors.grey)))
+                      ? const AppEmptyState(
+                          icon: Icons.terminal_outlined,
+                          title: '暂无调试日志',
+                          message: '输入关键词后点击「开始调试」',
+                        )
                       : ListView.builder(
                           padding: const EdgeInsets.all(10),
                           itemCount: _logs.length,

@@ -1,11 +1,12 @@
 
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
-import 'dart:ui' show FontFeature;
 
 import 'package:collection/collection.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:flutter/gestures.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:legado_md3/data/local/app_database.dart';
@@ -13,10 +14,20 @@ import 'package:legado_md3/data/model/book.dart';
 import 'package:legado_md3/data/model/book_chapter.dart';
 import 'package:legado_md3/data/model/book_source.dart';
 import 'package:legado_md3/data/model/bookmark.dart';
+import 'package:legado_md3/data/model/book_highlight.dart';
 import 'package:legado_md3/data/model/db_models.dart';
 import 'package:legado_md3/data/model/read_config.dart';
 import 'package:legado_md3/di/book_provider.dart';
 import 'package:legado_md3/ui/book/read/text_paginator.dart';
+import 'package:legado_md3/ui/widgets/app_widgets.dart';
+import 'package:legado_md3/help/device/native_bridge.dart';
+import 'package:legado_md3/help/storage/book_progress_sync.dart';
+import 'package:legado_md3/ui/book/read/read_prefs.dart';
+import 'package:legado_md3/ui/book/read/book_review_sheet.dart';
+import 'package:legado_md3/ui/book/read/bottom_web_view_dialog.dart';
+import 'package:legado_md3/ui/book/read/refresh_progress_sheet.dart';
+import 'package:legado_md3/ui/book/read/pageestimate/page_estimator.dart';
+import 'package:legado_md3/ui/book/read/pageestimate/whole_book_index.dart';
 import 'package:legado_md3/help/config/read_menu_config.dart';
 import 'package:legado_md3/help/readaloud/chinese_converter.dart';
 import 'package:legado_md3/help/readaloud/reading_record.dart';
@@ -27,8 +38,13 @@ import 'package:legado_md3/help/source/source_engine.dart';
 import 'package:legado_md3/help/storage/local_book_parser.dart';
 import 'package:legado_md3/help/translate/translation_service.dart';
 import 'package:legado_md3/ui/book/chapter/chapter_list_screen.dart';
+import 'package:legado_md3/ui/book/audio/bgm_panel.dart';
+import 'package:legado_md3/ui/book/epub/epub_reader_screen.dart';
+import 'package:legado_md3/ui/book/reader_router.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:legado_md3/ui/book/detail/book_detail_screen.dart';
 import 'package:legado_md3/ui/book/read/config/reading_settings_screen.dart';
+import 'package:legado_md3/ui/book/read/book_memo_dialog.dart';
 import 'package:legado_md3/ui/book/read/dict_lookup_sheet.dart';
 import 'package:legado_md3/ui/book/read/tts_player_screen.dart';
 import 'package:legado_md3/ui/book/read/widgets/download_sheet.dart';
@@ -39,7 +55,6 @@ import 'package:legado_md3/ui/browser/browser_screen.dart';
 import 'package:legado_md3/ui/config/replace_rule_screen.dart';
 import 'package:legado_md3/ui/config/txt_toc_rule_screen.dart';
 import 'package:provider/provider.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 
 class ReadingScreen extends StatefulWidget {
   final Book book;
@@ -50,7 +65,8 @@ class ReadingScreen extends StatefulWidget {
   State<ReadingScreen> createState() => _ReadingScreenState();
 }
 
-class _ReadingScreenState extends State<ReadingScreen> with SingleTickerProviderStateMixin {
+class _ReadingScreenState extends State<ReadingScreen>
+    with SingleTickerProviderStateMixin, WidgetsBindingObserver {
   final DatabaseService _db = DatabaseService();
   final BookSourceEngine _engine = BookSourceEngine();
   final TtsService _ttsService = TtsService();
@@ -77,9 +93,9 @@ class _ReadingScreenState extends State<ReadingScreen> with SingleTickerProvider
   bool _autoReadOn = false;
   Timer? _clockTimer;
   String _currentTime = '';
-  // 系统电量读数（0-100）。当前 pubspec 无 battery 插件且离线环境不允许新增依赖，
-  // 暂无真实读数来源，保持 null：电量类槽位统一降级为图标显示。
-  // 后续如接入 battery_plus，只需在 initState 中异步赋值即可自动启用百分比显示。
+  // 系统电量读数（0-100）：由 NativeBridge.instance.batteryLevel 真实驱动
+  // （原生 BatteryManager / battery_plus 通道），initState 监听后赋值；
+  // 电量% 槽位显示真实百分比，电量图标按读数分段。
   int? _batteryLevel;
   int _currentPage = 0;
   // 真实分页所用可用文本区域（宽/高），由 LayoutBuilder 测量后回填
@@ -137,6 +153,36 @@ class _ReadingScreenState extends State<ReadingScreen> with SingleTickerProvider
   final Set<int> _prefetching = {};
   // 当前书籍来源书源（对齐 E ReadMenu.tvSourceAction：网络书显示「书源」操作菜单）
   BookSource? _currentBookSource;
+
+  /* ===== 第十轮 C 组：新增真实消费状态（全部只追加，不改动上方既有字段） ===== */
+  // 电量/亮度：监听 NativeBridge 的 ValueNotifier，真实读数替代静态图标/假遮罩
+  StreamSubscription<Map<dynamic, dynamic>>? _mediaButtonSub;
+  bool _followSystemBrightness = false;
+  double? _lastSystemBrightness;
+
+  // 4 个额外阅读配置项（ReadPrefs 持久化，ReadConfig 归主代理独占，故不写模型）
+  String _progressBarBehavior = 'chapter'; // 'page' | 'chapter'
+  bool _showBrightnessView = true;
+  bool _expandTextMenu = true;
+  bool _mouseWheelPage = false;
+  bool _twoFingerReplacePreview = false;
+  bool _pageEstimateAuto = true;
+
+  // 自定义翻页按键：{'prev': [...], 'next': [...]}，来自 ReadConfig.customPageKey JSON
+  Map<String, List<String>> _customPageKeys = {};
+  String? _customPageKeysRaw; // 上次解析的 customPageKey 原文，用于配置热更新
+  int _lastKeyActionAt = 0; // 按键防抖（对齐 E keyPageOnLongPress 防抖）
+
+  // 段评气泡计数 / 全书页数索引
+  int _chapterReviewCount = 0;
+  WholeBookPageIndex? _pageIndex;
+
+  // 双指手势起始指针数与滚轮累计，供预览替换 / 滚轮翻页判定
+  int _scalePointerCount = 0;
+  bool _twoFingerDown = false;
+  double _wheelAccum = 0;
+  double _dragStartX = 0;
+  double _dragDx = 0;
 
   /// 加载当前书籍来源书源，供顶部「书源」操作菜单使用。
   Future<void> _loadCurrentSource() async {
@@ -263,14 +309,16 @@ class _ReadingScreenState extends State<ReadingScreen> with SingleTickerProvider
     // 对齐 E：只保留文本选择菜单（TextActionMenu）的可配置顺序；其余菜单硬编码为 E 的顺序。
     final sm = await ReadMenuConfig.load(ReadMenuConfig.kSelectMenu, ReadMenuConfig.defaultSelectMenu);
     final p = await SharedPreferences.getInstance();
-    if (mounted) setState(() {
-      _selectMenuOrder = sm;
-      // 对齐 E book_read.xml checkable 菜单项：读取持久化的内容处理开关
-      _reSegmentEnabled = p.getBool('read_reSegment') ?? false;
-      _delRubyEnabled = p.getBool('read_delRuby') ?? false;
-      _delHEnabled = p.getBool('read_delH') ?? false;
-      _removeSameTitle = p.getBool('read_removeSameTitle') ?? false;
-    });
+    if (mounted) {
+      setState(() {
+        _selectMenuOrder = sm;
+        // 对齐 E book_read.xml checkable 菜单项：读取持久化的内容处理开关
+        _reSegmentEnabled = p.getBool('read_reSegment') ?? false;
+        _delRubyEnabled = p.getBool('read_delRuby') ?? false;
+        _delHEnabled = p.getBool('read_delH') ?? false;
+        _removeSameTitle = p.getBool('read_removeSameTitle') ?? false;
+      });
+    }
   }
 
   @override
@@ -297,6 +345,11 @@ class _ReadingScreenState extends State<ReadingScreen> with SingleTickerProvider
       setState(() => _purifyEnabled = p.getBool('oc_replaceDefault') ?? true);
     });
     _loadData();
+    // 第十轮：真实电量/亮度监听、额外配置项、媒体键、生命周期观察（来电暂停朗读）
+    WidgetsBinding.instance.addObserver(this);
+    _loadExtraPrefs();
+    _initBatteryAndBrightness();
+    _subscribeMediaButtons();
     // 时钟：每分钟更新一次时间显示
     _currentTime = _formatTime(DateTime.now());
     _clockTimer = Timer.periodic(const Duration(minutes: 1), (_) {
@@ -307,7 +360,263 @@ class _ReadingScreenState extends State<ReadingScreen> with SingleTickerProvider
       final cfg = context.read<ReadProvider>().config;
       _applyWakeLock(cfg.keepScreenOn);
       _applyScreenMode(cfg);
+      _applyCustomPageKeys(cfg);
+      _loadPageIndex();
     });
+  }
+
+  /* ================= 第十轮 C 组新增方法（追加，不改动既有逻辑） ================= */
+
+  /// 读取不落在 ReadConfig 内的额外配置项（ReadPrefs）。
+  Future<void> _loadExtraPrefs() async {
+    final behavior = await ReadPrefs.getString(ReadPrefs.kProgressBarBehavior,
+        fallback: 'chapter');
+    final showBrightness =
+        await ReadPrefs.getBool(ReadPrefs.kShowBrightnessView, fallback: true);
+    final expandMenu =
+        await ReadPrefs.getBool(ReadPrefs.kExpandTextMenu, fallback: true);
+    final wheel =
+        await ReadPrefs.getBool(ReadPrefs.kMouseWheelPage, fallback: false);
+    final twoFinger = await ReadPrefs.getBool(
+        ReadPrefs.kTwoFingerReplacePreview,
+        fallback: false);
+    final followSys = await ReadPrefs.getBool(
+        ReadPrefs.kFollowSystemBrightness,
+        fallback: false);
+    final autoEstimate =
+        await ReadPrefs.getBool(ReadPrefs.kPageEstimateAuto, fallback: true);
+    if (!mounted) return;
+    setState(() {
+      _progressBarBehavior = behavior == 'page' ? 'page' : 'chapter';
+      _showBrightnessView = showBrightness;
+      _expandTextMenu = expandMenu;
+      _mouseWheelPage = wheel;
+      _twoFingerReplacePreview = twoFinger;
+      _followSystemBrightness = followSys;
+      _pageEstimateAuto = autoEstimate;
+    });
+  }
+
+  /// 真实电量 + 跟随系统亮度：监听共享底座 ValueNotifier，拉取初值。
+  void _initBatteryAndBrightness() {
+    final bridge = NativeBridge.instance;
+    bridge.batteryLevel.addListener(_onBatteryChanged);
+    bridge.systemBrightness.addListener(_onSystemBrightnessChanged);
+    _onBatteryChanged();
+    bridge.refreshBattery();
+    bridge.refreshBrightness().then((_) {
+      if (_followSystemBrightness && mounted) _onSystemBrightnessChanged();
+    });
+  }
+
+  void _onBatteryChanged() {
+    final level = NativeBridge.instance.batteryLevel.value;
+    if (mounted && _batteryLevel != level) setState(() => _batteryLevel = level);
+  }
+
+  void _onSystemBrightnessChanged() {
+    final v = NativeBridge.instance.systemBrightness.value;
+    if (v == _lastSystemBrightness) return;
+    _lastSystemBrightness = v;
+    if (!_followSystemBrightness || v == null || !mounted) return;
+    // 系统亮度变化时同步应用内亮度状态（真实背光由原生通道处理）
+    context.read<ReadProvider>().setBrightness(v.clamp(0.0, 1.0));
+  }
+
+  /// 真实亮度写入：跟随系统时调 setSystemBrightness / setWindowBrightness，
+  /// 否则沿用阅读页的遮罩亮度（ReadProvider.brightness）。
+  Future<void> _applyBrightness(double value, {bool system = false}) async {
+    final v = value.clamp(0.0, 1.0);
+    context.read<ReadProvider>().setBrightness(v);
+    if (!_followSystemBrightness) return;
+    final bridge = NativeBridge.instance;
+    await bridge.setWindowBrightness(v);
+    if (system) {
+      final canWrite = await bridge.canWriteSettings();
+      if (!canWrite) {
+        await bridge.openWriteSettings();
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+              content: Text('需授予「修改系统设置」权限才能跟随系统亮度')));
+        }
+      } else {
+        await bridge.setSystemBrightness((v * 255).round());
+      }
+    }
+  }
+
+  /// 媒体按键（MediaSession）事件：mediaButtonPerNext 开启时 next/prev 切章。
+  void _subscribeMediaButtons() {
+    _mediaButtonSub = NativeBridge.instance.mediaButtonEvents.stream.listen((event) {
+      if (!mounted) return;
+      final cfg = context.read<ReadProvider>().config;
+      final action = (event['action'] ?? '').toString();
+      switch (action) {
+        case 'next':
+          cfg.mediaButtonPerNext ? _nextChapter() : _nextPage();
+          break;
+        case 'prev':
+          cfg.mediaButtonPerNext ? _prevChapter() : _prevPage();
+          break;
+        case 'play':
+          if (!_ttsService.isPlaying && !_ttsService.isPaused) _startTTS();
+          break;
+        case 'pause':
+          if (_ttsService.isPlaying) _ttsService.pause();
+          break;
+      }
+    });
+  }
+
+  /// 设置页改动 customPageKey 后返回阅读页，按键分发前即时重新解析。
+  void _syncCustomPageKeys(ReadConfig cfg) {
+    if (cfg.customPageKey != _customPageKeysRaw) _applyCustomPageKeys(cfg);
+  }
+
+  /// 解析 ReadConfig.customPageKey（JSON）为规范键名集合。
+  void _applyCustomPageKeys(ReadConfig cfg) {
+    final raw = cfg.customPageKey;
+    _customPageKeysRaw = raw;
+    if (raw == null || raw.trim().isEmpty) {
+      _customPageKeys = {};
+      return;
+    }
+    try {
+      final decoded = jsonDecode(raw);
+      if (decoded is Map) {
+        _customPageKeys = {
+          'prev': (decoded['prev'] as List<dynamic>?)
+                  ?.map((e) => '$e'.toLowerCase())
+                  .toList() ??
+              [],
+          'next': (decoded['next'] as List<dynamic>?)
+                  ?.map((e) => '$e'.toLowerCase())
+                  .toList() ??
+              [],
+        };
+      }
+    } catch (_) {
+      _customPageKeys = {};
+    }
+  }
+
+  /// 把 LogicalKeyboardKey.keyLabel 归一化后与自定义键配置匹配。
+  bool _matchCustomKey(String label, List<String> configured) {
+    if (configured.isEmpty) return false;
+    var norm = label
+        .toLowerCase()
+        .replaceAll(' ', '')
+        .replaceAll('arrow', '')
+        .replaceAll('key', '');
+    // LogicalKeyboardKey.space.keyLabel 是单个空格，归一化后为空，映射到 'space'
+    if (norm.isEmpty && label.isNotEmpty && label.trim().isEmpty) {
+      norm = 'space';
+    }
+    for (final c in configured) {
+      final k = c
+          .replaceAll(' ', '')
+          .replaceAll('arrow', '')
+          .replaceAll('key', '');
+      if (norm == k || norm.contains(k) || k.contains(norm)) return true;
+    }
+    return false;
+  }
+
+  /// 全书页数索引加载（v14 page_estimates）。
+  Future<void> _loadPageIndex() async {
+    final idx = await WholeBookPageIndex.load(
+        widget.book.name, widget.book.author, _chapters.length);
+    if (mounted) setState(() => _pageIndex = idx);
+  }
+
+  /// 章节加载后的附加工作：段评计数、页数估算、正文失效自动换源。
+  Future<void> _postChapterLoaded(int index) async {
+    await _loadChapterReviews();
+    await _estimateChapterPages(index);
+    await _maybeAutoChangeSource();
+  }
+
+  Future<void> _loadChapterReviews() async {
+    try {
+      final list = await _db.getBookReviews(
+          widget.book.name, widget.book.author, _currentChapterIndex);
+      if (mounted) setState(() => _chapterReviewCount = list.length);
+    } catch (_) {}
+  }
+
+  /// 复用 TextPaginator 估算本章页数并落库（精确 / 启发式）。
+  Future<void> _estimateChapterPages(int index) async {
+    if (!_pageEstimateAuto || _chapters.isEmpty) return;
+    final cfg = context.read<ReadProvider>().config;
+    final w = _pageW;
+    final h = _pageH;
+    final chapter = _chapters[index];
+    final result = ChapterPageEstimator.estimate(
+      content: _content ?? chapter.content,
+      config: cfg,
+      // 后台估算用已测得的视口（不再在异步上下文读 MediaQuery）
+      width: w ?? 0,
+      height: h ?? 0,
+    );
+    final idx = _pageIndex ??
+        await WholeBookPageIndex.load(
+            widget.book.name, widget.book.author, _chapters.length);
+    await idx.updateChapter(index, result.pages, result.mode);
+    if (mounted) setState(() => _pageIndex = idx);
+  }
+
+  /// 有效文本宽度：双水平页按栏数折半、刘海屏 padding 扣减安全区。
+  double _effectiveWidth(ReadConfig cfg, double rawW) {
+    if (rawW <= 0) return rawW;
+    // maybeOf：分页可能在异步回调中触发，避免 dispose 后读 MediaQuery 抛错
+    final mq = MediaQuery.maybeOf(context);
+    final cutout = cfg.paddingDisplayCutouts
+        ? (mq?.padding ?? EdgeInsets.zero)
+        : EdgeInsets.zero;
+    var w = rawW - cutout.left - cutout.right;
+    if (cfg.doubleHorizontalPage != 0) {
+      final landscape = mq?.orientation == Orientation.landscape;
+      if (cfg.doubleHorizontalPage == 1 || landscape) w /= 2;
+    }
+    return w > 0 ? w : rawW;
+  }
+
+  /// 有效文本高度：刘海屏上下安全区扣减。
+  double _effectiveHeight(ReadConfig cfg, double rawH) {
+    if (rawH <= 0) return rawH;
+    final cutout = cfg.paddingDisplayCutouts
+        ? (MediaQuery.maybeOf(context)?.padding ?? EdgeInsets.zero)
+        : EdgeInsets.zero;
+    final h = rawH - cutout.top - cutout.bottom;
+    return h > 0 ? h : rawH;
+  }
+
+  /// 正文失效且 autoChangeSource 开启时，自动跨源检索并换源重载。
+  Future<void> _maybeAutoChangeSource() async {
+    final cfg = context.read<ReadProvider>().config;
+    if (!cfg.autoChangeSource || widget.book.local) return;
+    final c = _content;
+    final invalid = c == null ||
+        c.trim().isEmpty ||
+        c == '加载失败，请检查网络' ||
+        c.startsWith('读取本地文件失败');
+    if (!invalid) return;
+    try {
+      final sources = await _db.getAllSources(enabled: true);
+      final others = sources
+          .where((s) => s.bookSourceUrl != widget.book.origin)
+          .toList();
+      for (final s in others) {
+        final err = await _changeChapterSource(s);
+        if (err == null) {
+          if (mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                content: Text('正文失效，已自动换源到「${s.bookSourceName}」')));
+          }
+          return;
+        }
+      }
+    } catch (_) {}
   }
 
   /// 应用沉浸式/全屏/屏幕方向设置
@@ -343,12 +652,538 @@ class _ReadingScreenState extends State<ReadingScreen> with SingleTickerProvider
     );
     _ttsService.dispose();
     _applyWakeLock(false);
+    // 第十轮：解除共享底座监听与生命周期观察
+    _mediaButtonSub?.cancel();
+    WidgetsBinding.instance.removeObserver(this);
+    NativeBridge.instance.batteryLevel.removeListener(_onBatteryChanged);
+    NativeBridge.instance.systemBrightness
+        .removeListener(_onSystemBrightnessChanged);
     // 恢复系统 UI 与屏幕方向
     try {
       SystemChrome.setEnabledSystemUIMode(SystemUiMode.edgeToEdge);
       SystemChrome.setPreferredOrientations(DeviceOrientation.values);
     } catch (_) {}
     super.dispose();
+  }
+
+  /// 来电 / 切后台时按 pauseReadAloudWhilePhoneCalls 暂停朗读。
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state != AppLifecycleState.paused &&
+        state != AppLifecycleState.hidden) {
+      return;
+    }
+    try {
+      if (context.read<ReadProvider>().config.pauseReadAloudWhilePhoneCalls &&
+          _ttsService.isPlaying) {
+        _ttsService.pause();
+      }
+    } catch (_) {}
+  }
+
+  /// 统一按键分发：在原有音量键翻页基础上接入
+  /// volumeKeyPageOnPlay / keyPageOnLongPress / customPageKey / 按键防抖。
+  KeyEventResult _handleKeyEvent(FocusNode node, KeyEvent event) {
+    final cfg = context.read<ReadProvider>().config;
+    _syncCustomPageKeys(cfg);
+    final now = DateTime.now().millisecondsSinceEpoch;
+    final isDown = event is KeyDownEvent;
+    final isRepeat = event is KeyRepeatEvent;
+
+    // 自定义翻页按键（ReadConfig.customPageKey JSON）
+    if (_customPageKeys.isNotEmpty && (isDown || isRepeat)) {
+      final label = event.logicalKey.keyLabel;
+      if (_matchCustomKey(label, _customPageKeys['next'] ?? const [])) {
+        if (now - _lastKeyActionAt > 120) {
+          _lastKeyActionAt = now;
+          _nextPage();
+        }
+        return KeyEventResult.handled;
+      }
+      if (_matchCustomKey(label, _customPageKeys['prev'] ?? const [])) {
+        if (now - _lastKeyActionAt > 120) {
+          _lastKeyActionAt = now;
+          _prevPage();
+        }
+        return KeyEventResult.handled;
+      }
+    }
+
+    // 音量键：常规开关，或「朗读播放时音量键也翻页」
+    final allowVolume = cfg.volumeKeyPage ||
+        (cfg.volumeKeyPageOnPlay &&
+            (_ttsService.isPlaying || _ttsService.isPaused));
+    final up = event.physicalKey == PhysicalKeyboardKey.audioVolumeUp;
+    final down = event.physicalKey == PhysicalKeyboardKey.audioVolumeDown;
+    if (allowVolume && (up || down)) {
+      // keyPageOnLongPress 开启时短按不翻页，仅长按重复事件连续翻页
+      final fire = cfg.keyPageOnLongPress ? isRepeat : isDown;
+      if (fire) {
+        final goNext = cfg.volumeKeyReverse ? up : !up;
+        goNext ? _nextPage() : _prevPage();
+      }
+      return KeyEventResult.handled;
+    }
+    return KeyEventResult.ignored;
+  }
+
+  /// 鼠标/触控板滚轮翻页（mouseWheelPage）。
+  void _onPointerSignal(PointerSignalEvent event) {
+    if (!_mouseWheelPage || event is! PointerScrollEvent) return;
+    _wheelAccum += event.scrollDelta.dy;
+    if (_wheelAccum.abs() < 40) return;
+    _wheelAccum > 0 ? _nextPage() : _prevPage();
+    _wheelAccum = 0;
+  }
+
+  /// 双指点击预览替换（Listener 不与 GestureDetector 竞争手势竞技场）。
+  void _onPointerDown(PointerDownEvent event) {
+    _scalePointerCount++;
+    if (_scalePointerCount >= 2) _twoFingerDown = true;
+    _dragStartX = event.position.dx;
+    _dragDx = 0;
+  }
+
+  void _onPointerMove(PointerMoveEvent event) {
+    _dragDx = event.position.dx - _dragStartX;
+  }
+
+  void _onPointerUp(PointerUpEvent event) {
+    _scalePointerCount = (_scalePointerCount - 1).clamp(0, 99);
+    if (_twoFingerDown && _scalePointerCount == 0) {
+      _twoFingerDown = false;
+      if (_twoFingerReplacePreview) unawaited(_previewReplaceTwoFinger());
+    }
+    // pageTouchSlop：滚动模式下用水平拖动翻页，数值越大阈值越高（越迟钝）。
+    // 仅在滚动模式生效，避免与 PageView 自带水平滑动手势重复翻页。
+    try {
+      final cfg = context.read<ReadProvider>().config;
+      if (cfg.pageTouchSlop > 0 && cfg.pageAnim == 3) {
+        final threshold = cfg.pageTouchSlop * 8.0 + 24.0;
+        if (_dragDx.abs() > threshold) {
+          _dragDx > 0 ? _prevPage() : _nextPage();
+        }
+      }
+    } catch (_) {}
+    _dragDx = 0;
+  }
+
+  /// 双指预览：显示当前页经过「生效替换规则」后的效果。
+  Future<void> _previewReplaceTwoFinger() async {
+    final src = _pages.isNotEmpty
+        ? _pages[_currentPage.clamp(0, _pages.length - 1)]
+        : (_content ?? '');
+    if (src.trim().isEmpty || !mounted) return;
+    final rules = await _db.getReplaceRules();
+    final enabled = rules.where((r) => r.enable == true).toList();
+    final out = enabled.isEmpty
+        ? src
+        : ReplaceRuleService().applyRules(src, enabled);
+    if (!mounted) return;
+    final cs = Theme.of(context).colorScheme;
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('双指预览 · 替换效果'),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: SingleChildScrollView(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('原文', style: TextStyle(fontSize: 12, color: cs.primary)),
+                const SizedBox(height: 4),
+                Text(src, style: const TextStyle(fontSize: 13)),
+                const Divider(height: 16),
+                Text('结果（${enabled.length} 条规则）',
+                    style: TextStyle(fontSize: 12, color: cs.primary)),
+                const SizedBox(height: 4),
+                Text(out, style: const TextStyle(fontSize: 13)),
+              ],
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx), child: const Text('关闭')),
+        ],
+      ),
+    );
+  }
+
+  /// adaptSpecialStyle：特殊样式适配时启用 CJK 排版特性（liga/kern/palt）。
+  List<FontFeature>? _fontFeatures(ReadConfig config) {
+    final features = <FontFeature>[];
+    if (!_antiAlias) {
+      features.addAll(const [
+        FontFeature.disable('kern'),
+        FontFeature.disable('liga'),
+      ]);
+    }
+    if (config.adaptSpecialStyle) {
+      features.addAll(const [
+        FontFeature.enable('kern'),
+        FontFeature.enable('liga'),
+        FontFeature.enable('palt'),
+      ]);
+    }
+    return features.isEmpty ? null : features;
+  }
+
+  /* ===== 第十轮：刷新三档 / 云进度 / 章节摘要 / 交互网页 / 段评 / 页数 / 亮度 ===== */
+
+  /// 刷新三档（目录 / 当前章 / 全文），由 RefreshProgressSheet 注入调用，真实清缓存重载。
+  Future<void> _onRefreshScope(RefreshScope scope) async {
+    if (_chapters.isEmpty) return;
+    final messenger = ScaffoldMessenger.of(context);
+    switch (scope) {
+      case RefreshScope.chapter:
+        await _refreshCurrentChapter();
+        break;
+      case RefreshScope.all:
+        for (var i = _currentChapterIndex; i < _chapters.length; i++) {
+          await _db.updateChapterContent(
+              widget.book.name, widget.book.author, i, '');
+        }
+        await _loadChapterContent(_currentChapterIndex,
+            targetPage: _currentPage);
+        messenger.showSnackBar(const SnackBar(
+            content: Text('已刷新全文：清理当前章及之后全部缓存')));
+        break;
+      case RefreshScope.toc:
+        await _fetchTocFromNetwork();
+        for (var i = 0; i < _chapters.length; i++) {
+          await _db.updateChapterContent(
+              widget.book.name, widget.book.author, i, '');
+        }
+        if (_chapters.isNotEmpty) {
+          await _loadChapterContent(
+              _currentChapterIndex.clamp(0, _chapters.length - 1),
+              targetPage: _currentPage);
+        }
+        messenger.showSnackBar(
+            const SnackBar(content: Text('已刷新目录与全文缓存')));
+        break;
+    }
+    await _loadPageIndex();
+  }
+
+  /// 云进度拉取后把本地书籍对象与阅读定位同步到较新的远端进度。
+  Future<void> _onProgressPulled(int changed) async {
+    if (changed <= 0) return;
+    final updated = await _db.getBook(widget.book.name, widget.book.author);
+    if (updated == null || !mounted) return;
+    widget.book
+      ..durChapterIndex = updated.durChapterIndex
+      ..durChapterPos = updated.durChapterPos;
+    final target = updated.durChapterIndex.clamp(
+        0, _chapters.isEmpty ? 0 : _chapters.length - 1);
+    await _loadChapterContent(target, targetPage: updated.durChapterPos);
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('已按云端进度定位到最新章节'),
+          duration: Duration(seconds: 2)));
+    }
+  }
+
+  void _openRefreshProgressSheet() {
+    unawaited(RefreshProgressSheet.open(
+      context,
+      bookName: widget.book.name,
+      author: widget.book.author,
+      onRefresh: _onRefreshScope,
+      onProgressPulled: _onProgressPulled,
+    ));
+  }
+
+  /// 更多菜单直接入口：获取云进度（真实拉取 + SnackBar）
+  Future<void> _pullCloudProgress() async {
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      final n = await BookProgressSync.instance.pull();
+      await _onProgressPulled(n);
+      messenger.showSnackBar(SnackBar(
+          content: Text(
+              n > 0 ? '已拉取 $n 本书的云端进度' : '云端暂无更新进度')));
+    } catch (e) {
+      messenger.showSnackBar(SnackBar(content: Text('获取云进度失败：$e')));
+    }
+  }
+
+  /// 更多菜单直接入口：覆盖云进度（真实上传 + SnackBar）
+  Future<void> _pushCloudProgress() async {
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      final ok = await BookProgressSync.instance.push();
+      messenger.showSnackBar(SnackBar(
+          content: Text(ok
+              ? '已覆盖上传本地全部书籍进度'
+              : '覆盖云进度失败，请检查 WebDAV 配置')));
+    } catch (e) {
+      messenger.showSnackBar(SnackBar(content: Text('覆盖云进度失败：$e')));
+    }
+  }
+
+  /// 第十轮追加菜单项的统一构建（不触碰 E 固定 overflow 列表）
+  Widget _extraMenuItem(
+          BuildContext ctx, IconData icon, String title, VoidCallback onTap) =>
+      ListTile(
+        dense: true,
+        leading: Icon(icon, size: 20),
+        title: Text(title),
+        onTap: () {
+          Navigator.pop(ctx);
+          onTap();
+        },
+      );
+
+  /// 切换 EPUB 阅读方式（文本阅读器 ↔ 保版式 WebView 阅读器），
+  /// 持久化到 `ui_epubLayoutReader` 并立即重建阅读页，让路由分流生效。
+  Future<void> _toggleEpubReaderMode(BuildContext context) async {
+    final next = !useEpubLayoutReader;
+    useEpubLayoutReader = next;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('ui_epubLayoutReader', next);
+    if (!context.mounted) return;
+    if (next) {
+      // 文本阅读器 → 保版式：直接用 EpubReaderScreen 替换当前路由。
+      await Navigator.of(context).pushReplacement(MaterialPageRoute<void>(
+        builder: (_) => EpubReaderScreen(
+          book: widget.book,
+          initialChapter: _currentChapterIndex,
+        ),
+      ));
+    } else {
+      // 保版式 → 文本阅读器：由全局开关控制，重新进入阅读页即可分流到文本。
+      // 这里刷新当前页以提示用户下次进入生效，避免破坏正在运行的播放器。
+      if (mounted) setState(() {});
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('已切换为文本阅读方式，重新进入阅读页后生效'),
+      ));
+    }
+  }
+
+  /// 章节摘要在 kv_caches 表的持久化键（v14 表已就绪，不改主代理模型）。
+  String get _chapterSummaryKey =>
+      'chapter_summary_${widget.book.name}_${widget.book.author}_$_currentChapterIndex';
+
+  /// 从章节内容提取真实摘要：首段优先，退化到去空白后的前 N 字。
+  static String _extractSummary(String content) {
+    final paragraphs = content
+        .split(RegExp(r'\n+'))
+        .where((p) => p.trim().isNotEmpty)
+        .toList();
+    final first = paragraphs.isNotEmpty ? paragraphs.first.trim() : '';
+    final base = first.isNotEmpty
+        ? first
+        : content.replaceAll(RegExp(r'\s+'), ' ').trim();
+    if (base.isEmpty) return '（本章暂无正文内容）';
+    return base.length > 120 ? '${base.substring(0, 120)}…' : base;
+  }
+
+  /// 章节摘要弹窗：真实摘要（可编辑保存）+ 章名 + 阅读进度。
+  Future<void> _showChapterSummary() async {
+    final saved = await _db.getKvCache(_chapterSummaryKey);
+    final auto = _extractSummary(_content ?? '');
+    final controller = TextEditingController(
+        text: (saved != null && saved.isNotEmpty) ? saved : auto);
+    if (!mounted) return;
+    final cs = Theme.of(context).colorScheme;
+    final title = _chapters.isNotEmpty
+        ? _chapters[_currentChapterIndex].title
+        : widget.book.name;
+    final chapterTotal = _chapters.isEmpty ? 1 : _chapters.length;
+    final progress =
+        '第 ${_currentChapterIndex + 1}/$chapterTotal 章 · 第 ${_currentPage + 1}/${_pages.length} 页 · ${_bookProgress.toStringAsFixed(1)}%';
+    await showDialog<void>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text(title, maxLines: 1, overflow: TextOverflow.ellipsis),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(progress,
+                  style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
+              const SizedBox(height: 12),
+              Text('章节摘要（从正文自动提取，可编辑保存）',
+                  style: TextStyle(fontSize: 12, color: cs.primary)),
+              const SizedBox(height: 8),
+              TextField(
+                controller: controller,
+                maxLines: 6,
+                decoration: const InputDecoration(
+                  hintText: '输入本章摘要…',
+                ),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx), child: const Text('取消')),
+          FilledButton(
+            onPressed: () async {
+              await _db.setKvCache(_chapterSummaryKey, controller.text.trim());
+              if (ctx.mounted) Navigator.pop(ctx);
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('章节摘要已保存')));
+              }
+            },
+            child: const Text('保存'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// 书源登录 / 章节购买 / 验证码：响应式底部 WebView 弹窗入口。
+  Future<void> _showInteractiveWeb() async {
+    var url = _chapters.isNotEmpty
+        ? _chapters[_currentChapterIndex].url
+        : '';
+    if (url.isEmpty) {
+      url = widget.book.bookUrl ?? widget.book.noteUrl ?? '';
+    }
+    if (url.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('当前章节与书籍均无可用链接')));
+      return;
+    }
+    final html = await BottomWebViewDialog.show(
+      context,
+      url: url,
+      title: '书源交互（登录 / 购买 / 验证码）',
+    );
+    if (html != null && mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          content: Text('已回传页面 HTML（${html.length} 字符），可用于书源登录态解析')));
+    }
+  }
+
+  /// 阅读设置按 sheet 分层组织（不改既有整页设置入口）。
+  void _showSettingsSections() =>
+      showReaderSettingsSectionsSheet(context, book: widget.book);
+
+  /// 多套排版预设保存 / 切换（v14 read_presets）。
+  void _showReadPresets() => unawaited(ReadPresetSheet.open(context));
+
+  /// 打开段评面板（当前页段落），发表/点赞后刷新气泡计数。
+  Future<void> _openReviewSheet() async {
+    final pageText = _pages.isNotEmpty
+        ? _pages[_currentPage.clamp(0, _pages.length - 1)]
+        : (_content ?? '');
+    final paragraphs = pageText
+        .split(RegExp(r'\n+'))
+        .where((p) => p.trim().isNotEmpty)
+        .toList();
+    final dirty = await BookReviewSheet.open(
+      context,
+      bookName: widget.book.name,
+      author: widget.book.author,
+      chapterIndex: _currentChapterIndex,
+      chapterTitle: _chapters.isNotEmpty
+          ? _chapters[_currentChapterIndex].title
+          : widget.book.name,
+      paragraphs: paragraphs.isEmpty ? const ['全文'] : paragraphs,
+    );
+    if (dirty) await _loadChapterReviews();
+  }
+
+  /// 正文每页右下角段评气泡（对齐 Sigma ReviewColumn）。
+  Widget _reviewOverlay(ReadConfig config) {
+    return Positioned(
+      right: config.paddingRight.toDouble() + 8,
+      bottom: 12,
+      child: ReviewColumn(
+        count: _chapterReviewCount,
+        foreground: Color(config.textColor),
+        onTap: _openReviewSheet,
+        onLongPress: _openReviewSheet,
+      ),
+    );
+  }
+
+  /// 「本章 X 页 / 全书约 Y 页」+ 按页数校准的进度。
+  Widget _buildPageEstimateRow(Color fg) {
+    final idx = _pageIndex;
+    if (idx == null) return const SizedBox.shrink();
+    final pct =
+        (idx.calibratedProgress(_currentChapterIndex, _currentPage) * 100)
+            .toStringAsFixed(1);
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+      child: Row(
+        children: [
+          Icon(Icons.menu_book_outlined, size: 14, color: fg),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              '${idx.summary(_currentChapterIndex)} · 已读 $pct%',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: TextStyle(color: fg, fontSize: 12),
+            ),
+          ),
+          IconButton(
+            tooltip: '重新估算全书页数',
+            icon: Icon(Icons.calculate_outlined, size: 18, color: fg),
+            onPressed: () async {
+              await idx.clear();
+              await _estimateChapterPages(_currentChapterIndex);
+              if (mounted) setState(() {});
+            },
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// 真实亮度行（showBrightnessView）+「跟随系统亮度」开关 + 真实电量读数。
+  Widget _buildBrightnessSystemRow(Color fg) {
+    final rp = context.read<ReadProvider>();
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.brightness_6_outlined, size: 18, color: fg),
+              const SizedBox(width: 8),
+              Text('跟随系统亮度', style: TextStyle(color: fg, fontSize: 13)),
+              Switch(
+                value: _followSystemBrightness,
+                onChanged: (v) async {
+                  setState(() => _followSystemBrightness = v);
+                  await ReadPrefs.setBool(
+                      ReadPrefs.kFollowSystemBrightness, v);
+                  if (v) await _applyBrightness(rp.brightness, system: true);
+                },
+              ),
+              const Spacer(),
+              if (_batteryLevel != null)
+                Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(_batteryIcon(_batteryLevel), size: 14, color: fg),
+                    const SizedBox(width: 4),
+                    Text('$_batteryLevel%',
+                        style: TextStyle(color: fg, fontSize: 12)),
+                  ],
+                ),
+            ],
+          ),
+          Slider(
+            value: rp.brightness.clamp(0.0, 1.0),
+            onChanged: (v) => _applyBrightness(v),
+            onChangeEnd: (v) => _applyBrightness(v, system: true),
+          ),
+        ],
+      ),
+    );
   }
 
   Future<void> _applyWakeLock(bool enable) async {
@@ -399,14 +1234,33 @@ class _ReadingScreenState extends State<ReadingScreen> with SingleTickerProvider
   Future<void> _fetchTocFromNetwork() async {
     try {
       final sources = await _db.getAllSources(enabled: true);
-      final source = sources.where((s) => s.bookSourceUrl == widget.book.origin).firstOrNull;
-      if (source != null && widget.book.noteUrl != null) {
-        final chapters = await _engine.getToc(source, widget.book.noteUrl!,
+      final source = sources
+          .where((s) => s.bookSourceUrl == widget.book.origin)
+          .firstOrNull;
+      if (source == null) return;
+
+      // legado 约定：目录地址 = noteUrl，为空时回退 bookUrl。旧实现要求
+      // noteUrl 非空才取目录，从书架/继续阅读进入的书（noteUrl 为空但
+      // bookUrl 有效）会永远补不到目录，连带正文也取不到。
+      final bookUrl = widget.book.bookUrl ?? '';
+      final noteUrl = (widget.book.noteUrl ?? '').isNotEmpty
+          ? widget.book.noteUrl!
+          : bookUrl;
+      if (noteUrl.isEmpty) return;
+
+      widget.book.noteUrl = noteUrl; // 回写，供正文加载 / 换源复用
+      var chapters = await _engine.getToc(source, noteUrl,
+          bookInfo: widget.book.jsContext());
+      // 独立 tocUrl 取不到章节时，回退用书址本身再取一次
+      if (chapters.isEmpty && bookUrl.isNotEmpty && bookUrl != noteUrl) {
+        chapters = await _engine.getToc(source, bookUrl,
             bookInfo: widget.book.jsContext());
-        if (chapters.isNotEmpty) {
-          _chapters = chapters;
-          await _db.saveChapters(widget.book.name, widget.book.author, chapters);
-        }
+        if (chapters.isNotEmpty) widget.book.noteUrl = bookUrl;
+      }
+      if (chapters.isNotEmpty) {
+        _chapters = chapters;
+        await _db.saveChapters(widget.book.name, widget.book.author, chapters);
+        await _db.updateBook(widget.book);
       }
     } catch (_) {}
   }
@@ -455,10 +1309,16 @@ class _ReadingScreenState extends State<ReadingScreen> with SingleTickerProvider
           if (content != null) {
             _content = content;
             await _db.updateChapterContent(widget.book.name, widget.book.author, index, content);
+          } else {
+            _content = '正文规则未匹配到内容（该书源 content 规则可能不适配，或需要登录会话）';
           }
+        } else if (chapter.url.isEmpty) {
+          _content = '章节地址为空，无法获取正文（目录规则可能未解析出章节链接）';
+        } else {
+          _content = '未找到匹配的书源（可能已被禁用或删除），无法获取正文，请到书源管理重新启用';
         }
-      } catch (_) {
-        _content = '加载失败，请检查网络';
+      } catch (e) {
+        _content = '正文获取失败：${e.toString().split('\n').first}';
       }
     } else {
       _content = chapter.content ?? '暂无内容';
@@ -544,6 +1404,8 @@ class _ReadingScreenState extends State<ReadingScreen> with SingleTickerProvider
     await provider.saveReadingProgress(widget.book, index, _currentPage);
 
     if (mounted) setState(() => _isLoadingChapter = false);
+    // 第十轮：章节加载后的附加工作（不阻塞阅读主流程）
+    unawaited(_postChapterLoaded(index));
   }
 
   /// 章节换源：切换到新书源后，在新源目录中重新定位当前章节，
@@ -622,14 +1484,19 @@ class _ReadingScreenState extends State<ReadingScreen> with SingleTickerProvider
     final w = _pageW;
     final h = _pageH;
     if (w != null && h != null && w > 0 && h > 0) {
-      // 真实分页：按实际可用宽高与正文样式逐行测量
+      // 真实分页：按实际可用宽高与正文样式逐行测量。
+      // 接分支：doubleHorizontalPage / paddingDisplayCutouts 影响有效视口。
+      final effW = _effectiveWidth(config, w);
+      final effH = _effectiveHeight(config, h);
       final pages = TextPaginator.paginate(
         paragraphs: paragraphs,
         indent: indent,
         paraGapLines: config.paragraphSpacing < 0 ? 0 : config.paragraphSpacing,
-        maxWidth: w,
-        maxHeight: h,
+        maxWidth: effW,
+        maxHeight: effH,
         style: _textStyle(config),
+        // readBodyToLh：正文带到行高时，段间空行计入页高消耗
+        gapLinesConsumeHeight: config.readBodyToLh,
       );
       _pages = pages;
     } else {
@@ -682,7 +1549,9 @@ class _ReadingScreenState extends State<ReadingScreen> with SingleTickerProvider
 
   void _nextPage() {
     final config = context.read<ReadProvider>().config;
-    final noAnim = config.pageAnim == 4;
+    // noAnimScrollPage：滚动模式下代码跳页也不做动画（对齐 E）
+    final noAnim =
+        config.pageAnim == 4 || (config.pageAnim == 3 && config.noAnimScrollPage);
     if (_currentPage < _pages.length - 1) {
       final next = _currentPage + 1;
       if (noAnim) {
@@ -699,7 +1568,9 @@ class _ReadingScreenState extends State<ReadingScreen> with SingleTickerProvider
 
   void _prevPage() {
     final config = context.read<ReadProvider>().config;
-    final noAnim = config.pageAnim == 4;
+    // noAnimScrollPage：滚动模式下代码跳页也不做动画（对齐 E）
+    final noAnim =
+        config.pageAnim == 4 || (config.pageAnim == 3 && config.noAnimScrollPage);
     if (_currentPage > 0) {
       final prev = _currentPage - 1;
       if (noAnim) {
@@ -769,7 +1640,19 @@ class _ReadingScreenState extends State<ReadingScreen> with SingleTickerProvider
       createTime: DateTime.now().millisecondsSinceEpoch,
     );
     await _db.insertBookMarking(marking);
-    if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('已添加划线，可在 我的-书籍标记 查看'), duration: Duration(seconds: 2)));
+    // 同步写入独立划线表，供目录页第 3 个「高亮」Tab 展示与跳转。
+    // 两处共用同一次选中文本，避免「书籍标记」与「高亮」数据分叉。
+    await _db.insertBookHighlight(BookHighlight(
+      bookName: widget.book.name,
+      author: widget.book.author,
+      chapterIndex: _currentChapterIndex,
+      chapterTitle: marking.chapterTitle,
+      content: t,
+      start: _currentPage,
+      end: _currentPage,
+      createTime: marking.createTime,
+    ));
+    if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('已添加划线，可在 目录-高亮 或 我的-书籍标记 查看'), duration: Duration(seconds: 2)));
   }
 
   /// 划词查词：弹出应用内词典面板（列出启用的词典规则，内嵌 WebView 展示结果），
@@ -804,19 +1687,7 @@ class _ReadingScreenState extends State<ReadingScreen> with SingleTickerProvider
       canPop: !config.disableReturnKey,
       child: Focus(
       autofocus: true,
-      onKeyEvent: (node, event) {
-        if (!config.volumeKeyPage) return KeyEventResult.ignored;
-        if (event is! KeyDownEvent) return KeyEventResult.ignored;
-        if (event.physicalKey == PhysicalKeyboardKey.audioVolumeUp) {
-          config.volumeKeyReverse ? _nextPage() : _prevPage();
-          return KeyEventResult.handled;
-        }
-        if (event.physicalKey == PhysicalKeyboardKey.audioVolumeDown) {
-          config.volumeKeyReverse ? _prevPage() : _nextPage();
-          return KeyEventResult.handled;
-        }
-        return KeyEventResult.ignored;
-      },
+      onKeyEvent: _handleKeyEvent,
       child: AnnotatedRegion<SystemUiOverlayStyle>(
         value: SystemUiOverlayStyle(
           statusBarColor: Color(config.bgColor),
@@ -826,7 +1697,12 @@ class _ReadingScreenState extends State<ReadingScreen> with SingleTickerProvider
         ),
         child: Scaffold(
           backgroundColor: Color(config.bgColor),
-          body: _isLoading
+          body: Listener(
+            onPointerSignal: _onPointerSignal,
+            onPointerDown: _onPointerDown,
+            onPointerMove: _onPointerMove,
+            onPointerUp: _onPointerUp,
+            child: _isLoading
               ? Center(child: CircularProgressIndicator(color: Color(config.textColor)))
               : GestureDetector(
                   behavior: HitTestBehavior.opaque,
@@ -903,8 +1779,9 @@ class _ReadingScreenState extends State<ReadingScreen> with SingleTickerProvider
                             ),
                           ),
                         ),
-                      // 亮度调节：黑色半透明遮罩模拟屏幕变暗（不拦截点击）
-                      if (readProvider.brightness < 1.0)
+                      // 亮度调节：跟随系统亮度时由原生通道真实改背光，不再画假遮罩；
+                      // 关闭跟随系统时保留原有遮罩（不拦截点击）。
+                      if (!_followSystemBrightness && readProvider.brightness < 1.0)
                         IgnorePointer(
                           child: Positioned.fill(
                             child: Container(
@@ -917,6 +1794,7 @@ class _ReadingScreenState extends State<ReadingScreen> with SingleTickerProvider
                     ],
                   ),
                 ),
+              ),
         ),
       ),
       ),
@@ -987,7 +1865,8 @@ class _ReadingScreenState extends State<ReadingScreen> with SingleTickerProvider
               : config.underlineType == 4
                   ? TextDecorationStyle.double
                   : null,
-      fontFeatures: _antiAlias ? null : const [FontFeature.disable('kern'), FontFeature.disable('liga')],
+      // 接分支：_antiAlias 原逻辑保留，adaptSpecialStyle 开启时启用 CJK 排版特性
+      fontFeatures: _fontFeatures(config),
     );
   }
 
@@ -1096,9 +1975,12 @@ class _ReadingScreenState extends State<ReadingScreen> with SingleTickerProvider
       onPageChanged: (page) => setState(() => _currentPage = page),
       itemBuilder: (context, index) {
         final item = _pageItem(config, index);
+        // optimizeRender：开启时额外隔离整页（含动画层）重绘
+        Widget wrap(Widget w) =>
+            config.optimizeRender ? RepaintBoundary(child: w) : w;
         // 覆盖 / 仿真：动画层只包住当前页项，静态页内容作为 child 不参与每帧重建
-        if (!cover && !simulate) return item;
-        return _PageAnimLayer(
+        if (!cover && !simulate) return wrap(item);
+        return wrap(_PageAnimLayer(
           controller: _pageController,
           fallbackPage: _currentPage,
           index: index,
@@ -1106,7 +1988,7 @@ class _ReadingScreenState extends State<ReadingScreen> with SingleTickerProvider
           vertical: isVertical,
           simulate: simulate,
           child: item,
-        );
+        ));
       },
     );
   }
@@ -1114,32 +1996,38 @@ class _ReadingScreenState extends State<ReadingScreen> with SingleTickerProvider
   /// 单页内容（含长按选择）；最外层 RepaintBoundary 隔离翻页时的逐页重绘
   Widget _pageItem(ReadConfig config, int index) {
     final child = _pageText(config, index);
-    return RepaintBoundary(
-      child: SingleChildScrollView(
-        padding: EdgeInsets.fromLTRB(
-          config.paddingLeft.toDouble(),
-          config.paddingTop.toDouble(),
-          config.paddingRight.toDouble(),
-          config.paddingBottom.toDouble(),
+    // 第十轮：外层 Stack 只追加段评气泡，原有正文渲染 / 长按选择逻辑完全保留
+    return Stack(
+      children: [
+        RepaintBoundary(
+          child: SingleChildScrollView(
+            padding: EdgeInsets.fromLTRB(
+              config.paddingLeft.toDouble(),
+              config.paddingTop.toDouble(),
+              config.paddingRight.toDouble(),
+              config.paddingBottom.toDouble(),
+            ),
+            child: (_textSelectable && config.longPressSelect)
+                ? SelectionArea(
+                    contextMenuBuilder: (context, state) {
+                      Future<String> grab() async {
+                        state.copySelection(SelectionChangedCause.toolbar);
+                        await Future.delayed(const Duration(milliseconds: 30));
+                        final d = await Clipboard.getData(Clipboard.kTextPlain);
+                        return d?.text ?? '';
+                      }
+                      return AdaptiveTextSelectionToolbar(
+                        anchors: state.contextMenuAnchors,
+                        children: _buildSelectMenuChildren(state, grab),
+                      );
+                    },
+                    child: child,
+                  )
+                : child,
+          ),
         ),
-        child: (_textSelectable && config.longPressSelect)
-            ? SelectionArea(
-                contextMenuBuilder: (context, state) {
-                  Future<String> grab() async {
-                    state.copySelection(SelectionChangedCause.toolbar);
-                    await Future.delayed(const Duration(milliseconds: 30));
-                    final d = await Clipboard.getData(Clipboard.kTextPlain);
-                    return d?.text ?? '';
-                  }
-                  return AdaptiveTextSelectionToolbar(
-                    anchors: state.contextMenuAnchors,
-                    children: _buildSelectMenuChildren(state, grab),
-                  );
-                },
-                child: child,
-              )
-            : child,
-      ),
+        _reviewOverlay(config),
+      ],
     );
   }
 
@@ -1264,7 +2152,7 @@ class _ReadingScreenState extends State<ReadingScreen> with SingleTickerProvider
   Widget _footerSlotWidget(int slotIndex, ReadConfig config) {
     final slots = config.footerSlots;
     final slot = (slots != null && slotIndex < slots.length) ? slots[slotIndex] : FooterSlot.none;
-    // 电量图标槽位：无 battery 插件（离线环境禁新增依赖），保留静态图标
+    // 电量图标槽位：有真实读数时按电量分段显示对应图标；无读数时回退满电图标
     if (slot == FooterSlot.battery || (slot == FooterSlot.batteryPercent && _batteryLevel == null)) {
       return Icon(_batteryIcon(_batteryLevel), size: 14, color: Color(config.footerColor));
     }
@@ -1355,7 +2243,7 @@ class _ReadingScreenState extends State<ReadingScreen> with SingleTickerProvider
           if (!widget.book.local)
             TextButton(onPressed: _showSourceMenu, child: Text('书源', style: TextStyle(color: barFg))),
           // 更多菜单（对齐 E overflow showAsAction="never"）
-          IconButton(icon: const Icon(Icons.more_vert), onPressed: _showMoreMenu),
+          IconButton(tooltip: '更多', icon: const Icon(Icons.more_vert), onPressed: _showMoreMenu),
         ],
       ),
     );
@@ -1388,6 +2276,8 @@ class _ReadingScreenState extends State<ReadingScreen> with SingleTickerProvider
   Widget _buildReadingSettingsPanel() {
     final readProvider = context.read<ReadProvider>();
     final config = readProvider.config;
+    // progressBarBehavior：'page' 章内按页拖动 / 'chapter' 按章拖动
+    final pageMode = _progressBarBehavior == 'page';
     // 对齐 E ReadMenu.immersiveMenu：底部设置栏背景/文字跟随页面背景
     final barBg = config.readBarStyleFollowPage
         ? Color(config.bgColor)
@@ -1408,44 +2298,91 @@ class _ReadingScreenState extends State<ReadingScreen> with SingleTickerProvider
             // 对齐 E view_read_menu.xml ll_floating_button：水平悬浮按钮行（搜索/自动翻页/替换/夜间）
             _buildFloatingButtonRow(barFg),
             // 章节进度行（对齐 E tv_pre / seek_read_page / tv_next）
+            // 接分支：progressBarBehavior='page' 时滑块控制章内页，否则保持原按章行为
             Padding(
               padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
               child: Row(
                 children: [
                   IconButton(
+                    tooltip: pageMode ? '上一页' : '上一章',
                     icon: Icon(Icons.skip_previous, color: barFg),
-                    onPressed: _currentChapterIndex > 0 ? () => _loadChapterContent(_currentChapterIndex - 1) : null,
+                    onPressed: pageMode
+                        ? (_currentPage > 0 ? () => _prevPage() : null)
+                        : (_currentChapterIndex > 0
+                            ? () => _loadChapterContent(_currentChapterIndex - 1)
+                            : null),
                   ),
                   Expanded(
                     child: Slider(
                       activeColor: barFg,
-                      value: _chapters.length <= 1 ? 0 : (_dragChapterIndex ?? _currentChapterIndex) / (_chapters.length - 1),
+                      value: pageMode
+                          ? (_pages.length <= 1
+                              ? 0
+                              : _currentPage / (_pages.length - 1))
+                          : (_chapters.length <= 1
+                              ? 0
+                              : (_dragChapterIndex ?? _currentChapterIndex) /
+                                  (_chapters.length - 1)),
                       // 拖动中只更新局部状态，不触发章节加载/落库/重排
-                      onChanged: _chapters.length <= 1
-                          ? null
-                          : (value) {
-                              final index = (value * (_chapters.length - 1)).round();
-                              if (index != (_dragChapterIndex ?? _currentChapterIndex)) {
-                                setState(() => _dragChapterIndex = index);
-                              }
-                            },
-                      // 松手才加载章节（加载内部完成进度保存与重排）
-                      onChangeEnd: _chapters.length <= 1
-                          ? null
-                          : (value) {
-                              final index = (value * (_chapters.length - 1)).round();
-                              setState(() => _dragChapterIndex = index);
-                              _loadChapterContent(index).whenComplete(() {
-                                if (mounted) setState(() => _dragChapterIndex = null);
-                              });
-                            },
+                      onChanged: pageMode
+                          ? (_pages.length <= 1
+                              ? null
+                              : (value) {
+                                  final p =
+                                      (value * (_pages.length - 1)).round();
+                                  if (p != _currentPage) {
+                                    setState(() => _currentPage = p);
+                                  }
+                                })
+                          : (_chapters.length <= 1
+                              ? null
+                              : (value) {
+                                  final index =
+                                      (value * (_chapters.length - 1)).round();
+                                  if (index !=
+                                      (_dragChapterIndex ??
+                                          _currentChapterIndex)) {
+                                    setState(() => _dragChapterIndex = index);
+                                  }
+                                }),
+                      // 松手才加载章节 / 跳页（加载内部完成进度保存与重排）
+                      onChangeEnd: pageMode
+                          ? (_pages.length <= 1
+                              ? null
+                              : (value) {
+                                  final p =
+                                      (value * (_pages.length - 1)).round();
+                                  _currentPage = p.clamp(0, _pages.length - 1);
+                                  if (_pageController.hasClients) {
+                                    _pageController.jumpToPage(_currentPage);
+                                  }
+                                  _saveCurrentProgress();
+                                  setState(() {});
+                                })
+                          : (_chapters.length <= 1
+                              ? null
+                              : (value) {
+                                  final index =
+                                      (value * (_chapters.length - 1)).round();
+                                  setState(() => _dragChapterIndex = index);
+                                  _loadChapterContent(index).whenComplete(() {
+                                    if (mounted) {
+                                      setState(() => _dragChapterIndex = null);
+                                    }
+                                  });
+                                }),
                     ),
                   ),
                   IconButton(
+                    tooltip: pageMode ? '下一页' : '下一章',
                     icon: Icon(Icons.skip_next, color: barFg),
-                    onPressed: _currentChapterIndex < _chapters.length - 1
-                        ? () => _loadChapterContent(_currentChapterIndex + 1)
-                        : null,
+                    onPressed: pageMode
+                        ? (_currentPage < _pages.length - 1
+                            ? () => _nextPage()
+                            : null)
+                        : (_currentChapterIndex < _chapters.length - 1
+                            ? () => _loadChapterContent(_currentChapterIndex + 1)
+                            : null),
                   ),
                 ],
               ),
@@ -1456,14 +2393,14 @@ class _ReadingScreenState extends State<ReadingScreen> with SingleTickerProvider
               child: Row(
                 children: [
                   Text('字号', style: TextStyle(color: barFg)),
-                  IconButton(icon: Icon(Icons.remove_circle_outline, color: barFg), onPressed: () => readProvider.setTextSize(config.textSize - 1)),
+                  IconButton(tooltip: '减小字号', icon: Icon(Icons.remove_circle_outline, color: barFg), onPressed: () => readProvider.setTextSize(config.textSize - 1)),
                   Text('${config.textSize}', style: TextStyle(color: barFg)),
-                  IconButton(icon: Icon(Icons.add_circle_outline, color: barFg), onPressed: () => readProvider.setTextSize(config.textSize + 1)),
+                  IconButton(tooltip: '增大字号', icon: Icon(Icons.add_circle_outline, color: barFg), onPressed: () => readProvider.setTextSize(config.textSize + 1)),
                   const Spacer(),
                   Text('行距', style: TextStyle(color: barFg)),
-                  IconButton(icon: Icon(Icons.remove_circle_outline, color: barFg), onPressed: () => readProvider.setLineSpacing(config.lineSpacing - 1)),
+                  IconButton(tooltip: '减小行距', icon: Icon(Icons.remove_circle_outline, color: barFg), onPressed: () => readProvider.setLineSpacing(config.lineSpacing - 1)),
                   Text('${config.lineSpacing}', style: TextStyle(color: barFg)),
-                  IconButton(icon: Icon(Icons.add_circle_outline, color: barFg), onPressed: () => readProvider.setLineSpacing(config.lineSpacing + 1)),
+                  IconButton(tooltip: '增大行距', icon: Icon(Icons.add_circle_outline, color: barFg), onPressed: () => readProvider.setLineSpacing(config.lineSpacing + 1)),
                 ],
               ),
             ),
@@ -1503,7 +2440,8 @@ class _ReadingScreenState extends State<ReadingScreen> with SingleTickerProvider
                 },
               ),
             ),
-            // 对齐 E view_read_menu.xml ll_bottom_bg 的四个按钮：目录 / 朗读 / 界面 / 设置
+            // 对齐 E view_read_menu.xml ll_bottom_bg 的五个主按钮：
+            // 目录 / 朗读 / 界面 / 设置 / 备忘（ll_memo，§3.B3）
             Padding(
               padding: const EdgeInsets.symmetric(vertical: 8),
               child: Row(
@@ -1513,9 +2451,14 @@ class _ReadingScreenState extends State<ReadingScreen> with SingleTickerProvider
                   _buildReadAloudAction(barFg),
                   _buildBottomAction(Icons.text_format, '界面', barFg, _showInterfaceSettings),
                   _buildBottomAction(Icons.settings, '设置', barFg, _showReadingSettings),
+                  _buildBottomAction(Icons.note_alt_outlined, '备忘', barFg, _showBookMemo),
                 ],
               ),
             ),
+            // 第十轮：真实亮度视图（跟随系统亮度开关 + 真实电量）与全书页数估算
+            const AppSectionHeader('设备与页数'),
+            if (_showBrightnessView) _buildBrightnessSystemRow(barFg),
+            _buildPageEstimateRow(barFg),
           ],
         ),
       ),
@@ -1633,7 +2576,7 @@ class _ReadingScreenState extends State<ReadingScreen> with SingleTickerProvider
     _loadChapterContent(_currentChapterIndex, targetPage: _currentPage);
   }
 
-  /// 对齐 E menu_image_style：图片样式（消费 clickImgWay 死开关）
+  /// 对齐 E menu_image_style：图片样式（真实消费 clickImgWay 配置）
   void _showImageStylePicker() {
     final rp = context.read<ReadProvider>();
     const names = ['无', '预览', '浏览器'];
@@ -1679,6 +2622,22 @@ class _ReadingScreenState extends State<ReadingScreen> with SingleTickerProvider
     );
   }
 
+  /// 对齐 E view_read_menu.xml ll_memo → BookMemoDialog：
+  /// 按「书 + 章」编辑备忘（feature_gap §3.B3）。
+  void _showBookMemo() {
+    final chapterTitle =
+        (_chapters.isNotEmpty && _currentChapterIndex < _chapters.length)
+            ? _chapters[_currentChapterIndex].title
+            : '';
+    showBookMemoDialog(
+      context,
+      bookName: widget.book.name,
+      author: widget.book.author,
+      chapterIndex: _currentChapterIndex,
+      chapterTitle: chapterTitle,
+    );
+  }
+
   void _showMoreMenu() {
     showModalBottomSheet(
       context: context,
@@ -1693,6 +2652,47 @@ class _ReadingScreenState extends State<ReadingScreen> with SingleTickerProvider
                 // 严格按 E res/menu/book_read.xml 的 overflow 项与顺序展示
                 for (final key in _eMoreMenuOrder)
                   if (_moreMenuItem(key, ctx) != null) _moreMenuItem(key, ctx)!,
+                // ===== 第十轮 C 组追加（只追加，不删改 E 固定 overflow 项） =====
+                const Divider(height: 1),
+                _extraMenuItem(ctx, Icons.summarize_outlined, '章节摘要（真实正文）',
+                    _showChapterSummary),
+                _extraMenuItem(ctx, Icons.mode_comment_outlined, '段评 / 本章评论',
+                    _openReviewSheet),
+                _extraMenuItem(ctx, Icons.refresh_outlined, '刷新当前章节',
+                    () => _onRefreshScope(RefreshScope.chapter)),
+                _extraMenuItem(ctx, Icons.auto_stories_outlined,
+                    '刷新全文（当前章及其后）',
+                    () => _onRefreshScope(RefreshScope.all)),
+                _extraMenuItem(ctx, Icons.list_alt_outlined, '刷新目录',
+                    () => _onRefreshScope(RefreshScope.toc)),
+                _extraMenuItem(ctx, Icons.sync_outlined, '刷新与云进度面板',
+                    _openRefreshProgressSheet),
+                _extraMenuItem(ctx, Icons.cloud_download_outlined, '获取云进度',
+                    _pullCloudProgress),
+                _extraMenuItem(ctx, Icons.cloud_upload_outlined, '覆盖云进度',
+                    _pushCloudProgress),
+                _extraMenuItem(ctx, Icons.public_outlined,
+                    '交互网页（登录 / 购买 / 验证码）', _showInteractiveWeb),
+                _extraMenuItem(ctx, Icons.layers_outlined, '阅读设置分区',
+                    _showSettingsSections),
+                _extraMenuItem(ctx, Icons.style_outlined,
+                    '排版预设（保存 / 切换）', _showReadPresets),
+                _extraMenuItem(ctx, Icons.calculate_outlined, '重新估算全书页数',
+                    () async {
+                  final idx = _pageIndex;
+                  if (idx != null) {
+                    await idx.clear();
+                    await _estimateChapterPages(_currentChapterIndex);
+                    if (mounted) setState(() {});
+                  }
+                }),
+                // ===== 第十轮主代理接线：BGM 背景音乐 / EPUB 阅读方式切换 =====
+                _extraMenuItem(ctx, Icons.music_note_outlined, '背景音乐（BGM）',
+                    () => showBgmPanel(context)),
+                if (EpubReaderScreen.canOpen(widget.book))
+                  _extraMenuItem(ctx, Icons.auto_stories_outlined,
+                      useEpubLayoutReader ? '切换为文本阅读' : '切换为 EPUB 保版式阅读',
+                      () => _toggleEpubReaderMode(context)),
               ],
             ),
           ),
@@ -1761,7 +2761,11 @@ class _ReadingScreenState extends State<ReadingScreen> with SingleTickerProvider
 
   List<Widget> _buildSelectMenuChildren(dynamic state, Future<String> Function() grab) {
     final children = <Widget>[];
-    for (final key in _selectMenuOrder) {
+    // expandTextMenu：展开全部动作，折叠时仅保留常用 4 项
+    final order = _expandTextMenu
+        ? _selectMenuOrder
+        : _selectMenuOrder.take(4).toList();
+    for (final key in order) {
       switch (key) {
         case 'copy':
           children.add(InkWell(onTap: () {
@@ -1844,7 +2848,7 @@ class _ReadingScreenState extends State<ReadingScreen> with SingleTickerProvider
     try {
       await _ttsService.speakOnce(text);
     } catch (_) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('当前引擎不支持朗读选中文本')));
+      if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('朗读失败，请检查 TTS 引擎设置')));
     }
   }
 
@@ -1884,7 +2888,7 @@ class _ReadingScreenState extends State<ReadingScreen> with SingleTickerProvider
       showDialog(context: context, builder: (_) => AlertDialog(
         title: const Text('替换预览'),
         content: SingleChildScrollView(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text('原文：$text', style: const TextStyle(fontSize: 13, color: Colors.grey)),
+          Text('原文：$text', style: TextStyle(fontSize: 13, color: Theme.of(context).colorScheme.onSurfaceVariant)),
           const SizedBox(height: 8),
           Text('结果：$out', style: const TextStyle(fontSize: 15)),
         ])),
@@ -1902,7 +2906,7 @@ class _ReadingScreenState extends State<ReadingScreen> with SingleTickerProvider
       if (mounted) { Navigator.pop(context); showDialog(context: context, builder: (_) => AlertDialog(
         title: const Text('翻译'),
         content: SingleChildScrollView(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text('原文：$text', style: const TextStyle(fontSize: 13, color: Colors.grey)),
+          Text('原文：$text', style: TextStyle(fontSize: 13, color: Theme.of(context).colorScheme.onSurfaceVariant)),
           const SizedBox(height: 8),
           Text('译文：$out', style: const TextStyle(fontSize: 15)),
         ])),
@@ -1977,7 +2981,7 @@ class _ReadingScreenState extends State<ReadingScreen> with SingleTickerProvider
             return SingleChildScrollView(child: Text('$head\n（暂无网络请求日志，切换章节或刷新目录后可见）'));
           }
           return Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(head, style: const TextStyle(fontSize: 11, color: Colors.grey)),
+            Text(head, style: TextStyle(fontSize: 11, color: Theme.of(context).colorScheme.onSurfaceVariant)),
             const Divider(height: 8),
             Expanded(child: ListView(children: logs.map((l) => Padding(padding: const EdgeInsets.symmetric(vertical: 2), child: Text(l, style: const TextStyle(fontSize: 11, fontFamily: 'monospace')))).toList())),
           ]);
@@ -2065,9 +3069,11 @@ class _ReadingScreenState extends State<ReadingScreen> with SingleTickerProvider
               child: Text('书签列表', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
             ),
             if (bookmarks.isEmpty)
-              const Padding(
-                padding: EdgeInsets.all(32),
-                child: Text('暂无书签', style: TextStyle(color: Colors.grey)),
+              Padding(
+                padding: const EdgeInsets.all(32),
+                child: Text('暂无书签',
+                    style: TextStyle(
+                        color: Theme.of(context).colorScheme.onSurfaceVariant)),
               )
             else
               Expanded(
@@ -2081,6 +3087,7 @@ class _ReadingScreenState extends State<ReadingScreen> with SingleTickerProvider
                       title: Text(bm.chapterTitle.isNotEmpty ? bm.chapterTitle : '第${bm.chapterIndex}章'),
                       subtitle: Text('第 ${(bm.pageIndex as int? ?? 0) + 1} 页'),
                       trailing: IconButton(
+                        tooltip: '删除书签',
                         icon: const Icon(Icons.delete_outline),
                         onPressed: () async {
                           await _db.deleteBookmark(bm.id!);
@@ -2175,10 +3182,14 @@ class _ReadingScreenState extends State<ReadingScreen> with SingleTickerProvider
             onChanged: (value) {
               dragging = value;
               setState(() {});
+              // 跟随系统亮度时实时写真实背光（不画假遮罩）
+              if (_followSystemBrightness) {
+                NativeBridge.instance.setWindowBrightness(value);
+              }
             },
-            // 松手才持久化并通知阅读界面生效
+            // 松手才持久化并通知阅读界面生效（真实亮度由原生通道落地）
             onChangeEnd: (value) {
-              readProvider.setBrightness(value);
+              _applyBrightness(value, system: true);
             },
           ),
         ),
@@ -2239,7 +3250,7 @@ class _ReadingScreenState extends State<ReadingScreen> with SingleTickerProvider
   }
 
   // 对齐 E book_read.xml：更多菜单不含「翻译设置 / 章节摘要」入口，
-  // 故删除无消费方的对话框方法；划词翻译（_translateSelection）仍由文本选择菜单提供。
+  // 故移除历史空实现对话框；划词翻译（_translateSelection）仍由文本选择菜单提供。
 
   void _showContentEditor() {
     final controller = TextEditingController(text: _chapters.isNotEmpty ? (_chapters[_currentChapterIndex].content ?? '') : '');
@@ -2328,6 +3339,11 @@ class _ReadingScreenState extends State<ReadingScreen> with SingleTickerProvider
   }
 
   Future<void> _startTTS() async {
+    final cfg = context.read<ReadProvider>().config;
+    // sysTtsConfig：跟随系统 TTS 偏好（tts_rate / tts_pitch）
+    if (cfg.sysTtsConfig) await _ttsService.loadPrefs();
+    // ttsFlowSys：关闭时使用固定语速，不再套用用户偏好
+    if (!cfg.ttsFlowSys) await _ttsService.setRate(1.0);
     // 注入按需加载器：朗读到未缓存章节时自动联网取正文
     _ttsService.contentLoader = (index) async {
       if (index < 0 || index >= _chapters.length) return null;
@@ -2348,7 +3364,21 @@ class _ReadingScreenState extends State<ReadingScreen> with SingleTickerProvider
       }
       return content;
     };
-    _ttsService.setChapters(_chapters, startIndex: _currentChapterIndex);
+    // readAloudByPage：按页朗读（复用真实分页结果）；
+    // streamReadAloudAudio：流式朗读按句切成细片段边合成边播；
+    // 两者关闭时保持原「按章朗读」链路。
+    if (cfg.readAloudByPage) {
+      _ttsService.setTextSegments(_pages, startIndex: _currentPage);
+    } else if (cfg.streamReadAloudAudio) {
+      final segments = (_content ?? '')
+          .split(RegExp(r'(?<=[。！？；!?;])'))
+          .where((s) => s.trim().isNotEmpty)
+          .toList();
+      _ttsService.setTextSegments(
+          segments.isEmpty ? _pages : segments, startIndex: 0);
+    } else {
+      _ttsService.setChapters(_chapters, startIndex: _currentChapterIndex);
+    }
     if (!mounted) return;
     Navigator.push(context, MaterialPageRoute(builder: (_) => TtsPlayerScreen(
       ttsService: _ttsService,
@@ -2459,7 +3489,7 @@ class _ChangeChapterSourceSheetState extends State<ChangeChapterSourceSheet> {
       initialChildSize: 0.7, minChildSize: 0.4, maxChildSize: 0.95, expand: false,
       builder: (context, scrollController) => Column(children: [
         const Padding(padding: EdgeInsets.all(16), child: Text('章节换源', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold))),
-        const Padding(padding: EdgeInsets.symmetric(horizontal: 16), child: Text('选择其他书源加载本章内容', style: TextStyle(fontSize: 12, color: Colors.grey))),
+        Padding(padding: const EdgeInsets.symmetric(horizontal: 16), child: Text('选择其他书源加载本章内容', style: TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.onSurfaceVariant))),
         const SizedBox(height: 8),
         Expanded(child: _loading
           ? const Center(child: CircularProgressIndicator())

@@ -8,6 +8,7 @@ import 'package:flutter/services.dart';
 import 'package:legado_md3/common/app_navigator.dart';
 import 'package:legado_md3/data/local/app_database.dart';
 import 'package:legado_md3/data/model/book_source.dart';
+import 'package:legado_md3/data/model/auto_task.dart';
 import 'package:legado_md3/data/model/db_models.dart';
 import 'package:legado_md3/data/model/read_config.dart';
 import 'package:legado_md3/data/model/replace_rule.dart';
@@ -235,6 +236,12 @@ class DeepLinkService {
       case 'httpTts':
         final n = await _importHttpTts(data);
         _tip(n > 0 ? '成功导入 $n 个在线TTS' : '未识别到有效在线TTS');
+      case 'autoTask':
+        final n = await _importAutoTasks(data);
+        _tip(n > 0 ? '成功导入 $n 个定时任务' : '未识别到有效定时任务');
+      case 'highlightRule':
+        final n = await _importHighlightRules(data);
+        _tip(n > 0 ? '成功导入 $n 条高亮规则' : '未识别到有效高亮规则');
       default:
         _tip('不支持的导入类型：$kind');
     }
@@ -350,6 +357,14 @@ class DeepLinkService {
       case 'readconfig':
       case 'read_config':
         return 'readConfig';
+      case 'autotask':
+      case 'auto_task':
+      case 'task':
+        return 'autoTask';
+      case 'highlightrule':
+      case 'highlight_rule':
+      case 'highlight':
+        return 'highlightRule';
       default:
         return null;
     }
@@ -364,6 +379,15 @@ class DeepLinkService {
           first.containsKey('ruleArticles') ||
           first.containsKey('sortUrl')) {
         return 'rss';
+      }
+      // 定时任务：action + 调度字段，且无书源/规则特征
+      if (first.containsKey('action') &&
+          (first.containsKey('intervalMinutes') || first.containsKey('hour'))) {
+        return 'autoTask';
+      }
+      // 高亮规则：pattern + color（阅读页划线着色规则），先于替换规则判断
+      if (first.containsKey('pattern') && first.containsKey('color')) {
+        return 'highlightRule';
       }
       if (first.containsKey('pattern')) return 'replaceRule';
       if (first.containsKey('themeName') ||
@@ -439,6 +463,42 @@ class DeepLinkService {
       try {
         await _db.insertHttpTTS(
             HttpTTS.fromMap(Map<String, dynamic>.from(item)));
+        count++;
+      } catch (_) {}
+    }
+    return count;
+  }
+
+  /// 导入定时任务（对齐官方原版 ImportAutoTaskDialog）。
+  /// 落库到 auto_tasks，由 AutoTaskService 启动期调度，形成导入→执行闭环。
+  Future<int> _importAutoTasks(dynamic data) async {
+    final list = data is List ? data : [data];
+    var count = 0;
+    for (final item in list) {
+      if (item is! Map) continue;
+      try {
+        final m = Map<String, dynamic>.from(item);
+        final task = AutoTask.fromMap(m);
+        if (task.name.trim().isEmpty) continue;
+        await _db.insertAutoTask(task);
+        count++;
+      } catch (_) {}
+    }
+    return count;
+  }
+
+  /// 导入高亮规则（对齐官方原版 ImportHighlightRuleDialog）。
+  /// 落库到 highlight_rules，供阅读页划线着色消费。
+  Future<int> _importHighlightRules(dynamic data) async {
+    final list = data is List ? data : [data];
+    var count = 0;
+    for (final item in list) {
+      if (item is! Map) continue;
+      try {
+        final m = Map<String, dynamic>.from(item);
+        final rule = HighlightRule.fromMap(m);
+        if (rule.pattern.trim().isEmpty) continue;
+        await _db.insertHighlightRule(rule);
         count++;
       } catch (_) {}
     }

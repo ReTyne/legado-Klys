@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'dart:convert';
 import 'package:dio/dio.dart';
 import 'package:flutter/services.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:legado_md3/data/model/rss_source.dart';
@@ -15,6 +16,7 @@ import 'package:legado_md3/ui/stats/read_record_screen.dart';
 import 'package:legado_md3/ui/rss/rss_source_login_screen.dart';
 import 'package:legado_md3/data/local/app_database.dart';
 import 'package:legado_md3/help/http/rss_service.dart';
+import 'package:legado_md3/ui/widgets/app_widgets.dart';
 
 class SubscribeScreen extends StatefulWidget {
   const SubscribeScreen({super.key});
@@ -34,10 +36,71 @@ class _SubscribeScreenState extends State<SubscribeScreen> {
   String _groupFilter = '';
   final TextEditingController _searchController = TextEditingController();
 
+  /// 视图模式：0 网格 / 1 列表（真实持久化）。
+  int _viewMode = 0;
+  /// 排序：0 默认 / 1 名称 / 2 分组（分区） / 3 最近更新（真实持久化）。
+  int _sortMode = 0;
+  static const _viewModeKey = 'subscribe_view_mode';
+  static const _sortModeKey = 'subscribe_sort_mode';
+
   @override
   void initState() {
     super.initState();
     _loadData();
+    _loadViewConfig();
+  }
+
+  Future<void> _loadViewConfig() async {
+    try {
+      final p = await SharedPreferences.getInstance();
+      if (mounted) {
+        setState(() {
+          _viewMode = p.getInt(_viewModeKey) ?? 0;
+          _sortMode = p.getInt(_sortModeKey) ?? 0;
+        });
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _setViewMode(int v) async {
+    setState(() => _viewMode = v);
+    try {
+      final p = await SharedPreferences.getInstance();
+      await p.setInt(_viewModeKey, v);
+    } catch (_) {}
+  }
+
+  Future<void> _setSortMode(int v) async {
+    setState(() => _sortMode = v);
+    try {
+      final p = await SharedPreferences.getInstance();
+      await p.setInt(_sortModeKey, v);
+    } catch (_) {}
+  }
+
+  /// 按当前排序方式对已过滤的订阅源排序。
+  List<RssSource> _sortedSources(List<RssSource> src) {
+    final list = List<RssSource>.of(src);
+    switch (_sortMode) {
+      case 1:
+        list.sort((a, b) => a.sourceName.compareTo(b.sourceName));
+        break;
+      case 2:
+        list.sort((a, b) {
+          final ga = (a.sourceGroup ?? '').trim();
+          final gb = (b.sourceGroup ?? '').trim();
+          final c = ga.compareTo(gb);
+          return c != 0 ? c : a.sourceName.compareTo(b.sourceName);
+        });
+        break;
+      case 3:
+        list.sort((a, b) =>
+            (b.lastUpdateTime ?? 0).compareTo(a.lastUpdateTime ?? 0));
+        break;
+      default:
+        break; // DAO 已按 lastUpdateTime DESC
+    }
+    return list;
   }
 
   @override
@@ -47,10 +110,20 @@ class _SubscribeScreenState extends State<SubscribeScreen> {
   }
 
   void _showImportMenu() {
-    showModalBottomSheet(context: context, builder: (c) => SafeArea(child: Column(mainAxisSize: MainAxisSize.min, children: [
-      ListTile(leading: const Icon(Icons.cloud_outlined), title: const Text('网络导入'), onTap: () { Navigator.pop(c); _importNetwork(); }),
-      ListTile(leading: const Icon(Icons.content_paste), title: const Text('剪贴板导入'), onTap: () async { Navigator.pop(c); final t = (await Clipboard.getData('text/plain'))?.text ?? ''; _parseAndSave(t); }),
-    ])));
+    showAppMenuSheet(context, title: '导入订阅源', items: [
+      AppMenuSheetItem(
+          title: '网络导入',
+          icon: Icons.cloud_outlined,
+          onTap: _importNetwork),
+      AppMenuSheetItem(
+          title: '剪贴板导入',
+          icon: Icons.content_paste,
+          onTap: () async {
+            final t =
+                (await Clipboard.getData(Clipboard.kTextPlain))?.text ?? '';
+            _parseAndSave(t);
+          }),
+    ]);
   }
 
   Future<void> _importNetwork() async {
@@ -171,6 +244,7 @@ class _SubscribeScreenState extends State<SubscribeScreen> {
           if (_searching)
             IconButton(
               icon: const Icon(Icons.clear),
+              tooltip: '清除搜索',
               onPressed: () {
                 _searchController.clear();
                 setState(() {
@@ -182,6 +256,7 @@ class _SubscribeScreenState extends State<SubscribeScreen> {
           else
             IconButton(
                 icon: const Icon(Icons.search),
+                tooltip: '搜索订阅源',
                 onPressed: () => setState(() => _searching = true)),
           IconButton(
             icon: const Icon(Icons.star_border),
@@ -215,7 +290,7 @@ class _SubscribeScreenState extends State<SubscribeScreen> {
           Expanded(
             child: _isLoading
                 ? const Center(child: CircularProgressIndicator())
-                : _buildSourcesGrid(),
+                : _buildSourcesView(),
           ),
         ],
       ),
@@ -266,17 +341,56 @@ class _SubscribeScreenState extends State<SubscribeScreen> {
                 .map((g) => PopupMenuItem(value: g, child: Text(g)))
                 .toList(),
           ),
+          _buildViewSortMenu(),
         ],
       ),
     );
   }
 
-  /// 订阅源网格 —— 对齐 legado-E `fragment_rss.xml`（spanCount=4）
-  /// 与 `item_rss.xml`（50dp 圆角图标 + 两行 13sp 名称）。
-  Widget _buildSourcesGrid() {
+  /// 布局切换（网格 / 列表）与排序（默认 / 名称 / 分组分区 / 最近更新）。
+  /// 每项选择都真实改变列表并持久化到 SharedPreferences。
+  Widget _buildViewSortMenu() {
+    return PopupMenuButton<String>(
+      tooltip: '布局与排序',
+      icon: const Icon(Icons.view_quilt_outlined),
+      onSelected: (v) {
+        if (v.startsWith('layout_')) {
+          _setViewMode(v == 'layout_list' ? 1 : 0);
+        } else if (v.startsWith('sort_')) {
+          _setSortMode(int.tryParse(v.substring(5)) ?? 0);
+        }
+      },
+      itemBuilder: (context) => [
+        _viewSortItem('layout_grid', '网格布局', _viewMode == 0),
+        _viewSortItem('layout_list', '列表布局', _viewMode == 1),
+        const PopupMenuDivider(),
+        _viewSortItem('sort_0', '默认排序', _sortMode == 0),
+        _viewSortItem('sort_1', '按名称', _sortMode == 1),
+        _viewSortItem('sort_2', '按分组分区', _sortMode == 2),
+        _viewSortItem('sort_3', '按最近更新', _sortMode == 3),
+      ],
+    );
+  }
+
+  PopupMenuItem<String> _viewSortItem(
+          String value, String label, bool checked) =>
+      PopupMenuItem<String>(
+        value: value,
+        child: Row(
+          children: [
+            Expanded(child: Text(label)),
+            if (checked)
+              Icon(Icons.check,
+                  size: 18, color: Theme.of(context).colorScheme.primary),
+          ],
+        ),
+      );
+
+  /// 订阅源视图 —— 对齐 legado-E `fragment_rss.xml`：分组过滤 + 搜索叠加，
+  /// 再按当前排序输出网格（spanCount=4）或列表（按分组时显示分区标题）。
+  Widget _buildSourcesView() {
     final q = _searchQuery.toLowerCase();
-    // 对齐 legado-E RssFragment：分组过滤（menu_group）与搜索框（关键字/分组）叠加生效
-    final groups = _sources
+    final filtered = _sources
         .where((s) =>
             (_groupFilter.isEmpty ||
                 (s.sourceGroup ?? '').trim() == _groupFilter) &&
@@ -284,24 +398,22 @@ class _SubscribeScreenState extends State<SubscribeScreen> {
                 s.sourceName.toLowerCase().contains(q) ||
                 (s.sourceGroup ?? '').toLowerCase().contains(q)))
         .toList();
-    if (groups.isEmpty) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.subscriptions_outlined, size: 80, color: Colors.grey[400]),
-            const SizedBox(height: 16),
-            Text(_searchQuery.isEmpty && _groupFilter.isEmpty
-                    ? '暂无订阅源'
-                    : '没有匹配的订阅源',
-                style: TextStyle(fontSize: 18, color: Colors.grey[600])),
-            const SizedBox(height: 8),
-            if (_searchQuery.isEmpty && _groupFilter.isEmpty)
-              const Text('点击右下角添加订阅源'),
-          ],
-        ),
+    if (filtered.isEmpty) {
+      return AppEmptyState(
+        icon: Icons.subscriptions_outlined,
+        title: _searchQuery.isEmpty && _groupFilter.isEmpty
+            ? '暂无订阅源'
+            : '没有匹配的订阅源',
+        message: _searchQuery.isEmpty && _groupFilter.isEmpty
+            ? '点击右下角添加订阅源'
+            : null,
       );
     }
+    final sorted = _sortedSources(filtered);
+    return _viewMode == 1 ? _buildListView(sorted) : _buildGridView(sorted);
+  }
+
+  Widget _buildGridView(List<RssSource> groups) {
     return GridView.builder(
       padding: const EdgeInsets.all(12),
       gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
@@ -362,9 +474,80 @@ class _SubscribeScreenState extends State<SubscribeScreen> {
     );
   }
 
+  /// 列表布局；按分组排序时插入 AppSectionHeader 形成分区。
+  Widget _buildListView(List<RssSource> groups) {
+    final children = <Widget>[];
+    String? lastGroup;
+    for (final source in groups) {
+      if (_sortMode == 2) {
+        final g = (source.sourceGroup ?? '').trim().isEmpty
+            ? '未分组'
+            : source.sourceGroup!.trim();
+        if (g != lastGroup) {
+          children.add(AppSectionHeader(g));
+          lastGroup = g;
+        }
+      }
+      children.add(_buildListTile(source));
+    }
+    return ListView(children: children);
+  }
+
+  Widget _buildListTile(RssSource source) {
+    final cs = Theme.of(context).colorScheme;
+    final enabled = source.enabled == true;
+    final group = (source.sourceGroup ?? '').trim().isEmpty
+        ? '未分组'
+        : source.sourceGroup!.trim();
+    final updated = source.lastUpdateTime != null
+        ? ' · ${DateTime.fromMillisecondsSinceEpoch(source.lastUpdateTime!).toString().substring(0, 10)}'
+        : '';
+    return ListTile(
+      leading: Opacity(
+        opacity: enabled ? 1 : 0.38,
+        child: Container(
+          width: 40,
+          height: 40,
+          decoration: BoxDecoration(
+            color: cs.secondaryContainer,
+            borderRadius: BorderRadius.circular(12),
+            image: (source.sourceIcon ?? '').isNotEmpty
+                ? DecorationImage(
+                    image: NetworkImage(source.sourceIcon!), fit: BoxFit.cover)
+                : null,
+          ),
+          alignment: Alignment.center,
+          child: (source.sourceIcon ?? '').isNotEmpty
+              ? null
+              : Text(
+                  source.sourceName.isNotEmpty ? source.sourceName[0] : '?',
+                  style: TextStyle(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                      color: cs.onSecondaryContainer),
+                ),
+        ),
+      ),
+      title: Text(source.sourceName,
+          maxLines: 1, overflow: TextOverflow.ellipsis),
+      subtitle: Text('$group$updated',
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: const TextStyle(fontSize: 11)),
+      trailing: Icon(
+          enabled ? Icons.chevron_right : Icons.block_outlined,
+          size: 18,
+          color: cs.onSurfaceVariant),
+      onTap: () => Navigator.push(context,
+          MaterialPageRoute(builder: (_) => RssArticlesScreen(source: source))),
+      onLongPress: () => _showSourceOptions(source),
+    );
+  }
+
 
 
   void _showSourceOptions(RssSource source) {
+    final cs = Theme.of(context).colorScheme;
     showModalBottomSheet(
       context: context,
       builder: (context) => SafeArea(
@@ -429,8 +612,8 @@ class _SubscribeScreenState extends State<SubscribeScreen> {
             ),
             const Divider(),
             ListTile(
-              leading: const Icon(Icons.delete_outline, color: Colors.red),
-              title: const Text('删除', style: TextStyle(color: Colors.red)),
+              leading: Icon(Icons.delete_outline, color: cs.error),
+              title: Text('删除', style: TextStyle(color: cs.error)),
               onTap: () async {
                 Navigator.pop(context);
                 if (source.id != null) await _db.deleteRssSource(source.id!);

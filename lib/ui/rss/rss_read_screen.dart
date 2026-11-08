@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:collection';
 import 'dart:convert';
 
@@ -9,10 +10,12 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart' as iw;
 import 'package:legado_md3/data/local/app_database.dart';
 import 'package:legado_md3/data/model/rss_article.dart';
+import 'package:legado_md3/data/model/rss_read_record.dart';
 import 'package:legado_md3/data/model/rss_source.dart';
 import 'package:legado_md3/help/http/rss_service.dart';
 import 'package:legado_md3/help/readaloud/tts_service.dart';
 import 'package:legado_md3/ui/book/read/tts_player_screen.dart';
+import 'package:legado_md3/ui/widgets/app_widgets.dart';
 
 /// RSS文章阅读页面 - 对齐原版RssReadScreen
 /// * ruleContent 为空：以文本展示描述。
@@ -39,6 +42,17 @@ class _RssReadScreenState extends State<RssReadScreen> {
   bool _loading = true;
   String _body = '';
   bool _isHtml = false;
+  String? _error;
+
+  // ===== 阅读记录 / 续读 =====
+  static const _recordEnabledKey = 'rss_read_record_enabled';
+  final ScrollController _scrollController = ScrollController();
+  double _lastOffset = 0;
+  bool _recordEnabled = true; // 全局「开启记录」开关
+  bool _recordAllowed = true; // 该 link 的记录开关
+  double? _pendingRestorePos;
+  bool _restored = false;
+  Timer? _persistTimer;
 
   // ===== 朗读（TTS）=====
   final TtsService _tts = TtsService();
@@ -57,17 +71,79 @@ class _RssReadScreenState extends State<RssReadScreen> {
     super.initState();
     _article = widget.article;
     _isFavorite = _article.favorite == 1;
+    _scrollController.addListener(_onScroll);
     _load();
   }
 
   @override
   void dispose() {
+    _persistTimer?.cancel();
+    unawaited(_persistRecord());
     _tts.onSegmentStart = null;
     _tts.onComplete = null;
     _tts.onError = null;
     _tts.stop();
     _tts.dispose();
+    _scrollController.dispose();
     super.dispose();
+  }
+
+  // ===== 阅读记录 / 续读 =====
+
+  void _onScroll() {
+    if (_scrollController.hasClients) {
+      _lastOffset = _scrollController.offset;
+      _schedulePersist();
+    }
+  }
+
+  void _schedulePersist() {
+    _persistTimer?.cancel();
+    _persistTimer = Timer(const Duration(milliseconds: 600), () {
+      unawaited(_persistRecord());
+    });
+  }
+
+  /// 读取全局「开启记录」开关与该文章的记录（续读位置、per-link 开关）。
+  Future<void> _initRecordSettings() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      _recordEnabled = prefs.getBool(_recordEnabledKey) ?? true;
+    } catch (_) {}
+    try {
+      final rec = await _db.getRssReadRecord(_article.link);
+      _recordAllowed = rec?.enabled != 0;
+      _pendingRestorePos = rec?.durPos;
+    } catch (_) {}
+  }
+
+  /// 内容渲染后把滚动位置恢复到上次记录的 durPos。
+  void _applyRestore() {
+    if (_restored || _pendingRestorePos == null) return;
+    if (_isHtml || !_scrollController.hasClients) return;
+    final max = _scrollController.position.maxScrollExtent;
+    final pos = _pendingRestorePos!.clamp(0.0, max);
+    _scrollController.jumpTo(pos);
+    _lastOffset = pos;
+    _pendingRestorePos = null;
+    _restored = true;
+  }
+
+  /// 上报 durPos（ScrollController.offset）。全局开关或该 link 关闭记录时跳过。
+  Future<void> _persistRecord() async {
+    if (_article.link.isEmpty || !_recordEnabled || !_recordAllowed) return;
+    try {
+      final rec = await _db.getRssReadRecord(_article.link);
+      await _db.upsertRssReadRecord(RssReadRecord(
+        id: rec?.id,
+        link: _article.link,
+        title: _article.title,
+        sourceUrl: _article.sourceUrl ?? '',
+        durPos: _lastOffset,
+        readTime: DateTime.now().millisecondsSinceEpoch,
+        enabled: rec?.enabled ?? 1,
+      ));
+    } catch (_) {}
   }
 
   /// 朗读进度持久化 key（按文章）
@@ -185,8 +261,12 @@ class _RssReadScreenState extends State<RssReadScreen> {
   }
 
   Future<void> _load() async {
-    setState(() => _loading = true);
+    setState(() {
+      _loading = true;
+      _error = null;
+    });
     try {
+      await _initRecordSettings();
       String? body;
       if (widget.source != null && _hasContentRule) {
         body = await RssService()
@@ -206,12 +286,13 @@ class _RssReadScreenState extends State<RssReadScreen> {
           _isHtml = html;
           _loading = false;
         });
+        WidgetsBinding.instance
+            .addPostFrameCallback((_) => _applyRestore());
       }
     } catch (e) {
       if (mounted) {
         setState(() {
-          _body = '内容加载失败: $e';
-          _isHtml = false;
+          _error = '$e';
           _loading = false;
         });
       }
@@ -237,24 +318,32 @@ class _RssReadScreenState extends State<RssReadScreen> {
   }
 
   void _showTextMenu() {
-    showModalBottomSheet(context: context, builder: (context) => SafeArea(child: Column(mainAxisSize: MainAxisSize.min, children: [
-      ListTile(
-        leading: const Icon(Icons.text_increase), title: const Text('增大字体'),
-        onTap: () { setState(() => _fontSize = (_fontSize + 2).clamp(12, 36)); Navigator.pop(context); },
+    showAppMenuSheet(context, title: '正文选项', items: [
+      AppMenuSheetItem(
+        title: '增大字体',
+        icon: Icons.text_increase,
+        onTap: () => setState(() => _fontSize = (_fontSize + 2).clamp(12, 36)),
       ),
-      ListTile(
-        leading: const Icon(Icons.text_decrease), title: const Text('减小字体'),
-        onTap: () { setState(() => _fontSize = (_fontSize - 2).clamp(12, 36)); Navigator.pop(context); },
+      AppMenuSheetItem(
+        title: '减小字体',
+        icon: Icons.text_decrease,
+        onTap: () => setState(() => _fontSize = (_fontSize - 2).clamp(12, 36)),
       ),
-      ListTile(
-        leading: const Icon(Icons.copy), title: const Text('复制全文'),
-        onTap: () { Clipboard.setData(ClipboardData(text: '${_article.title}\n\n$_body')); Navigator.pop(context); ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('已复制'))); },
+      AppMenuSheetItem(
+        title: '复制全文',
+        icon: Icons.copy,
+        onTap: () {
+          Clipboard.setData(ClipboardData(text: '${_article.title}\n\n$_body'));
+          ScaffoldMessenger.of(context)
+              .showSnackBar(const SnackBar(content: Text('已复制')));
+        },
       ),
-      ListTile(
-        leading: const Icon(Icons.open_in_browser), title: const Text('浏览器打开'),
-        onTap: () { Navigator.pop(context); _openOriginal(); },
+      AppMenuSheetItem(
+        title: '浏览器打开',
+        icon: Icons.open_in_browser,
+        onTap: _openOriginal,
       ),
-    ])));
+    ]);
   }
 
   void _openOriginal() {
@@ -268,19 +357,18 @@ class _RssReadScreenState extends State<RssReadScreen> {
       // 朗读中返回需确认，避免误触退出丢失朗读
       canPop: !_aloudOn,
       onPopInvokedWithResult: (didPop, _) async {
-        if (didPop) return;
-        final leave = await showDialog<bool>(
-          context: context,
-          builder: (ctx) => AlertDialog(
-            title: const Text('退出阅读'),
-            content: const Text('正在朗读正文，要停止朗读并退出吗？'),
-            actions: [
-              TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
-              TextButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('停止并退出')),
-            ],
-          ),
+        if (didPop) {
+          await _persistRecord();
+          return;
+        }
+        final leave = await showAppConfirmDialog(
+          context,
+          title: '退出阅读',
+          content: '正在朗读正文，要停止朗读并退出吗？',
+          confirmText: '停止并退出',
+          danger: true,
         );
-        if (leave != true || !mounted) return;
+        if (!leave || !mounted) return;
         await _exitAloud();
         // 等一帧让 PopScope 的 canPop 更新后再退栈
         WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -302,11 +390,17 @@ class _RssReadScreenState extends State<RssReadScreen> {
             ),
             IconButton(
               icon: Icon(_isFavorite ? Icons.star : Icons.star_border),
+              tooltip: _isFavorite ? '取消收藏' : '收藏',
               onPressed: _toggleFavorite,
             ),
             if (!_isHtml)
-              IconButton(icon: const Icon(Icons.text_fields), onPressed: _showTextMenu),
+              IconButton(
+                icon: const Icon(Icons.text_fields),
+                tooltip: '正文选项',
+                onPressed: _showTextMenu,
+              ),
             PopupMenuButton<String>(
+              tooltip: '更多',
               onSelected: (v) {
                 if (v == 'browser') _openOriginal();
                 if (v == 'share') Share.share('${_article.title}\n${_article.link}');
@@ -324,31 +418,34 @@ class _RssReadScreenState extends State<RssReadScreen> {
         ),
         body: _loading
             ? const Center(child: CircularProgressIndicator())
-            : Column(
-                children: [
-                  Expanded(
-                    child: _isHtml
-                        ? _HtmlBody(
-                            html: _body,
-                            baseUrl: _article.link,
-                            style: widget.source?.style,
-                            injectJs: widget.source?.injectJs,
-                            preloadJs: widget.source?.preloadJs,
-                            shouldOverrideUrlLoading:
-                                widget.source?.shouldOverrideUrlLoading,
-                          )
-                        : _TextBody(
-                            article: _article,
-                            paragraphs: TtsService.splitParagraphs(_body),
-                            fontSize: _fontSize,
-                            onOriginal: _openOriginal,
-                            highlightIndex: _aloudOn ? _aloudIndex : -1,
-                            highlightKey: _highlightKey,
-                          ),
+            : _error != null
+                ? AppErrorState(message: _error!, onRetry: _load)
+                : Column(
+                    children: [
+                      Expanded(
+                        child: _isHtml
+                            ? _HtmlBody(
+                                html: _body,
+                                baseUrl: _article.link,
+                                style: widget.source?.style,
+                                injectJs: widget.source?.injectJs,
+                                preloadJs: widget.source?.preloadJs,
+                                shouldOverrideUrlLoading:
+                                    widget.source?.shouldOverrideUrlLoading,
+                              )
+                            : _TextBody(
+                                article: _article,
+                                paragraphs: TtsService.splitParagraphs(_body),
+                                fontSize: _fontSize,
+                                onOriginal: _openOriginal,
+                                highlightIndex: _aloudOn ? _aloudIndex : -1,
+                                highlightKey: _highlightKey,
+                                scrollController: _scrollController,
+                              ),
+                      ),
+                      _buildAloudBar(),
+                    ],
                   ),
-                  _buildAloudBar(),
-                ],
-              ),
       ),
     );
   }
@@ -487,6 +584,7 @@ class _TextBody extends StatelessWidget {
     required this.paragraphs,
     required this.fontSize,
     required this.onOriginal,
+    required this.scrollController,
     this.highlightIndex = -1,
     this.highlightKey,
   });
@@ -494,13 +592,16 @@ class _TextBody extends StatelessWidget {
   final List<String> paragraphs;
   final double fontSize;
   final VoidCallback onOriginal;
+  final ScrollController scrollController;
   /// 朗读中的段落索引，-1 表示未朗读
   final int highlightIndex;
   final GlobalKey? highlightKey;
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return SingleChildScrollView(
+      controller: scrollController,
       padding: const EdgeInsets.all(16),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Text(article.title, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, height: 1.4)),
@@ -513,14 +614,14 @@ class _TextBody extends StatelessWidget {
           ),
         Row(children: [
           if (article.author != null) ...[
-            Icon(Icons.person_outline, size: 14, color: Colors.grey[600]),
+            Icon(Icons.person_outline, size: 14, color: cs.onSurfaceVariant),
             const SizedBox(width: 4),
-            Text(article.author!, style: TextStyle(fontSize: 12, color: Colors.grey[600])),
+            Text(article.author!, style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
             const SizedBox(width: 12),
           ],
-          Icon(Icons.access_time, size: 14, color: Colors.grey[600]),
+          Icon(Icons.access_time, size: 14, color: cs.onSurfaceVariant),
           const SizedBox(width: 4),
-          Text(article.pubDate != null ? DateTime.fromMillisecondsSinceEpoch(article.pubDate!).toString().substring(0, 16) : '', style: TextStyle(fontSize: 12, color: Colors.grey[600])),
+          Text(article.pubDate != null ? DateTime.fromMillisecondsSinceEpoch(article.pubDate!).toString().substring(0, 16) : '', style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
         ]),
         const Divider(height: 24),
         for (var i = 0; i < paragraphs.length; i++)

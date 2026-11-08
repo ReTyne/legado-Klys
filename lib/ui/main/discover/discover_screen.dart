@@ -1,9 +1,10 @@
 import 'dart:async';
 
-import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:url_launcher/url_launcher.dart';
+import 'package:legado_md3/data/model/book.dart';
 import 'package:legado_md3/data/model/book_source.dart';
 import 'package:legado_md3/data/model/explore_kind.dart';
 import 'package:legado_md3/data/model/search_book.dart';
@@ -15,7 +16,11 @@ import 'package:legado_md3/ui/book/detail/book_detail_screen.dart';
 import 'package:legado_md3/ui/book/search/search_screen.dart';
 import 'package:legado_md3/ui/book/source/source_login_screen.dart';
 import 'package:legado_md3/ui/book/source/source_edit_screen.dart';
+import 'package:legado_md3/ui/config/homepage_module_screen.dart';
+import 'package:legado_md3/ui/main/discover/homepage_feed.dart';
+import 'package:legado_md3/ui/main/discover/homepage_module_widgets.dart';
 import 'package:legado_md3/ui/main/discover/opds_catalog_screen.dart';
+import 'package:legado_md3/ui/widgets/app_widgets.dart';
 
 class DiscoverScreen extends StatefulWidget {
   const DiscoverScreen({super.key});
@@ -61,6 +66,12 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
 
   String _searchQuery = '';
   bool _searching = false;
+
+  /// 默认首页为卡片式模块 Feed（消费 homepage_modules 表）；可切回书源发现列表。
+  bool _showFeed = true;
+  /// 管理页返回后改变该值以强制重建 Feed（重新读取模块表）。
+  int _feedEpoch = 0;
+
   /// 各书源的发现分类（对齐 E ExploreAdapter 的 sourceKinds：列表按源聚合展示）
   final Map<String, List<ExploreKind>> _sourceKinds = {};
   /// 正在加载分类的书源（bookSourceUrl）
@@ -494,7 +505,7 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
               labelText: kind.title,
               isDense: true,
               contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-              border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
             ),
             onChanged: (v) {
               _infoMap[kind.title] = v;
@@ -549,7 +560,7 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
               labelText: kind.title,
               isDense: true,
               contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-              border: OutlineInputBorder(borderRadius: BorderRadius.circular(10)),
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
             ),
             items: chars
                 .map((c) => DropdownMenuItem<String>(value: c, child: Text(c, style: const TextStyle(fontSize: 13))))
@@ -598,34 +609,25 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
   }
 
   void _showSourceSwitcher() {
-    showModalBottomSheet(
-      context: context,
-      builder: (context) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            const Padding(padding: EdgeInsets.all(16), child: Text('选择发现书源', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold))),
-            if (_sources.isEmpty)
-              const Padding(padding: EdgeInsets.all(24), child: Text('暂无启用的发现书源'))
-            else
-              Flexible(
-                child: ListView(
-                  shrinkWrap: true,
-                  children: _sources.map((source) => ListTile(
-                    leading: const Icon(Icons.rss_feed),
-                    title: Text(source.bookSourceName),
-                    subtitle: Text(source.bookSourceUrl, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 11)),
-                    trailing: _currentSource?.bookSourceUrl == source.bookSourceUrl ? Icon(Icons.check, color: Theme.of(context).colorScheme.primary) : null,
-                    onTap: () {
-                      Navigator.pop(context);
-                      _selectSource(source);
-                    },
-                  )).toList(),
-                ),
-              ),
-          ],
-        ),
-      ),
+    if (_sources.isEmpty) {
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('暂无启用的发现书源')));
+      return;
+    }
+    showAppMenuSheet(
+      context,
+      title: '选择发现书源',
+      items: [
+        for (final source in _sources)
+          AppMenuSheetItem(
+            icon: _currentSource?.bookSourceUrl == source.bookSourceUrl
+                ? Icons.check_circle_outline
+                : Icons.rss_feed_outlined,
+            title: source.bookSourceName,
+            subtitle: source.bookSourceUrl,
+            onTap: () => _selectSource(source),
+          ),
+      ],
     );
   }
 
@@ -753,23 +755,47 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
       appBar: AppBar(
         leading: _view == 'source'
             ? null
-            : IconButton(icon: const Icon(Icons.arrow_back), onPressed: _back),
+            : IconButton(icon: const Icon(Icons.arrow_back), tooltip: '返回', onPressed: _back),
         title: _view == 'source'
-            ? (_searching
-                ? TextField(
-                    controller: _searchController,
-                    autofocus: true,
-                    decoration: const InputDecoration(
-                        hintText: '搜索书源/分类...', border: InputBorder.none),
-                    onChanged: (v) => setState(() => _searchQuery = v),
-                  )
-                : const Text('发现'))
+            ? (_showFeed
+                ? const Text('发现')
+                : (_searching
+                    ? TextField(
+                        controller: _searchController,
+                        autofocus: true,
+                        decoration: const InputDecoration(
+                            hintText: '搜索书源/分类...', border: InputBorder.none),
+                        onChanged: (v) => setState(() => _searchQuery = v),
+                      )
+                    : const Text('发现')))
             : Text(_titleText(), maxLines: 1, overflow: TextOverflow.ellipsis),
         actions: [
-          if (_view == 'source') ...[
+          // 首页模块 Feed 视图：切换回书源发现 + OPDS 目录
+          if (_view == 'source' && _showFeed) ...[
+            IconButton(
+              icon: const Icon(Icons.explore_outlined),
+              tooltip: '书源发现',
+              onPressed: () => _toggleFeed(false),
+            ),
+            IconButton(
+              icon: const Icon(Icons.rss_feed_outlined),
+              tooltip: 'OPDS 目录',
+              onPressed: () => Navigator.push(
+                context,
+                MaterialPageRoute(builder: (_) => const OpdsCatalogScreen()),
+              ),
+            ),
+          ],
+          if (_view == 'source' && !_showFeed) ...[
+            IconButton(
+              icon: const Icon(Icons.dashboard_customize_outlined),
+              tooltip: '首页模块',
+              onPressed: () => _toggleFeed(true),
+            ),
             if (_searching)
               IconButton(
-                icon: const Icon(Icons.clear),
+                icon: const Icon(Icons.clear_outlined),
+                tooltip: '清除搜索',
                 onPressed: () {
                   _searchController.clear();
                   setState(() {
@@ -780,7 +806,8 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
               )
             else
               IconButton(
-                  icon: const Icon(Icons.search),
+                  icon: const Icon(Icons.search_outlined),
+                  tooltip: '搜索书源',
                   onPressed: () => setState(() => _searching = true)),
             // OPDS 目录浏览（接入 OpdsEngine，下载后经 ImportBookService 入书架）
             IconButton(
@@ -794,7 +821,7 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
             // 分组过滤（对齐 E main_explore 的 menu_group）
             PopupMenuButton<String>(
               tooltip: '分组',
-              icon: const Icon(Icons.filter_list),
+              icon: const Icon(Icons.filter_list_outlined),
               initialValue: _groupFilter.isEmpty ? '全部' : _groupFilter,
               onSelected: (v) =>
                   setState(() => _groupFilter = v == '全部' ? '' : v),
@@ -805,12 +832,12 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
           ],
           if (_view == 'books') ...[
             IconButton(icon: const Icon(Icons.category_outlined), tooltip: '分类', onPressed: _backToCategory),
-            IconButton(icon: const Icon(Icons.filter_list), tooltip: '过滤', onPressed: _showFilterDialog),
-            IconButton(icon: const Icon(Icons.sort), tooltip: '排序', onPressed: _showSortDialog),
-            IconButton(icon: const Icon(Icons.refresh), tooltip: '刷新', onPressed: _refresh),
+            IconButton(icon: const Icon(Icons.filter_list_outlined), tooltip: '过滤', onPressed: _showFilterDialog),
+            IconButton(icon: const Icon(Icons.sort_outlined), tooltip: '排序', onPressed: _showSortDialog),
+            IconButton(icon: const Icon(Icons.refresh_outlined), tooltip: '刷新', onPressed: _refresh),
           ],
           if (_view == 'category')
-            IconButton(icon: const Icon(Icons.tune), tooltip: '分类管理', onPressed: _showCategoryManager),
+            IconButton(icon: const Icon(Icons.tune_outlined), tooltip: '分类管理', onPressed: _showCategoryManager),
         ],
       ),
       body: _buildBody(),
@@ -830,9 +857,124 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
   }
 
   Widget _buildBody() {
-    if (_view == 'source') return _buildExploreList();
+    if (_view == 'source') {
+      return _showFeed ? _buildFeed() : _buildExploreList();
+    }
     if (_view == 'category') return _buildCategoryList();
     return _buildBooksList();
+  }
+
+  /// 首页卡片式模块 Feed（默认发现页）。
+  /// key 携带 _feedEpoch：从「首页模块」管理页返回后重建，重新读取模块表。
+  Widget _buildFeed() => HomepageFeed(
+        key: ValueKey('homepage_feed_$_feedEpoch'),
+        onAction: _onHomepageAction,
+        onManage: () async {
+          await Navigator.push(
+            context,
+            MaterialPageRoute(builder: (_) => const HomepageModuleScreen()),
+          );
+          if (mounted) setState(() => _feedEpoch++);
+        },
+        onSwitchToBrowse: () => _toggleFeed(false),
+      );
+
+  /// Feed 与「书源发现」列表互切；切回 Feed 时清空书源搜索态。
+  void _toggleFeed(bool feed) {
+    setState(() {
+      _showFeed = feed;
+      if (feed) {
+        _searching = false;
+        _searchQuery = '';
+        _searchController.clear();
+      }
+    });
+  }
+
+  /// 首页模块卡片点击动作：真实分发到搜索 / 书籍详情 / 书源发现 / 浏览器。
+  Future<void> _onHomepageAction(HomepageItem item) async {
+    switch (item.action) {
+      case HomepageAction.search:
+        final kw = item.param('keyword').isNotEmpty
+            ? item.param('keyword')
+            : item.title;
+        await Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => SearchScreen(initialKeyword: kw)),
+        );
+        break;
+      case HomepageAction.book:
+        final name = item.param('bookName').isNotEmpty
+            ? item.param('bookName')
+            : item.title;
+        final book = Book(
+          name: name,
+          author: item.param('bookAuthor'),
+          coverUrl: item.param('cover').isEmpty ? null : item.param('cover'),
+          intro: item.param('intro').isEmpty ? null : item.param('intro'),
+          kind: item.param('kind').isEmpty ? null : item.param('kind'),
+          origin: item.param('origin').isEmpty ? null : item.param('origin'),
+          originName:
+              item.param('originName').isEmpty ? null : item.param('originName'),
+          bookUrl: item.param('bookUrl'),
+          noteUrl: item.param('bookUrl'),
+          lastChapter: item.param('lastChapter').isEmpty
+              ? null
+              : item.param('lastChapter'),
+          local: false,
+        );
+        await Navigator.push(
+          context,
+          MaterialPageRoute(builder: (_) => BookDetailScreen(book: book)),
+        );
+        break;
+      case HomepageAction.explore:
+        await _openHomepageExplore(item);
+        break;
+      case HomepageAction.url:
+        final url = item.param('url').isNotEmpty
+            ? item.param('url')
+            : item.param('bookUrl');
+        if (url.isNotEmpty) {
+          final uri = Uri.tryParse(url);
+          if (uri != null) {
+            await launchUrl(uri, mode: LaunchMode.externalApplication);
+          }
+        }
+        break;
+      case HomepageAction.none:
+        break;
+    }
+  }
+
+  /// 进入某书源的发现：按 sourceUrl 找书源 → 切回书源发现视图 → 打开分类/书籍。
+  Future<void> _openHomepageExplore(HomepageItem item) async {
+    final sourceUrl = item.param('sourceUrl');
+    BookSource? source;
+    if (sourceUrl.isNotEmpty) {
+      for (final s in _sources) {
+        if (s.bookSourceUrl == sourceUrl) {
+          source = s;
+          break;
+        }
+      }
+      source ??= await _db.getSource(sourceUrl);
+    }
+    if (source == null) {
+      _toggleFeed(false);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('未找到关联书源，已切换到书源发现')),
+        );
+      }
+      return;
+    }
+    setState(() => _showFeed = false);
+    await _selectSource(source);
+    final exploreUrl = item.param('exploreUrl');
+    if (exploreUrl.trim().isNotEmpty && mounted) {
+      await _openKind(ExploreKind(title: item.title, url: exploreUrl));
+    }
   }
 
   /// 发现页主体 —— 对齐 legado-E `fragment_explore.xml` + `item_find_book.xml`：
@@ -841,23 +983,12 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
   Widget _buildExploreList() {
     final visible = _visibleSources;
     if (visible.isEmpty) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(Icons.explore_off, size: 80, color: Colors.grey[400]),
-            const SizedBox(height: 16),
-            Text(_sources.isEmpty ? '暂无发现书源' : '没有匹配的发现内容',
-                style: const TextStyle(fontSize: 18)),
-            const SizedBox(height: 8),
-            Text(
-                _sources.isEmpty
-                    ? '请在「书源管理」中导入书源、配置发现地址并启用发现'
-                    : '换个关键词或分组试试',
-                style: const TextStyle(color: Colors.grey),
-                textAlign: TextAlign.center),
-          ],
-        ),
+      return AppEmptyState(
+        icon: Icons.explore_outlined,
+        title: _sources.isEmpty ? '暂无发现书源' : '没有匹配的发现内容',
+        message: _sources.isEmpty
+            ? '请在「书源管理」中导入书源、配置发现地址并启用发现'
+            : '换个关键词或分组试试',
       );
     }
     return RefreshIndicator(
@@ -907,10 +1038,10 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
                     child: CircularProgressIndicator(strokeWidth: 2)),
             ]),
             if (kinds == null && !loading)
-              const Padding(
-                padding: EdgeInsets.symmetric(vertical: 8),
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 8),
                 child: Text('未配置发现分类',
-                    style: TextStyle(fontSize: 12, color: Colors.grey)),
+                    style: TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.onSurfaceVariant)),
               ),
             if (urlKinds.isNotEmpty || controlKinds.isNotEmpty || errorKinds.isNotEmpty)
               Padding(
@@ -952,103 +1083,71 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
   }
 
   /// 书源卡片长按菜单（对齐 legado-E ExploreAdapter.showMenu / menu explore_item）
-  void _showSourceMenu(BookSource source) {
-    showModalBottomSheet(
-      context: context,
-      builder: (ctx) => SafeArea(
-        child: SingleChildScrollView(child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Padding(
-              padding: const EdgeInsets.all(16),
-              child: Text(source.bookSourceName,
-                  style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-            ),
-            ListTile(
-              leading: const Icon(Icons.refresh),
-              title: const Text('刷新'),
-              onTap: () async {
-                Navigator.pop(ctx);
-                await _engine.clearExploreKindsCache(source);
-                setState(() {
-                  _sourceKinds.remove(source.bookSourceUrl);
-                  _kindsLoading.add(source.bookSourceUrl);
-                });
-                await _reloadKindsFor(source);
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.search),
-              title: const Text('搜索书籍'),
-              onTap: () {
-                Navigator.pop(ctx);
-                Navigator.push(context, MaterialPageRoute(
-                  builder: (_) => SearchScreen(searchScope: SearchScope.fromSource(source).scope),
-                ));
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.login),
-              title: const Text('登录'),
-              onTap: () {
-                Navigator.pop(ctx);
-                Navigator.push(context, MaterialPageRoute(
-                  builder: (_) => SourceLoginScreen(source: source),
-                ));
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.vertical_align_top),
-              title: const Text('置顶'),
-              onTap: () async {
-                Navigator.pop(ctx);
-                source.customOrder = -1;
-                await _db.updateSource(source);
-                await _loadSources();
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.edit),
-              title: const Text('编辑书源'),
-              onTap: () {
-                Navigator.pop(ctx);
-                Navigator.push(context, MaterialPageRoute(
-                  builder: (_) => SourceEditScreen(source: source),
-                ));
-              },
-            ),
-            ListTile(
-              leading: Icon(Icons.delete_outline, color: Theme.of(ctx).colorScheme.error),
-              title: Text('删除书源', style: TextStyle(color: Theme.of(ctx).colorScheme.error)),
-              onTap: () async {
-                Navigator.pop(ctx);
-                final ok = await showDialog<bool>(
-                  context: context,
-                  builder: (c) => AlertDialog(
-                    title: const Text('删除书源'),
-                    content: Text('确定要删除「${source.bookSourceName}」吗？'),
-                    actions: [
-                      TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('取消')),
-                      FilledButton(
-                        style: FilledButton.styleFrom(
-                          backgroundColor: Theme.of(c).colorScheme.error,
-                          foregroundColor: Theme.of(c).colorScheme.onError,
-                        ),
-                        onPressed: () => Navigator.pop(c, true),
-                        child: const Text('删除'),
-                      ),
-                    ],
-                  ),
-                );
-                if (ok == true) {
-                  await _db.deleteSource(source.bookSourceUrl);
-                  await _loadSources();
-                }
-              },
-            ),
-          ],
-        )),
-      ),
+  Future<void> _showSourceMenu(BookSource source) async {
+    await showAppMenuSheet(
+      context,
+      title: source.bookSourceName,
+      items: [
+        AppMenuSheetItem(
+          title: '刷新',
+          icon: Icons.refresh_outlined,
+          onTap: () async {
+            await _engine.clearExploreKindsCache(source);
+            setState(() {
+              _sourceKinds.remove(source.bookSourceUrl);
+              _kindsLoading.add(source.bookSourceUrl);
+            });
+            await _reloadKindsFor(source);
+          },
+        ),
+        AppMenuSheetItem(
+          title: '搜索书籍',
+          icon: Icons.search_outlined,
+          onTap: () => Navigator.push(context, MaterialPageRoute(
+            builder: (_) => SearchScreen(searchScope: SearchScope.fromSource(source).scope),
+          )),
+        ),
+        AppMenuSheetItem(
+          title: '登录',
+          icon: Icons.login_outlined,
+          onTap: () => Navigator.push(context, MaterialPageRoute(
+            builder: (_) => SourceLoginScreen(source: source),
+          )),
+        ),
+        AppMenuSheetItem(
+          title: '置顶',
+          icon: Icons.vertical_align_top_outlined,
+          onTap: () async {
+            source.customOrder = -1;
+            await _db.updateSource(source);
+            await _loadSources();
+          },
+        ),
+        AppMenuSheetItem(
+          title: '编辑书源',
+          icon: Icons.edit_outlined,
+          onTap: () => Navigator.push(context, MaterialPageRoute(
+            builder: (_) => SourceEditScreen(source: source),
+          )),
+        ),
+        AppMenuSheetItem(
+          title: '删除书源',
+          icon: Icons.delete_outline,
+          onTap: () async {
+            final ok = await showAppConfirmDialog(
+              context,
+              title: '删除书源',
+              content: '确定要删除「${source.bookSourceName}」吗？',
+              confirmText: '删除',
+              danger: true,
+            );
+            if (ok) {
+              await _db.deleteSource(source.bookSourceUrl);
+              await _loadSources();
+            }
+          },
+        ),
+      ],
     );
   }
 
@@ -1131,18 +1230,7 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
       return const Center(child: CircularProgressIndicator());
     }
     if (_error != null && _exploreBooks.isEmpty) {
-      return Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const Icon(Icons.error_outline, size: 64, color: Colors.grey),
-            const SizedBox(height: 16),
-            Text('加载失败: $_error', style: const TextStyle(color: Colors.grey), textAlign: TextAlign.center),
-            const SizedBox(height: 16),
-            FilledButton(onPressed: _refresh, child: const Text('重试')),
-          ],
-        ),
-      );
+      return AppErrorState(message: '加载失败: $_error', onRetry: _refresh);
     }
     final books = _visibleBooks;
     return Column(
@@ -1156,7 +1244,7 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
               hintText: '过滤当前分类书籍...',
               prefixIcon: const Icon(Icons.search),
               suffixIcon: _searchController.text.isNotEmpty
-                  ? IconButton(icon: const Icon(Icons.clear), onPressed: () { _searchController.clear(); setState(() => _searchQuery = ''); })
+                  ? IconButton(icon: const Icon(Icons.clear_outlined), tooltip: '清除', onPressed: () { _searchController.clear(); setState(() => _searchQuery = ''); })
                   : null,
               border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
               isDense: true,
@@ -1204,7 +1292,7 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
           ],
         ),
         trailing: IconButton(
-          icon: const Icon(Icons.add),
+          icon: const Icon(Icons.add_outlined),
           tooltip: '加入书架',
           onPressed: () async {
             await context.read<BookProvider>().addBook(book.toBook());
@@ -1219,36 +1307,11 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
     );
   }
 
-  Widget _buildCover(SearchBook book) {
-    if (book.coverUrl != null && book.coverUrl!.isNotEmpty) {
-      // CachedNetworkImage：磁盘 + 内存缓存，并按设备像素比限制解码尺寸
-      final dpr = MediaQuery.of(context).devicePixelRatio;
-      return ClipRRect(
-        borderRadius: BorderRadius.circular(4),
-        child: CachedNetworkImage(
-          imageUrl: book.coverUrl!,
-          width: 48,
-          height: 66,
-          fit: BoxFit.cover,
-          memCacheWidth: (100 * dpr).round(),
-          memCacheHeight: (133 * dpr).round(),
-          placeholder: (_, __) => _defaultCover(book.name),
-          errorWidget: (_, __, ___) => _defaultCover(book.name),
-        ),
+  Widget _buildCover(SearchBook book) => BookCover(
+        name: book.name,
+        coverUrl: book.coverUrl,
+        width: 48,
+        height: 66,
+        radius: 4,
       );
-    }
-    return _defaultCover(book.name);
-  }
-
-  Widget _defaultCover(String name) {
-    // 默认占位色板：低饱和深色（与 Material 3 on-surface 体系协调）
-    const colors = [Color(0xFF5B6B76), Color(0xFF6E5F56), Color(0xFF4F6B5E), Color(0xFF575F7E), Color(0xFF7E5B57), Color(0xFF6B5B7E)];
-    final color = colors[name.hashCode.abs() % colors.length];
-    return Container(
-      width: 48, height: 66,
-      decoration: BoxDecoration(color: color, borderRadius: BorderRadius.circular(4)),
-      child: Center(child: Padding(padding: const EdgeInsets.all(4), child: Text(name, maxLines: 3, textAlign: TextAlign.center, overflow: TextOverflow.ellipsis,
-        style: const TextStyle(color: Colors.white, fontSize: 9, fontWeight: FontWeight.bold)))),
-    );
-  }
 }

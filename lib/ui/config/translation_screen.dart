@@ -97,7 +97,7 @@ class _TranslationScreenState extends State<TranslationScreen> {
           ),
         ),
         const Divider(),
-        const Padding(padding: EdgeInsets.fromLTRB(16, 12, 16, 4), child: Text('自定义端点（留空使用免费谷歌翻译）', style: TextStyle(fontSize: 12, color: Colors.grey))),
+        Padding(padding: const EdgeInsets.fromLTRB(16, 12, 16, 4), child: Text('自定义端点（留空使用免费谷歌翻译）', style: TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.onSurfaceVariant))),
         Padding(padding: const EdgeInsets.symmetric(horizontal: 16), child: TextField(controller: _apiUrlController, decoration: const InputDecoration(labelText: 'API URL，可用 {text}/{from}/{to}/{key}', border: OutlineInputBorder()))),
         const SizedBox(height: 12),
         Padding(padding: const EdgeInsets.symmetric(horizontal: 16), child: TextField(controller: _apiKeyController, decoration: const InputDecoration(labelText: 'API Key（可选）', border: OutlineInputBorder()))),

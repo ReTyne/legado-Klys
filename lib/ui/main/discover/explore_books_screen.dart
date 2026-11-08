@@ -5,6 +5,7 @@ import 'package:legado_md3/data/model/search_book.dart';
 import 'package:legado_md3/help/source/source_engine.dart';
 import 'package:legado_md3/di/book_provider.dart';
 import 'package:legado_md3/ui/book/reader_router.dart';
+import 'package:legado_md3/ui/widgets/app_widgets.dart';
 
 /// 发现书籍列表页：给定书源与发现 URL，拉取并分页展示书籍。
 /// 首页模块卡片、分类入口等都可跳转到这里。
@@ -98,14 +99,24 @@ class _ExploreBooksScreenState extends State<ExploreBooksScreen> {
     return Scaffold(
       appBar: AppBar(
         title: Text(widget.title, maxLines: 1, overflow: TextOverflow.ellipsis),
-        actions: [IconButton(icon: const Icon(Icons.refresh), onPressed: () { _page = 1; _fetch(append: false); })],
+        actions: [IconButton(icon: const Icon(Icons.refresh_outlined), tooltip: '刷新', onPressed: () { _page = 1; _fetch(append: false); })],
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : _error != null && _books.isEmpty
-              ? Center(child: Text('加载失败：$_error'))
+              ? AppErrorState(
+                  message: '$_error',
+                  onRetry: () {
+                    _page = 1;
+                    _fetch(append: false);
+                  },
+                )
               : _books.isEmpty
-                  ? const Center(child: Text('暂无书籍'))
+                  ? const AppEmptyState(
+                      icon: Icons.menu_book_outlined,
+                      title: '暂无书籍',
+                      message: '该发现分类暂时没有内容，可下拉刷新或返回换一个分类',
+                    )
                   : ListView.builder(
                       controller: _scroll,
                       padding: const EdgeInsets.all(12),

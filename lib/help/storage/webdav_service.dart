@@ -33,17 +33,28 @@ class WebDavService {
     }
   }
 
-  /// 上传备份
-  Future<bool> uploadBackup(String fileName, List<int> data) async {
+  /// 上传备份。[dir] 可指定远程子目录（默认 legado_backup），
+  /// 每书进度复用本方法写入 `bookProgress/`（对齐 Sigma AppWebDav.bookProgressUrl）。
+  Future<bool> uploadBackup(
+    String fileName,
+    List<int> data, {
+    String dir = 'legado_backup',
+  }) async {
     try {
       if (_baseUrl == null) return false;
-      final url = '${_baseUrl}legado_backup/$fileName';
-      // 确保目录存在
+      var d = dir.trim();
+      if (d.isEmpty) d = 'legado_backup';
+      if (!d.endsWith('/')) d = '$d/';
+      if (d.startsWith('/')) d = d.substring(1);
+      final url = '$_baseUrl$d$fileName';
+      // 确保目录存在（已存在时服务端返回 405，忽略）
       try {
-        await _dio.request('${_baseUrl}legado_backup/', options: Options(method: 'MKCOL'));
+        await _dio.request('$_baseUrl$d', options: Options(method: 'MKCOL'));
       } catch (_) {}
       final response = await _dio.put(url, data: data);
-      return response.statusCode == 200 || response.statusCode == 201;
+      return response.statusCode == 200 ||
+          response.statusCode == 201 ||
+          response.statusCode == 204;
     } catch (e) {
       return false;
     }
@@ -198,6 +209,74 @@ class WebDavService {
     if (data == null) return null;
     final json = jsonDecode(utf8.decode(data));
     return (json['progress'] as List).cast<Map<String, dynamic>>();
+  }
+
+  /// 单书进度文件名（对齐 Sigma `AppWebDav.getProgressFileName`）：
+  /// `${name}_${author}` 先规范化文件名非法字符，再把 URL 保留字符百分号编码，
+  /// 与 Kotlin `normalizeFileName()` + `UrlUtil.replaceReservedChar()` 同序。
+  static String progressFileName(String name, String author) {
+    final normalized =
+        '${name}_$author'.replaceAll(RegExp(r'[\\/:*?"<>|]'), '_');
+    const reserved = <String, String>{
+      '%': '%25',
+      ' ': '%20',
+      '"': '%22',
+      '#': '%23',
+      '&': '%26',
+      '(': '%28',
+      ')': '%29',
+      '+': '%2B',
+      ',': '%2C',
+      '/': '%2F',
+      ':': '%3A',
+      ';': '%3B',
+      '<': '%3C',
+      '=': '%3D',
+      '>': '%3E',
+      '?': '%3F',
+      '@': '%40',
+      '\\': '%5C',
+      '|': '%7C',
+    };
+    var out = normalized;
+    // '%' 必须先替换，避免后续生成的百分号被二次编码
+    reserved.forEach((k, v) => out = out.replaceAll(k, v));
+    return '$out.json';
+  }
+
+  /// 上传单书进度到 `bookProgress/`（复用 uploadBackup 的 dir 参数）。
+  /// [progress] 为进度字段（如 BookProgress.toMap() / book 的 durChapter* 字段），
+  /// 会自动补上 name / author / time。
+  Future<bool> uploadBookProgress(
+    String name,
+    String author,
+    Map<String, dynamic> progress,
+  ) async {
+    final payload = <String, dynamic>{
+      ...progress,
+      'name': name,
+      'author': author,
+      'time': DateTime.now().millisecondsSinceEpoch,
+    };
+    return uploadBackup(
+      progressFileName(name, author),
+      utf8.encode(jsonEncode(payload)),
+      dir: 'bookProgress',
+    );
+  }
+
+  /// 下载单书进度（复用 downloadFile 读取 `bookProgress/` 目录）。
+  Future<Map<String, dynamic>?> downloadBookProgress(
+      String name, String author) async {
+    final data =
+        await downloadFile('bookProgress', progressFileName(name, author));
+    if (data == null) return null;
+    try {
+      final decoded = jsonDecode(utf8.decode(data));
+      return decoded is Map ? Map<String, dynamic>.from(decoded) : null;
+    } catch (_) {
+      return null;
+    }
   }
 
   /// 同步书籍

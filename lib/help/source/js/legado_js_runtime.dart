@@ -26,6 +26,7 @@ import 'package:legado_md3/ui/book/source/verification_code_screen.dart';
 import 'package:legado_md3/ui/browser/browser_screen.dart';
 import 'legado_bridge_js.dart';
 import 'aes_js_lib.dart';
+import 'headless_webview.dart';
 import '../js_mini_eval.dart';
 
 import 'js_source.dart';
@@ -442,6 +443,21 @@ class WebViewLegadoJs implements LegadoJs {
     final uri = request.url;
     final url = uri.toString();
 
+    // 自定义 legado:// 协议上的同步 XHR（POST + X-Legado-Body 等自定义头）
+    // 可能触发 CORS 预检 OPTIONS：统一放行，避免预检落进具体 handler 导致
+    // 真正的 POST 请求被浏览器拦下（与下方 http 分支的 OPTIONS 处理同义）。
+    if (url.startsWith('legado://') &&
+        (request.method ?? 'GET').toUpperCase() == 'OPTIONS') {
+      return iw.WebResourceResponse(
+        statusCode: 200,
+        reasonPhrase: 'OK',
+        contentType: 'text/plain',
+        contentEncoding: 'utf-8',
+        data: Uint8List(0),
+        headers: _corsHeaders(),
+      );
+    }
+
     // 内部协议：zip 解压 / TTF 字体反爬 / 下载 / 分享（书源 JS 通过同步 XHR 调用）
     if (url.startsWith('legado://zip')) return await _handleZip(uri);
     if (url.startsWith('legado://ttf')) return await _handleTtf(request);
@@ -455,6 +471,11 @@ class WebViewLegadoJs implements LegadoJs {
     // 对齐 E 的 java.openVideoPlayer：书源脚本发同步 XHR 到该协议，转交
     // MethodChannel('legado/video') 由 Kotlin 原生播放器打开（互相联系）。
     if (url.startsWith('legado://video')) return await _handleVideo(uri);
+    // java.ajaxAll 批量并发 / java.webViewGetOverrideUrl 重定向嗅探
+    if (url.startsWith('legado://ajaxall')) return await _handleAjaxAll(request);
+    if (url.startsWith('legado://overrideurl')) {
+      return await _handleWebViewOverride(request);
+    }
 
     if (!url.startsWith('http')) return null;
     final method = (request.method ?? 'GET').toUpperCase();
@@ -711,6 +732,154 @@ class WebViewLegadoJs implements LegadoJs {
       return _textResponse(ok ? 'true' : 'false', 200);
     } catch (e) {
       return _textResponse('false', 200);
+    }
+  }
+
+  /// legado://ajaxall 协议：java.ajaxAll(urlList) 的真并发实现。
+  /// 书源 JS 把整批请求作为 JSON POST 到这里；Dart 侧用 Future.wait 同时
+  /// 发起所有 HTTP 请求，Future.wait 保证结果顺序与入参一致，最后按序
+  /// 回传 JSON 数组（每项含 url/body/code/message/headers）。
+  Future<iw.WebResourceResponse> _handleAjaxAll(
+      iw.WebResourceRequest request) async {
+    final b64 =
+        (request.headers ?? const <String, String>{})['X-Legado-Body'] ?? '';
+    List<dynamic> items;
+    try {
+      final decoded = jsonDecode(utf8.decode(base64Decode(b64)));
+      items = decoded is List ? decoded : const <dynamic>[];
+    } catch (_) {
+      return _textResponse('[]', 400);
+    }
+    // 为每个 URL 建独立 Future；Future.wait 真并发，单项失败不影响整批。
+    final futures = <Future<Map<String, dynamic>>>[
+      for (final item in items) _fetchOneAjax(item),
+    ];
+    final results = await Future.wait(futures);
+    // 带 CORS 头：POST + 自定义头场景下 XHR 才能读到响应体
+    return iw.WebResourceResponse(
+      statusCode: 200,
+      reasonPhrase: 'OK',
+      contentType: 'application/json; charset=utf-8',
+      contentEncoding: 'utf-8',
+      data: Uint8List.fromList(utf8.encode(jsonEncode(results))),
+      headers: _corsHeaders(),
+    );
+  }
+
+  /// 单个 ajaxAll 请求：复用与 _intercept 相同的 Dio / CookieJar / 持久 Cookie
+  /// 逻辑，失败时返回 502 项（对齐 legado 单条请求失败仍占位返回）。
+  Future<Map<String, dynamic>> _fetchOneAjax(dynamic item) async {
+    final map = item is Map ? item : const <String, dynamic>{};
+    final url = map['url']?.toString() ?? '';
+    final method = (map['method']?.toString() ?? 'GET').toUpperCase();
+    if (url.isEmpty || !url.startsWith('http')) {
+      return <String, dynamic>{
+        'url': url,
+        'body': '',
+        'code': 502,
+        'message': 'Error',
+        'headers': <String, dynamic>{},
+      };
+    }
+    final headers = <String, String>{};
+    final h = map['headers'];
+    if (h is Map) {
+      h.forEach((k, v) => headers[k.toString()] = v?.toString() ?? '');
+    }
+    if (!headers.keys.any((k) => k.toLowerCase() == 'cookie')) {
+      final ck = CookieManager().cookieHeader(url);
+      if (ck != null && ck.isNotEmpty) headers['Cookie'] = ck;
+    }
+    dynamic bodyData;
+    final rawBody = map['body'];
+    if (rawBody != null && method != 'GET' && method != 'HEAD') {
+      bodyData = rawBody is String ? rawBody : jsonEncode(rawBody);
+    }
+    try {
+      final resp = await _dio.request<List<int>>(
+        url,
+        data: bodyData,
+        options: Options(
+          method: method,
+          headers: headers,
+          responseType: ResponseType.bytes,
+        ),
+      );
+      final setCookies = resp.headers.map['set-cookie'] ?? const <String>[];
+      CookieManager().saveFromResponse(url, setCookies);
+      if (_persistCookie) {
+        final ck = CookieManager().cookieHeader(url);
+        if (ck != null && ck.isNotEmpty) {
+          await _db.saveCookie(Uri.parse(url).host, ck);
+        }
+      }
+      final code = resp.statusCode ?? 200;
+      final outHeaders = <String, dynamic>{};
+      resp.headers.map.forEach((k, vals) => outHeaders[k] = vals.join(', '));
+      if (setCookies.isNotEmpty) {
+        outHeaders['X-Set-Cookie'] = setCookies.join('\n');
+      }
+      return <String, dynamic>{
+        'url': url,
+        'body': utf8.decode(
+            Uint8List.fromList(resp.data ?? const <int>[]),
+            allowMalformed: true),
+        'code': code,
+        'message': _reason(code),
+        'headers': outHeaders,
+      };
+    } catch (e) {
+      return <String, dynamic>{
+        'url': url,
+        'body': '请求失败: $e',
+        'code': 502,
+        'message': 'Error',
+        'headers': <String, dynamic>{},
+      };
+    }
+  }
+
+  /// legado://overrideurl 协议：java.webViewGetOverrideUrl 的真实实现。
+  /// 复用 HeadlessWebViewFetcher 的无头 WebView 加载页面，捕获匹配正则的
+  /// 请求 URL；无命中时返回页面最终落地 URL（重定向结果）。
+  Future<iw.WebResourceResponse> _handleWebViewOverride(
+      iw.WebResourceRequest request) async {
+    try {
+      final b64 =
+          (request.headers ?? const <String, String>{})['X-Legado-Body'] ?? '';
+      final m = jsonDecode(utf8.decode(base64Decode(b64)))
+          as Map<String, dynamic>;
+      final url = m['url']?.toString() ?? '';
+      if (url.isEmpty) return _textResponse('', 400);
+      final headers = <String, String>{};
+      final raw = source.header;
+      if (raw != null && raw.trim().isNotEmpty) {
+        try {
+          final v = jsonDecode(raw);
+          if (v is Map) {
+            v.forEach((k, val) => headers[k.toString()] = val?.toString() ?? '');
+          }
+        } catch (_) {}
+      }
+      final result = await HeadlessWebViewFetcher.fetchOverrideUrl(
+        url: url,
+        html: m['html']?.toString() ?? '',
+        urlRegex: m['regex']?.toString() ?? '',
+        injectJs: m['js']?.toString() ?? '',
+        cacheFirst: m['cacheFirst'] == true,
+        delayMs: (m['delayMs'] as num?)?.toInt() ?? 0,
+        headers: headers.isEmpty ? null : headers,
+      );
+      return iw.WebResourceResponse(
+        statusCode: 200,
+        reasonPhrase: 'OK',
+        contentType: 'text/plain; charset=utf-8',
+        contentEncoding: 'utf-8',
+        data: Uint8List.fromList(utf8.encode(result)),
+        headers: _corsHeaders(),
+      );
+    } catch (_) {
+      return _textResponse('', 502);
     }
   }
 

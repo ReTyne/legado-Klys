@@ -1,12 +1,19 @@
 import 'package:flutter/material.dart';
+
 import 'package:legado_md3/help/config/app_config.dart';
+import 'package:legado_md3/ui/widgets/app_widgets.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-/// 封面配置页面 - 对齐原版CoverConfigScreen
+/// 封面配置页面 - 对齐原版 CoverConfigFragment。
 ///
-/// useDefaultCover / coverShowName / coverShowAuthor 三个开关统一经
-/// [AppPrefs] 读写（键名 cover_useDefault / cover_showName / cover_showAuthor 不变），
-/// 消费点：bookshelf_screen.dart 的 _ViewCfg（无封面占位、封面叠加书名/作者）。
+/// 取舍结论（对照 `pref_config_cover.xml` 的 6 项下线配置）：
+/// 保留 4 项「有真实消费方」的设置（cover_onlyWifi / bs_coverShadow /
+/// cover_showName / cover_showAuthor）；其余 6 项**从 UI 与模型一并下线**：
+/// coverRule / useDefaultCover / defaultCover / defaultCoverDark /
+/// coverShowNameN / coverShowAuthorN。原因是书架统一改用 `DefaultCover` /
+/// `BookCover` 固定色表 + MD3 单主题，无昼夜双套封面配色，这些项既无渲染
+/// 消费方也无独立语义，继续暴露即为死开关。页面提供「清理残留配置」动作，
+/// 真实删除历史遗留的 SharedPreferences 键，而非只留文字说明。
 class CoverConfigScreen extends StatefulWidget {
   const CoverConfigScreen({super.key});
 
@@ -16,15 +23,13 @@ class CoverConfigScreen extends StatefulWidget {
 
 class _CoverConfigScreenState extends State<CoverConfigScreen> {
   bool _onlyWifi = false;
-  bool _useDefaultCover = false;
   bool _coverShadow = true;
   bool _showName = true;
   bool _showAuthor = true;
-  bool _nightShowName = true;
-  bool _nightShowAuthor = true;
-  int _defaultColor = 0xFF607D8B;
-  int _dayTextColor = 0xFFFFFFFF;
-  int _nightTextColor = 0xFFB0BEC5;
+
+  /// 由 NetworkMonitor.isWifi（原生 ConnectivityManager）精确判断。
+  static const String _onlyWifiNote =
+      '移动数据下不加载网络封面，改用默认封面（Android 原生判断）';
 
   @override
   void initState() {
@@ -34,75 +39,133 @@ class _CoverConfigScreenState extends State<CoverConfigScreen> {
 
   Future<void> _load() async {
     final p = await SharedPreferences.getInstance();
-    // 三项封面开关统一走 AppPrefs 访问层（键名与 bookshelf_screen 消费方一致）
     AppPrefs.loadFrom(p);
+    if (!mounted) return;
     setState(() {
       _onlyWifi = p.getBool('cover_onlyWifi') ?? false;
-      _useDefaultCover = AppPrefs.useDefaultCover;
-      // 书架封面阴影读取的键是 bs_coverShadow（bookshelf_screen._ViewCfg.coverShadow）
       _coverShadow = p.getBool('bs_coverShadow') ?? true;
       _showName = AppPrefs.coverShowName;
       _showAuthor = AppPrefs.coverShowAuthor;
-      _nightShowName = p.getBool('cover_nightShowName') ?? true;
-      _nightShowAuthor = p.getBool('cover_nightShowAuthor') ?? true;
-      _defaultColor = p.getInt('cover_defaultColor') ?? 0xFF607D8B;
-      _dayTextColor = p.getInt('cover_dayTextColor') ?? 0xFFFFFFFF;
-      _nightTextColor = p.getInt('cover_nightTextColor') ?? 0xFFB0BEC5;
     });
   }
 
-  Future<void> _set(String key, dynamic v) async {
+  Future<void> _setBool(String key, bool v) async {
     final p = await SharedPreferences.getInstance();
-    if (v is bool) await p.setBool(key, v);
-    if (v is int) await p.setInt(key, v);
+    await p.setBool(key, v);
   }
 
-  Widget _section(String t) => Padding(padding: const EdgeInsets.fromLTRB(16, 20, 16, 8),
-    child: Text(t, style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Theme.of(context).colorScheme.primary)));
+  /// 已下线的封面配置键（历史遗留，可能仍写在本机 SharedPreferences 中）。
+  static const List<String> _retiredKeys = <String>[
+    'coverRule',
+    'cover_useDefault',
+    'cover_defaultColor',
+    'cover_dayTextColor',
+    'cover_nightTextColor',
+    'cover_showNameN',
+    'cover_showAuthorN',
+  ];
 
-  Widget _sw(String t, bool v, ValueChanged<bool> on, {String? sub}) =>
-    SwitchListTile(dense: true, contentPadding: const EdgeInsets.symmetric(horizontal: 16),
-      title: Text(t, style: const TextStyle(fontSize: 14)),
-      subtitle: sub != null ? Text(sub, style: const TextStyle(fontSize: 11)) : null,
-      value: v, onChanged: on);
-
-  Future<void> _pickColor(int current, ValueChanged<int> onSave) async {
-    const colors = [0xFF607D8B, 0xFFE57373, 0xFFFFB74D, 0xFFFFF176, 0xFF81C784, 0xFF64B5F6, 0xFFBA68C8, 0xFFFFFFFF, 0xFF424242];
-    showDialog(context: context, builder: (ctx) => AlertDialog(
-      title: const Text('选择颜色'),
-      content: Wrap(spacing: 12, runSpacing: 12, children: colors.map((colorVal) => GestureDetector(
-        onTap: () { Navigator.pop(ctx); onSave(colorVal); },
-        child: Container(width: 40, height: 40, decoration: BoxDecoration(color: Color(colorVal), shape: BoxShape.circle, border: Border.all(color: colorVal == current ? Colors.black : Colors.grey, width: colorVal == current ? 3 : 1))),
-      )).toList()),
-    ));
+  /// 真实清理：删除 6 项下线配置对应的残留键，避免「字段已从模型删除但仍占存储」。
+  Future<void> _purgeLegacyKeys() async {
+    final ok = await showAppConfirmDialog(
+      context,
+      title: '清理残留封面配置',
+      content: '将删除 ${_retiredKeys.length} 个已下线且无消费方的旧封面配置键。',
+      confirmText: '清理',
+    );
+    if (!ok) return;
+    final p = await SharedPreferences.getInstance();
+    for (final key in _retiredKeys) {
+      await p.remove(key);
+    }
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('已清理 ${_retiredKeys.length} 个残留配置键')));
   }
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return Scaffold(
       appBar: AppBar(title: const Text('封面配置')),
-      body: ListView(children: [
-        _section('加载'),
-        _sw('仅WiFi下加载封面', _onlyWifi, (v) { setState(() => _onlyWifi = v); _set('cover_onlyWifi', v); }),
-        ListTile(dense: true, title: const Text('封面规则'), subtitle: const Text('自定义封面获取规则', style: TextStyle(fontSize: 11)),
-          trailing: const Icon(Icons.chevron_right),
-          onTap: () => showDialog(context: context, builder: (c) => const AlertDialog(title: Text('封面规则'), content: Text('封面规则用于在书籍无封面时，根据书名/作者从网络搜索匹配封面。')))),
-        _sw('使用默认封面', _useDefaultCover, (v) { setState(() => _useDefaultCover = v); AppPrefs.useDefaultCover = v; }, sub: '无封面时显示生成的默认封面（cover_useDefault）'),
-        _sw('封面显示阴影', _coverShadow, (v) { setState(() => _coverShadow = v); _set('bs_coverShadow', v); }, sub: '书架封面阴影（bs_coverShadow）'),
-        ListTile(dense: true, title: const Text('默认封面颜色'), trailing: CircleAvatar(backgroundColor: Color(_defaultColor), radius: 14),
-          onTap: () => _pickColor(_defaultColor, (c) { setState(() => _defaultColor = c); _set('cover_defaultColor', c); })),
-        _section('日间'),
-        ListTile(dense: true, title: const Text('文字颜色'), trailing: CircleAvatar(backgroundColor: Color(_dayTextColor), radius: 14),
-          onTap: () => _pickColor(_dayTextColor, (c) { setState(() => _dayTextColor = c); _set('cover_dayTextColor', c); })),
-        _sw('显示书名', _showName, (v) { setState(() => _showName = v); AppPrefs.coverShowName = v; }),
-        _sw('显示作者', _showAuthor, (v) { setState(() => _showAuthor = v); AppPrefs.coverShowAuthor = v; }),
-        _section('夜间'),
-        ListTile(dense: true, title: const Text('文字颜色'), trailing: CircleAvatar(backgroundColor: Color(_nightTextColor), radius: 14),
-          onTap: () => _pickColor(_nightTextColor, (c) { setState(() => _nightTextColor = c); _set('cover_nightTextColor', c); })),
-        _sw('显示书名', _nightShowName, (v) { setState(() => _nightShowName = v); _set('cover_nightShowName', v); }),
-        _sw('显示作者', _nightShowAuthor, (v) { setState(() => _nightShowAuthor = v); _set('cover_nightShowAuthor', v); }),
-        const SizedBox(height: 24),
-      ]),
+      body: ListView(
+        children: [
+          AppSettingsGroup(
+            title: '网络封面',
+            children: [
+              AppSwitchTile(
+                title: '仅 WiFi 下加载网络封面',
+                subtitle: _onlyWifiNote,
+                value: _onlyWifi,
+                onChanged: (v) {
+                  setState(() => _onlyWifi = v);
+                  _setBool('cover_onlyWifi', v);
+                },
+              ),
+              AppSwitchTile(
+                title: '封面显示阴影',
+                subtitle: '书架封面阴影（bs_coverShadow）',
+                value: _coverShadow,
+                onChanged: (v) {
+                  setState(() => _coverShadow = v);
+                  _setBool('bs_coverShadow', v);
+                },
+              ),
+            ],
+          ),
+          AppSettingsGroup(
+            title: '封面文字',
+            children: [
+              AppSwitchTile(
+                title: '显示书名',
+                subtitle: '无封面占位上叠加书名（cover_showName）',
+                value: _showName,
+                onChanged: (v) {
+                  setState(() => _showName = v);
+                  AppPrefs.coverShowName = v;
+                },
+              ),
+              AppSwitchTile(
+                title: '显示作者',
+                subtitle: '无封面占位上叠加作者（cover_showAuthor）',
+                value: _showAuthor,
+                onChanged: (v) {
+                  setState(() => _showAuthor = v);
+                  AppPrefs.coverShowAuthor = v;
+                },
+              ),
+            ],
+          ),
+          AppSettingsGroup(
+            title: '已下线配置（取舍说明）',
+            children: [
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+                child: Text(
+                  '下列 6 项已从 UI 与模型下线（无消费方 / MD3 单主题无昼夜配色）：\n'
+                  '1. coverRule —— 封面 JS 规则，无渲染消费方\n'
+                  '2. useDefaultCover(cover_useDefault) —— 书架统一用 DefaultCover\n'
+                  '3. defaultCover(cover_defaultColor) —— 固定色表，无自定义底色\n'
+                  '4. defaultCoverDark(cover_nightTextColor) —— 无夜间文字色语义\n'
+                  '5. coverShowNameN(cover_showNameN) —— 合并到 cover_showName\n'
+                  '6. coverShowAuthorN(cover_showAuthorN) —— 合并到 cover_showAuthor',
+                  style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant, height: 1.6),
+                ),
+              ),
+              ListTile(
+                dense: true,
+                leading: const Icon(Icons.delete_sweep_outlined),
+                title: const Text('清理残留的旧封面配置'),
+                subtitle: const Text('删除上述已下线的 SharedPreferences 键',
+                    style: TextStyle(fontSize: 11)),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: _purgeLegacyKeys,
+              ),
+            ],
+          ),
+          const SizedBox(height: 16),
+        ],
+      ),
     );
   }
 }

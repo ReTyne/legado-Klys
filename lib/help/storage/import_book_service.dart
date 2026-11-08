@@ -1,7 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
 
-import 'package:archive/archive.dart';
 import 'package:crypto/crypto.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
@@ -13,6 +12,7 @@ import 'package:legado_md3/help/storage/epub_parser.dart';
 import 'package:legado_md3/help/storage/umd_parser.dart';
 import 'package:legado_md3/help/storage/mobi_parser.dart';
 import 'package:legado_md3/help/storage/local_book_parser.dart';
+import 'package:legado_md3/ui/book/epub/local_book_import_helper.dart';
 
 /// 本地书籍导入结果
 class ImportResult {
@@ -28,10 +28,11 @@ class ImportResult {
 ///
 /// 对齐 legado-E `LocalBook.importFile/importArchiveFile`：
 /// * PDF 以「单章正文 + fileName」入库，阅读路由据此分流到 PDF 阅读器；
-/// * 压缩包（zip）解压后按 `bookFileRegex`（txt|epub|umd|pdf|mobi|azw3|azw）
+/// * 压缩包（zip/rar/7z）解压后按 `bookFileRegex`（txt|epub|umd|pdf|mobi|azw3|azw）
 ///   过滤，逐本导入，`origin` 标记为 `local::<压缩包名>`；
-/// * rar/7z 压缩包需原生解压支持（见 `legado/archive` 平台通道），
-///   Dart 侧会给出明确错误而不是静默失败。
+/// * rar/7z 由 `ArchiveImportHelper` 路由到 `legado/archive` 原生解码器
+///   （BootstrapService 启动期注册），zip 用 Dart archive 包；
+/// * MOBI 若为 HUFF/CDIC 高压缩，MobiParser 解析失败时回退原生 Huffman 解码。
 class ImportBookService {
   final DatabaseService _db = DatabaseService();
   final TxtParserService _txt = TxtParserService();
@@ -60,17 +61,23 @@ class ImportBookService {
   }
 
   /// 压缩包导入：解压 → 过滤书籍文件 → 逐本导入（E: importArchiveFile）。
+  ///
+  /// zip 走 Dart `archive` 包；rar/7z 走 `ArchiveImportHelper` 注册的
+  /// `legado/archive` 原生解码器（BootstrapService 启动期注入）。
   Future<ImportResult> _importArchive(String path, String archiveName) async {
-    if (!archiveName.toLowerCase().endsWith('.zip')) {
-      throw '暂不支持 ${archiveName.split('.').last.toUpperCase()} 压缩包（仅支持 ZIP；RAR/7z 需在 Android 端启用原生解压）';
+    final kind = await ArchiveImportHelper.detectFile(path);
+    if (kind == ArchiveKind.unknown) {
+      throw '无法识别的压缩包格式（支持 zip/rar/7z）：$archiveName';
     }
-    final bytes = await File(path).readAsBytes();
-    final Archive archive;
+    final List<ArchiveEntry> entries;
     try {
-      archive = ZipDecoder().decodeBytes(bytes);
+      entries = await ArchiveImportHelper.open(path);
+    } on ArchiveImportException catch (e) {
+      throw e.message;
     } catch (_) {
-      throw 'ZIP 解压失败（文件可能已损坏）';
+      throw '压缩包解压失败（文件可能已损坏）：$archiveName';
     }
+
     // 解压到 documents/legado_files/unzip/<md5(压缩包名)>/，避免重复解压互相覆盖
     final dir = await getApplicationDocumentsDirectory();
     final outDir = Directory(
@@ -78,13 +85,12 @@ class ImportBookService {
     if (!outDir.existsSync()) outDir.createSync(recursive: true);
 
     final extracted = <File>[];
-    for (final f in archive.files) {
-      if (!f.isFile) continue;
-      final name = f.name.split('/').last; // 丢掉压缩包内目录层级
-      if (!_bookFileRegex.hasMatch(name)) continue;
+    for (final entry in entries) {
+      // 用统一正则过滤（含 .azw），避免与 ArchiveEntry.isBookFile 的硬编码列表漂移
+      if (!_bookFileRegex.hasMatch(entry.name)) continue;
+      final name = entry.name.split('/').last; // 丢掉压缩包内目录层级
       final out = File('${outDir.path}/$name');
-      final data = f.content;
-      await out.writeAsBytes(data is List<int> ? data : const <int>[]);
+      await out.writeAsBytes(entry.bytes);
       extracted.add(out);
     }
     if (extracted.isEmpty) {
@@ -151,8 +157,34 @@ class ImportBookService {
       chapters = res.chapters;
       book.lastChapter = chapters.isNotEmpty ? chapters.last.title : null;
     } else if (ext == 'mobi' || ext == 'azw' || ext == 'azw3') {
-      final res = await MobiParser.parse(path);
-      if (res == null) throw 'MOBI 解析失败（仅支持 KF7/PalmDOC，KF8 高压缩请先转 EPUB）';
+      var res = await MobiParser.parse(path);
+      if (res == null) {
+        // HUFF/CDIC 高压缩（PalmDOC compression=17480）：走原生 Huffman 解码，
+        // 解码文本按 TXT 规则切章，形成真实可用的 Book，而非抛错拒绝导入。
+        final text = await MobiHuffDecompressor.decompressFile(path);
+        if (text != null && text.trim().isNotEmpty) {
+          final info = _txt.extractBookInfo(text, fileName);
+          var cs = _txt.parseChapters(text);
+          final b = Book(
+            name: info['name'] ?? _stripExt(fileName),
+            author: info['author'] ?? '未知',
+            intro: info['intro'],
+            origin: 'local', originName: '本地书籍',
+            noteUrl: 'local://$path', bookUrl: 'local://$path', type: 1,
+            local: true,
+            wordCount: text.length,
+          );
+          if (b.splitLongChapter) {
+            cs = TxtParserService.splitLongChapters(cs,
+                fullText: const LineSplitter().convert(text).join('\n'));
+          }
+          b.lastChapter = cs.isNotEmpty ? cs.last.title : null;
+          res = (book: b, chapters: cs);
+        }
+      }
+      if (res == null) {
+        throw 'MOBI 解析失败（KF7/PalmDOC/HUFF-CDIC 均未成功，KF8 请先转 EPUB）';
+      }
       book = res.book
         ..origin = 'local'
         ..originName = '本地书籍'

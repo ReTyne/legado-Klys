@@ -21,6 +21,10 @@ class TextPaginator {
     required double maxWidth,
     required double maxHeight,
     required TextStyle style,
+    // 第十轮：ReadConfig.readBodyToLh（正文带到行高）消费点。
+    // true 时段间空行计入页高消耗（默认，保持原行为）；false 时段间空行
+    // 只保留换行语义、不占测量高度。
+    bool gapLinesConsumeHeight = true,
   }) {
     if (paragraphs.isEmpty) return const [''];
     if (maxWidth <= 0 || maxHeight <= 0) return [paragraphs.join('\n\n')];
@@ -38,12 +42,12 @@ class TextPaginator {
       }
     }
 
-    void addLine(String line) {
-      if (used + lineHeight > maxHeight && current.isNotEmpty) {
+    void addLine(String line, {bool consume = true}) {
+      if (consume && used + lineHeight > maxHeight && current.isNotEmpty) {
         flush();
       }
       current.add(line);
-      used += lineHeight;
+      if (consume) used += lineHeight;
     }
 
     for (var i = 0; i < paragraphs.length; i++) {
@@ -51,7 +55,7 @@ class TextPaginator {
       final lines = _measureLines(para, style, maxWidth);
       if (i > 0) {
         for (var g = 0; g < paraGapLines; g++) {
-          addLine('');
+          addLine('', consume: gapLinesConsumeHeight);
         }
       }
       for (final line in lines) {

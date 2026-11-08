@@ -60,3 +60,10 @@ ios/Runner.xcworkspace/xcuserdata/
 # 构建产物
 release_apk/
 *.apk
+
+# Android / Gradle 构建输出（CI 或本地产物，勿提交）
+/android/build/
+/android/.gradle/
+/android/app/build/
+/android/captures/
+/android/.cxx/

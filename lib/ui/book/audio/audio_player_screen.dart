@@ -7,7 +7,9 @@ import 'package:legado_md3/data/model/book.dart';
 import 'package:legado_md3/data/model/book_chapter.dart';
 import 'package:legado_md3/data/local/app_database.dart';
 import 'package:legado_md3/help/audio/audio_playback_controller.dart';
+import 'package:legado_md3/help/bgm/bgm_service.dart';
 import 'package:legado_md3/help/readaloud/lrc_parser.dart';
+import 'package:legado_md3/ui/book/audio/bgm_panel.dart';
 
 /// 有声书播放器界面，对齐原版 AudioPlayActivity。
 ///
@@ -80,6 +82,9 @@ class _AudioPlayerScreenState extends State<AudioPlayerScreen> {
     super.initState();
     _restoring = _audio.hasSessionFor(widget.book);
     _bindStreams();
+    // 朗读/有声播放时 BGM 自动降音量（duck）
+    unawaited(BgmService.instance.load());
+    BgmService.instance.bindReadAloudProbe(() => _audio.isPlaying);
     _load();
   }
 
@@ -463,7 +468,9 @@ class _AudioPlayerScreenState extends State<AudioPlayerScreen> {
                             : null,
                         fontWeight: i == _lyricIndex ? FontWeight.w600 : null)),
                 leading: Text(_fmt(_lyrics[i].time),
-                    style: const TextStyle(fontSize: 11, color: Colors.grey)),
+                    style: TextStyle(
+                        fontSize: 11,
+                        color: Theme.of(context).colorScheme.onSurfaceVariant)),
                 onTap: () {
                   unawaited(_seekTo(_lyrics[i].time));
                   Navigator.pop(c);
@@ -568,6 +575,7 @@ class _AudioPlayerScreenState extends State<AudioPlayerScreen> {
     for (final s in _subs) {
       unawaited(s.cancel());
     }
+    BgmService.instance.bindReadAloudProbe(null);
     _sleepTimer?.cancel();
     // 后台播放：保留会话并交给 Android 前台服务 + 媒体通知栏
     unawaited(_audio.detach(
@@ -597,6 +605,10 @@ class _AudioPlayerScreenState extends State<AudioPlayerScreen> {
                 icon: const Icon(Icons.timer_outlined),
                 tooltip: '定时关闭',
                 onPressed: _showSleepDialog),
+            IconButton(
+                icon: const Icon(Icons.music_note_outlined),
+                tooltip: '背景音乐',
+                onPressed: () => showBgmPanel(context)),
             PopupMenuButton<String>(
               onSelected: (v) async {
                 switch (v) {
@@ -657,7 +669,8 @@ class _AudioPlayerScreenState extends State<AudioPlayerScreen> {
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 24),
           child: Text(current?.title ?? '加载中...',
-              style: theme.textTheme.bodyMedium?.copyWith(color: Colors.grey),
+              style: theme.textTheme.bodyMedium?.copyWith(
+                  color: theme.colorScheme.onSurfaceVariant),
               textAlign: TextAlign.center,
               maxLines: 2,
               overflow: TextOverflow.ellipsis),
@@ -713,7 +726,9 @@ class _AudioPlayerScreenState extends State<AudioPlayerScreen> {
               ),
             ),
           ),
-          Text('点击查看歌词', style: TextStyle(fontSize: 11, color: Colors.grey[500])),
+          Text('点击查看歌词',
+              style: TextStyle(
+                  fontSize: 11, color: theme.colorScheme.onSurfaceVariant)),
         ],
         const Spacer(),
         Padding(
@@ -761,11 +776,13 @@ class _AudioPlayerScreenState extends State<AudioPlayerScreen> {
               icon: Icon(_mode.icon),
             ),
             IconButton(
+              tooltip: '上一集',
               onPressed: () => unawaited(_prev()),
               iconSize: 34,
               icon: const Icon(Icons.skip_previous),
             ),
             IconButton(
+              tooltip: '后退15秒',
               onPressed: () => unawaited(_seekBy(-15)),
               iconSize: 30,
               icon: const Icon(Icons.replay_10),
@@ -781,11 +798,13 @@ class _AudioPlayerScreenState extends State<AudioPlayerScreen> {
               ),
             ),
             IconButton(
+              tooltip: '前进15秒',
               onPressed: () => unawaited(_seekBy(15)),
               iconSize: 30,
               icon: const Icon(Icons.forward_10),
             ),
             IconButton(
+              tooltip: '下一集',
               onPressed: () => unawaited(_next()),
               iconSize: 34,
               icon: const Icon(Icons.skip_next),
@@ -843,8 +862,10 @@ class _AudioPlayerScreenState extends State<AudioPlayerScreen> {
 
   /// 迷你模式下的占位背景（点击悬浮窗可返回完整播放页）
   Widget _buildMiniPlaceholder() {
-    return const Center(
-      child: Text('迷你播放中 · 点击悬浮窗返回', style: TextStyle(color: Colors.grey)),
+    return Center(
+      child: Text('迷你播放中 · 点击悬浮窗返回',
+          style: TextStyle(
+              color: Theme.of(context).colorScheme.onSurfaceVariant)),
     );
   }
 
@@ -887,15 +908,19 @@ class _AudioPlayerScreenState extends State<AudioPlayerScreen> {
                       overflow: TextOverflow.ellipsis,
                       style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
                   Text(_isPlaying ? '播放中 ${_fmt(_position)}' : '已暂停 ${_fmt(_position)}',
-                      style: const TextStyle(fontSize: 11, color: Colors.grey)),
+                      style: TextStyle(
+                          fontSize: 11,
+                          color: Theme.of(context).colorScheme.onSurfaceVariant)),
                 ],
               ),
             ),
             IconButton(
+              tooltip: _isPlaying ? '暂停' : '播放',
               icon: Icon(_isPlaying ? Icons.pause : Icons.play_arrow),
               onPressed: () => unawaited(_toggle()),
             ),
             IconButton(
+              tooltip: '关闭悬浮窗',
               icon: const Icon(Icons.close, size: 18),
               onPressed: () async {
                 await _audio.pause();

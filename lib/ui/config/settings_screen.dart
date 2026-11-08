@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:package_info_plus/package_info_plus.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:legado_md3/common/app_name.dart';
 import 'package:legado_md3/constant/app_theme.dart';
 import 'package:legado_md3/data/local/app_database.dart';
@@ -21,16 +22,20 @@ import 'package:legado_md3/ui/cache/cache_manage_screen.dart';
 // 对齐 E：E 无「下载管理」独立界面，E 无此功能，入口下架；保留页面文件与 import 避免编译断裂
 // ignore: unused_import
 import 'package:legado_md3/ui/cache/download_manage_screen.dart';
+import 'package:legado_md3/ui/config/app_icon_screen.dart';
 import 'package:legado_md3/ui/config/cloud_tts_screen.dart';
 import 'package:legado_md3/ui/config/cover_config_screen.dart';
 import 'package:legado_md3/ui/config/download_cache_config_screen.dart';
 import 'package:legado_md3/ui/config/other_config_screen.dart';
 import 'package:legado_md3/ui/config/keyboard_assist_screen.dart';
 import 'package:legado_md3/ui/config/theme_manage_screen.dart';
+import 'package:legado_md3/ui/config/video_setting_screen.dart';
 // 对齐 E：E 无翻译功能，E 无此功能，入口下架；保留页面文件与 import 避免编译断裂
 // ignore: unused_import
 import 'package:legado_md3/ui/config/translation_screen.dart';
 import 'package:legado_md3/ui/main/bookshelf/bookshelf_config_screen.dart';
+import 'package:legado_md3/ui/welcome/welcome_config_screen.dart';
+import 'package:legado_md3/ui/widgets/app_widgets.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -482,6 +487,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             onChanged: (v) => setState(() { _showPageNumber = v; _updateReadConfig((c) => c.pageNumberVisibility = v); }),
           ),
           ..._buildReadExtraSection(),
+          ..._buildReadConfigExtrasSection(),
           ..._buildUiSection(),
           const Divider(),
 
@@ -503,9 +509,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
               onChanged: (v) => setState(() { _autoUpdateHours = v ?? 6; _saveSetting('auto_update_hours', _autoUpdateHours); }),
             ),
           ),
-          SwitchListTile(
-            title: const Text('仅WiFi下更新'),
-            subtitle: const Text('与「封面配置-仅WiFi加载封面」为同一设置（cover_onlyWifi）'),
+          AppSwitchTile(
+            title: '仅WiFi下更新 / 加载网络封面',
+            subtitle: '移动数据下不加载网络封面（cover_onlyWifi，Android 原生判断）',
             value: _wifiOnly,
             onChanged: (v) => setState(() { _wifiOnly = v; _saveSetting('cover_onlyWifi', v); }),
           ),
@@ -589,6 +595,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
             trailing: const Icon(Icons.chevron_right),
             onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const CoverAlbumScreen())),
           ),
+          ListTile(
+            leading: const Icon(Icons.apps_outlined),
+            title: const Text('桌面图标'),
+            subtitle: const Text('切换动态桌面图标（launcherIcon）'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const AppIconScreen())),
+          ),
 
           const Divider(),
 
@@ -642,9 +655,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
           ListTile(
             leading: const Icon(Icons.wifi),
             title: const Text('Web服务地址'),
-            subtitle: Text(_webServiceEnabled ? 'http://$_lanIp:1122' : '未启用'),
+            subtitle: Text(_webServiceEnabled ? _webAddress() : '未启用'),
             trailing: const Icon(Icons.chevron_right),
             onTap: () => _showWebServiceDialog(),
+            // 对齐 E 的 MyFragment.webService 长按：复制地址 / 浏览器打开
+            onLongPress: _showWebAddressActions,
           ),
           ListTile(
             leading: const Icon(Icons.security),
@@ -667,56 +682,38 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
-  Widget _buildSectionHeader(String title) => Padding(
-    padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-    child: Text(title, style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Theme.of(context).colorScheme.primary)),
-  );
+  Widget _buildSectionHeader(String title) => AppSectionHeader(title);
 
   /* ===== 以下为补齐设置项（对齐 legado-E pref_config_other / pref_main） ===== */
 
-  /// 通用开关项
-  Widget _sw(String title, bool value, ValueChanged<bool> onChanged, {String? sub}) => SwitchListTile(
-    dense: true,
-    contentPadding: const EdgeInsets.symmetric(horizontal: 16),
-    title: Text(title, style: const TextStyle(fontSize: 14)),
-    subtitle: sub == null ? null : Text(sub, style: const TextStyle(fontSize: 11)),
-    value: value,
-    onChanged: onChanged,
-  );
+  /// 通用开关项（对接公共组件 AppSwitchTile）
+  Widget _sw(String title, bool value, ValueChanged<bool> onChanged, {String? sub}) =>
+      AppSwitchTile(
+        title: title,
+        value: value,
+        onChanged: onChanged,
+        subtitle: sub,
+      );
 
-  /// 整数步进控件（±1）
-  Widget _step(String title, int value, int min, int max, ValueChanged<int> onChanged, {String? sub}) => ListTile(
-    dense: true,
-    contentPadding: const EdgeInsets.symmetric(horizontal: 16),
-    title: Text(title, style: const TextStyle(fontSize: 14)),
-    subtitle: sub == null ? null : Text(sub, style: const TextStyle(fontSize: 11)),
-    trailing: Row(mainAxisSize: MainAxisSize.min, children: [
-      IconButton(
-        icon: const Icon(Icons.remove_circle_outline),
-        tooltip: '减少',
-        onPressed: value > min ? () => onChanged(value - 1) : null,
-      ),
-      SizedBox(
-        width: 40,
-        child: Text('$value', textAlign: TextAlign.center,
-          style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600)),
-      ),
-      IconButton(
-        icon: const Icon(Icons.add_circle_outline),
-        tooltip: '增加',
-        onPressed: value < max ? () => onChanged(value + 1) : null,
-      ),
-    ]),
-  );
+  /// 整数步进控件（对接公共组件 AppStepTile）
+  Widget _step(String title, int value, int min, int max, ValueChanged<int> onChanged, {String? sub}) =>
+      AppStepTile(
+        title: title,
+        value: value,
+        min: min,
+        max: max,
+        onChanged: onChanged,
+        subtitle: sub,
+      );
 
-  /// 通用跳转项
-  Widget _jump({IconData? icon, required String title, String? sub, required Widget page}) => ListTile(
-    leading: icon == null ? null : Icon(icon),
-    title: Text(title),
-    subtitle: sub == null ? null : Text(sub),
-    trailing: const Icon(Icons.chevron_right),
-    onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => page)),
-  );
+  /// 通用跳转项（对接公共组件 AppMenuItem）
+  Widget _jump({IconData? icon, required String title, String? sub, required Widget page}) =>
+      AppMenuItem(
+        icon: icon,
+        title: title,
+        subtitle: sub,
+        onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => page)),
+      );
 
   /// 书籍类设置（对齐 legado-E pref_config_other 的 main_activity 分类）
   List<Widget> _buildBooksSection() => [
@@ -811,6 +808,69 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _jump(icon: Icons.photo_library_outlined, title: '漫画阅读设置', sub: '漫画墨水屏/灰度/缩放', page: const MangaConfigScreen()),
     _jump(icon: Icons.menu_book_outlined, title: '完整阅读设置', sub: '字体/间距/页边距/反馈区域', page: const ReadingSettingsScreen()),
   ];
+
+  /// pref_config_read.xml 设置页 UI 侧：恢复由阅读页（C 组）消费的高级配置项。
+  /// 值来自 ReadProvider.config（经 read_config_json 持久化），修改走
+  /// [_updateReadConfig] → SharedPreferences → 阅读页即时生效，不留仅记账的假开关。
+  List<Widget> _buildReadConfigExtrasSection() {
+    final cfg = context.watch<ReadProvider>().config;
+    return [
+      _buildSectionHeader('阅读高级选项（pref_config_read）'),
+      ListTile(
+        dense: true,
+        title: const Text('双页水平翻页'),
+        subtitle: const Text('doubleHorizontalPage：0 单页 / 1 双页 / 2 横屏双页',
+            style: TextStyle(fontSize: 11)),
+        trailing: DropdownButton<int>(
+          value: cfg.doubleHorizontalPage.clamp(0, 2),
+          underline: const SizedBox(),
+          items: const [
+            DropdownMenuItem(value: 0, child: Text('单页')),
+            DropdownMenuItem(value: 1, child: Text('双水平页')),
+            DropdownMenuItem(value: 2, child: Text('横屏双页')),
+          ],
+          onChanged: (v) =>
+              _updateReadConfig((c) => c.doubleHorizontalPage = v ?? 0),
+        ),
+      ),
+      _sw('正文失效自动换源', cfg.autoChangeSource,
+          (v) => _updateReadConfig((c) => c.autoChangeSource = v),
+          sub: 'autoChangeSource'),
+      _sw('朗读播放时音量键翻页', cfg.volumeKeyPageOnPlay,
+          (v) => _updateReadConfig((c) => c.volumeKeyPageOnPlay = v),
+          sub: 'volumeKeyPageOnPlay'),
+      _sw('长按按键连续翻页', cfg.keyPageOnLongPress,
+          (v) => _updateReadConfig((c) => c.keyPageOnLongPress = v),
+          sub: 'keyPageOnLongPress'),
+      _sw('禁用返回键翻页', cfg.disableReturnKey,
+          (v) => _updateReadConfig((c) => c.disableReturnKey = v),
+          sub: 'disableReturnKey'),
+      _sw('刘海屏安全区 padding', cfg.paddingDisplayCutouts,
+          (v) => _updateReadConfig((c) => c.paddingDisplayCutouts = v),
+          sub: 'paddingDisplayCutouts'),
+      _sw('滚动翻页无动画', cfg.noAnimScrollPage,
+          (v) => _updateReadConfig((c) => c.noAnimScrollPage = v),
+          sub: 'noAnimScrollPage'),
+      _sw('优化渲染触发重排', cfg.optimizeRender,
+          (v) => _updateReadConfig((c) => c.optimizeRender = v),
+          sub: 'optimizeRender'),
+      _sw('特殊样式适配', cfg.adaptSpecialStyle,
+          (v) => _updateReadConfig((c) => c.adaptSpecialStyle = v),
+          sub: 'adaptSpecialStyle'),
+      _sw('正文行高带入布局', cfg.readBodyToLh,
+          (v) => _updateReadConfig((c) => c.readBodyToLh = v),
+          sub: 'readBodyToLh'),
+      _sw('标题栏附加信息', cfg.showReadTitleAddition,
+          (v) => _updateReadConfig((c) => c.showReadTitleAddition = v),
+          sub: 'showReadTitleAddition'),
+      _sw('阅读栏样式跟随页面', cfg.readBarStyleFollowPage,
+          (v) => _updateReadConfig((c) => c.readBarStyleFollowPage = v),
+          sub: 'readBarStyleFollowPage'),
+      _step('触摸翻页阈值', cfg.pageTouchSlop, 0, 20,
+          (v) => _updateReadConfig((c) => c.pageTouchSlop = v),
+          sub: 'pageTouchSlop：越大越迟钝'),
+    ];
+  }
 
   /// 界面设置（沉浸式/全屏/退出确认）
   /// 说明：阅读页沉浸/横屏由 ReadConfig.immersiveMode / fullScreen / screenOrientation
@@ -968,6 +1028,24 @@ class _SettingsScreenState extends State<SettingsScreen> {
           _saveSetting('fontScale', v);
         },
       ),
+    ),
+    ListTile(
+      dense: true,
+      leading: const Icon(Icons.waving_hand_outlined),
+      title: const Text('自定义欢迎页'),
+      subtitle: const Text('欢迎语 / 背景 / 图标 / 展示次数 / 隐私政策'),
+      trailing: const Icon(Icons.chevron_right),
+      onTap: () => Navigator.push(context,
+          MaterialPageRoute(builder: (_) => const WelcomeConfigScreen())),
+    ),
+    ListTile(
+      dense: true,
+      leading: const Icon(Icons.video_settings_outlined),
+      title: const Text('视频播放器设置'),
+      subtitle: const Text('videoSetting：自动播放 / 长按倍速 / 全屏进度条'),
+      trailing: const Icon(Icons.chevron_right),
+      onTap: () => Navigator.push(context,
+          MaterialPageRoute(builder: (_) => const VideoSettingScreen())),
     ),
   ];
 
@@ -1136,40 +1214,72 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
   }
 
-  void _showColorPicker(AppTheme theme) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('主题色'),
-        content: Wrap(
-          spacing: 12,
-          runSpacing: 12,
-          children: [
-            Colors.blue, Colors.green, Colors.orange, Colors.purple, Colors.red, Colors.teal, Colors.indigo, Colors.pink,
-          ].map((color) => GestureDetector(
-            onTap: () { theme.setSeedColor(color); Navigator.pop(context); },
-            child: Container(width: 40, height: 40, decoration: BoxDecoration(color: color, shape: BoxShape.circle, border: theme.seedColor == color ? Border.all(color: Colors.black, width: 2) : null)),
-          )).toList(),
-        ),
-      ),
+  Future<void> _showColorPicker(AppTheme theme) async {
+    const colors = <Color>[
+      Colors.blue, Colors.green, Colors.orange, Colors.purple,
+      Colors.red, Colors.teal, Colors.indigo, Colors.pink,
+    ];
+    final picked = await showAppColorPicker(
+      context,
+      colors: colors,
+      selected: theme.seedColor,
     );
+    if (picked != null) theme.setSeedColor(picked);
   }
 
-  void _showClearCacheDialog() {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('清除缓存'),
-        content: const Text('确定要清除所有书籍内容缓存吗？'),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('取消')),
-          FilledButton(onPressed: () async {
-            final db = DatabaseService();
-            await db.clearChapterContent();
-            if (mounted) { Navigator.pop(context); ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('缓存已清除'))); }
-          }, child: const Text('清除')),
-        ],
-      ),
+  Future<void> _showClearCacheDialog() async {
+    final ok = await showAppConfirmDialog(
+      context,
+      title: '清除缓存',
+      content: '确定要清除所有书籍内容缓存吗？',
+      confirmText: '清除',
+      danger: true,
+    );
+    if (!ok) return;
+    final db = DatabaseService();
+    await db.clearChapterContent();
+    if (mounted) {
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('缓存已清除')));
+    }
+  }
+
+  String get _webPort => '${_prefs?.getInt('oc_webPort') ?? 1122}';
+  String _webAddress() => 'http://$_lanIp:$_webPort';
+  String _localWebAddress() => 'http://localhost:$_webPort';
+
+  /// Web 服务地址长按菜单（对齐 E 的 MyFragment.webService：复制地址 / 浏览器打开）。
+  Future<void> _showWebAddressActions() async {
+    final addr = _webAddress();
+    await showAppMenuSheet(
+      context,
+      title: addr,
+      items: [
+        AppMenuSheetItem(
+          title: '复制地址',
+          icon: Icons.copy_outlined,
+          onTap: () async {
+            await Clipboard.setData(ClipboardData(text: addr));
+            if (!mounted) return;
+            ScaffoldMessenger.of(context)
+                .showSnackBar(const SnackBar(content: Text('地址已复制')));
+          },
+        ),
+        AppMenuSheetItem(
+          title: '浏览器打开',
+          icon: Icons.open_in_browser_outlined,
+          onTap: () async {
+            try {
+              await launchUrl(Uri.parse(addr),
+                  mode: LaunchMode.externalApplication);
+            } catch (_) {
+              if (!mounted) return;
+              ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('无法在浏览器中打开该地址')));
+            }
+          },
+        ),
+      ],
     );
   }
 
@@ -1177,9 +1287,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
     showDialog(context: context, builder: (context) => AlertDialog(
       title: const Text('Web服务'),
       content: Column(mainAxisSize: MainAxisSize.min, children: [
-        const ListTile(leading: Icon(Icons.wifi), title: Text('服务地址'), subtitle: Text('http://localhost:1122')),
-        ListTile(leading: const Icon(Icons.devices), title: const Text('设备地址'), subtitle: Text('http://$_lanIp:1122')),
-        const ListTile(leading: Icon(Icons.info_outline), title: Text('说明'), subtitle: Text('在同一局域网下，通过浏览器访问上述地址管理书籍')),
+        ListTile(leading: const Icon(Icons.wifi), title: const Text('服务地址'), subtitle: Text(_localWebAddress())),
+        ListTile(leading: const Icon(Icons.devices), title: const Text('设备地址'), subtitle: Text(_webAddress())),
+        const ListTile(leading: Icon(Icons.info_outline), title: Text('说明'), subtitle: Text('长按「Web服务地址」可复制地址或在浏览器中打开')),
       ]),
       actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('关闭'))],
     ));
@@ -1253,7 +1363,11 @@ class _CoverAlbumScreenState extends State<CoverAlbumScreen> {
       body: _loading
           ? const Center(child: CircularProgressIndicator())
           : _books.isEmpty
-              ? const Center(child: Text('书架暂无书籍'))
+              ? const AppEmptyState(
+                  icon: Icons.photo_library_outlined,
+                  title: '书架暂无书籍',
+                  message: '添加书籍后封面会显示在这里',
+                )
               : GridView.builder(
                   padding: const EdgeInsets.all(8),
                   gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
@@ -1277,13 +1391,13 @@ class _CoverAlbumScreenState extends State<CoverAlbumScreen> {
   Widget _cover(Book book) {
     final url = book.customCoverUrl?.isNotEmpty == true ? book.customCoverUrl! : book.coverUrl;
     if (url != null && url.isNotEmpty && url.startsWith('http')) {
-      return ClipRRect(borderRadius: BorderRadius.circular(6),
+      return ClipRRect(borderRadius: BorderRadius.circular(12),
         child: Image.network(url, fit: BoxFit.cover, errorBuilder: (_, __, ___) => _placeholder(book)));
     }
     return _placeholder(book);
   }
 
-  Widget _placeholder(Book book) => ClipRRect(borderRadius: BorderRadius.circular(6),
+  Widget _placeholder(Book book) => ClipRRect(borderRadius: BorderRadius.circular(12),
     child: Container(
       decoration: BoxDecoration(gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight,
         colors: [Theme.of(context).colorScheme.primaryContainer, Theme.of(context).colorScheme.secondaryContainer])),

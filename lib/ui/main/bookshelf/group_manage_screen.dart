@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:legado_md3/data/model/db_models.dart';
 import 'package:legado_md3/data/local/app_database.dart';
+import 'package:legado_md3/ui/widgets/app_widgets.dart';
 
 class _GroupItem {
   BookGroup meta;
@@ -71,11 +72,15 @@ class _GroupManageScreenState extends State<GroupManageScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return Scaffold(
       appBar: AppBar(
         title: const Text('分组管理'),
         actions: [
-          IconButton(icon: const Icon(Icons.add), onPressed: _showAddGroup),
+          IconButton(
+              icon: const Icon(Icons.add_outlined),
+              tooltip: '添加分组',
+              onPressed: _showAddGroup),
         ],
       ),
       body: _loading
@@ -112,7 +117,8 @@ class _GroupManageScreenState extends State<GroupManageScreen> {
                             onChanged: (v) => _toggleShow(item, v),
                           ),
                           IconButton(
-                            icon: const Icon(Icons.delete_outline, color: Colors.red),
+                            tooltip: '删除分组',
+                            icon: Icon(Icons.delete_outline, color: cs.error),
                             onPressed: () => _deleteGroup(group),
                           ),
                         ]),
@@ -193,21 +199,14 @@ class _GroupManageScreenState extends State<GroupManageScreen> {
   }
 
   Future<void> _deleteGroup(BookGroup group) async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('删除分组'),
-        content: Text('确定要删除分组「${group.name}」吗？\n该分组下的书籍不会被删除，将回到「未分组」。'),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context, false), child: const Text('取消')),
-          FilledButton(
-              style: FilledButton.styleFrom(backgroundColor: Colors.red),
-              onPressed: () => Navigator.pop(context, true),
-              child: const Text('删除')),
-        ],
-      ),
+    final confirmed = await showAppConfirmDialog(
+      context,
+      title: '删除分组',
+      content: '确定要删除分组「${group.name}」吗？\n该分组下的书籍不会被删除，将回到「未分组」。',
+      confirmText: '删除',
+      danger: true,
     );
-    if (confirmed == true) {
+    if (confirmed) {
       await _db.dissolveBookGroup(group.name);
       await _loadGroups();
     }

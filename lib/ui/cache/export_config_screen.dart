@@ -6,6 +6,7 @@ import 'package:legado_md3/data/model/book.dart';
 import 'package:legado_md3/data/model/book_chapter.dart';
 import 'package:legado_md3/data/model/replace_rule.dart';
 import 'package:legado_md3/data/local/app_database.dart';
+import 'package:legado_md3/ui/widgets/app_widgets.dart';
 import 'package:legado_md3/help/config/app_config.dart';
 import 'package:legado_md3/help/storage/export_book_service.dart';
 import 'package:legado_md3/help/storage/webdav_service.dart';
@@ -213,12 +214,6 @@ class _ExportConfigScreenState extends State<ExportConfigScreen> {
   Future<void> _exportAll() async {
     if (_busy || _books.isEmpty) return;
     setState(() => _busy = true);
-    // 忙碌提示
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (_) => const Center(child: Card(child: Padding(padding: EdgeInsets.all(24), child: Column(mainAxisSize: MainAxisSize.min, children: [CircularProgressIndicator(), SizedBox(height: 12), Text('正在导出...')])))),
-    );
     int ok = 0, fail = 0;
     Future<void> one(Book b) async {
       try {
@@ -228,7 +223,7 @@ class _ExportConfigScreenState extends State<ExportConfigScreen> {
         fail++;
       }
     }
-    try {
+    Future<void> doExport() async {
       if (_parallel) {
         await Future.wait(_books.map(one));
       } else {
@@ -236,9 +231,15 @@ class _ExportConfigScreenState extends State<ExportConfigScreen> {
           await one(b);
         }
       }
+    }
+    try {
+      await runWithBusyDialog<void>(
+        context,
+        message: '正在导出...',
+        task: doExport(),
+      );
     } finally {
       if (mounted) {
-        Navigator.pop(context); // 关闭忙碌对话框
         setState(() => _busy = false);
         _tip('导出完成：成功 $ok 本${fail > 0 ? '，失败 $fail 本' : ''}');
       }
@@ -373,15 +374,21 @@ class _ExportConfigScreenState extends State<ExportConfigScreen> {
               ),
               // 对齐 E menu_export_pics_file：Klys 导出引擎仅输出纯文本 TXT/EPUB，
               // 不生成独立图片文件引用，无法真实接线，按约定从 UI 下架（AppPrefs.exportPictureFile 不暴露开关）。
-              const Padding(
-                padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                 child: Text('注：「图片导出为文件」(E: export_pics_file) 因导出引擎不含图片落盘能力，本域从 UI 下架，未做假开关。',
-                    style: TextStyle(fontSize: 11, color: Colors.grey)),
+                    style: TextStyle(fontSize: 11, color: Theme.of(context).colorScheme.onSurfaceVariant)),
               ),
               const Divider(height: 1),
               _section('书籍（${_books.length}）'),
               if (_books.isEmpty)
-                const Padding(padding: EdgeInsets.all(32), child: Center(child: Text('书架为空，暂无可导出书籍', style: TextStyle(color: Colors.grey))))
+                const SizedBox(
+                  height: 180,
+                  child: AppEmptyState(
+                    icon: Icons.menu_book_outlined,
+                    title: '书架为空，暂无可导出书籍',
+                  ),
+                )
               else
                 for (final book in _books)
                   ListTile(

@@ -405,7 +405,7 @@ class _ThemeManageScreenState extends State<ThemeManageScreen> {
           },
         ),
         const SizedBox(height: 12),
-        _colorPresetsRow(primary, (c) => setD(() => primary = c)),
+        _colorPresetsRow(primary, (c) => setD(() => primary = c), Theme.of(context).colorScheme),
         const SizedBox(height: 12),
         OutlinedButton.icon(
           icon: const Icon(Icons.format_color_fill),
@@ -418,7 +418,7 @@ class _ThemeManageScreenState extends State<ThemeManageScreen> {
           },
         ),
         const SizedBox(height: 12),
-        _colorPresetsRow(bg, (c) => setD(() => bg = c)),
+        _colorPresetsRow(bg, (c) => setD(() => bg = c), Theme.of(context).colorScheme),
         SwitchListTile(
           dense: true,
           contentPadding: EdgeInsets.zero,
@@ -474,7 +474,7 @@ class _ThemeManageScreenState extends State<ThemeManageScreen> {
                 Navigator.pop(sheetCtx);
                 ScaffoldMessenger.of(sheetCtx).showSnackBar(const SnackBar(content: Text('已删除主题')));
               }
-            }, icon: const Icon(Icons.delete_outline, color: Colors.red), label: const Text('删除', style: TextStyle(color: Colors.red))),
+            }, icon: Icon(Icons.delete_outline, color: Theme.of(context).colorScheme.error), label: Text('删除', style: TextStyle(color: Theme.of(context).colorScheme.error))),
             const Spacer(),
             FilledButton(onPressed: () { final cur = _all.firstWhere((t) => t.id == theme.id); Navigator.pop(context); _apply(cur); }, child: const Text('应用')),
           ]),
@@ -488,7 +488,7 @@ class _ThemeManageScreenState extends State<ThemeManageScreen> {
     if (i >= 0) { _custom[i] = nt; _persistCustom(); }
   }
 
-  static Widget _colorPresetsRow(int color, ValueChanged<int> onChanged) {
+  static Widget _colorPresetsRow(int color, ValueChanged<int> onChanged, ColorScheme cs) {
     return Wrap(spacing: 8, runSpacing: 8, children: _presets.map((c) => GestureDetector(
       onTap: () => onChanged(c.primary),
       child: Container(
@@ -496,7 +496,7 @@ class _ThemeManageScreenState extends State<ThemeManageScreen> {
         decoration: BoxDecoration(
           color: Color(c.primary), shape: BoxShape.circle,
           border: Border.all(
-            color: c.primary == color ? Colors.black : Colors.grey,
+            color: c.primary == color ? cs.primary : cs.outlineVariant,
             width: c.primary == color ? 3 : 1,
           ),
         ),
@@ -510,7 +510,7 @@ class _ThemeManageScreenState extends State<ThemeManageScreen> {
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(children: [
           SizedBox(width: 60, child: Text(label)),
-          Container(width: 28, height: 28, decoration: BoxDecoration(color: Color(color), shape: BoxShape.circle, border: Border.all(color: Colors.grey))),
+          Container(width: 28, height: 28, decoration: BoxDecoration(color: Color(color), shape: BoxShape.circle, border: Border.all(color: Theme.of(context).colorScheme.outlineVariant))),
           const Spacer(),
           Text(_toHex(color), style: const TextStyle(fontSize: 12)),
           IconButton(
@@ -523,7 +523,7 @@ class _ThemeManageScreenState extends State<ThemeManageScreen> {
           ),
         ]),
         const SizedBox(height: 8),
-        _colorPresetsRow(color, onChanged),
+        _colorPresetsRow(color, onChanged, Theme.of(context).colorScheme),
       ]),
     );
   }
@@ -559,9 +559,9 @@ class _ThemeManageScreenState extends State<ThemeManageScreen> {
           child: Text('我的主题', style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: cs.primary)),
         ),
         if (visibleThemes.isEmpty)
-          const Padding(
-            padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            child: Text('当前分类下没有主题', style: TextStyle(fontSize: 12, color: Colors.grey)),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            child: Text('当前分类下没有主题', style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
           ),
         ...visibleThemes.map((theme) {
           final selected = _selectedThemeId == theme.id;
@@ -573,7 +573,7 @@ class _ThemeManageScreenState extends State<ThemeManageScreen> {
                 leading: CircleAvatar(backgroundColor: Color(theme.primaryColor), child: Icon(theme.isDark ? Icons.dark_mode : Icons.light_mode, color: Colors.white, size: 20)),
                 title: Text(theme.name),
                 subtitle: Text('主色: ${_toHex(theme.primaryColor)} · 背景: ${_toHex(theme.backgroundColor)}'),
-                trailing: selected ? const Icon(Icons.check_circle, color: Colors.green) : const Icon(Icons.radio_button_unchecked),
+                trailing: selected ? Icon(Icons.check_circle, color: cs.primary) : const Icon(Icons.radio_button_unchecked),
                 onTap: () => _apply(theme),
                 onLongPress: () => _showThemeEdit(theme),
               ),
@@ -753,7 +753,7 @@ class _ThemeManageScreenState extends State<ThemeManageScreen> {
                 File(AppPrefs.backgroundImage),
                 fit: BoxFit.cover,
                 errorBuilder: (_, __, ___) => Container(
-                  color: Colors.grey.shade300,
+                  color: cs.surfaceContainerHighest,
                   child: const Center(child: Icon(Icons.broken_image_outlined)),
                 ),
               ),
@@ -766,7 +766,7 @@ class _ThemeManageScreenState extends State<ThemeManageScreen> {
         title: const Text('底部背景色'),
         subtitle: Text(AppPrefs.colorBottomBackground == 0 ? '未设置，使用主题默认' : _toHex(AppPrefs.colorBottomBackground), style: const TextStyle(fontSize: 11)),
         trailing: CircleAvatar(
-          backgroundColor: AppPrefs.colorBottomBackground == 0 ? Colors.grey.shade400 : Color(AppPrefs.colorBottomBackground),
+          backgroundColor: AppPrefs.colorBottomBackground == 0 ? cs.surfaceContainerHighest : Color(AppPrefs.colorBottomBackground),
           radius: 14,
         ),
         onTap: _pickBottomBackground,
@@ -796,7 +796,7 @@ class _ThemeManageScreenState extends State<ThemeManageScreen> {
               child: Container(
                 width: 40, height: 40,
                 decoration: BoxDecoration(color: Color(p.primary), shape: BoxShape.circle,
-                  border: Border.all(color: selected ? Colors.black : Colors.grey, width: selected ? 3 : 1)),
+                  border: Border.all(color: selected ? Theme.of(ctx).colorScheme.primary : Theme.of(ctx).colorScheme.outlineVariant, width: selected ? 3 : 1)),
               ),
             );
           }),
@@ -819,9 +819,9 @@ class _ThemeManageScreenState extends State<ThemeManageScreen> {
         child: Text('预设主题色（${visiblePresets.length}/${_presets.length}）', style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Theme.of(context).colorScheme.primary)),
       ),
       if (visiblePresets.isEmpty)
-        const Padding(
-          padding: EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-          child: Text('当前分类下没有预设主色', style: TextStyle(fontSize: 12, color: Colors.grey)),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+          child: Text('当前分类下没有预设主色', style: TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.onSurfaceVariant)),
         ),
       Padding(
         padding: const EdgeInsets.symmetric(horizontal: 12),
@@ -888,9 +888,9 @@ class _HsvColorPickerDialogState extends State<_HsvColorPickerDialog> {
         const SizedBox(height: 8),
         _hsvSlider('色相 H', _hsv.hue, 0.0, 360.0, Theme.of(context).sliderTheme.activeTrackColor ?? cs.primary,
           (v) => setState(() => _hsv = _hsv.withHue(v))),
-        _hsvSlider('饱和度 S', _hsv.saturation, 0.0, 1.0, Colors.grey,
+        _hsvSlider('饱和度 S', _hsv.saturation, 0.0, 1.0, cs.onSurfaceVariant,
           (v) => setState(() => _hsv = _hsv.withSaturation(v))),
-        _hsvSlider('明度 V', _hsv.value, 0.0, 1.0, Colors.grey,
+        _hsvSlider('明度 V', _hsv.value, 0.0, 1.0, cs.onSurfaceVariant,
           (v) => setState(() => _hsv = _hsv.withValue(v))),
       ]),
       actions: [
@@ -905,7 +905,7 @@ class _HsvColorPickerDialogState extends State<_HsvColorPickerDialog> {
       SizedBox(width: 64, child: Text(label, style: const TextStyle(fontSize: 11))),
       Expanded(
         child: SliderTheme(
-          data: SliderTheme.of(context).copyWith(activeTrackColor: color, thumbColor: color, inactiveTrackColor: Colors.grey.shade400),
+          data: SliderTheme.of(context).copyWith(activeTrackColor: color, thumbColor: color, inactiveTrackColor: Theme.of(context).colorScheme.outlineVariant),
           child: Slider(value: value, min: min, max: max, onChanged: onChanged),
         ),
       ),

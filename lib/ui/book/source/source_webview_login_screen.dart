@@ -196,7 +196,7 @@ class _SourceWebViewLoginScreenState extends State<SourceWebViewLoginScreen> {
           actions: [
             IconButton(
               tooltip: '刷新',
-              icon: const Icon(Icons.refresh),
+              icon: const Icon(Icons.refresh_outlined),
               onPressed: () => _controller?.reload(),
             ),
             // 对齐 E source_webview_login.xml 的 menu_ok（检查 host Cookie 并结束）

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:legado_md3/ui/widgets/app_widgets.dart';
 import '../../../di/book_provider.dart';
 
 /// 书架配置页面 - 对齐原版BookshelfConfigSheet
@@ -105,17 +106,14 @@ class _BookshelfConfigScreenState extends State<BookshelfConfigScreen> {
     }
   }
 
-  Widget _sectionTitle(String title) => Padding(
-    padding: const EdgeInsets.fromLTRB(16, 20, 16, 8),
-    child: Text(title, style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Theme.of(context).colorScheme.primary)),
-  );
+  Widget _sectionTitle(String title) => AppSectionHeader(title);
 
   Widget _switchTile(String title, bool value, ValueChanged<bool> onChanged, {String? desc}) {
-    return SwitchListTile(
-      dense: true, contentPadding: const EdgeInsets.symmetric(horizontal: 16),
-      title: Text(title, style: const TextStyle(fontSize: 14)),
-      subtitle: desc != null ? Text(desc, style: const TextStyle(fontSize: 11)) : null,
-      value: value, onChanged: onChanged,
+    return AppSwitchTile(
+      title: title,
+      value: value,
+      onChanged: onChanged,
+      subtitle: desc,
     );
   }
 

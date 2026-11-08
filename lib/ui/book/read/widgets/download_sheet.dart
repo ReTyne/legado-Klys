@@ -25,6 +25,7 @@ class _DownloadSheetState extends State<DownloadSheet> {
 
   @override
   Widget build(BuildContext context) {
+    final cs = Theme.of(context).colorScheme;
     return SafeArea(child: Padding(
       padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
       child: Column(mainAxisSize: MainAxisSize.min, children: [
@@ -50,7 +51,7 @@ class _DownloadSheetState extends State<DownloadSheet> {
           trailing: const Icon(Icons.chevron_right),
           onTap: () => _pickChapter(false),
         ),
-        Padding(padding: const EdgeInsets.all(16), child: Text('将缓存第 ${_start + 1} 章 到第 ${_end + 1} 章，共 ${_end - _start + 1} 章', style: const TextStyle(fontSize: 13, color: Colors.grey))),
+        Padding(padding: const EdgeInsets.all(16), child: Text('将缓存第 ${_start + 1} 章 到第 ${_end + 1} 章，共 ${_end - _start + 1} 章', style: TextStyle(fontSize: 13, color: cs.onSurfaceVariant))),
         Row(mainAxisAlignment: MainAxisAlignment.end, children: [
           TextButton(onPressed: () => Navigator.pop(context), child: const Text('取消')),
           const SizedBox(width: 8),

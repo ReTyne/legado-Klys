@@ -45,6 +45,10 @@ dependencies:
   enough_convert: ^1.4.0
   video_player: ^2.9.2
   pdfx: ^2.6.0
+  web_socket_channel: ^3.0.3
+  shelf_web_socket: ^3.0.0
+  connectivity_plus: ^6.1.0
+  battery_plus: ^6.0.2
 
 dev_dependencies:
   flutter_test:

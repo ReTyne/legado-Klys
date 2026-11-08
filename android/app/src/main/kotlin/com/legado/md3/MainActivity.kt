@@ -2,12 +2,21 @@ package com.legado.md3
 
 import android.content.Intent
 import android.net.Uri
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
+import android.os.Build
 import android.os.PowerManager
 import android.content.Context
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 import java.io.File
+import android.app.PictureInPictureParams
+import android.content.BroadcastReceiver
+import android.content.IntentFilter
+import android.content.pm.PackageManager
+import android.database.ContentObserver
+import android.util.Rational
 
 class MainActivity : FlutterActivity() {
 
@@ -22,9 +31,49 @@ class MainActivity : FlutterActivity() {
 
     /** 书源 java.openVideoPlayer 的原生视频播放频道（对齐 legado-E openVideoPlayer） */
     private val videoChannelName = "legado/video"
+
+    /** 网络类型判断频道：供 cover_onlyWifi 精确区分 WiFi / 移动数据 */
+    private val networkChannelName = "legado/network"
+
+    // ---- 第十轮新增通道（严格使用约定字符串，现有 9 通道行为不变） ----
+    private val readerProviderChannelName = "legado/reader_provider"
+    private val shortcutChannelName = "legado/shortcut"
+    private val mediaButtonChannelName = "legado/media_button"
+    private val pipChannelName = "legado/pip"
+    private val pdfCoverChannelName = "legado/pdf_cover"
+    private val mobiHuffChannelName = "legado/mobi_huff"
+    private val launcherIconChannelName = "legado/launcher_icon"
+    private val batteryChannelName = "legado/battery"
+    private val brightnessChannelName = "legado/brightness"
+    private val processTextChannelName = "legado/process_text"
+    private val safChannelName = "legado/saf"
+
+    /** 判断当前活跃网络是否为 WiFi（对齐 legado-E NetworkUtils.isWifi）。 */
+    private fun isWifi(): Boolean {
+        val cm = getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
+            ?: return false
+        return try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                val network = cm.activeNetwork ?: return false
+                val caps = cm.getNetworkCapabilities(network) ?: return false
+                caps.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) ||
+                    caps.hasTransport(NetworkCapabilities.TRANSPORT_ETHERNET)
+            } else {
+                @Suppress("DEPRECATION")
+                val info = cm.activeNetworkInfo ?: return false
+                info.isConnected && info.type == ConnectivityManager.TYPE_WIFI
+            }
+        } catch (_: Exception) {
+            false
+        }
+    }
     private var pendingPath: String? = null
     private var channel: MethodChannel? = null
     private var wakeLock: PowerManager.WakeLock? = null
+
+    /** 电量/时间广播与系统亮度 ContentObserver（onDestroy 注销） */
+    private var batteryReceiver: BroadcastReceiver? = null
+    private var brightnessObserver: ContentObserver? = null
 
     /** 待 Dart 取走的深链/分享链接（Dart 未就绪时缓存） */
     private var pendingLink: String? = null
@@ -46,6 +95,9 @@ class MainActivity : FlutterActivity() {
         flutterEngine.plugins.add(ArchivePlugin())
         pendingPath = resolveIntent(intent)
         pendingLink = handleDeepLinkIntent(intent)
+        // 第十轮：启动期缓存 PROCESS_TEXT 选中文本 / 快捷方式动作，Dart 就绪后取走
+        NativeChannels.pendingProcessText = resolveProcessText(intent)
+        NativeChannels.pendingShortcut = resolveShortcut(intent)
         channel = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, channelName)
         channel?.setMethodCallHandler { call, result ->
             if (call.method == "getInitialFile") {
@@ -93,6 +145,24 @@ class MainActivity : FlutterActivity() {
                         }
                         result.success(ok)
                     }
+                }
+                else -> result.notImplemented()
+            }
+        }
+        // 网络类型判断（cover_onlyWifi）：保留 isWifi；第十轮扩展为事件化回调。
+        val networkCh = MethodChannel(flutterEngine.dartExecutor.binaryMessenger, networkChannelName)
+        NativeChannels.network = networkCh
+        networkCh.setMethodCallHandler { call, result ->
+            when (call.method) {
+                "isWifi" -> result.success(isWifi())
+                "getState" -> result.success(NetworkCallbackHelper.currentState(this))
+                "startWatch" -> {
+                    NetworkCallbackHelper.register(this)
+                    result.success(true)
+                }
+                "stopWatch" -> {
+                    NetworkCallbackHelper.unregister()
+                    result.success(true)
                 }
                 else -> result.notImplemented()
             }
@@ -152,6 +222,240 @@ class MainActivity : FlutterActivity() {
                 else -> result.notImplemented()
             }
         }
+
+        // ==================== 第十轮：原生 Android 能力域（按现有风格追加） ====================
+        val messenger = flutterEngine.dartExecutor.binaryMessenger
+
+        // 1) ReaderProvider 数据桥：Provider 的 16 条 URI 查询经此通道原生 -> Dart，
+        //    Dart -> 原生仅用 cache 预置共享 JSON 兜底文件。
+        val readerCh = MethodChannel(messenger, readerProviderChannelName)
+        ReaderProviderBridge.channel = readerCh
+        readerCh.setMethodCallHandler { call, result ->
+            when (call.method) {
+                "cache" -> {
+                    val entries = HashMap<String, String>()
+                    (call.arguments as? Map<*, *>)?.forEach { (k, v) ->
+                        if (k is String && v is String) entries[k] = v
+                    }
+                    ReaderProviderBridge.cache(this, entries)
+                    result.success(true)
+                }
+                else -> result.notImplemented()
+            }
+        }
+
+        // 2) 动态快捷方式（书架/搜索/发现/继续阅读）
+        val shortcutCh = MethodChannel(messenger, shortcutChannelName)
+        NativeChannels.shortcut = shortcutCh
+        shortcutCh.setMethodCallHandler { call, result ->
+            when (call.method) {
+                "setShortcuts" -> result.success(ShortcutHelper.buildShortcuts(this))
+                "removeShortcuts" -> result.success(ShortcutHelper.removeShortcuts(this))
+                "getInitialShortcut" -> {
+                    val id = NativeChannels.pendingShortcut
+                    NativeChannels.pendingShortcut = null
+                    result.success(id)
+                }
+                else -> result.notImplemented()
+            }
+        }
+
+        // 3) 媒体按键 + MediaSessionCompat / AudioFocusRequest
+        val mediaCh = MethodChannel(messenger, mediaButtonChannelName)
+        NativeChannels.mediaButton = mediaCh
+        mediaCh.setMethodCallHandler { call, result ->
+            when (call.method) {
+                "activate" -> result.success(MediaSessionHelper.activate(this))
+                "deactivate" -> result.success(MediaSessionHelper.deactivate())
+                "setPlaybackState" -> result.success(
+                    MediaSessionHelper.setPlaying(call.argument<Boolean>("playing") ?: false)
+                )
+                "drain" -> result.success(NativeChannels.drainMediaButtons())
+                "getActive" -> result.success(MediaSessionHelper.active)
+                else -> result.notImplemented()
+            }
+        }
+
+        // 4) 系统 PiP
+        val pipCh = MethodChannel(messenger, pipChannelName)
+        NativeChannels.pip = pipCh
+        pipCh.setMethodCallHandler { call, result ->
+            when (call.method) {
+                "enter" -> result.success(
+                    enterPip(
+                        call.argument<Int>("aspectWidth"),
+                        call.argument<Int>("aspectHeight"),
+                        call.argument<Boolean>("autoEnter") ?: false,
+                    )
+                )
+                "isSupported" -> result.success(isPipSupported())
+                "isInPip" -> result.success(isInPip())
+                else -> result.notImplemented()
+            }
+        }
+
+        // 5) PdfRenderer 首页封面
+        MethodChannel(messenger, pdfCoverChannelName).setMethodCallHandler { call, result ->
+            when (call.method) {
+                "render" -> {
+                    val path = call.argument<String>("path")
+                    if (path.isNullOrEmpty()) {
+                        result.success(null)
+                    } else {
+                        result.success(
+                            PdfCoverRenderer.render(
+                                this,
+                                path,
+                                call.argument<Int>("width") ?: 480,
+                                call.argument<Int>("height") ?: 720,
+                            )
+                        )
+                    }
+                }
+                else -> result.notImplemented()
+            }
+        }
+
+        // 6) MOBI HUFF/CDIC 纯 Kotlin 解压
+        MethodChannel(messenger, mobiHuffChannelName).setMethodCallHandler { call, result ->
+            when (call.method) {
+                "decompress" -> {
+                    val huff = call.argument<ByteArray>("huff")
+                    val data = call.argument<ByteArray>("data")
+                    if (huff == null || data == null) {
+                        result.error("ARG", "huff/data required", null)
+                    } else {
+                        val cdics = (call.argument<List<*>>("cdics") ?: emptyList<Any?>())
+                            .mapNotNull { it as? ByteArray }
+                        try {
+                            result.success(MobiHuffDecompressor.decompress(huff, cdics, data))
+                        } catch (e: Exception) {
+                            result.error("HUFF_ERROR", e.message, null)
+                        }
+                    }
+                }
+                else -> result.notImplemented()
+            }
+        }
+
+        // 7) 动态桌面图标（7 个 activity-alias 启停）
+        MethodChannel(messenger, launcherIconChannelName).setMethodCallHandler { call, result ->
+            when (call.method) {
+                "setIcon" -> result.success(
+                    LauncherIconHelper.changeIcon(this, call.argument<String>("name"))
+                )
+                "getIcon" -> result.success(LauncherIconHelper.currentIcon(this))
+                "getAliases" -> result.success(LauncherIconHelper.aliasNames())
+                else -> result.notImplemented()
+            }
+        }
+
+        // 8a) 真实电量 + ACTION_TIME_TICK / ACTION_BATTERY_CHANGED 事件
+        val batteryCh = MethodChannel(messenger, batteryChannelName)
+        NativeChannels.battery = batteryCh
+        batteryCh.setMethodCallHandler { call, result ->
+            when (call.method) {
+                "getLevel" -> result.success(DeviceInfoHelper.battery(this))
+                "startWatch" -> {
+                    registerBatteryReceiver()
+                    result.success(true)
+                }
+                "stopWatch" -> {
+                    unregisterBatteryReceiver()
+                    result.success(true)
+                }
+                else -> result.notImplemented()
+            }
+        }
+
+        // 8b) 系统亮度（Settings.System）/ 窗口亮度 + ContentObserver
+        val brightnessCh = MethodChannel(messenger, brightnessChannelName)
+        NativeChannels.brightness = brightnessCh
+        brightnessCh.setMethodCallHandler { call, result ->
+            when (call.method) {
+                "getSystem" -> result.success(DeviceInfoHelper.systemBrightness(this))
+                "setSystem" -> {
+                    val v = call.argument<Int>("value")
+                    result.success(
+                        if (v == null) false else DeviceInfoHelper.setSystemBrightness(this, v)
+                    )
+                }
+                "canWrite" -> result.success(DeviceInfoHelper.canWriteSettings(this))
+                "openWriteSettings" -> result.success(DeviceInfoHelper.openWriteSettings(this))
+                "getWindow" -> result.success(DeviceInfoHelper.windowBrightness(this))
+                "setWindow" -> {
+                    val raw = call.argument<Any>("value")
+                    val v = when (raw) {
+                        is Double -> raw
+                        is Int -> raw.toDouble()
+                        else -> -1.0
+                    }
+                    result.success(DeviceInfoHelper.setWindowBrightness(this, v))
+                }
+                "startWatch" -> {
+                    registerBrightnessObserver()
+                    result.success(true)
+                }
+                "stopWatch" -> {
+                    unregisterBrightnessObserver()
+                    result.success(true)
+                }
+                else -> result.notImplemented()
+            }
+        }
+
+        // 10a) ACTION_PROCESS_TEXT：选中文本送 Dart（与现有 deep_link 通道并存）
+        val processTextCh = MethodChannel(messenger, processTextChannelName)
+        NativeChannels.processText = processTextCh
+        processTextCh.setMethodCallHandler { call, result ->
+            when (call.method) {
+                "getInitialText" -> {
+                    val t = NativeChannels.pendingProcessText
+                    NativeChannels.pendingProcessText = null
+                    result.success(t)
+                }
+                else -> result.notImplemented()
+            }
+        }
+
+        // 10b) SAF（ACTION_OPEN_DOCUMENT_TREE 持久权限）+ FileProvider
+        MethodChannel(messenger, safChannelName).setMethodCallHandler { call, result ->
+            when (call.method) {
+                "pickDocumentTree" -> SafHelper.pickDocumentTree(this, result)
+                "getPersistedUris" -> result.success(SafHelper.persistedTreeUris(this))
+                "releasePermission" -> {
+                    val uri = call.argument<String>("uri")
+                    result.success(
+                        if (uri.isNullOrEmpty()) false else SafHelper.releasePermission(this, uri)
+                    )
+                }
+                "getUriForFile" -> {
+                    val p = call.argument<String>("path")
+                    result.success(if (p.isNullOrEmpty()) null else SafHelper.getUriForFile(this, p))
+                }
+                "shareFile" -> {
+                    val p = call.argument<String>("path")
+                    result.success(
+                        if (p.isNullOrEmpty()) false
+                        else SafHelper.shareFile(
+                            this, p, call.argument<String>("mime"), call.argument<String>("title")
+                        )
+                    )
+                }
+                "openFile" -> {
+                    val p = call.argument<String>("path")
+                    result.success(
+                        if (p.isNullOrEmpty()) false
+                        else SafHelper.openFile(this, p, call.argument<String>("mime"))
+                    )
+                }
+                else -> result.notImplemented()
+            }
+        }
+
+        // 默认启动网络事件化与系统亮度观察（Dart 可用 startWatch/stopWatch 再控制）
+        NetworkCallbackHelper.register(this)
+        registerBrightnessObserver()
     }
 
     private fun enableWakeLock() {
@@ -170,6 +474,9 @@ class MainActivity : FlutterActivity() {
 
     override fun onDestroy() {
         disableWakeLock()
+        unregisterBatteryReceiver()
+        unregisterBrightnessObserver()
+        NetworkCallbackHelper.unregister()
         super.onDestroy()
     }
 
@@ -191,6 +498,9 @@ class MainActivity : FlutterActivity() {
                 // Dart 侧 handler 未就绪：缓存待 getInitialLink 取走
             }
         }
+        // 第十轮：运行中收到新的 PROCESS_TEXT / 快捷方式动作，主动推给 Dart
+        resolveProcessText(intent)?.let { NativeChannels.emitProcessText(it) }
+        resolveShortcut(intent)?.let { NativeChannels.emitShortcut(it) }
     }
 
     /**
@@ -255,5 +565,103 @@ class MainActivity : FlutterActivity() {
     private fun sanitize(name: String): String {
         val base = name.substringAfterLast('/')
         return if (base.contains('.')) base else "$base.txt"
+    }
+
+    // -------------------- 第十轮：辅助实现 --------------------
+
+    /** PiP 可用性：API >= O 且设备声明支持 */
+    private fun isPipSupported(): Boolean =
+        Build.VERSION.SDK_INT >= Build.VERSION_CODES.O &&
+            packageManager.hasSystemFeature(PackageManager.FEATURE_PICTURE_IN_PICTURE)
+
+    private fun isInPip(): Boolean =
+        Build.VERSION.SDK_INT >= Build.VERSION_CODES.N && isInPictureInPictureMode
+
+    /** enterPictureInPictureMode + PictureInPictureParams.Builder（API >= O 保护） */
+    private fun enterPip(width: Int?, height: Int?, autoEnter: Boolean): Boolean {
+        if (!isPipSupported()) return false
+        return try {
+            val builder = PictureInPictureParams.Builder()
+            if (width != null && height != null && width > 0 && height > 0) {
+                builder.setAspectRatio(Rational(width, height))
+            }
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                builder.setAutoEnterEnabled(autoEnter)
+            }
+            enterPictureInPictureMode(builder.build())
+        } catch (_: Exception) {
+            false
+        }
+    }
+
+    override fun onPictureInPictureModeChanged(isInPictureInPictureMode: Boolean) {
+        super.onPictureInPictureModeChanged(isInPictureInPictureMode)
+        NativeChannels.emitPipModeChanged(isInPictureInPictureMode)
+    }
+
+    /** SAF ACTION_OPEN_DOCUMENT_TREE 结果回传（同时保留 super 给 Flutter 插件） */
+    override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
+        super.onActivityResult(requestCode, resultCode, data)
+        SafHelper.onActivityResult(this, requestCode, resultCode, data)
+    }
+
+    private fun resolveProcessText(intent: Intent?): String? {
+        if (intent?.action != Intent.ACTION_PROCESS_TEXT) return null
+        return intent.getCharSequenceExtra(Intent.EXTRA_PROCESS_TEXT)?.toString()?.trim()
+            ?.takeIf { it.isNotEmpty() }
+    }
+
+    private fun resolveShortcut(intent: Intent?): String? =
+        intent?.getStringExtra(ShortcutHelper.EXTRA_SHORTCUT)?.trim()?.takeIf { it.isNotEmpty() }
+
+    private fun registerBatteryReceiver() {
+        if (batteryReceiver != null) return
+        val r = object : BroadcastReceiver() {
+            override fun onReceive(c: Context?, i: Intent?) {
+                when (i?.action) {
+                    Intent.ACTION_BATTERY_CHANGED ->
+                        NativeChannels.emitBatteryChanged(DeviceInfoHelper.battery(this@MainActivity))
+                    Intent.ACTION_TIME_TICK -> NativeChannels.emitTimeTick()
+                }
+            }
+        }
+        batteryReceiver = r
+        try {
+            val filter = IntentFilter().apply {
+                addAction(Intent.ACTION_BATTERY_CHANGED)
+                addAction(Intent.ACTION_TIME_TICK)
+            }
+            @Suppress("UnspecifiedRegisterReceiverFlag")
+            registerReceiver(r, filter)
+        } catch (_: Exception) {
+            batteryReceiver = null
+        }
+    }
+
+    private fun unregisterBatteryReceiver() {
+        batteryReceiver?.let {
+            try {
+                unregisterReceiver(it)
+            } catch (_: Exception) {
+            }
+        }
+        batteryReceiver = null
+    }
+
+    private fun registerBrightnessObserver() {
+        if (brightnessObserver != null) return
+        brightnessObserver = DeviceInfoHelper.registerBrightnessObserver(this) { value ->
+            NativeChannels.emitBrightnessChanged(mapOf("value" to value))
+        }
+    }
+
+    private fun unregisterBrightnessObserver() {
+        brightnessObserver?.let {
+            try {
+                contentResolver.unregisterContentObserver(it)
+            } catch (_: Exception) {
+            }
+        }
+        brightnessObserver = null
     }
 }

@@ -10,6 +10,7 @@ import 'package:legado_md3/help/config/app_config.dart';
 import 'package:legado_md3/help/storage/backup_service.dart';
 import 'package:legado_md3/help/storage/backup_zip.dart';
 import 'package:legado_md3/data/local/app_database.dart';
+import 'package:legado_md3/ui/widgets/app_widgets.dart';
 
 class BackupScreen extends StatefulWidget {
   const BackupScreen({super.key});
@@ -123,7 +124,7 @@ class _BackupScreenState extends State<BackupScreen> {
       builder: (ctx) => StatefulBuilder(builder: (context, setDialogState) => AlertDialog(
         title: const Text('恢复忽略项'),
         content: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, children: [
-          const Text('勾选的数据类型在恢复时默认取消，避免覆盖本地数据', style: TextStyle(fontSize: 12, color: Colors.grey)),
+          Text('勾选的数据类型在恢复时默认取消，避免覆盖本地数据', style: TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.onSurfaceVariant)),
           const SizedBox(height: 8),
           ..._restoreIgnoreItems.entries.map((e) => CheckboxListTile(
             dense: true,
@@ -261,10 +262,14 @@ class _BackupScreenState extends State<BackupScreen> {
       // 仅恢复最新备份：按文件名（时间戳）取最新，跳过选择弹窗
       chosen = list.reduce((a, b) => a.compareTo(b) >= 0 ? a : b);
     } else {
-      final picked = await showDialog<String>(context: context, builder: (d) => SimpleDialog(
-        title: const Text('选择云端备份'),
-        children: list.reversed.map((name) => SimpleDialogOption(child: Text(name), onPressed: () => Navigator.pop(d, name))).toList(),
-      ));
+      final picked = await showAppRadioDialog<String>(
+        context,
+        title: '选择云端备份',
+        groupValue: '',
+        options: [
+          for (final name in list.reversed) AppRadioOption<String>(name, name),
+        ],
+      );
       if (picked == null) return;
       chosen = picked;
     }
@@ -697,6 +702,7 @@ class _BackupScreenState extends State<BackupScreen> {
                       title: Text(file.path.split('/').last),
                       subtitle: Text('${file.lengthSync() ~/ 1024} KB'),
                       trailing: IconButton(
+                        tooltip: '删除备份',
                         icon: const Icon(Icons.delete_outline),
                         onPressed: () => _deleteBackup(file),
                       ),
