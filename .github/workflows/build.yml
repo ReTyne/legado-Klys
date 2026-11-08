@@ -91,7 +91,9 @@ jobs:
   # ---------- iOS IPA（未签名，供设备侧自签/ sideload 安装） ----------
   ios:
     name: Build iOS IPA
-    runs-on: macos-14
+    # GitHub 已停用 macos-14 标签（报错 macos-14-arm64-us-default is not supported），
+    # 跟随最新 macOS runner，避免 iOS job 因标签退役而直接失败。
+    runs-on: macos-latest
     permissions:
       contents: write
     steps:
