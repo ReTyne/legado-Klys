@@ -10,13 +10,16 @@ import 'package:legado_md3/data/model/book_highlight.dart';
 import 'package:legado_md3/data/model/download_task.dart';
 import 'package:legado_md3/data/model/db_models.dart';
 
+import 'helpers/lib_source_helper.dart';
+
 /// 本轮（v13）新增子系统的回归测试：
 /// - 5 张新表在「全新安装」路径下必须建成（_onCreate 的 CREATE TABLE IF NOT EXISTS）；
 /// - 5 个模型的 toMap/fromMap 往返保真；
 /// - RuleSub 自动更新字段不丢；
 /// - 关键调用链用源码契约锁定，防止再次出现「数据孤岛 / 孤儿 UI」。
 void main() {
-  String read(String p) => File(p).readAsStringSync();
+  String read(String p) =>
+      File(p).readAsStringSync() + extraLibrarySources(p);
 
   group('v13 建表', () {
     setUpAll(() {

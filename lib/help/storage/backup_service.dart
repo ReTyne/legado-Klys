@@ -17,6 +17,11 @@ import 'package:legado_md3/data/local/app_database.dart';
 import 'package:legado_md3/help/storage/import_old_data.dart';
 import 'package:legado_md3/help/storage/backup_zip.dart';
 
+part 'parts/backup_dir_result.dart';
+part 'parts/backup_result.dart';
+part 'parts/backup_file_info.dart';
+
+
 /// 备份恢复服务（支持 zip + 轻量加密，兼容旧版纯 JSON 备份）
 class BackupService {
   final DatabaseService _db = DatabaseService();
@@ -843,64 +848,4 @@ class BackupService {
     final file = File(filePath);
     if (await file.exists()) await file.delete();
   }
-}
-
-/// 备份目录解析结果
-class BackupDirResult {
-  /// 实际使用的备份目录
-  final Directory directory;
-  /// true 表示用户配置的路径不可用，已回退到默认目录
-  final bool fallback;
-  /// 回退原因（供 UI 提示），未回退时为 null
-  final String? error;
-  const BackupDirResult(this.directory, this.fallback, this.error);
-}
-
-/// 备份恢复结果
-class BackupResult {
-  bool success = false;
-  String? error;
-  int booksRestored = 0;
-  int booksFailed = 0;
-  int sourcesRestored = 0;
-  int sourcesFailed = 0;
-  int rulesRestored = 0;
-  int rulesFailed = 0;
-
-  /// 其他类型的恢复计数（key -> 条数）
-  final Map<String, int> otherCounts = {};
-
-  /// 记录某类型恢复条数
-  void count(String key, [int n = 1]) => otherCounts[key] = (otherCounts[key] ?? 0) + n;
-
-  String get summary {
-    if (!success) return error ?? '恢复失败';
-    final parts = <String>[
-      '书籍: $booksRestored成功/$booksFailed失败',
-      '书源: $sourcesRestored成功/$sourcesFailed失败',
-      '规则: $rulesRestored成功/$rulesFailed失败',
-    ];
-    otherCounts.forEach((k, v) => parts.add('$k: $v'));
-    return parts.join(', ');
-  }
-}
-
-/// 备份文件概要信息（恢复界面展示用）
-class BackupFileInfo {
-  final String fileName;
-  final bool isZip;
-  final bool encrypted;
-  final String? deviceName;
-  final String? backupTime;
-  final BackupSelection selection;
-  final String? error;
-  BackupFileInfo({
-    required this.fileName,
-    required this.isZip,
-    required this.encrypted,
-    required this.selection,
-    this.deviceName,
-    this.backupTime,
-    this.error,
-  });
 }

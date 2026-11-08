@@ -5,13 +5,16 @@ import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:legado_md3/data/local/app_database.dart';
 import 'package:legado_md3/data/model/v14_models.dart';
 
+import 'helpers/lib_source_helper.dart';
+
 /// 第十轮（v14，对齐 Luoyacheng/legado-E 阅读Sigma）回归测试：
 /// - 10 张新表在「全新安装」路径下建成（直接执行生产常量 v14TableSqls，零漂移）；
 /// - 主要模型 toMap/fromMap 往返保真；
 /// - 关键调用链用源码契约锁定（原生通道 / Bootstrap 接线 / WebSocket /
 ///   EPUB 分流 / 归档解码注册 / 首页 Feed 容错 / 阅读页新菜单）。
 void main() {
-  String read(String p) => File(p).readAsStringSync();
+  String read(String p) =>
+      File(p).readAsStringSync() + extraLibrarySources(p);
 
   group('v14 建表与 DAO', () {
     setUpAll(() {

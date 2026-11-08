@@ -6,6 +6,8 @@ import 'package:legado_md3/data/model/book_source.dart';
 import 'package:legado_md3/help/source/js/offline_js_bridge.dart';
 import 'package:legado_md3/help/source/rule_pipeline.dart';
 
+import 'helpers/lib_source_helper.dart';
+
 /// 用 yckceo 社区两个真实聚合书源（7632 大灰狼 / 7814 书山）做的离线兼容回归。
 /// 全程不依赖网络 / WebView / 原生通道：fixture 落盘、模型往返、规则前缀识别、
 /// jsLib 注入、纯 Dart 桥 API 真实实现均可在 flutter_test 内确定性复现。
@@ -161,8 +163,9 @@ void main() {
 
     test('WebView 桥代码提供 jsLib 加载期所需的全部兜底 API', () {
       // 直接读桥源码：离线、零插件依赖，断言的是注入脚本本身
-      final code =
-          File('lib/help/source/js/legado_bridge_js.dart').readAsStringSync();
+      const bridgePath = 'lib/help/source/js/legado_bridge_js.dart';
+      final code = File(bridgePath).readAsStringSync() +
+          extraLibrarySources(bridgePath);
       for (final api in const [
         'getJsLib:',
         'getArguments',

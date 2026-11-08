@@ -10,6 +10,10 @@
 /// 无法覆盖的（java.ajax、复杂函数/循环）返回 null，并由调用方回退。
 import 'dart:convert';
 
+part 'parts/parens.dart';
+part 'parts/lit.dart';
+
+
 class JsMiniEvaluator {
   final Map<String, dynamic> vars;
   JsMiniEvaluator({Map<String, dynamic>? initial}) : vars = Map.of(initial ?? const {});
@@ -639,6 +643,3 @@ class JsMiniEvaluator {
     return v.toString();
   }
 }
-
-class _Parens { final List<String> args; final int end; _Parens(this.args, this.end); }
-class _Lit { final String value; final int end; _Lit(this.value, this.end); }

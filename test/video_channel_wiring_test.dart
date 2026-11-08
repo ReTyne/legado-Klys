@@ -2,13 +2,16 @@ import 'dart:io';
 
 import 'package:flutter_test/flutter_test.dart';
 
+import 'helpers/lib_source_helper.dart';
+
 /// 回归「代码调用 / 互相联系」：java.openVideoPlayer 必须是三层贯通的真实链路
 ///   JS 桥(java.openVideoPlayer → legado://video)
 ///     → Dart JS 运行时(_intercept 分发 → _handleVideo → LegadoBridgeJs.openVideoPlayer)
 ///       → Kotlin MainActivity(MethodChannel('legado/video').open → ACTION_VIEW 播放器)
 /// 任何一层缺失都会让书源的视频播放能力变成孤儿/死实现，故用源码契约锁定。
 void main() {
-  String read(String p) => File(p).readAsStringSync();
+  String read(String p) =>
+      File(p).readAsStringSync() + extraLibrarySources(p);
 
   test('JS 桥发 legado://video 并交由 Dart handler 处理', () {
     final bridge = read('lib/help/source/js/legado_bridge_js.dart');

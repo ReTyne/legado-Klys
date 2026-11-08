@@ -6,6 +6,8 @@ import 'package:legado_md3/data/local/app_database.dart';
 import 'package:legado_md3/data/model/book.dart';
 import 'package:legado_md3/data/model/book_chapter.dart';
 
+import 'helpers/lib_source_helper.dart';
+
 /// 回归 P0：全新安装（只走 onCreate）时 book_chapters 曾缺 isVip / update_time 列，
 /// 导致 BookChapter.toMap 写入抛 "no such column"，章节目录无法保存；
 /// 老用户因走 v9 迁移补列而无碍，故只有新装用户中招、极易漏测。
@@ -123,8 +125,9 @@ void main() {
     expect(ch.toJson()['resourceUrl'], 'https://example.com/a.mp3');
 
     // JS 桥契约：__wrapChapter.getResourceUrl 读取的正是该键
-    final bridge =
-        File('lib/help/source/js/legado_bridge_js.dart').readAsStringSync();
+    const bridgePath = 'lib/help/source/js/legado_bridge_js.dart';
+    final bridge = File(bridgePath).readAsStringSync() +
+        extraLibrarySources(bridgePath);
     expect(bridge, contains('this.resourceUrl'));
   });
 }

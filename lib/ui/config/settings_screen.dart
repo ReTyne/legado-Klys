@@ -38,6 +38,9 @@ import 'package:legado_md3/ui/welcome/welcome_config_screen.dart';
 import 'package:legado_md3/ui/widgets/app_widgets.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+part 'cover_album_screen.dart';
+part 'import_book_config_screen.dart';
+
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -1331,90 +1334,5 @@ class _SettingsScreenState extends State<SettingsScreen> {
       ),
     );
   }
-}
-
-/* ===== 由 cover_album_screen.dart 合并 ===== */
-
-/// 封面相册 - 以网格展示书架所有书籍封面
-class CoverAlbumScreen extends StatefulWidget {
-  const CoverAlbumScreen({super.key});
-
-  @override
-  State<CoverAlbumScreen> createState() => _CoverAlbumScreenState();
-}
-
-class _CoverAlbumScreenState extends State<CoverAlbumScreen> {
-  final DatabaseService _db = DatabaseService();
-  List<Book> _books = [];
-  bool _loading = true;
-
-  @override
-  void initState() { super.initState(); _load(); }
-
-  Future<void> _load() async {
-    final books = await _db.getAllBooks();
-    if (mounted) setState(() { _books = books; _loading = false; });
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: Text('封面相册 (${_books.length})')),
-      body: _loading
-          ? const Center(child: CircularProgressIndicator())
-          : _books.isEmpty
-              ? const AppEmptyState(
-                  icon: Icons.photo_library_outlined,
-                  title: '书架暂无书籍',
-                  message: '添加书籍后封面会显示在这里',
-                )
-              : GridView.builder(
-                  padding: const EdgeInsets.all(8),
-                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                    crossAxisCount: 3, mainAxisSpacing: 8, crossAxisSpacing: 8, childAspectRatio: 0.72),
-                  itemCount: _books.length,
-                  itemBuilder: (context, i) {
-                    final book = _books[i];
-                    return GestureDetector(
-                      onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => BookDetailScreen(book: book))),
-                      child: Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
-                        Expanded(child: _cover(book)),
-                        const SizedBox(height: 4),
-                        Text(book.name, maxLines: 1, overflow: TextOverflow.ellipsis, textAlign: TextAlign.center, style: const TextStyle(fontSize: 11)),
-                      ]),
-                    );
-                  },
-                ),
-    );
-  }
-
-  Widget _cover(Book book) {
-    final url = book.customCoverUrl?.isNotEmpty == true ? book.customCoverUrl! : book.coverUrl;
-    if (url != null && url.isNotEmpty && url.startsWith('http')) {
-      return ClipRRect(borderRadius: BorderRadius.circular(12),
-        child: Image.network(url, fit: BoxFit.cover, errorBuilder: (_, __, ___) => _placeholder(book)));
-    }
-    return _placeholder(book);
-  }
-
-  Widget _placeholder(Book book) => ClipRRect(borderRadius: BorderRadius.circular(12),
-    child: Container(
-      decoration: BoxDecoration(gradient: LinearGradient(begin: Alignment.topLeft, end: Alignment.bottomRight,
-        colors: [Theme.of(context).colorScheme.primaryContainer, Theme.of(context).colorScheme.secondaryContainer])),
-      child: Center(child: Padding(padding: const EdgeInsets.all(4), child: Text(book.name, maxLines: 3, overflow: TextOverflow.ellipsis, textAlign: TextAlign.center,
-        style: TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.onPrimaryContainer))))));
-}
-
-/* ===== 由 import_book_config_screen.dart 合并 ===== */
-/// 导入书籍配置已移除：import_path / import_sort / import_nameTpl 无任何消费方，
-/// ImportBookService.importPath(path) 仅接收调用方传入的 path 参数。
-
-/// 字体选择列表项：区分内置资源与本机文件，便于 FontLoader 取字节
-class _FontEntry {
-  final String path;
-  final String name;
-  final String source;
-  final bool asset;
-  const _FontEntry({required this.path, required this.name, required this.source, required this.asset});
 }
 

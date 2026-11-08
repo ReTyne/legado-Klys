@@ -3,6 +3,8 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:legado_md3/ui/book/manga/manga_reader_screen.dart';
 
+import 'helpers/lib_source_helper.dart';
+
 void main() {
   group('漫画双页页数与页对映射（对齐 E 的漫画双页阅读）', () {
     test('单页模式页数 = 图片数', () {
@@ -44,8 +46,8 @@ void main() {
   // 双页是 UI 结构改动：除上面的纯函数单测外，再用源码静态断言确认接线
   // （与项目 real_source_compat_test.dart 断言 legado_bridge_js.dart 源码的风格一致）。
   group('双页实现接线（源码静态断言）', () {
-    final src =
-        File('lib/ui/book/manga/manga_reader_screen.dart').readAsStringSync();
+    const srcPath = 'lib/ui/book/manga/manga_reader_screen.dart';
+    final src = File(srcPath).readAsStringSync() + extraLibrarySources(srcPath);
 
     test('_scrollMode==2 走双页分支并用 Row/Expanded 并排两张图', () {
       expect(src.contains('final doublePage = _scrollMode == 2;'), isTrue);
