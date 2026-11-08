@@ -249,7 +249,7 @@ class _BookshelfScreenState extends State<BookshelfScreen> {
                         context,
                         MaterialPageRoute(
                             builder: (_) => const BookshelfManageScreen()));
-                    await Provider.of<BookProvider>(context, listen: false).loadBooks();
+                    if (mounted && context.mounted) await Provider.of<BookProvider>(context, listen: false).loadBooks();
                   }),
               ListTile(
                   leading: const Icon(Icons.download_outlined),
@@ -270,7 +270,7 @@ class _BookshelfScreenState extends State<BookshelfScreen> {
                         context,
                         MaterialPageRoute(
                             builder: (_) => const GroupManageScreen()));
-                    await Provider.of<BookProvider>(context, listen: false).loadBooks();
+                    if (mounted && context.mounted) await Provider.of<BookProvider>(context, listen: false).loadBooks();
                   }),
               ListTile(
                   leading: const Icon(Icons.view_quilt_outlined),
@@ -493,7 +493,7 @@ class _BookshelfScreenState extends State<BookshelfScreen> {
                     // cfg: 0最近阅读 1书名 2作者 3添加时间(更新时间) 4手动
                     const eToCfg = [0, 3, 1, 4, 0, 2];
                     await prefs.setInt('bs_sortType', eToCfg[sortIndex]);
-                    if (!mounted) return;
+                    if (!mounted || !dialogContext.mounted) return;
                     Navigator.pop(dialogContext);
                     await _reloadCfg();
                   },
@@ -529,7 +529,7 @@ class _BookshelfScreenState extends State<BookshelfScreen> {
             TextButton(
               onPressed: () async {
                 await CrashLogHelper.instance.clear();
-                if (mounted) Navigator.pop(c);
+                if (mounted && c.mounted) Navigator.pop(c);
               },
               child: const Text('清空'),
             ),
@@ -582,6 +582,7 @@ class _BookshelfScreenState extends State<BookshelfScreen> {
     final sources = await _db.getAllSources(enabled: true);
     int done = 0, ok = 0, fail = 0;
     bool started = false;
+    if (!mounted || !context.mounted) return;
     await showDialog(
       context: context,
       barrierDismissible: false,
@@ -594,7 +595,7 @@ class _BookshelfScreenState extends State<BookshelfScreen> {
             fail = fail2;
             setP(() {});
           }).then((_) {
-            if (mounted) Navigator.pop(d);
+            if (mounted && d.mounted) Navigator.pop(d);
           });
         }
         return AlertDialog(
@@ -824,10 +825,12 @@ class _BookshelfScreenState extends State<BookshelfScreen> {
       }
       return;
     }
+    if (!mounted || !context.mounted) return;
     final provider = Provider.of<BookProvider>(context, listen: false);
     final sources = await _db.getAllSources(enabled: true);
     int done = 0, added = 0, skipped = 0, failed = 0;
     bool started = false;
+    if (!mounted || !context.mounted) return;
     await showDialog(
       context: context,
       barrierDismissible: false,
@@ -841,7 +844,7 @@ class _BookshelfScreenState extends State<BookshelfScreen> {
             failed = f;
             setP(() {});
           }).then((_) {
-            if (mounted) Navigator.pop(d);
+            if (mounted && d.mounted) Navigator.pop(d);
           });
         }
         return AlertDialog(
@@ -1007,7 +1010,7 @@ class _BookshelfScreenState extends State<BookshelfScreen> {
                 if (book.local || book.origin == null || book.noteUrl == null) { ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('本地书籍无需更新'))); return; }
                 final sources = await _db.getAllSources(enabled: true);
                 final source = sources.where((s) => s.bookSourceUrl == book.origin).firstOrNull;
-                if (source == null) { ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('未找到对应书源或书源已停用'))); return; }
+                if (source == null) { if (mounted && context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('未找到对应书源或书源已停用'))); return; }
                 try {
                   final chapters = await _engine.getToc(source, book.noteUrl!,
                       bookInfo: book.jsContext());
@@ -1016,10 +1019,10 @@ class _BookshelfScreenState extends State<BookshelfScreen> {
                   book.lastChapterIndex = chapters.length - 1;
                   book.lastCheckTime = DateTime.now().millisecondsSinceEpoch;
                   await _db.updateBook(book);
-                  await Provider.of<BookProvider>(context, listen: false).loadBooks();
-                  if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('更新完成，共${chapters.length}章')));
+                  if (mounted && context.mounted) await Provider.of<BookProvider>(context, listen: false).loadBooks();
+                  if (mounted && context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('更新完成，共${chapters.length}章')));
                 } catch (e) {
-                  if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('更新失败: $e')));
+                  if (mounted && context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('更新失败: $e')));
                 }
               }),
               ListTile(leading: const Icon(Icons.swap_horiz_outlined), title: const Text('换源'), onTap: () { Navigator.pop(context); Navigator.push(context, MaterialPageRoute(builder: (_) => ChangeSourceScreen(book: book))); }),
@@ -1033,8 +1036,8 @@ class _BookshelfScreenState extends State<BookshelfScreen> {
                 Navigator.pop(context);
                 book.order = (book.order ?? 0) < 0 ? 0 : -1;
                 await _db.updateBook(book);
-                await Provider.of<BookProvider>(context, listen: false).loadBooks();
-                if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text((book.order ?? 0) < 0 ? '已置顶' : '已取消置顶')));
+                if (mounted && context.mounted) await Provider.of<BookProvider>(context, listen: false).loadBooks();
+                if (mounted && context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text((book.order ?? 0) < 0 ? '已置顶' : '已取消置顶')));
               }),
               ListTile(leading: const Icon(Icons.share_outlined), title: const Text('分享'), onTap: () async {
                 Navigator.pop(context);
@@ -1052,7 +1055,7 @@ class _BookshelfScreenState extends State<BookshelfScreen> {
                 );
                 if (confirmed) {
                   await _db.deleteBook(book.name, book.author);
-                  await Provider.of<BookProvider>(context, listen: false).loadBooks();
+                  if (mounted && context.mounted) await Provider.of<BookProvider>(context, listen: false).loadBooks();
                 }
               }),
             ]),
@@ -1276,8 +1279,10 @@ class _BookshelfScreenState extends State<BookshelfScreen> {
       final chapters = await _db.getChapters(book.name, book.author)
         ..removeWhere((c) => c.isVolume);
       if (chapters.isEmpty) {
-        ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('暂无章节，请先更新目录后再添加书签')));
+        if (mounted && context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('暂无章节，请先更新目录后再添加书签')));
+        }
         return;
       }
       final idx = book.durChapterIndex.clamp(0, chapters.length - 1);
@@ -1321,13 +1326,13 @@ class _BookshelfScreenState extends State<BookshelfScreen> {
               book.group = g;
               await _db.updateBook(book);
               await provider.loadBooks();
-              if (mounted) Navigator.pop(context);
+              if (mounted && context.mounted) Navigator.pop(context);
             }),
             ActionChip(label: const Text('未分组'), onPressed: () async {
               book.group = null;
               await _db.updateBook(book);
               await provider.loadBooks();
-              if (mounted) Navigator.pop(context);
+              if (mounted && context.mounted) Navigator.pop(context);
             }),
           ]),
           const SizedBox(height: 8),
@@ -1340,7 +1345,7 @@ class _BookshelfScreenState extends State<BookshelfScreen> {
             book.group = t.isEmpty ? null : t;
             await _db.updateBook(book);
             await provider.loadBooks();
-            if (mounted) Navigator.pop(context);
+            if (mounted && context.mounted) Navigator.pop(context);
           }, child: const Text('确定')),
         ],
       ),

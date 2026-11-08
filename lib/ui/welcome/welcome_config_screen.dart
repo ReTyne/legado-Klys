@@ -278,7 +278,7 @@ class _WelcomeConfigScreenState extends State<WelcomeConfigScreen> {
         ],
       ),
       body: _loading
-          ? const Center(child: CircularProgressIndicator())
+          ? const AppLoadingIndicator()
           : ListView(
               padding: const EdgeInsets.only(bottom: 24),
               children: [

@@ -45,7 +45,7 @@ const detailHtml = '''
 String tocHtml() {
   final sb = StringBuffer('<html><body><div id="list" class="chapter-list">');
   for (var i = 1; i <= 12; i++) {
-    sb.writeln('<dd><a href="/1001/$i.html">第${i}章 测试章节标题</a></dd>');
+    sb.writeln('<dd><a href="/1001/$i.html">第$i章 测试章节标题</a></dd>');
   }
   sb.writeln('<dd><a href="/1001/index_2.html">下一页</a></dd>');
   sb.writeln('</div></body></html>');

@@ -70,7 +70,7 @@ class DirectLinkUploadService {
 
   /// 内置默认规则（E assets/defaultData/directLinkUpload.json）
   static final List<DirectLinkRule> defaultRules = [
-    DirectLinkRule(
+    const DirectLinkRule(
       uploadUrl:
           'https://sy.nyasama.net/shuyuan,{"method":"POST","body":{"file":"fileRequest"},"type":"multipart/form-data"}',
       downloadUrlRule:
@@ -79,7 +79,7 @@ class DirectLinkUploadService {
       compress: false,
       expiryDate: 30,
     ),
-    DirectLinkRule(
+    const DirectLinkRule(
       uploadUrl:
           'https://sy.mgz6.com/shuyuan,{"method":"POST","body":{"file":"fileRequest"},"type":"multipart/form-data"}',
       downloadUrlRule:
@@ -88,7 +88,7 @@ class DirectLinkUploadService {
       compress: false,
       expiryDate: 7,
     ),
-    DirectLinkRule(
+    const DirectLinkRule(
       uploadUrl:
           'http://v2.jt12.eu/up-v2.php,{"method":"POST","body":{"file":"fileRequest"},"type":"multipart/form-data"}',
       downloadUrlRule: '\$.msg',

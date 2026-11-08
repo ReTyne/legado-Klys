@@ -64,7 +64,7 @@ class HomepageModuleView extends StatelessWidget {
     if (loading) {
       return const Padding(
         padding: EdgeInsets.symmetric(vertical: 24),
-        child: Center(child: CircularProgressIndicator()),
+        child: AppLoadingIndicator(),
       );
     }
     if (error != null) {

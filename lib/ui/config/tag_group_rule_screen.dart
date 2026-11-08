@@ -37,9 +37,9 @@ class _TagGroupRuleScreenState extends State<TagGroupRuleScreen> {
       title: Text(rule == null ? '添加分组规则' : '编辑分组规则'),
       content: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, children: [
         TextField(controller: nameCtl, decoration: const InputDecoration(labelText: '规则名称')),
-        const SizedBox(height: 12),
+        const SizedBox(height: AppSpacing.m),
         TextField(controller: patternCtl, maxLines: 2, decoration: const InputDecoration(labelText: '标签正则', hintText: '匹配书籍标签的正则表达式')),
-        const SizedBox(height: 12),
+        const SizedBox(height: AppSpacing.m),
         TextField(controller: groupCtl, decoration: const InputDecoration(labelText: '移动到分组', hintText: '匹配后自动归入的分组')),
         SwitchListTile(contentPadding: EdgeInsets.zero, dense: true, title: const Text('启用'), value: enabled, onChanged: (v) => setD(() => enabled = v)),
       ])),
@@ -52,7 +52,7 @@ class _TagGroupRuleScreenState extends State<TagGroupRuleScreen> {
             group: groupCtl.text, enabled: enabled ? 1 : 0, order: rule?.order,
           );
           if (rule == null) { await _db.insertTagGroupRule(r); } else { await _db.updateTagGroupRule(r); }
-          if (mounted) { Navigator.pop(context); _load(); }
+          if (mounted && context.mounted) { Navigator.pop(context); _load(); }
         }, child: const Text('保存')),
       ],
     )));
@@ -67,18 +67,21 @@ class _TagGroupRuleScreenState extends State<TagGroupRuleScreen> {
         }, itemBuilder: (_) => const [PopupMenuItem(value: 'help', child: Text('帮助'))]),
       ]),
       floatingActionButton: FloatingActionButton(tooltip: '新增规则', onPressed: () => _edit(), child: const Icon(Icons.add)),
-      body: _loading ? const Center(child: CircularProgressIndicator()) : _rules.isEmpty
-        ? AppEmptyState(
-            icon: Icons.label_outline,
-            title: '暂无标签分组规则',
-            message: '点击右下角新增规则，按标签正则自动分组',
-            action: FilledButton.icon(
-              onPressed: () => _edit(),
-              icon: const Icon(Icons.add),
-              label: const Text('新增规则'),
-            ),
-          )
-        : ListView.separated(
+      // 三态统一收敛到 AppAsyncState：加载 / 空 / 列表共用无障碍增强的公共组件。
+      // 宽屏居中限宽，窄屏原样铺满；内层三态仍由 AppAsyncState 统一驱动。
+      body: AppAdaptiveBody(
+        child: AppAsyncState(
+        loading: _loading,
+        isEmpty: _rules.isEmpty,
+        emptyIcon: Icons.label_outline,
+        emptyTitle: '暂无标签分组规则',
+        emptyMessage: '点击右下角新增规则，按标签正则自动分组',
+        emptyAction: FilledButton.icon(
+          onPressed: () => _edit(),
+          icon: const Icon(Icons.add),
+          label: const Text('新增规则'),
+        ),
+        child: ListView.separated(
             itemCount: _rules.length,
             separatorBuilder: (_, __) => const Divider(height: 1),
             itemBuilder: (context, i) {
@@ -97,7 +100,9 @@ class _TagGroupRuleScreenState extends State<TagGroupRuleScreen> {
                 onTap: () => _edit(r),
               );
             },
-          ),
+        ),
+      ),
+      ),
     );
   }
 }

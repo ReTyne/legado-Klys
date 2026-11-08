@@ -546,7 +546,7 @@ class _BackupScreenState extends State<BackupScreen> {
     return Scaffold(
       appBar: AppBar(title: const Text('备份与恢复')),
       body: _isWorking
-          ? const Center(child: CircularProgressIndicator())
+          ? const AppLoadingIndicator()
           : ListView(
               padding: const EdgeInsets.all(16),
               children: [

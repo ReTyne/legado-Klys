@@ -922,7 +922,7 @@ class RuleAutoCompleter {
       final pCount = e.querySelectorAll('p').length;
       score += pCount * 200;
       // 父容器命中时子段落也会命中，偏好直接包裹段落的容器
-      if (e.children.length > 0) {
+      if (e.children.isNotEmpty) {
         final pRatio = pCount / e.children.length;
         score += (pRatio * 3000).round();
       }

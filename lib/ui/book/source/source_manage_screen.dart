@@ -102,7 +102,7 @@ class _SourceManageScreenState extends State<SourceManageScreen> {
   final CheckSourceService _checkService = CheckSourceService();
   List<BookSource> _sources = [];
   bool _isLoading = true;
-  String _searchQuery = '';
+  final String _searchQuery = '';
   String? _selectedGroup;
   // 对齐 E BookSourceActivity.upBookSource 的特殊分组过滤
   // （need_login / 未分组 / 已启用 / 未启用 / 已启用发现）
@@ -276,6 +276,7 @@ class _SourceManageScreenState extends State<SourceManageScreen> {
             if (text.startsWith('http')) {
               _importFromUrl(text);
             } else {
+              if (!mounted || !context.mounted) return;
               final n = await runWithBusyDialog<int>(
                 context,
                 message: '正在导入书源…',
@@ -345,6 +346,7 @@ class _SourceManageScreenState extends State<SourceManageScreen> {
         // 指定类型：走统一导入分派
         await DeepLinkService.instance.importRaw(body, type: type);
       } else {
+        if (!mounted || !context.mounted) return;
         final count = await runWithBusyDialog<int>(
           context,
           message: '正在导入书源…',
@@ -406,6 +408,7 @@ class _SourceManageScreenState extends State<SourceManageScreen> {
       } else {
         content = utf8.decode(bytes);
       }
+      if (!mounted || !context.mounted) return;
       final count = await runWithBusyDialog<int>(
         context,
         message: '正在导入书源…',
@@ -430,11 +433,14 @@ class _SourceManageScreenState extends State<SourceManageScreen> {
     try {
       final clipboardData = await Clipboard.getData(Clipboard.kTextPlain);
       if (clipboardData == null || clipboardData.text == null || clipboardData.text!.isEmpty) {
-        ScaffoldMessenger.of(context).showSnackBar(
+        if (mounted && context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('剪贴板为空')),
         );
+        }
         return;
       }
+      if (!mounted || !context.mounted) return;
       final count = await runWithBusyDialog<int>(
         context,
         message: '正在导入书源…',
@@ -459,9 +465,11 @@ class _SourceManageScreenState extends State<SourceManageScreen> {
     try {
       final sources = await _db.getAllSources();
       if (sources.isEmpty) {
-        ScaffoldMessenger.of(context).showSnackBar(
+        if (mounted && context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('没有可导出的书源')),
         );
+        }
         return;
       }
       final jsonStr = const JsonEncoder.withIndent('  ').convert(
@@ -782,26 +790,26 @@ class _SourceManageScreenState extends State<SourceManageScreen> {
     switch (action) {
       case 'enable_explore':
         for (final s in selected) { s.enabledExplore = true; await _db.updateSource(s); }
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('已启用${selected.length}个书源的发现')));
+        if (mounted && context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('已启用${selected.length}个书源的发现')));
         break;
       case 'disable_explore':
         for (final s in selected) { s.enabledExplore = false; await _db.updateSource(s); }
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('已禁用${selected.length}个书源的发现')));
+        if (mounted && context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('已禁用${selected.length}个书源的发现')));
         break;
       case 'to_top':
         for (var i = 0; i < selected.length; i++) { selected[i].customOrder = -(i + 1); await _db.updateSource(selected[i]); }
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('已置顶')));
+        if (mounted && context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('已置顶')));
         break;
       case 'to_bottom':
         for (var i = 0; i < selected.length; i++) { selected[i].customOrder = i + 1; await _db.updateSource(selected[i]); }
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('已置底')));
+        if (mounted && context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('已置底')));
         break;
       case 'add_group':
         _showBatchGroupDialog(selected, true);
         return;
       case 'remove_group':
         for (final s in selected) { s.bookSourceGroup = null; await _db.updateSource(s); }
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('已移除分组')));
+        if (mounted && context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('已移除分组')));
         break;
       case 'check':
         Navigator.pop(context);
@@ -826,7 +834,7 @@ class _SourceManageScreenState extends State<SourceManageScreen> {
         TextButton(onPressed: () => Navigator.pop(context), child: const Text('取消')),
         FilledButton(onPressed: () async {
           for (final s in selected) { s.bookSourceGroup = controller.text; await _db.updateSource(s); }
-          if (mounted) { Navigator.pop(context); await _loadSources(); setState(() { _selectMode = false; _selectedIds.clear(); }); }
+          if (mounted && context.mounted) { Navigator.pop(context); await _loadSources(); setState(() { _selectMode = false; _selectedIds.clear(); }); }
         }, child: const Text('确定')),
       ],
     ));
@@ -989,7 +997,7 @@ class _SourceManageScreenState extends State<SourceManageScreen> {
             ),
           Expanded(
             child: _isLoading
-                ? const Center(child: CircularProgressIndicator())
+                ? const AppLoadingIndicator()
                 : _filteredSources.isEmpty
                     ? _buildEmptyState()
                     : ListView.separated(
@@ -1065,8 +1073,10 @@ class _SourceManageScreenState extends State<SourceManageScreen> {
     final sources = targets ?? await _db.getAllSources();
     if (sources.isEmpty) return;
     if (_checkService.isRunning) {
-      ScaffoldMessenger.of(context).showSnackBar(
+      if (mounted && context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text('已有书源在校验，等完成后再试')));
+      }
       return;
     }
     int done = 0, valid = 0, invalid = 0;

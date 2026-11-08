@@ -27,9 +27,13 @@ class _ReplaceRuleScreenState extends State<ReplaceRuleScreen> {
   }
 
   Future<void> _onMenu(String v) async {
-    if (v == 'net') _importNetwork();
-    else if (v == 'local') _importLocal();
-    else if (v == 'export') _export();
+    if (v == 'net') {
+      _importNetwork();
+    } else if (v == 'local') {
+      _importLocal();
+    } else if (v == 'export') {
+      _export();
+    }
   }
 
   Future<void> _importNetwork() async {
@@ -114,17 +118,17 @@ class _ReplaceRuleScreenState extends State<ReplaceRuleScreen> {
                 controller: summaryController,
                 decoration: const InputDecoration(labelText: '规则说明'),
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: AppSpacing.m),
               TextField(
                 controller: regexController,
                 decoration: const InputDecoration(labelText: '匹配规则(正则或关键词)'),
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: AppSpacing.m),
               TextField(
                 controller: replacementController,
                 decoration: const InputDecoration(labelText: '替换为(留空表示删除)'),
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: AppSpacing.s),
               CheckboxListTile(
                 contentPadding: EdgeInsets.zero, dense: true,
                 title: const Text('作用于标题'), value: isTitle,
@@ -140,7 +144,7 @@ class _ReplaceRuleScreenState extends State<ReplaceRuleScreen> {
                 title: const Text('使用正则表达式'), value: isRegex,
                 onChanged: (v) => setDialogState(() => isRegex = v ?? true),
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: AppSpacing.s),
               TextField(
                 controller: scopeController,
                 decoration: const InputDecoration(labelText: '作用范围(书源URL，留空为全部)'),
@@ -168,7 +172,7 @@ class _ReplaceRuleScreenState extends State<ReplaceRuleScreen> {
               } else {
                 await _db.updateReplaceRule(newRule);
               }
-              Navigator.pop(context);
+              if (mounted && context.mounted) Navigator.pop(context);
               _loadRules();
             },
             child: const Text('保存'),
@@ -196,14 +200,22 @@ class _ReplaceRuleScreenState extends State<ReplaceRuleScreen> {
           ]),
         ],
       ),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : _rules.isEmpty
-              ? _buildEmptyState()
-              : ListView.separated(
-                  padding: const EdgeInsets.all(16),
+      // 三态统一收敛到 AppAsyncState；空态动作直接声明，不再单独维护方法。
+      body: AppAsyncState(
+        loading: _isLoading,
+        isEmpty: _rules.isEmpty,
+        emptyIcon: Icons.find_replace_outlined,
+        emptyTitle: '暂无替换规则',
+        emptyMessage: '点击右下角添加规则',
+        emptyAction: FilledButton.icon(
+          onPressed: () => _showEditDialog(),
+          icon: const Icon(Icons.add),
+          label: const Text('添加规则'),
+        ),
+        child: ListView.separated(
+                  padding: const EdgeInsets.all(AppSpacing.l),
                   itemCount: _rules.length,
-                  separatorBuilder: (_, __) => const SizedBox(height: 8),
+                  separatorBuilder: (_, __) => const SizedBox(height: AppSpacing.s),
                   itemBuilder: (context, index) {
                     final rule = _rules[index];
                     return Card(
@@ -226,22 +238,10 @@ class _ReplaceRuleScreenState extends State<ReplaceRuleScreen> {
                     );
                   },
                 ),
+      ),
       floatingActionButton: FloatingActionButton(
         onPressed: () => _showEditDialog(),
         child: const Icon(Icons.add),
-      ),
-    );
-  }
-
-  Widget _buildEmptyState() {
-    return AppEmptyState(
-      icon: Icons.find_replace_outlined,
-      title: '暂无替换规则',
-      message: '点击右下角添加规则',
-      action: FilledButton.icon(
-        onPressed: () => _showEditDialog(),
-        icon: const Icon(Icons.add),
-        label: const Text('添加规则'),
       ),
     );
   }
@@ -268,7 +268,7 @@ class _ReplaceRuleScreenState extends State<ReplaceRuleScreen> {
             mainAxisSize: MainAxisSize.min,
             children: [
               Text('替换净化可以去除书籍内容里的广告、错别字、屏蔽词等。'),
-              SizedBox(height: 8),
+              SizedBox(height: AppSpacing.s),
               Text('规则说明：', style: TextStyle(fontWeight: FontWeight.bold)),
               Text('• 替换规则：支持正则表达式'),
               Text('• 替换为：替换后的内容，留空表示删除'),

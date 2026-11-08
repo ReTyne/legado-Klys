@@ -5,7 +5,7 @@ part of '../cloud_tts_providers.dart';
 
 /// Azure语音TTS
 class AzureTtsProvider extends CloudTtsProvider {
-  AzureTtsProvider(CloudTtsEngine engine) : super(engine);
+  AzureTtsProvider(super.engine);
 
   @override
   String get name => 'Azure';

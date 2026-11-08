@@ -5,7 +5,7 @@ part of '../cloud_tts_providers.dart';
 
 /// OpenAI TTS
 class OpenAiTtsProvider extends CloudTtsProvider {
-  OpenAiTtsProvider(CloudTtsEngine engine) : super(engine);
+  OpenAiTtsProvider(super.engine);
 
   @override
   String get name => 'OpenAI';

@@ -45,7 +45,7 @@ class _VideoSettingScreenState extends State<VideoSettingScreen> {
     return Scaffold(
       appBar: AppBar(title: const Text('视频播放器设置')),
       body: _loading
-          ? const Center(child: CircularProgressIndicator())
+          ? const AppLoadingIndicator()
           : ListView(
               padding: const EdgeInsets.only(bottom: 24),
               children: [

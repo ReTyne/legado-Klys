@@ -602,7 +602,7 @@ class _RssArticlesScreenState extends State<RssArticlesScreen> {
         ],
       ),
       body: _loading
-          ? const Center(child: CircularProgressIndicator())
+          ? const AppLoadingIndicator()
           : _error != null
               ? AppErrorState(message: _error!, onRetry: _load)
               : _articles.isEmpty

@@ -438,7 +438,9 @@ class LocalBookParser {
       if (c == 0) {
         if (i < src.length) out.add(src[i++]);
       } else if (c <= 8) {
-        for (var j = 0; j < c && i < src.length; j++) out.add(src[i++]);
+        for (var j = 0; j < c && i < src.length; j++) {
+          out.add(src[i++]);
+        }
       } else if (c <= 0x7f) {
         out.add(c);
       } else if (c <= 0xbf) {
@@ -513,7 +515,7 @@ class LocalBookParser {
       var data = bytes.sublist(start, end);
       // 尝试 FlateDecode 解压
       try {
-        data = ZLibDecoder().decodeBytes(data);
+        data = const ZLibDecoder().decodeBytes(data);
       } catch (_) {
         // 非压缩流，保持原样
       }

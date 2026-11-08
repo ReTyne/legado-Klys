@@ -86,7 +86,11 @@ class _DownloadSheetState extends State<DownloadSheet> {
             onChanged: (v) => setSheet(() => selected = v ?? i),
           ),
         )),
-        FilledButton(onPressed: () { setState(() { if (isStart) _start = selected; else _end = selected; }); Navigator.pop(context); }, child: const Text('确定')),
+        FilledButton(onPressed: () { setState(() { if (isStart) {
+          _start = selected;
+        } else {
+          _end = selected;
+        } }); Navigator.pop(context); }, child: const Text('确定')),
         const SizedBox(height: 8),
       ])),
     ));

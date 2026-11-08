@@ -84,7 +84,7 @@ class _GroupManageScreenState extends State<GroupManageScreen> {
         ],
       ),
       body: _loading
-          ? const Center(child: CircularProgressIndicator())
+          ? const AppLoadingIndicator()
           : _items.isEmpty
               ? const Center(child: Text('暂无分组，点击右上角添加'))
               : ReorderableListView.builder(

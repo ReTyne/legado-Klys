@@ -551,8 +551,8 @@ class BookSourceEngine {
     }
     cs = cs?.toLowerCase();
     try {
-      if (cs == 'gbk' || cs == 'gb2312' || cs == 'gb18030') return GbkCodec().decode(bytes);
-      if (cs == 'big5' || cs == 'big-5') return Big5Codec().decode(bytes);
+      if (cs == 'gbk' || cs == 'gb2312' || cs == 'gb18030') return const GbkCodec().decode(bytes);
+      if (cs == 'big5' || cs == 'big-5') return const Big5Codec().decode(bytes);
       if (cs == 'latin1' || cs == 'iso-8859-1') return latin1.decode(bytes);
       return utf8.decode(bytes, allowMalformed: false);
     } catch (_) {
@@ -560,7 +560,7 @@ class BookSourceEngine {
         return utf8.decode(bytes, allowMalformed: true);
       } catch (_) {
         try {
-          return GbkCodec().decode(bytes);
+          return const GbkCodec().decode(bytes);
         } catch (_) {
           return latin1.decode(bytes);
         }

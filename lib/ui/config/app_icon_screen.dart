@@ -91,7 +91,7 @@ class _AppIconScreenState extends State<AppIconScreen> {
         ],
       ),
       body: _loading
-          ? const Center(child: CircularProgressIndicator())
+          ? const AppLoadingIndicator()
           : ListView(
               padding: const EdgeInsets.all(16),
               children: [

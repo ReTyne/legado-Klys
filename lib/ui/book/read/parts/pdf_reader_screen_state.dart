@@ -456,7 +456,7 @@ class _PdfReaderScreenState extends State<PdfReaderScreen>
     }
     final controller = _pdfController;
     if (controller == null) {
-      return const Center(child: CircularProgressIndicator());
+      return const AppLoadingIndicator();
     }
     return GestureDetector(
       behavior: HitTestBehavior.opaque,

@@ -575,7 +575,7 @@ class _CharacterListScreenState extends State<CharacterListScreen>
   }
 
   Widget _buildCharacterList() {
-    if (_loading) return const Center(child: CircularProgressIndicator());
+    if (_loading) return const AppLoadingIndicator();
     if (_characters.isEmpty) {
       return const AppEmptyState(
           icon: Icons.people_outline, title: '暂无角色信息');
@@ -598,7 +598,7 @@ class _CharacterListScreenState extends State<CharacterListScreen>
   }
 
   Widget _buildNetwork() {
-    if (_loading) return const Center(child: CircularProgressIndicator());
+    if (_loading) return const AppLoadingIndicator();
     if (_characters.isEmpty) {
       return const AppEmptyState(
           icon: Icons.account_tree_outlined,

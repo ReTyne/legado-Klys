@@ -491,15 +491,15 @@ class CheckSourceService {
       }
     } catch (e) {
       if (e is ContentEmptyException) {
-        source.addGroup('${bookType}正文失效');
+        source.addGroup('$bookType正文失效');
       } else if (e is TocEmptyException) {
-        source.addGroup('${bookType}目录失效');
+        source.addGroup('$bookType目录失效');
       } else {
         rethrow;
       }
       return;
     }
-    source.removeGroup('${bookType}目录失效');
-    source.removeGroup('${bookType}正文失效');
+    source.removeGroup('$bookType目录失效');
+    source.removeGroup('$bookType正文失效');
   }
 }

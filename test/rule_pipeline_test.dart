@@ -4,7 +4,7 @@ import 'package:html/parser.dart' as html_parser;
 import 'package:legado_md3/help/source/rule_pipeline.dart';
 
 void main() {
-  final html = '''
+  const html = '''
 <html><body>
 <div class="booklist">
   <li class="item">
@@ -21,7 +21,7 @@ void main() {
 </body></html>
 ''';
 
-  final jsonStr = '''
+  const jsonStr = '''
 {"code":0,"data":{"list":[
   {"name":"JSON书1","author":"作者A","cover":"//x.com/a.jpg","bookUrl":"/a"},
   {"name":"JSON书2","author":"作者B","cover":"//x.com/b.jpg","bookUrl":"/b"}

@@ -153,10 +153,10 @@ class ReadingRecordService {
 
   /// 格式化时长
   static String formatDuration(int seconds) {
-    if (seconds < 60) return '${seconds}秒';
+    if (seconds < 60) return '$seconds秒';
     if (seconds < 3600) return '${seconds ~/ 60}分钟';
     final hours = seconds ~/ 3600;
     final minutes = (seconds % 3600) ~/ 60;
-    return '${hours}小时${minutes}分钟';
+    return '$hours小时$minutes分钟';
   }
 }

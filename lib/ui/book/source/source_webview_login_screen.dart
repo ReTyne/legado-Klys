@@ -8,6 +8,7 @@ import 'package:url_launcher/url_launcher.dart';
 import 'package:legado_md3/data/local/app_database.dart';
 import 'package:legado_md3/data/model/book_source.dart';
 import 'package:legado_md3/help/http/cookie_manager.dart';
+import 'package:legado_md3/ui/widgets/app_widgets.dart';
 
 /// WebView 登录结果：对齐 E WebViewLoginFragment 回收 Cookie 后回写书源的产物。
 class SourceWebLoginResult {
@@ -240,7 +241,7 @@ class _SourceWebViewLoginScreenState extends State<SourceWebViewLoginScreen> {
                 future: _headersFuture,
                 builder: (context, snap) {
                   if (!snap.hasData) {
-                    return const Center(child: CircularProgressIndicator());
+                    return const AppLoadingIndicator();
                   }
                   final headers = snap.data!;
                   final ua = headers['User-Agent'] ??

@@ -60,7 +60,6 @@ Uint8List? _tryHexToBytes(String hex) {
 
 bool _looksHex(String s) => _tryHexToBytes(s) != null;
 
-String _bytesToBase64(List<int> bytes) => base64.encode(bytes);
 
 Uint8List? _tryBase64ToBytes(String s) {
   try {

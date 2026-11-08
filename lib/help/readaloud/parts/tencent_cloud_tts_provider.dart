@@ -5,7 +5,7 @@ part of '../cloud_tts_providers.dart';
 
 /// 腾讯云TTS
 class TencentCloudTtsProvider extends CloudTtsProvider {
-  TencentCloudTtsProvider(CloudTtsEngine engine) : super(engine);
+  TencentCloudTtsProvider(super.engine);
 
   @override
   String get name => '腾讯云';

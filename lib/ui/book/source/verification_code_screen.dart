@@ -90,7 +90,7 @@ class _VerificationCodeScreenState extends State<VerificationCodeScreen> {
                   headers: widget.headers,
                   fit: BoxFit.contain,
                   loadingBuilder: (c, child, progress) =>
-                      progress == null ? child : const Center(child: CircularProgressIndicator()),
+                      progress == null ? child : const AppLoadingIndicator(),
                   errorBuilder: (c, e, s) => Center(
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,

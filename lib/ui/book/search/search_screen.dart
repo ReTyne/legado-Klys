@@ -234,9 +234,13 @@ class _SearchScreenState extends State<SearchScreen> {
     try {
       final src = await _db.getSource(book.origin ?? '');
       if (src != null) {
-        if (src.bookSourceType == 1) bookType = 2; // 音频
-        else if (src.bookSourceType == 2) bookType = 3; // 图片/漫画
-        else if (src.bookSourceType == 4) bookType = 4; // 视频（legado 标准：3=文件，4=视频）
+        if (src.bookSourceType == 1) {
+          bookType = 2; // 音频
+        } else if (src.bookSourceType == 2) {
+          bookType = 3; // 图片/漫画
+        } else if (src.bookSourceType == 4) {
+          bookType = 4; // 视频（legado 标准：3=文件，4=视频）
+        }
       }
     } catch (_) {}
     final newBook = Book(
@@ -259,7 +263,7 @@ class _SearchScreenState extends State<SearchScreen> {
     // 加入书架提示（oc_showAddShelfTip）
     if (mounted) {
       final showTip = (await SharedPreferences.getInstance()).getBool('oc_showAddShelfTip') ?? true;
-      if (showTip) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('已添加《${book.name}》到书架')));
+      if (showTip && mounted && context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('已添加《${book.name}》到书架')));
     }
   }
 
@@ -336,7 +340,7 @@ class _SearchScreenState extends State<SearchScreen> {
                                 ..sort()),
                           builder: (c, snapshot) {
                             if (!snapshot.hasData) {
-                              return const Center(child: CircularProgressIndicator());
+                              return const AppLoadingIndicator();
                             }
                             final groups = snapshot.data!;
                             if (groups.isEmpty) {
@@ -366,7 +370,7 @@ class _SearchScreenState extends State<SearchScreen> {
                           future: loadSources(),
                           builder: (c, snapshot) {
                             if (!snapshot.hasData) {
-                              return const Center(child: CircularProgressIndicator());
+                              return const AppLoadingIndicator();
                             }
                             final sources = snapshot.data!;
                             return ListView.builder(
@@ -418,8 +422,10 @@ class _SearchScreenState extends State<SearchScreen> {
                   }
                   final src = await _db.getSource(selectedSourceUrl!);
                   if (src == null) {
-                    ScaffoldMessenger.of(context).showSnackBar(
+                    if (mounted && context.mounted) {
+                      ScaffoldMessenger.of(context).showSnackBar(
                         const SnackBar(content: Text('书源不存在')));
+                    }
                     return;
                   }
                   // 单书源范围（名称::url），不缓存
@@ -565,7 +571,7 @@ class _SearchScreenState extends State<SearchScreen> {
             children: [
               Text('共找到 ${display.length} 条', style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
               TextButton.icon(
-                style: ButtonStyle(visualDensity: VisualDensity.compact),
+                style: const ButtonStyle(visualDensity: VisualDensity.compact),
                 icon: const Icon(Icons.filter_list_outlined, size: 14),
                 label: Text(_scope.display, style: const TextStyle(fontSize: 12)),
                 onPressed: _showSearchScopeDialog,

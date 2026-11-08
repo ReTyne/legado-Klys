@@ -37,7 +37,7 @@ class _BookMarkingScreenState extends State<BookMarkingScreen> {
     return Scaffold(
       appBar: AppBar(title: Text(widget.bookName.isEmpty ? '书籍标记' : '书籍标记 - ${widget.bookName}')),
       body: _loading
-          ? const Center(child: CircularProgressIndicator())
+          ? const AppLoadingIndicator()
           : _markings.isEmpty
               ? const AppEmptyState(icon: Icons.bookmark_border, title: '暂无标记')
               : ListView.builder(

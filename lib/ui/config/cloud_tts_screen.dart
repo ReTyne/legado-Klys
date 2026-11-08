@@ -259,7 +259,7 @@ class _CloudTtsScreenState extends State<CloudTtsScreen> {
         ],
       ),
       body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
+          ? const AppLoadingIndicator()
           : ListView(
               children: [
                 const AppSectionHeader('内置 / 云端引擎'),

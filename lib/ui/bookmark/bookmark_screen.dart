@@ -110,7 +110,7 @@ class _BookmarkScreenState extends State<BookmarkScreen> {
         ],
       ),
       body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
+          ? const AppLoadingIndicator()
           : _bookmarks.isEmpty
               ? const AppEmptyState(
                   icon: Icons.bookmark_border,

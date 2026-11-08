@@ -10,6 +10,7 @@ class BookSource implements JsSource {
   String? bookSourceGroup;
   int bookSourceType; // 0=文本, 1=音频, 2=图片, 3=文件, 4=视频（legado 标准）
   String? bookSourceComment;
+  @override
   int? lastUpdateTime;
   bool enabled;
   bool enabledExplore;
@@ -18,7 +19,9 @@ class BookSource implements JsSource {
   int weight;
 
   // 请求相关
+  @override
   String? header;
+  @override
   String? loginUrl;
   String? loginUi;
   String? loginCheckJs;
@@ -27,6 +30,7 @@ class BookSource implements JsSource {
   String? coverDecodeJs;
   bool eventListener;
   bool customButton;
+  @override
   bool enabledCookieJar;
   String? concurrentRate;
   String? homepageModules;
@@ -55,8 +59,11 @@ class BookSource implements JsSource {
   String? ruleGet;
 
   // 变量
+  @override
   String? variableComment;
+  @override
   String? jsLib;
+  @override
   String? variable;
 
   // ---- JsSource 适配 ----

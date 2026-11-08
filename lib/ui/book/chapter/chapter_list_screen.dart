@@ -481,7 +481,7 @@ class _ChapterListScreenState extends State<ChapterListScreen>
   }
 
   Widget _buildChapterTab() {
-    if (_isLoading) return const Center(child: CircularProgressIndicator());
+    if (_isLoading) return const AppLoadingIndicator();
     final chapters = _reverse ? _filteredChapters.reversed.toList() : _filteredChapters;
     if (chapters.isEmpty) {
       return const AppEmptyState(icon: Icons.list_alt_outlined, title: '暂无章节');

@@ -236,7 +236,7 @@ class _TtsPlayerScreenState extends State<TtsPlayerScreen> {
               onPressed: _showTimerDialog,
               icon: Icon(_sleepTimer != null ? Icons.timer_off : Icons.timer, size: 20),
               label: Text(_sleepTimerEnd != null
-                  ? '定时中: ' + _formatRemaining()
+                  ? '定时中: ${_formatRemaining()}'
                   : '定时停止'),
             ),
 
@@ -422,7 +422,7 @@ class _TtsPlayerScreenState extends State<TtsPlayerScreen> {
     final remaining = _sleepTimerEnd!.difference(DateTime.now());
     final mins = remaining.inMinutes;
     final secs = remaining.inSeconds % 60;
-    return mins.toString().padLeft(2, '0') + ':' + secs.toString().padLeft(2, '0');
+    return '${mins.toString().padLeft(2, '0')}:${secs.toString().padLeft(2, '0')}';
   }
 
   @override

@@ -233,7 +233,7 @@ class _HomepageFeedState extends State<HomepageFeed> {
 
   Widget _buildBody(BuildContext context) {
     if (_loading) {
-      return const Center(child: CircularProgressIndicator());
+      return const AppLoadingIndicator();
     }
     if (_sections.isEmpty) return _empty(context);
     return RefreshIndicator(

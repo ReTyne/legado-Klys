@@ -315,7 +315,7 @@ class _ChangeSourceScreenState extends State<ChangeSourceScreen> {
         ],
       ),
       body: _loading
-          ? const Center(child: CircularProgressIndicator())
+          ? const AppLoadingIndicator()
           : _results.isEmpty
               ? const AppEmptyState(
                   icon: Icons.source_outlined,

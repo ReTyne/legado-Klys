@@ -7,6 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:legado_md3/common/app_name.dart';
 import 'package:legado_md3/ui/main/main_screen.dart';
 import 'package:legado_md3/ui/welcome/welcome_config_screen.dart';
+import 'package:legado_md3/ui/widgets/app_widgets.dart';
 
 /// 启动欢迎页：先展示可配置的「自定义欢迎闪屏」，随后按首次启动状态展示
 /// 隐私引导（三页 Intro + Policy）。
@@ -147,7 +148,7 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
   @override
   Widget build(BuildContext context) {
     if (_loadingConfig) {
-      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+      return const Scaffold(body: AppLoadingIndicator());
     }
     if (_showSplash && _cfg != null) {
       return Scaffold(

@@ -311,10 +311,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   Future<void> _saveSetting(String key, dynamic value) async {
     if (_prefs == null) return;
-    if (value is bool) await _prefs!.setBool(key, value);
-    else if (value is int) await _prefs!.setInt(key, value);
-    else if (value is double) await _prefs!.setDouble(key, value);
-    else if (value is String) await _prefs!.setString(key, value);
+    if (value is bool) {
+      await _prefs!.setBool(key, value);
+    } else if (value is int) {
+      await _prefs!.setInt(key, value);
+    } else if (value is double) {
+      await _prefs!.setDouble(key, value);
+    } else if (value is String) {
+      await _prefs!.setString(key, value);
+    }
   }
 
   @override
@@ -625,11 +630,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
             trailing: const Icon(Icons.chevron_right),
             onTap: () async {
               double rate = (await SharedPreferences.getInstance()).getDouble('tts_rate') ?? 1.0;
-              if (!mounted) return;
+              if (!mounted || !context.mounted) return;
               showModalBottomSheet(context: context, builder: (sheetCtx) => StatefulBuilder(builder: (ctx, setSt) => SafeArea(child: Column(mainAxisSize: MainAxisSize.min, children: [
                 const Padding(padding: EdgeInsets.all(16), child: Text('朗读语速', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold))),
                 Padding(padding: const EdgeInsets.symmetric(horizontal: 24), child: Text('${rate.toStringAsFixed(1)} 倍', style: const TextStyle(fontSize: 14))),
-                Slider(value: rate, min: 0.3, max: 3.0, divisions: 27, label: '${rate.toStringAsFixed(1)}',
+                Slider(value: rate, min: 0.3, max: 3.0, divisions: 27, label: rate.toStringAsFixed(1),
                   onChanged: (v) => setSt(() => rate = v),
                   onChangeEnd: (v) async => (await SharedPreferences.getInstance()).setDouble('tts_rate', v)),
                 const SizedBox(height: 12),

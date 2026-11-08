@@ -90,7 +90,7 @@ class UmdParser {
       } catch (_) {}
     }
     try {
-      return GbkCodec().decode(data);
+      return const GbkCodec().decode(data);
     } catch (_) {
       return String.fromCharCodes(data.map((b) => b & 0xff));
     }

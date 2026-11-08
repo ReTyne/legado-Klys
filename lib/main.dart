@@ -177,7 +177,7 @@ class _LockScreenState extends State<LockScreen> {
               children: [
                 Icon(Icons.lock_outline, size: 56, color: theme.colorScheme.primary),
                 const SizedBox(height: 16),
-                Text(appDisplayName, style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
+                Text(appDisplayName, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold)),
                 const SizedBox(height: 32),
                 TextField(
                   controller: _controller,

@@ -3,10 +3,8 @@ import 'dart:convert';
 import 'package:dio/dio.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:url_launcher/url_launcher.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:legado_md3/data/model/rss_source.dart';
-import 'package:legado_md3/data/model/rss_article.dart';
 import 'package:legado_md3/ui/rss/rss_source_edit_screen.dart';
 import 'package:legado_md3/ui/rss/rss_favorites_screen.dart';
 import 'package:legado_md3/ui/rss/rss_articles_screen.dart';
@@ -289,7 +287,7 @@ class _SubscribeScreenState extends State<SubscribeScreen> {
           const Divider(height: 1),
           Expanded(
             child: _isLoading
-                ? const Center(child: CircularProgressIndicator())
+                ? const AppLoadingIndicator()
                 : _buildSourcesView(),
           ),
         ],
@@ -587,7 +585,7 @@ class _SubscribeScreenState extends State<SubscribeScreen> {
               onTap: () async {
                 Navigator.pop(context);
                 await Clipboard.setData(ClipboardData(text: jsonEncode(source.toJson())));
-                if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('订阅源JSON已复制')));
+                if (mounted && context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('订阅源JSON已复制')));
               },
             ),
             ListTile(
@@ -607,7 +605,7 @@ class _SubscribeScreenState extends State<SubscribeScreen> {
                 Navigator.pop(context);
                 await _db.markAllRssRead(sourceUrl: source.sourceUrl);
                 await _loadData();
-                if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('已全部标为已读')));
+                if (mounted && context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('已全部标为已读')));
               },
             ),
             const Divider(),
@@ -626,43 +624,6 @@ class _SubscribeScreenState extends State<SubscribeScreen> {
     );
   }
 
-  void _showArticleOptions(RssArticle article) {
-    showModalBottomSheet(context: context, builder: (context) => SafeArea(child: Column(mainAxisSize: MainAxisSize.min, children: [
-      ListTile(
-        leading: Icon(article.read == true ? Icons.mark_email_unread : Icons.mark_email_read),
-        title: Text(article.read == true ? '标为未读' : '标为已读'),
-        onTap: () async { Navigator.pop(context); if (article.id != null) { final r = !(article.read == true); await _db.setRssArticleRead(article.id!, r); _loadData(); } },
-      ),
-      ListTile(
-        leading: Icon(article.starred == true ? Icons.star : Icons.star_border),
-        title: Text(article.starred == true ? '取消收藏' : '收藏'),
-        onTap: () async {
-          Navigator.pop(context);
-          if (article.id != null) {
-            final s = !(article.starred == true);
-            await _db.setRssArticleStar(article.id!, s);
-            await _loadData();
-            if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(s ? '已收藏' : '已取消收藏')));
-          }
-        },
-      ),
-      ListTile(
-        leading: const Icon(Icons.open_in_browser),
-        title: const Text('在浏览器打开'),
-        onTap: () async { Navigator.pop(context); if (article.link.isNotEmpty) await launchUrl(Uri.parse(article.link), mode: LaunchMode.externalApplication); },
-      ),
-      ListTile(
-        leading: const Icon(Icons.content_copy),
-        title: const Text('复制链接'),
-        onTap: () async { Navigator.pop(context); await Clipboard.setData(ClipboardData(text: article.link)); if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('已复制'))); },
-      ),
-      ListTile(
-        leading: const Icon(Icons.share),
-        title: const Text('分享'),
-        onTap: () { Navigator.pop(context); Share.share('${article.title}\n${article.link}'); },
-      ),
-    ])));
-  }
 
   void _editSource(RssSource source) async {
     final result = await Navigator.push(context, MaterialPageRoute(builder: (_) => RssSourceEditScreen(source: source)));

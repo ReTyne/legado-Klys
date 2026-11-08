@@ -89,7 +89,7 @@ class _ReadingStatsScreenState extends State<ReadingStatsScreen>
         ),
       ),
       body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
+          ? const AppLoadingIndicator()
           : TabBarView(
               controller: _tabController,
               children: [

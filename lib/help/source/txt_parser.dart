@@ -336,7 +336,7 @@ class TxtParserService {
     final contentLines = lines.where((l) => l.trim().isNotEmpty).toList();
     if (contentLines.length > 2) {
       intro = contentLines.sublist(0, contentLines.length > 5 ? 5 : contentLines.length).join('\n');
-      if (intro.length > 200) intro = intro.substring(0, 200) + '...';
+      if (intro.length > 200) intro = '${intro.substring(0, 200)}...';
     }
 
     return {

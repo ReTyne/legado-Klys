@@ -117,10 +117,12 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
     if (_chapters.isEmpty && !widget.book.local) {
       await _fetchTocFromNetwork();
     }
-    if (mounted) setState(() {
+    if (mounted) {
+      setState(() {
       _isLoading = false;
       if (_chapters.isNotEmpty) _tocError = null;
     });
+    }
   }
 
   Future<void> _fetchTocFromNetwork() async {
@@ -242,7 +244,7 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
           widget.book.customCoverUrl = coverController.text.isEmpty ? null : coverController.text;
           widget.book.bookComment = commentController.text.isEmpty ? null : commentController.text;
           await _db.updateBook(widget.book);
-          if (mounted) { setState(() {}); Navigator.pop(context); ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('已保存'))); }
+          if (mounted && context.mounted) { setState(() {}); Navigator.pop(context); ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('已保存'))); }
         }, child: const Text('保存')),
       ],
     ));
@@ -319,6 +321,7 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
       return;
     }
     try {
+      if (!mounted || !context.mounted) return;
       await runWithBusyDialog<void>(
         context,
         message: '上传中...',
@@ -394,13 +397,13 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
             ListTile(
               leading: const Icon(Icons.link),
               title: const Text('复制书籍URL'),
-              onTap: () async { Navigator.pop(context); await Clipboard.setData(ClipboardData(text: widget.book.bookUrl ?? '')); if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('已复制'))); },
+              onTap: () async { Navigator.pop(context); await Clipboard.setData(ClipboardData(text: widget.book.bookUrl ?? '')); if (mounted && context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('已复制'))); },
             ),
             // 8. 复制目录URL（E: menu_copy_toc_url）
             ListTile(
               leading: const Icon(Icons.link),
               title: const Text('复制目录URL'),
-              onTap: () async { Navigator.pop(context); await Clipboard.setData(ClipboardData(text: widget.book.noteUrl ?? '')); if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('已复制'))); },
+              onTap: () async { Navigator.pop(context); await Clipboard.setData(ClipboardData(text: widget.book.noteUrl ?? '')); if (mounted && context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('已复制'))); },
             ),
             // 9. 允许更新（E: menu_can_update，checkable）
             ListTile(
@@ -439,7 +442,7 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
                 for (final ch in chapters) {
                   await _db.updateChapterContent(widget.book.name, widget.book.author, ch.index, '');
                 }
-                if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('缓存已清除')));
+                if (mounted && context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('缓存已清除')));
               },
             ),
             // 13. 日志（E: menu_log）
@@ -586,7 +589,7 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
                                 ],
                               ),
                               if (_isLoading)
-                                const Padding(padding: EdgeInsets.all(16), child: Center(child: CircularProgressIndicator()))
+                                const Padding(padding: EdgeInsets.all(16), child: AppLoadingIndicator())
                               else if (_chapters.isEmpty)
                                 Padding(
                                   padding: const EdgeInsets.all(16),
@@ -812,7 +815,7 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
     if (!_inShelf) {
       await _db.insertBook(book);
       _inShelf = true;
-      await Provider.of<BookProvider>(context, listen: false).loadBooks();
+      if (mounted && context.mounted) await Provider.of<BookProvider>(context, listen: false).loadBooks();
       final prefs = await SharedPreferences.getInstance();
       final showTip = prefs.getBool('oc_showAddShelfTip') ?? true;
       if (mounted && showTip) {
@@ -827,7 +830,7 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
     // 对齐 E LocalConfig.bookInfoDeleteAlert：关闭删除提醒时直接移出书架，不弹确认框
     if (!_deleteAlert) {
       await _db.deleteBook(book.name, book.author);
-      await Provider.of<BookProvider>(context, listen: false).loadBooks();
+      if (mounted && context.mounted) await Provider.of<BookProvider>(context, listen: false).loadBooks();
       if (mounted) {
         setState(() => _inShelf = false);
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('已移出书架')));
@@ -843,7 +846,7 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
     );
     if (confirmed) {
       await _db.deleteBook(book.name, book.author);
-      await Provider.of<BookProvider>(context, listen: false).loadBooks();
+      if (mounted && context.mounted) await Provider.of<BookProvider>(context, listen: false).loadBooks();
       if (mounted) {
         setState(() => _inShelf = false);
         ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('已移出书架')));

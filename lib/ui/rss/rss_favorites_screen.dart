@@ -52,7 +52,7 @@ class _RssFavoritesScreenState extends State<RssFavoritesScreen> {
         ],
       ),
       body: _loading
-          ? const Center(child: CircularProgressIndicator())
+          ? const AppLoadingIndicator()
           : _articles.isEmpty
               ? const AppEmptyState(
                   icon: Icons.star_border,

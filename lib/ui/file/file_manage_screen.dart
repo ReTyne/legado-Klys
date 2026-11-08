@@ -269,7 +269,7 @@ class _FileManageScreenState extends State<FileManageScreen> {
             onChanged: (v) => setState(() => _searchQuery = v),
           )),
           Expanded(child: _loading
-            ? const Center(child: CircularProgressIndicator())
+            ? const AppLoadingIndicator()
             : filtered.isEmpty
               ? const AppEmptyState(
                   icon: Icons.folder_open_outlined,

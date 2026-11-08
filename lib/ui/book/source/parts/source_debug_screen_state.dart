@@ -465,22 +465,26 @@ class _SourceDebugScreenState extends State<SourceDebugScreen>
       }
       sw.stop();
       final urls = _extractUrls(_engine.debugLog);
-      if (mounted) setState(() {
-        step.durationMs = sw.elapsedMilliseconds;
-        step.status = _StepStatus.ok;
-        if (step.url.isEmpty && urls.isNotEmpty) {
-          step.url = urls.first;
-        }
-        step.engineLogs = _engine.debugLog.toList();
-      });
+      if (mounted) {
+        setState(() {
+          step.durationMs = sw.elapsedMilliseconds;
+          step.status = _StepStatus.ok;
+          if (step.url.isEmpty && urls.isNotEmpty) {
+            step.url = urls.first;
+          }
+          step.engineLogs = _engine.debugLog.toList();
+        });
+      }
     } catch (e) {
       sw.stop();
-      if (mounted) setState(() {
-        step.durationMs = sw.elapsedMilliseconds;
-        step.status = _StepStatus.fail;
-        step.error = e.toString().replaceFirst('Exception: ', '');
-        step.engineLogs = _engine.debugLog.toList();
-      });
+      if (mounted) {
+        setState(() {
+          step.durationMs = sw.elapsedMilliseconds;
+          step.status = _StepStatus.fail;
+          step.error = e.toString().replaceFirst('Exception: ', '');
+          step.engineLogs = _engine.debugLog.toList();
+        });
+      }
     } finally {
       if (mounted) setState(() => _stepRunning = false);
     }

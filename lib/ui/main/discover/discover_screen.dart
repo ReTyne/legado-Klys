@@ -685,7 +685,7 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
             TextButton(onPressed: () => Navigator.pop(context), child: const Text('取消')),
             FilledButton(onPressed: () async {
               await _saveHidden(source, _hiddenCategories);
-              if (!mounted) return;
+              if (!mounted || !context.mounted) return;
               Navigator.pop(context);
               // 重新进入以应用显隐
               await _selectSource(source);
@@ -1183,7 +1183,7 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
           if (_loadingKinds)
             const Padding(
               padding: EdgeInsets.all(24),
-              child: Center(child: CircularProgressIndicator()),
+              child: AppLoadingIndicator(),
             ),
           // 控件区（text/button/toggle/select，对齐 legado flexbox 控件）
           _buildControls(),
@@ -1227,7 +1227,7 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
 
   Widget _buildBooksList() {
     if (_isLoading && _exploreBooks.isEmpty) {
-      return const Center(child: CircularProgressIndicator());
+      return const AppLoadingIndicator();
     }
     if (_error != null && _exploreBooks.isEmpty) {
       return AppErrorState(message: '加载失败: $_error', onRetry: _refresh);
@@ -1263,7 +1263,7 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
                     itemCount: books.length + (_isLoadingMore ? 1 : 0),
                     itemBuilder: (context, index) {
                       if (index >= books.length) {
-                        return const Padding(padding: EdgeInsets.all(16), child: Center(child: CircularProgressIndicator()));
+                        return const Padding(padding: EdgeInsets.all(16), child: AppLoadingIndicator());
                       }
                       return _buildBookItem(books[index]);
                     },

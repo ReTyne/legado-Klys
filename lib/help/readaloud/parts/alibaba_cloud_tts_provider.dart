@@ -5,7 +5,7 @@ part of '../cloud_tts_providers.dart';
 
 /// 阿里云TTS
 class AlibabaCloudTtsProvider extends CloudTtsProvider {
-  AlibabaCloudTtsProvider(CloudTtsEngine engine) : super(engine);
+  AlibabaCloudTtsProvider(super.engine);
 
   @override
   String get name => '阿里云';

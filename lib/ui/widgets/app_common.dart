@@ -5,6 +5,7 @@
 // 容器 surfaceContainer*、危险 error、描边 outlineVariant。
 
 import 'package:flutter/material.dart';
+import 'package:legado_md3/ui/theme/app_design.dart';
 
 /// 分组标题（固定范式 fromLTRB(16,16,16,8) / 13 / bold / primary）。
 class AppSectionHeader extends StatelessWidget {
@@ -178,23 +179,28 @@ class AppEmptyState extends StatelessWidget {
     final cs = Theme.of(context).colorScheme;
     return Center(
       child: SingleChildScrollView(
-        padding: const EdgeInsets.all(24),
+        padding: const EdgeInsets.all(AppSpacing.xl),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(icon, size: 64, color: cs.onSurfaceVariant),
-            const SizedBox(height: 16),
+            // 无障碍：空态图标此前无任何语义，读屏用户无法感知状态；
+            // 文本与操作按钮保留原生语义，避免被 ExcludeSemantics 误排除。
+            Semantics(
+              label: '空状态：$title',
+              child: Icon(icon, size: 64, color: cs.onSurfaceVariant),
+            ),
+            const SizedBox(height: AppSpacing.l),
             Text(title,
                 textAlign: TextAlign.center,
                 style: TextStyle(fontSize: 16, color: cs.onSurface)),
             if (message != null) ...[
-              const SizedBox(height: 8),
+              const SizedBox(height: AppSpacing.s),
               Text(message!,
                   textAlign: TextAlign.center,
                   style: TextStyle(fontSize: 13, color: cs.onSurfaceVariant)),
             ],
             if (action != null) ...[
-              const SizedBox(height: 24),
+              const SizedBox(height: AppSpacing.xl),
               action!,
             ],
           ],
@@ -222,19 +228,27 @@ class AppErrorState extends StatelessWidget {
     final cs = Theme.of(context).colorScheme;
     return Center(
       child: SingleChildScrollView(
-        padding: const EdgeInsets.all(24),
+        padding: const EdgeInsets.all(AppSpacing.xl),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Icon(Icons.error_outline, size: 64, color: cs.error),
-            const SizedBox(height: 16),
+            Semantics(
+              label: '错误状态：加载失败',
+              child: Icon(Icons.error_outline, size: 64, color: cs.error),
+            ),
+            const SizedBox(height: AppSpacing.l),
             Text('加载失败', style: TextStyle(fontSize: 16, color: cs.onSurface)),
-            const SizedBox(height: 8),
+            const SizedBox(height: AppSpacing.s),
             Text(message,
                 textAlign: TextAlign.center,
                 style: TextStyle(fontSize: 13, color: cs.onSurfaceVariant)),
-            const SizedBox(height: 16),
-            FilledButton(onPressed: onRetry, child: Text(retryLabel)),
+            const SizedBox(height: AppSpacing.l),
+            Semantics(
+              button: true,
+              label: retryLabel,
+              child: FilledButton(
+                  onPressed: onRetry, child: Text(retryLabel)),
+            ),
           ],
         ),
       ),
@@ -251,21 +265,29 @@ class AppLoadingIndicator extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // 无障碍：加载进度对读屏用户此前是「静默」的，补 label 播报。
+    // 无 message 且非 compact 时保持与裸 Center(child: CircularProgressIndicator())
+    // 完全等价的布局，便于各页面零差异地收敛到统一组件。
+    final Widget progress = Semantics(
+      label: message ?? '加载中',
+      child: const CircularProgressIndicator(),
+    );
     if (compact) {
-      return const Padding(
-        padding: EdgeInsets.all(16),
-        child: Center(child: CircularProgressIndicator()),
+      return Padding(
+        padding: const EdgeInsets.all(AppSpacing.l),
+        child: Center(child: progress),
       );
+    }
+    if (message == null) {
+      return Center(child: progress);
     }
     return Center(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          const CircularProgressIndicator(),
-          if (message != null) ...[
-            const SizedBox(height: 16),
-            Text(message!),
-          ],
+          progress,
+          const SizedBox(height: AppSpacing.l),
+          Text(message!),
         ],
       ),
     );
@@ -387,6 +409,85 @@ class AppSettingsGroup extends StatelessWidget {
         AppSectionHeader(title),
         ...children,
       ],
+    );
+  }
+}
+
+/// 异步四态统一容器。
+///
+/// 把各页面重复的
+/// `if (_loading) Center(CircularProgressIndicator) else if (_error != null)
+///  ... else if (list.isEmpty) ... else ListView.builder(...)`
+/// 样板收敛到一处。空态 / 错误态 / 加载态都复用本项目无障碍增强过的
+/// 公共组件，保证全应用一致的主题与读屏体验。
+class AppAsyncState extends StatelessWidget {
+  const AppAsyncState({
+    super.key,
+    required this.loading,
+    required this.isEmpty,
+    required this.child,
+    this.error,
+    this.onRetry,
+    this.emptyIcon = Icons.inbox_outlined,
+    this.emptyTitle = '暂无内容',
+    this.emptyMessage,
+    this.emptyAction,
+    this.loadingMessage,
+  });
+
+  final bool loading;
+  final bool isEmpty;
+  final String? error;
+  final VoidCallback? onRetry;
+  final Widget child;
+
+  final IconData emptyIcon;
+  final String emptyTitle;
+  final String? emptyMessage;
+  final Widget? emptyAction;
+  final String? loadingMessage;
+
+  @override
+  Widget build(BuildContext context) {
+    if (loading) {
+      return AppLoadingIndicator(message: loadingMessage);
+    }
+    if (error != null && onRetry != null) {
+      return AppErrorState(message: error!, onRetry: onRetry!);
+    }
+    if (isEmpty) {
+      return AppEmptyState(
+        icon: emptyIcon,
+        title: emptyTitle,
+        message: emptyMessage,
+        action: emptyAction,
+      );
+    }
+    return child;
+  }
+}
+
+/// 响应式内容容器：宽屏时把内容居中并限制最大宽度，避免大屏上
+/// 文本行过长、列表被拉伸；窄屏时原样铺满。用于表单、列表、设置页等内容型页面。
+class AppAdaptiveBody extends StatelessWidget {
+  const AppAdaptiveBody({
+    super.key,
+    required this.child,
+    this.maxWidth = 720,
+  });
+
+  final Widget child;
+  final double maxWidth;
+
+  @override
+  Widget build(BuildContext context) {
+    if (!AppBreakpoints.isWide(context)) return child;
+    return Align(
+      alignment: Alignment.topCenter,
+      child: ConstrainedBox(
+        constraints: BoxConstraints(maxWidth: maxWidth),
+        child: child,
+      ),
     );
   }
 }

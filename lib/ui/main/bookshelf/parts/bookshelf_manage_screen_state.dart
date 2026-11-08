@@ -444,7 +444,7 @@ class _BookshelfManageScreenState extends State<BookshelfManageScreen> {
         ],
       ),
       body: _loading
-          ? const Center(child: CircularProgressIndicator())
+          ? const AppLoadingIndicator()
           : _visible.isEmpty
               ? Center(
                   child: Text(_query.isEmpty ? '书架为空' : '没有匹配的书籍',

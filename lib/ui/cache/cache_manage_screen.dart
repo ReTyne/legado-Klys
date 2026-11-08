@@ -304,7 +304,7 @@ class _CacheManageScreenState extends State<CacheManageScreen> {
         ],
       ),
       body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
+          ? const AppLoadingIndicator()
           : ListView(
               children: [
                 if (_overLimit)

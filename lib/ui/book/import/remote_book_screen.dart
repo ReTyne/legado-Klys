@@ -171,7 +171,7 @@ class _RemoteBookScreenState extends State<RemoteBookScreen> {
           _baseUrl = urlCtl.text.trim(); _user = userCtl.text.trim(); _pass = passCtl.text;
           _bookDir = dirCtl.text.trim().isEmpty ? '书籍' : dirCtl.text.trim();
           _pathStack.clear();
-          if (mounted) { Navigator.pop(c); _loadFiles(); }
+          if (mounted && c.mounted) { Navigator.pop(c); _loadFiles(); }
         }, child: const Text('保存')),
       ],
     ));
@@ -203,7 +203,7 @@ class _RemoteBookScreenState extends State<RemoteBookScreen> {
         ],
       ),
       body: _loading
-          ? const Center(child: CircularProgressIndicator())
+          ? const AppLoadingIndicator()
           : _error != null
               ? AppErrorState(message: _error!, onRetry: _loadFiles)
               : _entries.isEmpty

@@ -7,3 +7,4 @@ library;
 export 'app_common.dart';
 export 'app_dialogs.dart';
 export 'book_cover.dart';
+export '../theme/app_design.dart';

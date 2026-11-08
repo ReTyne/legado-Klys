@@ -881,7 +881,7 @@ class _ReadPresetSheetState extends State<ReadPresetSheet> {
               const Divider(height: 1),
               Expanded(
                 child: _loading
-                    ? const Center(child: CircularProgressIndicator())
+                    ? const AppLoadingIndicator()
                     : _presets.isEmpty
                         ? const AppEmptyState(
                             icon: Icons.style_outlined,

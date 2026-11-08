@@ -10,13 +10,17 @@ class RssSource implements JsSource {
   String? sourceComment;
   String? searchUrl;
   String? sortUrl;
+  @override
   String? loginUrl;
   String? loginUi;
   String? loginCheckJs;
   String? coverDecodeJs;
+  @override
   String? header;
+  @override
   String? variableComment;
   String? concurrentRate;
+  @override
   String? jsLib;
   // Start规则
   String? startHtml;
@@ -41,6 +45,7 @@ class RssSource implements JsSource {
   // 状态
   bool? enabled;
   int? customOrder;
+  @override
   int? lastUpdateTime;
   int? unreadCount;
 
@@ -98,8 +103,8 @@ class RssSource implements JsSource {
 
   RssSource({
     this.id,
-    String sourceName = '',
-    String sourceUrl = '',
+    this.sourceName = '',
+    this.sourceUrl = '',
     this.sourceIcon,
     this.sourceGroup,
     this.sourceComment,
@@ -144,8 +149,7 @@ class RssSource implements JsSource {
     this.cacheFirst = false,
     this.redirectPolicy,
     this.sourceType = 0,
-  })  : sourceName = sourceName,
-        sourceUrl = sourceUrl;
+  });
 
   Map<String, dynamic> toMap() => {
     'id': id,

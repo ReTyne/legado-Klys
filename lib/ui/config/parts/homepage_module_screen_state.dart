@@ -144,7 +144,7 @@ class _HomepageModuleScreenState extends State<HomepageModuleScreen> {
 
   Widget _buildModuleList(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
-    if (_loading) return const Center(child: CircularProgressIndicator());
+    if (_loading) return const AppLoadingIndicator();
     if (_modules.isEmpty) {
       return AppEmptyState(
         icon: Icons.dashboard_customize_outlined,

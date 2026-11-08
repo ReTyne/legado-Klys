@@ -3,6 +3,7 @@ import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 
 import 'package:legado_md3/data/local/app_database.dart';
 import 'package:legado_md3/data/model/db_models.dart';
+import 'package:legado_md3/ui/widgets/app_widgets.dart';
 
 /// 阅读页「划词 → 查词」的应用内弹窗。
 ///
@@ -116,7 +117,7 @@ class _DictLookupSheetState extends State<DictLookupSheet> {
               ),
             ),
           if (_loading)
-            const Expanded(child: Center(child: CircularProgressIndicator()))
+            const Expanded(child: AppLoadingIndicator())
           else ...[
             if (_rules.isEmpty)
               Expanded(

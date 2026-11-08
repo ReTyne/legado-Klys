@@ -164,7 +164,7 @@ class _RssSourceScreenState extends State<RssSourceScreen> {
         ],
       ),
       body: _loading
-          ? const Center(child: CircularProgressIndicator())
+          ? const AppLoadingIndicator()
           : _visible.isEmpty
               ? const AppEmptyState(
                   icon: Icons.rss_feed_outlined,

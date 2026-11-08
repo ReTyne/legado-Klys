@@ -141,19 +141,19 @@ class _ReplaceTabState extends State<_ReplaceTab> {
         ),
         const Divider(height: 1),
         Padding(
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.all(AppSpacing.l),
           child: Column(
             children: [
               TextField(
                 controller: _ruleCtl,
                 decoration: const InputDecoration(labelText: '查找内容(正则)', border: OutlineInputBorder()),
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: AppSpacing.s),
               TextField(
                 controller: _replacementCtl,
                 decoration: const InputDecoration(labelText: '替换为', border: OutlineInputBorder()),
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: AppSpacing.s),
               SizedBox(
                 width: double.infinity,
                 child: FilledButton.icon(
@@ -350,19 +350,18 @@ class _DictSourceTabState extends State<_DictSourceTab> {
         ),
         const Divider(height: 1),
         Expanded(
-          child: _loading
-              ? const Center(child: CircularProgressIndicator())
-              : _rules.isEmpty
-                  ? AppEmptyState(
-                      icon: Icons.menu_book_outlined,
-                      title: '暂无词典规则',
-                      action: FilledButton.icon(
-                        onPressed: _editRule,
-                        icon: const Icon(Icons.add),
-                        label: const Text('新增规则'),
-                      ),
-                    )
-                  : ReorderableListView.builder(
+          // 三态统一收敛到 AppAsyncState，保留 ReorderableListView 拖拽能力。
+          child: AppAsyncState(
+            loading: _loading,
+            isEmpty: _rules.isEmpty,
+            emptyIcon: Icons.menu_book_outlined,
+            emptyTitle: '暂无词典规则',
+            emptyAction: FilledButton.icon(
+              onPressed: _editRule,
+              icon: const Icon(Icons.add),
+              label: const Text('新增规则'),
+            ),
+            child: ReorderableListView.builder(
                       onReorder: _reorder,
                       itemCount: _rules.length,
                       itemBuilder: (context, index) {
@@ -399,6 +398,7 @@ class _DictSourceTabState extends State<_DictSourceTab> {
                         );
                       },
                     ),
+          ),
         ),
       ],
     );
@@ -453,7 +453,7 @@ class _DictRuleEditDialogState extends State<_DictRuleEditDialog> {
               autofocus: true,
               decoration: const InputDecoration(labelText: '名称', hintText: '例如：汉语词典'),
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: AppSpacing.m),
             TextField(
               controller: _url,
               decoration: const InputDecoration(
@@ -462,12 +462,12 @@ class _DictRuleEditDialogState extends State<_DictRuleEditDialog> {
                 helperText: '用 {word} 作为被查询词占位符',
               ),
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: AppSpacing.m),
             TextField(
               controller: _summary,
               decoration: const InputDecoration(labelText: '备注（可选）'),
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: AppSpacing.m),
             TextField(
               controller: _rule,
               maxLines: 3,

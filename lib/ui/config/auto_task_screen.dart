@@ -144,7 +144,7 @@ class _AutoTaskScreenState extends State<AutoTaskScreen> {
         ],
       ),
       body: _loading
-          ? const Center(child: CircularProgressIndicator())
+          ? const AppLoadingIndicator()
           : ListView(
               children: [
                 AppSwitchTile(

@@ -279,7 +279,7 @@ class _ExportConfigScreenState extends State<ExportConfigScreen> {
         ],
       ),
       body: _loading
-          ? const Center(child: CircularProgressIndicator())
+          ? const AppLoadingIndicator()
           : ListView(children: [
               _section('导出选项（对齐 E book_cache.xml）'),
               // menu_export_type：导出类型

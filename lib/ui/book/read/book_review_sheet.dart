@@ -246,7 +246,7 @@ class _BookReviewSheetState extends State<BookReviewSheet> {
               const Divider(height: 1),
               Expanded(
                 child: _loading
-                    ? const Center(child: CircularProgressIndicator())
+                    ? const AppLoadingIndicator()
                     : _current.isEmpty
                         ? const AppEmptyState(
                             icon: Icons.mode_comment_outlined,

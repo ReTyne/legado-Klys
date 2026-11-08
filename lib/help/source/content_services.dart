@@ -1,4 +1,5 @@
 /// 正文处理服务聚合（字典替换 + 高亮规则）。
+library;
 
 
 import 'package:flutter/material.dart';

@@ -442,7 +442,7 @@ class _ReadRecordScreenState extends State<ReadRecordScreen> {
         ],
       ),
       body: _loading
-          ? const Center(child: CircularProgressIndicator())
+          ? const AppLoadingIndicator()
           : Column(children: [
               Container(
                 padding: const EdgeInsets.all(16),

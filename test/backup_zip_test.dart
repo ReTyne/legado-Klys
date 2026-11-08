@@ -77,7 +77,7 @@ void main() {
         deviceName: 'd',
         appVersion: '1',
         encrypted: false,
-        selection: BackupSelection(const {BackupType.bookSources}),
+        selection: const BackupSelection({BackupType.bookSources}),
       );
       final bytes = ZipBackupBuilder.build(
         index: index,

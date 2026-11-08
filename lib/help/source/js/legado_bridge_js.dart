@@ -44,7 +44,7 @@ class LegadoBridgeJs {
   /// java / cookie / cache / __b64Unicode 等工具，而不是恒 null 的死 Proxy。
   static const String code = _codeHead + JsPackages.definition + _codeTail;
 
-  static const String _codeHead = '\n' + legadoBridgeJsPart01 + legadoBridgeJsPart02 + legadoBridgeJsPart03 + legadoBridgeJsPart04 + legadoBridgeJsPart05 + legadoBridgeJsPart06 + legadoBridgeJsPart07 + legadoBridgeJsPart08;
+  static const String _codeHead = '\n$legadoBridgeJsPart01$legadoBridgeJsPart02$legadoBridgeJsPart03$legadoBridgeJsPart04$legadoBridgeJsPart05$legadoBridgeJsPart06$legadoBridgeJsPart07$legadoBridgeJsPart08';
 
   /// IIFE 闭合：位于 JsPackages.definition 之后，保证 Packages 在 java /
   /// cookie / __b64Unicode 等全部桥工具就绪后才被定义。

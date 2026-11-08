@@ -903,6 +903,7 @@ class _SourceEditScreenState extends State<SourceEditScreen> with SingleTickerPr
     final maxLine = (await SharedPreferences.getInstance()).getInt('oc_sourceEditMaxLine') ?? 14;
     final ctrl = TextEditingController(
         text: current.isEmpty ? '' : const JsonEncoder.withIndent('  ').convert(current));
+    if (!mounted || !context.mounted) return;
     final res = await showDialog<String>(
       context: context,
       builder: (ctx) => AlertDialog(

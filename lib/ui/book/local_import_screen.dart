@@ -42,9 +42,11 @@ class _LocalImportScreenState extends State<LocalImportScreen> {
         });
       }
     } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
+      if (mounted && context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text('选择文件失败: $e')),
       );
+      }
     }
   }
 

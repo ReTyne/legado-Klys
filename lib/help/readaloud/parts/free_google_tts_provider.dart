@@ -6,7 +6,7 @@ part of '../cloud_tts_providers.dart';
 /// 云TTS提供商工厂
 /// 免费谷歌朗读（translate_tts，免 key），返回本地 mp3 路径
 class FreeGoogleTtsProvider extends CloudTtsProvider {
-  FreeGoogleTtsProvider(CloudTtsEngine engine) : super(engine);
+  FreeGoogleTtsProvider(super.engine);
 
   @override
   String get name => '免费谷歌朗读';

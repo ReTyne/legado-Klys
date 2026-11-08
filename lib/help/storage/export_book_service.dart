@@ -57,7 +57,7 @@ class ExportBookService {
             scope: book.origin ?? 'all');
       }
       if (!options.noChapterName) {
-        buffer.writeln('${ch.title}');
+        buffer.writeln(ch.title);
       }
       buffer.writeln(content);
       buffer.writeln();
@@ -265,7 +265,7 @@ p { text-indent: 2em; margin: 0 0 0.4em; }
     final file = File('${exportDir.path}/${await _safeName(book, ext)}');
     final upper = charset.toUpperCase();
     if (upper == 'GBK' || upper == 'GB2312' || upper == 'GB18030') {
-      await file.writeAsBytes(GbkCodec().encode(content));
+      await file.writeAsBytes(const GbkCodec().encode(content));
     } else {
       await file.writeAsString(content);
     }

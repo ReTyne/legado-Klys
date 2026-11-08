@@ -102,7 +102,7 @@ class _ExploreBooksScreenState extends State<ExploreBooksScreen> {
         actions: [IconButton(icon: const Icon(Icons.refresh_outlined), tooltip: '刷新', onPressed: () { _page = 1; _fetch(append: false); })],
       ),
       body: _loading
-          ? const Center(child: CircularProgressIndicator())
+          ? const AppLoadingIndicator()
           : _error != null && _books.isEmpty
               ? AppErrorState(
                   message: '$_error',
@@ -123,7 +123,7 @@ class _ExploreBooksScreenState extends State<ExploreBooksScreen> {
                       itemCount: _books.length + (_loadingMore ? 1 : 0),
                       itemBuilder: (context, i) {
                         if (i >= _books.length) {
-                          return const Padding(padding: EdgeInsets.all(16), child: Center(child: CircularProgressIndicator()));
+                          return const Padding(padding: EdgeInsets.all(16), child: AppLoadingIndicator());
                         }
                         final book = _books[i];
                         return ListTile(
@@ -133,13 +133,13 @@ class _ExploreBooksScreenState extends State<ExploreBooksScreen> {
                           trailing: FilledButton.tonal(
                             onPressed: () async {
                               await context.read<BookProvider>().addBook(book.toBook());
-                              if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('已添加《${book.name}》')));
+                              if (mounted && context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('已添加《${book.name}》')));
                             },
                             child: const Text('加入'),
                           ),
                           onTap: () async {
                             await context.read<BookProvider>().addBook(book.toBook());
-                            if (mounted) Navigator.push(context, MaterialPageRoute(builder: (_) => readerForBook(book.toBook())));
+                            if (mounted && context.mounted) Navigator.push(context, MaterialPageRoute(builder: (_) => readerForBook(book.toBook())));
                           },
                         );
                       },

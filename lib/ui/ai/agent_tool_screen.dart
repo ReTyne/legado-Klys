@@ -76,7 +76,7 @@ class _AgentToolScreenState extends State<AgentToolScreen> {
         ],
       ),
       body: _loading
-          ? const Center(child: CircularProgressIndicator())
+          ? const AppLoadingIndicator()
           : ListView(
               padding: const EdgeInsets.only(bottom: 24),
               children: [

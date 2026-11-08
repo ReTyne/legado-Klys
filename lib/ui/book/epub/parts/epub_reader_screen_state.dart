@@ -440,7 +440,7 @@ class _EpubReaderScreenState extends State<EpubReaderScreen> {
         ],
       ),
       body: _loading
-          ? const Center(child: CircularProgressIndicator())
+          ? const AppLoadingIndicator()
           : _error != null
               ? AppErrorState(
                   message: _error!,

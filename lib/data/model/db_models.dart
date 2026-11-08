@@ -2,6 +2,7 @@
 ///
 /// 实体按 legado-E `data/entities/` 的组织方式一类一文件拆分到
 /// `lib/data/entities/`；本文件仅做 re-export，保持历史 import 路径不变。
+library;
 
 export '../entities/book_group.dart';
 export '../entities/book_knowledge.dart';

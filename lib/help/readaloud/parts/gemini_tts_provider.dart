@@ -5,7 +5,7 @@ part of '../cloud_tts_providers.dart';
 
 /// Google Gemini TTS
 class GeminiTtsProvider extends CloudTtsProvider {
-  GeminiTtsProvider(CloudTtsEngine engine) : super(engine);
+  GeminiTtsProvider(super.engine);
 
   @override
   String get name => 'Gemini';

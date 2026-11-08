@@ -387,7 +387,7 @@ class _RssReadScreenState extends State<RssReadScreen> {
           ],
         ),
         body: _loading
-            ? const Center(child: CircularProgressIndicator())
+            ? const AppLoadingIndicator()
             : _error != null
                 ? AppErrorState(message: _error!, onRetry: _load)
                 : Column(

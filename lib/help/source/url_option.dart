@@ -124,7 +124,9 @@ class UrlOptions {
       }
     }
 
-    while (url.endsWith(',')) url = url.substring(0, url.length - 1).trim();
+    while (url.endsWith(',')) {
+      url = url.substring(0, url.length - 1).trim();
+    }
     return UrlOptions(url: url, options: options);
   }
 

@@ -298,7 +298,7 @@ class _DownloadManageScreenState extends State<DownloadManageScreen> {
     if (_loadingCache) {
       return const Padding(
         padding: EdgeInsets.all(16),
-        child: Center(child: CircularProgressIndicator()),
+        child: AppLoadingIndicator(),
       );
     }
     final entries = _books

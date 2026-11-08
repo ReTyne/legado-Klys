@@ -27,9 +27,13 @@ class _TxtTocRuleScreenState extends State<TxtTocRuleScreen> {
   }
 
   Future<void> _onMenu(String v) async {
-    if (v == 'import') _importNetwork();
-    else if (v == 'local') _importLocal();
-    else if (v == 'export') _export();
+    if (v == 'import') {
+      _importNetwork();
+    } else if (v == 'local') {
+      _importLocal();
+    } else if (v == 'export') {
+      _export();
+    }
   }
 
   Future<void> _importNetwork() async {
@@ -103,11 +107,11 @@ class _TxtTocRuleScreenState extends State<TxtTocRuleScreen> {
         title: Text(rule == null ? '添加规则' : '编辑规则'),
         content: Column(mainAxisSize: MainAxisSize.min, children: [
           TextField(controller: nameController, decoration: const InputDecoration(labelText: '规则名称', border: OutlineInputBorder())),
-          const SizedBox(height: 12),
+          const SizedBox(height: AppSpacing.m),
           TextField(controller: ruleController, maxLines: 3, decoration: const InputDecoration(labelText: '章节规则(正则)', border: OutlineInputBorder(), hintText: '例如: ^第\\d+章.*')),
-          const SizedBox(height: 12),
+          const SizedBox(height: AppSpacing.m),
           TextField(controller: volumeController, maxLines: 2, decoration: const InputDecoration(labelText: '卷规则(正则)', border: OutlineInputBorder())),
-          const SizedBox(height: 12),
+          const SizedBox(height: AppSpacing.m),
           TextField(controller: exampleController, maxLines: 2, decoration: const InputDecoration(labelText: '示例', border: OutlineInputBorder())),
         ]),
         actions: [
@@ -139,15 +143,14 @@ class _TxtTocRuleScreenState extends State<TxtTocRuleScreen> {
           PopupMenuItem(value: 'export', child: Text('导出')),
         ]),
       ]),
-      body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
-          : _rules.isEmpty
-              ? const AppEmptyState(
-                  icon: Icons.list_alt_outlined,
-                  title: '暂无 TXT 目录规则',
-                  message: '点击右上角新增，或导入规则',
-                )
-              : ListView.builder(
+      // 三态统一收敛到 AppAsyncState，复用无障碍增强过的公共组件。
+      body: AppAsyncState(
+        loading: _isLoading,
+        isEmpty: _rules.isEmpty,
+        emptyIcon: Icons.list_alt_outlined,
+        emptyTitle: '暂无 TXT 目录规则',
+        emptyMessage: '点击右上角新增，或导入规则',
+        child: ListView.builder(
                   itemCount: _rules.length,
                   itemBuilder: (context, index) {
                     final rule = _rules[index];
@@ -172,6 +175,7 @@ class _TxtTocRuleScreenState extends State<TxtTocRuleScreen> {
                     );
                   },
                 ),
+      ),
     );
   }
 }

@@ -5,7 +5,7 @@ part of '../cloud_tts_providers.dart';
 
 /// Mimo TTS
 class MimoTtsProvider extends CloudTtsProvider {
-  MimoTtsProvider(CloudTtsEngine engine) : super(engine);
+  MimoTtsProvider(super.engine);
 
   @override
   String get name => 'Mimo';

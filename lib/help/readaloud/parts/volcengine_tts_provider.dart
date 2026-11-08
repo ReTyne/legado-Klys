@@ -5,7 +5,7 @@ part of '../cloud_tts_providers.dart';
 
 /// 火山引擎TTS
 class VolcengineTtsProvider extends CloudTtsProvider {
-  VolcengineTtsProvider(CloudTtsEngine engine) : super(engine);
+  VolcengineTtsProvider(super.engine);
 
   @override
   String get name => '火山引擎';

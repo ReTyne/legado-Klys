@@ -162,7 +162,7 @@ class _OtherConfigScreenState extends State<OtherConfigScreen> {
             if (v == null) return;
             final p = await SharedPreferences.getInstance();
             await p.setString('oc_password', v);
-            if (!mounted) return;
+            if (!mounted || !context.mounted) return;
             ScaffoldMessenger.of(context).showSnackBar(
               SnackBar(content: Text(v.isEmpty ? '已清除本地密码' : '本地密码已保存')),
             );

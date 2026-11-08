@@ -107,7 +107,7 @@ class _ChangeCoverScreenState extends State<ChangeCoverScreen> {
     final url = _urlController.text.trim();
     widget.book.customCoverUrl = url.isEmpty ? null : url;
     await _db.updateBook(widget.book);
-    await context.read<BookProvider>().loadBooks();
+    if (mounted && context.mounted) await context.read<BookProvider>().loadBooks();
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(content: Text(url.isEmpty ? '已恢复书源默认封面' : '封面已更新')),

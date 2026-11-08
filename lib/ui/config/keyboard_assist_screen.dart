@@ -132,7 +132,7 @@ class _KeyboardAssistScreenState extends State<KeyboardAssistScreen> {
     return Scaffold(
       appBar: AppBar(title: Text('键盘助手 (${_assists.length})')),
       body: _isLoading
-          ? const Center(child: CircularProgressIndicator())
+          ? const AppLoadingIndicator()
           : _assists.isEmpty
               ? _buildEmptyState()
               : ListView.separated(

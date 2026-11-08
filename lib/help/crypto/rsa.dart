@@ -342,9 +342,8 @@ class AsymmetricCrypto {
 
 /// RSA 签名门面（对齐 hutool Sign 常用方法）。
 class RsaSign {
-  RsaSign(String algorithm, {String? privateKey, String? publicKey})
-      : algorithm = algorithm,
-        _privateKeyPem = privateKey,
+  RsaSign(this.algorithm, {String? privateKey, String? publicKey})
+      : _privateKeyPem = privateKey,
         _publicKeyPem = publicKey;
 
   final String algorithm;

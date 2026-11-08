@@ -166,7 +166,7 @@ class _AiChatScreenState extends State<AiChatScreen> {
         ],
       ),
       body: _loading
-          ? const Center(child: CircularProgressIndicator())
+          ? const AppLoadingIndicator()
           : Column(
               children: [
                 if (!_service.isConfigured)

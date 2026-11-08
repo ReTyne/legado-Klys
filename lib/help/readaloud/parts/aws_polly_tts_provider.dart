@@ -5,7 +5,7 @@ part of '../cloud_tts_providers.dart';
 
 /// AWS Polly TTS
 class AwsPollyTtsProvider extends CloudTtsProvider {
-  AwsPollyTtsProvider(CloudTtsEngine engine) : super(engine);
+  AwsPollyTtsProvider(super.engine);
 
   @override
   String get name => 'AWS Polly';

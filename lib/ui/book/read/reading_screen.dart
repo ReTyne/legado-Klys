@@ -1224,6 +1224,7 @@ class _ReadingScreenState extends State<ReadingScreen>
 
     // 自动翻页 / 实验室「模拟阅读」：进入阅读页后自动开始翻页
     try {
+      if (!mounted || !context.mounted) return;
       final cfg = context.read<ReadProvider>().config;
       if (cfg.autoNextPage || cfg.simulatedReading) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -1344,6 +1345,7 @@ class _ReadingScreenState extends State<ReadingScreen>
 
     // 简繁转换（chineseConverter: 0不转换 1转简 2转繁）
     if (_content != null && _content!.isNotEmpty) {
+      if (!mounted || !context.mounted) return;
       final mode = context.read<ReadProvider>().config.chineseConverter;
       if (mode != 0) {
         _content = ChineseConverter.convert(_content!, mode);
@@ -1402,6 +1404,7 @@ class _ReadingScreenState extends State<ReadingScreen>
     // 后台预缓存后续章节（不 await，不阻塞当前阅读）
     unawaited(_prefetch(index));
     // 保存阅读进度
+    if (!mounted || !context.mounted) return;
     final provider = Provider.of<BookProvider>(context, listen: false);
     await provider.saveReadingProgress(widget.book, index, _currentPage);
 
@@ -1942,6 +1945,9 @@ class _ReadingScreenState extends State<ReadingScreen>
           ? SelectionArea(
               contextMenuBuilder: (context, state) {
                 Future<String> grab() async {
+                  // 长按选择文本抓取：copySelection 是当前 Flutter 唯一可同步取到所选文本的入口，
+                  // 官方替代 contextMenuBuilder 无法在无用户点击时取文本，故保留并定向抑制该弃用告警。
+                  // ignore: deprecated_member_use
                   state.copySelection(SelectionChangedCause.toolbar);
                   await Future.delayed(const Duration(milliseconds: 30));
                   final d = await Clipboard.getData(Clipboard.kTextPlain);
@@ -2013,6 +2019,9 @@ class _ReadingScreenState extends State<ReadingScreen>
                 ? SelectionArea(
                     contextMenuBuilder: (context, state) {
                       Future<String> grab() async {
+                        // 长按选择文本抓取：copySelection 是当前 Flutter 唯一可同步取到所选文本的入口，
+                        // 官方替代 contextMenuBuilder 无法在无用户点击时取文本，故保留并定向抑制该弃用告警。
+                        // ignore: deprecated_member_use
                         state.copySelection(SelectionChangedCause.toolbar);
                         await Future.delayed(const Duration(milliseconds: 30));
                         final d = await Clipboard.getData(Clipboard.kTextPlain);
@@ -2771,6 +2780,9 @@ class _ReadingScreenState extends State<ReadingScreen>
       switch (key) {
         case 'copy':
           children.add(InkWell(onTap: () {
+            // 长按选择文本抓取：copySelection 是当前 Flutter 唯一可同步取到所选文本的入口，
+            // 官方替代 contextMenuBuilder 无法在无用户点击时取文本，故保留并定向抑制该弃用告警。
+            // ignore: deprecated_member_use
             state.copySelection(SelectionChangedCause.toolbar);
             Navigator.pop(context);
             ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('已复制'), duration: Duration(seconds: 1)));
@@ -2779,63 +2791,63 @@ class _ReadingScreenState extends State<ReadingScreen>
         case 'marking':
           children.add(InkWell(onTap: () async {
             final text = await grab();
-            if (context.mounted) Navigator.pop(context);
+            if (mounted && context.mounted) Navigator.pop(context);
             _addMarking(text);
           }, child: const Padding(padding: EdgeInsets.all(12), child: Text('划线'))));
           break;
         case 'dict':
           children.add(InkWell(onTap: () async {
             final w = await grab();
-            if (context.mounted) Navigator.pop(context);
+            if (mounted && context.mounted) Navigator.pop(context);
             _dictLookup(w);
           }, child: const Padding(padding: EdgeInsets.all(12), child: Text('查词'))));
           break;
         case 'translate':
           children.add(InkWell(onTap: () async {
             final w = await grab();
-            if (context.mounted) Navigator.pop(context);
+            if (mounted && context.mounted) Navigator.pop(context);
             _translateSelection(w);
           }, child: const Padding(padding: EdgeInsets.all(12), child: Text('翻译'))));
           break;
         case 'bookmark':
           children.add(InkWell(onTap: () async {
             final w = await grab();
-            if (context.mounted) Navigator.pop(context);
+            if (mounted && context.mounted) Navigator.pop(context);
             _addBookmark(note: w);
           }, child: const Padding(padding: EdgeInsets.all(12), child: Text('加书签'))));
           break;
         case 'tts':
           children.add(InkWell(onTap: () async {
             final w = await grab();
-            if (context.mounted) Navigator.pop(context);
+            if (mounted && context.mounted) Navigator.pop(context);
             if (w.trim().isNotEmpty) _speakSelection(w);
           }, child: const Padding(padding: EdgeInsets.all(12), child: Text('朗读'))));
           break;
         case 'search':
           children.add(InkWell(onTap: () async {
             final w = await grab();
-            if (context.mounted) Navigator.pop(context);
+            if (mounted && context.mounted) Navigator.pop(context);
             _showSearchInBook(initialKeyword: w.trim());
           }, child: const Padding(padding: EdgeInsets.all(12), child: Text('搜索正文'))));
           break;
         case 'browser':
           children.add(InkWell(onTap: () async {
             final w = await grab();
-            if (context.mounted) Navigator.pop(context);
+            if (mounted && context.mounted) Navigator.pop(context);
             _openInBrowser(w.trim());
           }, child: const Padding(padding: EdgeInsets.all(12), child: Text('浏览器'))));
           break;
         case 'share':
           children.add(InkWell(onTap: () async {
             final w = await grab();
-            if (context.mounted) Navigator.pop(context);
+            if (mounted && context.mounted) Navigator.pop(context);
             _shareSelection(w);
           }, child: const Padding(padding: EdgeInsets.all(12), child: Text('分享'))));
           break;
         case 'replace':
           children.add(InkWell(onTap: () async {
             final w = await grab();
-            if (context.mounted) Navigator.pop(context);
+            if (mounted && context.mounted) Navigator.pop(context);
             _previewReplace(w);
           }, child: const Padding(padding: EdgeInsets.all(12), child: Text('替换'))));
           break;
@@ -2901,7 +2913,7 @@ class _ReadingScreenState extends State<ReadingScreen>
 
   Future<void> _translateSelection(String text) async {
     if (text.trim().isEmpty) return;
-    showDialog(context: context, barrierDismissible: false, builder: (_) => const Center(child: CircularProgressIndicator()));
+    showDialog(context: context, barrierDismissible: false, builder: (_) => const AppLoadingIndicator());
     try {
       await TranslationService.instance.loadPrefs();
       final out = await TranslationService.instance.translate(text);
@@ -2942,7 +2954,7 @@ class _ReadingScreenState extends State<ReadingScreen>
         _engine.setCharset(cs == 'UTF-8' ? null : cs.toLowerCase());
         final p = await SharedPreferences.getInstance();
         await p.setString('force_charset', cs);
-        context.read<ReadProvider>().updateConfig((c) => c.charset = cs);
+        if (mounted && context.mounted) context.read<ReadProvider>().updateConfig((c) => c.charset = cs);
         _loadChapterContent(_currentChapterIndex);
         if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('已切换编码 $cs 并重新加载')));
       })),
@@ -3093,7 +3105,7 @@ class _ReadingScreenState extends State<ReadingScreen>
                         icon: const Icon(Icons.delete_outline),
                         onPressed: () async {
                           await _db.deleteBookmark(bm.id!);
-                          Navigator.pop(context);
+                          if (mounted && context.mounted) Navigator.pop(context);
                           _showBookmarks();
                         },
                       ),
@@ -3266,9 +3278,9 @@ class _ReadingScreenState extends State<ReadingScreen>
             _chapters[_currentChapterIndex].content = controller.text;
             // 仅更新当前章内容，避免全表重写清空其他章节
             await _db.updateChapterContent(widget.book.name, widget.book.author, _currentChapterIndex, controller.text);
-            if (mounted) { setState(() {}); ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('内容已保存'))); }
+            if (mounted && context.mounted) { setState(() {}); ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('内容已保存'))); }
           }
-          Navigator.pop(context);
+          if (mounted && context.mounted) Navigator.pop(context);
         }, child: const Text('保存')),
       ],
     ));

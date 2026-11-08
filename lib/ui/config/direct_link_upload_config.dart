@@ -281,7 +281,7 @@ class _DirectLinkUploadConfigDialogState
                   final rule = _currentRule();
                   if (rule == null) return;
                   await DirectLinkUploadService.putConfig(rule);
-                  if (!mounted) return;
+                  if (!mounted || !context.mounted) return;
                   Navigator.pop(context);
                   ScaffoldMessenger.of(context).showSnackBar(
                     const SnackBar(content: Text('上传规则已保存')),

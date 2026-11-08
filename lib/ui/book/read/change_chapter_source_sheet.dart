@@ -44,7 +44,7 @@ class _ChangeChapterSourceSheetState extends State<ChangeChapterSourceSheet> {
         Padding(padding: const EdgeInsets.symmetric(horizontal: 16), child: Text('选择其他书源加载本章内容', style: TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.onSurfaceVariant))),
         const SizedBox(height: 8),
         Expanded(child: _loading
-          ? const Center(child: CircularProgressIndicator())
+          ? const AppLoadingIndicator()
           : _sources.isEmpty
             ? const Center(child: Text('没有可用书源'))
             : ListView.builder(

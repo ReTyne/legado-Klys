@@ -8,6 +8,7 @@
 ///   '前缀'+result+'后缀' 字符串拼接、result.length
 ///   JSON.parse(x).a.b[0]
 /// 无法覆盖的（java.ajax、复杂函数/循环）返回 null，并由调用方回退。
+library;
 import 'dart:convert';
 
 part 'parts/parens.dart';
