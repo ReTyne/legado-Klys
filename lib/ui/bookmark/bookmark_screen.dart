@@ -129,7 +129,7 @@ class _BookmarkScreenState extends State<BookmarkScreen> {
                       background: Container(
                         color: cs.error,
                         alignment: Alignment.centerRight,
-                        padding: const EdgeInsets.only(right: 16),
+                        padding: const EdgeInsets.only(right: AppSpacing.l),
                         child: Icon(Icons.delete, color: cs.onError),
                       ),
                       child: ListTile(

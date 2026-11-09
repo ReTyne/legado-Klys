@@ -110,7 +110,7 @@ class _QrShareScreenState extends State<QrShareScreen> {
         ],
       ),
       body: Padding(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(AppSpacing.l),
         child: Column(
           children: [
             Expanded(
@@ -120,12 +120,12 @@ class _QrShareScreenState extends State<QrShareScreen> {
                     // 二维码必须保持「浅底深模块」的高对比度才能被扫码器识别，
                     // 故此处固定浅色底，不随主题反色；其余容器仍走主题语义色。
                     : DecoratedBox(
-                        decoration: BoxDecoration(
+                        decoration: const BoxDecoration(
                           color: Colors.white,
-                          borderRadius: BorderRadius.circular(16),
+                          borderRadius: AppRadius.lAll,
                         ),
                         child: Padding(
-                          padding: const EdgeInsets.all(12),
+                          padding: const EdgeInsets.all(AppSpacing.m),
                           child: SizedBox(
                             width: 300,
                             height: 300,
@@ -137,31 +137,31 @@ class _QrShareScreenState extends State<QrShareScreen> {
                       ),
               ),
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: AppSpacing.m),
             Card(
               color: theme.colorScheme.surfaceContainerHighest,
               child: Padding(
-                padding: const EdgeInsets.all(12),
+                padding: const EdgeInsets.all(AppSpacing.m),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(widget.source.bookSourceName,
                         style: theme.textTheme.titleSmall
                             ?.copyWith(fontWeight: FontWeight.bold)),
-                    const SizedBox(height: 4),
+                    const SizedBox(height: AppSpacing.xs),
                     Text('JSON 大小：${_json.length} 字节',
                         style: theme.textTheme.bodySmall),
                     Text('二维码版本：${(qr != null ? (qr.size - 17) ~/ 4 : '-')}（纠错等级 M）',
                         style: theme.textTheme.bodySmall),
                     if (_compact)
                       Padding(
-                        padding: const EdgeInsets.only(top: 4),
+                        padding: const EdgeInsets.only(top: AppSpacing.xs),
                         child: Text('书源字段较多，二维码内为精简 JSON（省略空字段），可正常导入',
                             style: TextStyle(fontSize: 11, color: theme.colorScheme.tertiary)),
                       ),
                     if (_error != null)
                       Padding(
-                        padding: const EdgeInsets.only(top: 4),
+                        padding: const EdgeInsets.only(top: AppSpacing.xs),
                         child: Text(_error!,
                             style: TextStyle(fontSize: 11, color: theme.colorScheme.error)),
                       ),
@@ -169,7 +169,7 @@ class _QrShareScreenState extends State<QrShareScreen> {
                 ),
               ),
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: AppSpacing.m),
             Row(
               children: [
                 Expanded(
@@ -179,7 +179,7 @@ class _QrShareScreenState extends State<QrShareScreen> {
                     onPressed: qr == null ? null : _shareImage,
                   ),
                 ),
-                const SizedBox(width: 12),
+                const SizedBox(width: AppSpacing.m),
                 Expanded(
                   child: OutlinedButton.icon(
                     icon: const Icon(Icons.content_copy_outlined),

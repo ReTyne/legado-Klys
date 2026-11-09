@@ -4,6 +4,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:legado_md3/constant/app_theme.dart';
 
+import 'package:legado_md3/ui/theme/app_design.dart';
 /// 统一的默认封面占位：低饱和深底 + 白字书名。
 ///
 /// 全项目唯一实现，替换 bookshelf / discover / detail / search 各处复制的
@@ -38,7 +39,7 @@ class DefaultCover extends StatelessWidget {
       ),
       child: Center(
         child: Padding(
-          padding: const EdgeInsets.all(4),
+          padding: const EdgeInsets.all(AppSpacing.xs),
           child: Text(
             name,
             maxLines: 3,
@@ -137,7 +138,7 @@ class BookCover extends StatelessWidget {
                     colors: [Colors.transparent, Color(0x99000000)],
                   ),
                 ),
-                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 3),
+                padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xs, vertical: 3),
                 child: overlay!,
               ),
             ),
@@ -146,10 +147,10 @@ class BookCover extends StatelessWidget {
               right: 2,
               top: 2,
               child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 1),
+                padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xs, vertical: 1),
                 decoration: BoxDecoration(
                   color: cs.error,
-                  borderRadius: BorderRadius.circular(8),
+                  borderRadius: AppRadius.sAll,
                 ),
                 child: Text(
                   badge! > 99 ? '99+' : '${badge!}',

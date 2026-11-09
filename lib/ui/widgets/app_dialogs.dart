@@ -4,6 +4,7 @@
 
 import 'package:flutter/material.dart';
 
+import 'package:legado_md3/ui/theme/app_design.dart';
 /// 确认框（含危险变体）。返回是否确认。
 Future<bool> showAppConfirmDialog(
   BuildContext context, {
@@ -50,10 +51,10 @@ Future<T> runWithBusyDialog<T>(
     builder: (_) => Center(
       child: Card(
         child: Padding(
-          padding: const EdgeInsets.all(24),
+          padding: const EdgeInsets.all(AppSpacing.xl),
           child: Column(mainAxisSize: MainAxisSize.min, children: [
             const CircularProgressIndicator(),
-            const SizedBox(height: 12),
+            const SizedBox(height: AppSpacing.m),
             Text(message),
           ]),
         ),
@@ -80,7 +81,7 @@ Future<void> showAppMenuSheet(
         child: Column(mainAxisSize: MainAxisSize.min, children: [
           if (title != null)
             Padding(
-              padding: const EdgeInsets.all(16),
+              padding: const EdgeInsets.all(AppSpacing.l),
               child: Text(title,
                   style: const TextStyle(
                       fontSize: 16, fontWeight: FontWeight.bold)),

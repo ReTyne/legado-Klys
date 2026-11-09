@@ -142,7 +142,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               controller: ctrl,
               decoration: const InputDecoration(labelText: '模板', hintText: '{name}'),
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: AppSpacing.s),
             const Text('可用变量：{name} 书名 · {author} 作者 · {group} 分组', style: TextStyle(fontSize: 12)),
           ],
         ),
@@ -632,12 +632,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
               double rate = (await SharedPreferences.getInstance()).getDouble('tts_rate') ?? 1.0;
               if (!mounted || !context.mounted) return;
               showModalBottomSheet(context: context, builder: (sheetCtx) => StatefulBuilder(builder: (ctx, setSt) => SafeArea(child: Column(mainAxisSize: MainAxisSize.min, children: [
-                const Padding(padding: EdgeInsets.all(16), child: Text('朗读语速', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold))),
-                Padding(padding: const EdgeInsets.symmetric(horizontal: 24), child: Text('${rate.toStringAsFixed(1)} 倍', style: const TextStyle(fontSize: 14))),
+                const Padding(padding: EdgeInsets.all(AppSpacing.l), child: Text('朗读语速', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold))),
+                Padding(padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xl), child: Text('${rate.toStringAsFixed(1)} 倍', style: const TextStyle(fontSize: 14))),
                 Slider(value: rate, min: 0.3, max: 3.0, divisions: 27, label: rate.toStringAsFixed(1),
                   onChanged: (v) => setSt(() => rate = v),
                   onChangeEnd: (v) async => (await SharedPreferences.getInstance()).setDouble('tts_rate', v)),
-                const SizedBox(height: 12),
+                const SizedBox(height: AppSpacing.m),
               ]))));
             },
           ),
@@ -684,7 +684,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             trailing: const Icon(Icons.chevron_right),
             onTap: () => _showAboutDialog(),
           ),
-          const SizedBox(height: 24),
+          const SizedBox(height: AppSpacing.xl),
         ],
       ),
     );
@@ -1148,10 +1148,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
       builder: (sheetCtx) => SafeArea(
         child: Column(mainAxisSize: MainAxisSize.min, children: [
           Padding(
-            padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+            padding: const EdgeInsets.fromLTRB(AppSpacing.l, AppSpacing.l, AppSpacing.l, AppSpacing.s),
             child: Row(children: [
               const Icon(Icons.font_download_outlined, size: 20),
-              const SizedBox(width: 8),
+              const SizedBox(width: AppSpacing.s),
               Expanded(child: Text('选择阅读字体（${fonts.length}）', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold))),
             ]),
           ),
@@ -1167,7 +1167,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ),
                 if (fonts.isEmpty)
                   const Padding(
-                    padding: EdgeInsets.all(24),
+                    padding: EdgeInsets.all(AppSpacing.xl),
                     child: Center(child: Text('未扫描到字体文件\n可将 .ttf/.otf 放入应用文档的 Fonts 目录', textAlign: TextAlign.center)),
                   ),
                 ...fonts.map((f) => RadioListTile<String>(
@@ -1330,9 +1330,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
         title: Text('关于$appDisplayName'),
         content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
           Text('版本: $version'),
-          const SizedBox(height: 8),
+          const SizedBox(height: AppSpacing.s),
           const Text('基于 legado 的 Material Design 3 跨平台阅读应用'),
-          const SizedBox(height: 8),
+          const SizedBox(height: AppSpacing.s),
           const Text('支持Android和iOS'),
         ]),
         actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('确定'))],

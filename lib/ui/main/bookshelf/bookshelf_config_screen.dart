@@ -125,7 +125,7 @@ class _BookshelfConfigScreenState extends State<BookshelfConfigScreen> {
         // 布局模式
         _sectionTitle('书架布局'),
         Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 12),
+          padding: const EdgeInsets.symmetric(horizontal: AppSpacing.m),
           child: Wrap(spacing: 8, runSpacing: 8, children: [
             for (var i = 0; i < _layoutNames.length; i++)
               ChoiceChip(
@@ -140,7 +140,7 @@ class _BookshelfConfigScreenState extends State<BookshelfConfigScreen> {
               ),
           ]),
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: AppSpacing.s),
         if (_layout >= 2) ...[
           ListTile(
             dense: true, title: Text('网格列数: $_columnCount'),
@@ -228,7 +228,7 @@ class _BookshelfConfigScreenState extends State<BookshelfConfigScreen> {
             onChanged: (v) => setState(() => _updateLimit = v.toInt()),
             onChangeEnd: (v) => _save('bs_updateLimit', v.toInt())),
         ),
-        const SizedBox(height: 24),
+        const SizedBox(height: AppSpacing.xl),
       ]),
     );
   }

@@ -203,10 +203,10 @@ class _ReadRecordScreenState extends State<ReadRecordScreen> {
           child: Column(mainAxisSize: MainAxisSize.min, children: [
             TextField(controller: nameCtl,
                 decoration: const InputDecoration(labelText: '书名')),
-            const SizedBox(height: 8),
+            const SizedBox(height: AppSpacing.s),
             TextField(controller: authorCtl,
                 decoration: const InputDecoration(labelText: '作者')),
-            const SizedBox(height: 8),
+            const SizedBox(height: AppSpacing.s),
             TextField(
               controller: minutesCtl,
               keyboardType: TextInputType.number,
@@ -262,10 +262,10 @@ class _ReadRecordScreenState extends State<ReadRecordScreen> {
           child: Column(mainAxisSize: MainAxisSize.min, children: [
             TextField(controller: nameCtl,
                 decoration: const InputDecoration(labelText: '书名')),
-            const SizedBox(height: 8),
+            const SizedBox(height: AppSpacing.s),
             TextField(controller: authorCtl,
                 decoration: const InputDecoration(labelText: '作者')),
-            const SizedBox(height: 8),
+            const SizedBox(height: AppSpacing.s),
             TextField(
               controller: minutesCtl,
               keyboardType: TextInputType.number,
@@ -412,7 +412,7 @@ class _ReadRecordScreenState extends State<ReadRecordScreen> {
                 child: Row(children: [
                   Icon(_sortAsc ? Icons.arrow_downward : Icons.arrow_upward,
                       size: 20),
-                  const SizedBox(width: 8),
+                  const SizedBox(width: AppSpacing.s),
                   Text(_sortAsc ? '切换为降序' : '切换为升序'),
                 ]),
               ),
@@ -424,7 +424,7 @@ class _ReadRecordScreenState extends State<ReadRecordScreen> {
                       ? Icons.toggle_on_outlined
                       : Icons.toggle_off_outlined,
                       size: 20),
-                  const SizedBox(width: 8),
+                  const SizedBox(width: AppSpacing.s),
                   Text(_recordEnabled ? '关闭阅读记录' : '开启阅读记录'),
                 ]),
               ),
@@ -433,7 +433,7 @@ class _ReadRecordScreenState extends State<ReadRecordScreen> {
                 value: 'clear_all',
                 child: Row(children: [
                   Icon(Icons.delete_sweep_outlined, size: 20, color: cs.error),
-                  const SizedBox(width: 8),
+                  const SizedBox(width: AppSpacing.s),
                   Text('清空全部记录', style: TextStyle(color: cs.error)),
                 ]),
               ),
@@ -445,7 +445,7 @@ class _ReadRecordScreenState extends State<ReadRecordScreen> {
           ? const AppLoadingIndicator()
           : Column(children: [
               Container(
-                padding: const EdgeInsets.all(16),
+                padding: const EdgeInsets.all(AppSpacing.l),
                 color: cs.primaryContainer,
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceAround,
@@ -468,11 +468,11 @@ class _ReadRecordScreenState extends State<ReadRecordScreen> {
               if (!_recordEnabled)
                 Container(
                   width: double.infinity,
-                  margin: const EdgeInsets.symmetric(horizontal: 12),
-                  padding: const EdgeInsets.all(12),
+                  margin: const EdgeInsets.symmetric(horizontal: AppSpacing.m),
+                  padding: const EdgeInsets.all(AppSpacing.m),
                   decoration: BoxDecoration(
                     color: cs.errorContainer,
-                    borderRadius: BorderRadius.circular(12),
+                    borderRadius: AppRadius.mAll,
                   ),
                   child: Text(
                     '阅读记录已暂停，统计页与手动补记同步停用。',
@@ -487,7 +487,7 @@ class _ReadRecordScreenState extends State<ReadRecordScreen> {
                         message: _recordEnabled ? null : '记录已暂停',
                       )
                     : ListView.builder(
-                        padding: const EdgeInsets.all(8),
+                        padding: const EdgeInsets.all(AppSpacing.s),
                         itemCount: records.length,
                         itemBuilder: (context, index) =>
                             _buildRecordItem(records[index], index),
@@ -504,7 +504,7 @@ class _ReadRecordScreenState extends State<ReadRecordScreen> {
       value: value,
       child: Row(children: [
         Icon(icon, size: 20),
-        const SizedBox(width: 8),
+        const SizedBox(width: AppSpacing.s),
         Expanded(child: Text(label)),
         if (selected)
           Icon(
@@ -569,7 +569,7 @@ class _ReadRecordScreenState extends State<ReadRecordScreen> {
     return Column(children: [
       Text(value,
           style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-      const SizedBox(height: 4),
+      const SizedBox(height: AppSpacing.xs),
       Text(label, style: const TextStyle(fontSize: 12)),
     ]);
   }

@@ -68,19 +68,19 @@ class _VerificationCodeScreenState extends State<VerificationCodeScreen> {
         ],
       ),
       body: Padding(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(AppSpacing.l),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
             Text('请输入下图中的字符', style: TextStyle(color: cs.onSurfaceVariant)),
-            const SizedBox(height: 12),
+            const SizedBox(height: AppSpacing.m),
             GestureDetector(
               onTap: () => _showFullImage(context, widget.imageUrl),
               child: Container(
                 height: 140,
                 decoration: BoxDecoration(
                   border: Border.all(color: cs.outlineVariant),
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius: AppRadius.mAll,
                 ),
                 clipBehavior: Clip.antiAlias,
                 child: Image.network(
@@ -96,7 +96,7 @@ class _VerificationCodeScreenState extends State<VerificationCodeScreen> {
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
                         Icon(Icons.broken_image_outlined, color: cs.onSurfaceVariant),
-                        const SizedBox(height: 4),
+                        const SizedBox(height: AppSpacing.xs),
                         Text('图片加载失败', style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
                         TextButton(
                           onPressed: _reloadImage,
@@ -108,9 +108,9 @@ class _VerificationCodeScreenState extends State<VerificationCodeScreen> {
                 ),
               ),
             ),
-            const SizedBox(height: 4),
+            const SizedBox(height: AppSpacing.xs),
             Text('点击图片可查看大图', style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant)),
-            const SizedBox(height: 16),
+            const SizedBox(height: AppSpacing.l),
             TextField(
               controller: _controller,
               autofocus: true,
@@ -134,7 +134,7 @@ class _VerificationCodeScreenState extends State<VerificationCodeScreen> {
                     child: const Text('取消'),
                   ),
                 ),
-                const SizedBox(width: 12),
+                const SizedBox(width: AppSpacing.m),
                 Expanded(
                   child: FilledButton(
                     onPressed: () => _submit(_controller.text.trim()),

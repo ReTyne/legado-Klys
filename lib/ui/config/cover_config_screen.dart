@@ -140,7 +140,7 @@ class _CoverConfigScreenState extends State<CoverConfigScreen> {
             title: '已下线配置（取舍说明）',
             children: [
               Padding(
-                padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+                padding: const EdgeInsets.fromLTRB(AppSpacing.l, AppSpacing.s, AppSpacing.l, AppSpacing.s),
                 child: Text(
                   '下列 6 项已从 UI 与模型下线（无消费方 / MD3 单主题无昼夜配色）：\n'
                   '1. coverRule —— 封面 JS 规则，无渲染消费方\n'
@@ -163,7 +163,7 @@ class _CoverConfigScreenState extends State<CoverConfigScreen> {
               ),
             ],
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: AppSpacing.l),
         ],
       ),
     );

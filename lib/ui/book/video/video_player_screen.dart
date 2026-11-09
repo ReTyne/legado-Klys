@@ -14,6 +14,7 @@ import 'package:legado_md3/help/device/native_bridge.dart';
 import 'package:legado_md3/help/source/source_engine.dart';
 import 'package:legado_md3/help/storage/danmaku_store.dart';
 
+import 'package:legado_md3/ui/theme/app_design.dart';
 part 'parts/video_player_screen_state.dart';
 part 'parts/video_resume.dart';
 part 'parts/danmaku_item.dart';

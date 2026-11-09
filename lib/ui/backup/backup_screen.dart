@@ -125,7 +125,7 @@ class _BackupScreenState extends State<BackupScreen> {
         title: const Text('恢复忽略项'),
         content: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, children: [
           Text('勾选的数据类型在恢复时默认取消，避免覆盖本地数据', style: TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.onSurfaceVariant)),
-          const SizedBox(height: 8),
+          const SizedBox(height: AppSpacing.s),
           ..._restoreIgnoreItems.entries.map((e) => CheckboxListTile(
             dense: true,
             contentPadding: EdgeInsets.zero,
@@ -175,25 +175,25 @@ class _BackupScreenState extends State<BackupScreen> {
     AppPrefs.webDavDeviceName = _webdavDeviceName.text;
   }
   Widget _buildWebdavCard() => Card(
-    child: Padding(padding: const EdgeInsets.all(16), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+    child: Padding(padding: const EdgeInsets.all(AppSpacing.l), child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       Row(children: [
         const Icon(Icons.cloud, size: 20),
-        const SizedBox(width: 8),
+        const SizedBox(width: AppSpacing.s),
         Text('WebDAV设置', style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
       ]),
-      const SizedBox(height: 12),
+      const SizedBox(height: AppSpacing.m),
       TextField(controller: _webdavUrl, decoration: const InputDecoration(labelText: 'WebDAV URL', isDense: true, border: OutlineInputBorder())),
-      const SizedBox(height: 8),
+      const SizedBox(height: AppSpacing.s),
       TextField(controller: _webdavUser, decoration: const InputDecoration(labelText: '账号', isDense: true, border: OutlineInputBorder())),
-      const SizedBox(height: 8),
+      const SizedBox(height: AppSpacing.s),
       TextField(controller: _webdavPass, obscureText: true, decoration: const InputDecoration(labelText: '密码', isDense: true, border: OutlineInputBorder())),
-      const SizedBox(height: 8),
+      const SizedBox(height: AppSpacing.s),
       TextField(controller: _webdavDir, decoration: const InputDecoration(labelText: '备份子目录', isDense: true, border: OutlineInputBorder())),
       TextField(controller: _webdavDeviceName, decoration: const InputDecoration(labelText: '设备名', isDense: true, border: OutlineInputBorder(), hintText: '标识备份来源设备，如 我的手机')),
       SwitchListTile(contentPadding: EdgeInsets.zero, dense: true, title: const Text('同步阅读进度'), value: _syncProgress, onChanged: (v) => setState(() => _syncProgress = v)),
       Row(children: [
         OutlinedButton(onPressed: () async { await _saveWebdav(); if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('WebDAV配置已保存'))); }, child: const Text('保存配置')),
-        const SizedBox(width: 8),
+        const SizedBox(width: AppSpacing.s),
         OutlinedButton(onPressed: _testWebDav, child: const Text('测试')),
         OutlinedButton(onPressed: _restoreFromWebDav, child: const Text('云端恢复')),
         const Spacer(),
@@ -300,7 +300,7 @@ class _BackupScreenState extends State<BackupScreen> {
           TextField(controller: p1, obscureText: true, autofocus: true,
             decoration: const InputDecoration(labelText: '密码（留空则不加密）')),
           if (confirm) ...[
-            const SizedBox(height: 8),
+            const SizedBox(height: AppSpacing.s),
             TextField(controller: p2, obscureText: true,
               decoration: const InputDecoration(labelText: '确认密码')),
           ],
@@ -393,7 +393,7 @@ class _BackupScreenState extends State<BackupScreen> {
                   ),
                   if (info.error != null && restoreTypes.isEmpty)
                     Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 8),
+                      padding: const EdgeInsets.symmetric(vertical: AppSpacing.s),
                       child: Text('无法读取备份内容：${info.error}\n若是加密备份，请输入密码后点击「验证密码」。',
                         style: TextStyle(color: Theme.of(ctx).colorScheme.error)),
                     ),
@@ -427,7 +427,7 @@ class _BackupScreenState extends State<BackupScreen> {
                   ),
                   // 加密备份密码
                   if (info.encrypted || info.error != null) ...[
-                    const SizedBox(height: 8),
+                    const SizedBox(height: AppSpacing.s),
                     TextField(controller: pwdController, obscureText: true,
                       decoration: const InputDecoration(labelText: '备份密码', isDense: true)),
                     Align(
@@ -548,12 +548,12 @@ class _BackupScreenState extends State<BackupScreen> {
       body: _isWorking
           ? const AppLoadingIndicator()
           : ListView(
-              padding: const EdgeInsets.all(16),
+              padding: const EdgeInsets.all(AppSpacing.l),
               children: [
                 // 备份内容勾选 + 加密 + 保留份数
                 Card(
                   child: Padding(
-                    padding: const EdgeInsets.all(16),
+                    padding: const EdgeInsets.all(AppSpacing.l),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
@@ -567,7 +567,7 @@ class _BackupScreenState extends State<BackupScreen> {
                             for (final t in _selected.keys) { _selected[t] = false; }
                           }), child: const Text('全不选')),
                         ]),
-                        const SizedBox(height: 8),
+                        const SizedBox(height: AppSpacing.s),
                         // 内容多选（chip 形式，紧凑展示 17 类）
                         Wrap(
                           spacing: 8,
@@ -578,7 +578,7 @@ class _BackupScreenState extends State<BackupScreen> {
                             onSelected: (v) => setState(() => _selected[t] = v),
                           )).toList(),
                         ),
-                        const SizedBox(height: 12),
+                        const SizedBox(height: AppSpacing.m),
                         // 加密开关（zip 内敏感数据加密）
                         SwitchListTile(
                           dense: true,
@@ -648,7 +648,7 @@ class _BackupScreenState extends State<BackupScreen> {
                             if (v) _checkNewBackupSilently();
                           },
                         ),
-                        const SizedBox(height: 8),
+                        const SizedBox(height: AppSpacing.s),
                         SizedBox(
                           width: double.infinity,
                           child: FilledButton.icon(
@@ -661,7 +661,7 @@ class _BackupScreenState extends State<BackupScreen> {
                     ),
                   ),
                 ),
-                const SizedBox(height: 16),
+                const SizedBox(height: AppSpacing.l),
                 // 恢复
                 Card(
                   child: Column(
@@ -689,13 +689,13 @@ class _BackupScreenState extends State<BackupScreen> {
                     ],
                   ),
                 ),
-                const SizedBox(height: 16),
+                const SizedBox(height: AppSpacing.l),
                 _buildWebdavCard(),
-                const SizedBox(height: 16),
+                const SizedBox(height: AppSpacing.l),
                 // 本地备份列表
                 if (_backupFiles.isNotEmpty) ...[
                   Text('本地备份', style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
-                  const SizedBox(height: 8),
+                  const SizedBox(height: AppSpacing.s),
                   ..._backupFiles.map((file) => Card(
                     child: ListTile(
                       leading: Icon(file.path.endsWith('.zip') ? Icons.folder_zip : Icons.description),

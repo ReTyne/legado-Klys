@@ -168,14 +168,14 @@ class _OnlineImportScreenState extends State<OnlineImportScreen> {
         ],
       ),
       body: ListView(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(AppSpacing.l),
         children: [
           // 说明：对齐 E OnLineImport 支持的 7 类导入
           Container(
-            padding: const EdgeInsets.all(12),
+            padding: const EdgeInsets.all(AppSpacing.m),
             decoration: BoxDecoration(
               color: cs.primaryContainer.withOpacity(0.35),
-              borderRadius: BorderRadius.circular(12),
+              borderRadius: AppRadius.mAll,
             ),
             child: const Text(
               '粘贴书源 / 订阅 / 替换规则 / TXT目录 / 在线TTS / 字典 / 主题 / '
@@ -184,7 +184,7 @@ class _OnlineImportScreenState extends State<OnlineImportScreen> {
               style: TextStyle(fontSize: 12),
             ),
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: AppSpacing.l),
           DropdownButtonFormField<String>(
             value: _type,
             isExpanded: true,
@@ -202,7 +202,7 @@ class _OnlineImportScreenState extends State<OnlineImportScreen> {
                 .toList(),
             onChanged: (v) => setState(() => _type = v ?? 'auto'),
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: AppSpacing.m),
           TextField(
             controller: _urlController,
             minLines: 3,
@@ -215,7 +215,7 @@ class _OnlineImportScreenState extends State<OnlineImportScreen> {
               prefixIcon: Icon(Icons.link),
             ),
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: AppSpacing.l),
           FilledButton.icon(
             onPressed: _busy ? null : _doImport,
             icon: _busy
@@ -227,14 +227,14 @@ class _OnlineImportScreenState extends State<OnlineImportScreen> {
                 : const Icon(Icons.download_rounded),
             label: Text(_busy ? '导入中…' : '一键导入'),
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: AppSpacing.s),
           OutlinedButton.icon(
             onPressed: _busy ? null : _addToShelf,
             icon: const Icon(Icons.menu_book_outlined),
             label: const Text('按书籍链接加入书架'),
           ),
           if (_status.isNotEmpty) ...[
-            const SizedBox(height: 12),
+            const SizedBox(height: AppSpacing.m),
             Row(
               children: [
                 Icon(Icons.info_outline, size: 16, color: cs.primary),
@@ -247,9 +247,9 @@ class _OnlineImportScreenState extends State<OnlineImportScreen> {
             ),
           ],
           if (_history.isNotEmpty) ...[
-            const SizedBox(height: 24),
+            const SizedBox(height: AppSpacing.xl),
             const AppSectionHeader('最近导入'),
-            const SizedBox(height: 8),
+            const SizedBox(height: AppSpacing.s),
             Wrap(
               spacing: 8,
               runSpacing: 8,

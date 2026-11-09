@@ -78,11 +78,11 @@ class _AgentToolScreenState extends State<AgentToolScreen> {
       body: _loading
           ? const AppLoadingIndicator()
           : ListView(
-              padding: const EdgeInsets.only(bottom: 24),
+              padding: const EdgeInsets.only(bottom: AppSpacing.xl),
               children: [
                 AppSectionHeader('已启用 $enabledCount / ${_tools.length}'),
                 Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  padding: const EdgeInsets.symmetric(horizontal: AppSpacing.l),
                   child: Text(
                     '聊天时模型可自动调用已启用的工具（OpenAI tool_calls 多轮回填）；'
                     '未配置 AI 接口时，工具也会按对话意图在离线模式下直接执行。',
@@ -99,7 +99,7 @@ class _AgentToolScreenState extends State<AgentToolScreen> {
                   for (final t in _tools)
                     Card(
                       margin: const EdgeInsets.symmetric(
-                          horizontal: 16, vertical: 6),
+                          horizontal: AppSpacing.l, vertical: 6),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
@@ -116,12 +116,12 @@ class _AgentToolScreenState extends State<AgentToolScreen> {
                             onChanged: (v) => _toggle(t, v),
                           ),
                           Padding(
-                            padding: const EdgeInsets.fromLTRB(16, 0, 8, 8),
+                            padding: const EdgeInsets.fromLTRB(AppSpacing.l, 0, AppSpacing.s, AppSpacing.s),
                             child: Row(
                               children: [
                                 Icon(Icons.code_outlined,
                                     size: 14, color: cs.onSurfaceVariant),
-                                const SizedBox(width: 4),
+                                const SizedBox(width: AppSpacing.xs),
                                 Expanded(
                                   child: Text('handler: ${t.handler}',
                                       style: TextStyle(

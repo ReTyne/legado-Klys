@@ -153,11 +153,11 @@ class _RemoteBookScreenState extends State<RemoteBookScreen> {
       title: const Text('服务器配置'),
       content: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, children: [
         TextField(controller: urlCtl, decoration: const InputDecoration(labelText: 'WebDAV 地址', isDense: true)),
-        const SizedBox(height: 8),
+        const SizedBox(height: AppSpacing.s),
         TextField(controller: userCtl, decoration: const InputDecoration(labelText: '账号', isDense: true)),
-        const SizedBox(height: 8),
+        const SizedBox(height: AppSpacing.s),
         TextField(controller: passCtl, obscureText: true, decoration: const InputDecoration(labelText: '密码', isDense: true)),
-        const SizedBox(height: 8),
+        const SizedBox(height: AppSpacing.s),
         TextField(controller: dirCtl, decoration: const InputDecoration(labelText: '书库目录', hintText: '书籍', isDense: true)),
       ])),
       actions: [
@@ -198,7 +198,7 @@ class _RemoteBookScreenState extends State<RemoteBookScreen> {
               PopupMenuItem(value: 0, child: Text('默认排序')),
               PopupMenuItem(value: 1, child: Text('按名称排序')),
             ],
-            child: const Padding(padding: EdgeInsets.all(12), child: Icon(Icons.sort)),
+            child: const Padding(padding: EdgeInsets.all(AppSpacing.m), child: Icon(Icons.sort)),
           ),
         ],
       ),

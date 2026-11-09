@@ -602,7 +602,7 @@ class _BookshelfScreenState extends State<BookshelfScreen> {
           title: const Text('URL添加书籍'),
           content: Column(mainAxisSize: MainAxisSize.min, children: [
             LinearProgressIndicator(value: done / urls.length),
-            const SizedBox(height: 12),
+            const SizedBox(height: AppSpacing.m),
             Text('进度 $done/${urls.length}，成功 $ok，失败 $fail'),
           ]),
         );
@@ -851,7 +851,7 @@ class _BookshelfScreenState extends State<BookshelfScreen> {
           title: const Text('导入书架'),
           content: Column(mainAxisSize: MainAxisSize.min, children: [
             LinearProgressIndicator(value: done / arr.length),
-            const SizedBox(height: 12),
+            const SizedBox(height: AppSpacing.m),
             Text('进度 $done/${arr.length}，新增 $added，已存在 $skipped，失败 $failed'),
           ]),
         );
@@ -1111,7 +1111,7 @@ class _BookshelfScreenState extends State<BookshelfScreen> {
                     ),
                   ],
                 ),
-                const SizedBox(height: 4),
+                const SizedBox(height: AppSpacing.xs),
                 Wrap(
                   spacing: 8,
                   children: [
@@ -1171,7 +1171,7 @@ class _BookshelfScreenState extends State<BookshelfScreen> {
                 ),
                 if (rangeMode == 2)
                   Padding(
-                    padding: const EdgeInsets.only(top: 4),
+                    padding: const EdgeInsets.only(top: AppSpacing.xs),
                     child: Row(
                       children: [
                         Expanded(
@@ -1182,7 +1182,7 @@ class _BookshelfScreenState extends State<BookshelfScreen> {
                           ),
                         ),
                         const Padding(
-                          padding: EdgeInsets.symmetric(horizontal: 8),
+                          padding: EdgeInsets.symmetric(horizontal: AppSpacing.s),
                           child: Text('至'),
                         ),
                         Expanded(
@@ -1335,7 +1335,7 @@ class _BookshelfScreenState extends State<BookshelfScreen> {
               if (mounted && context.mounted) Navigator.pop(context);
             }),
           ]),
-          const SizedBox(height: 8),
+          const SizedBox(height: AppSpacing.s),
           TextField(controller: controller, decoration: const InputDecoration(hintText: '输入新分组名称（留空为未分组）')),
         ]),
         actions: [
@@ -1414,7 +1414,7 @@ class _BookshelfScreenState extends State<BookshelfScreen> {
             : null,
       ),
       body: _isUpdating
-          ? const Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [CircularProgressIndicator(), SizedBox(height: 16), Text('正在更新...')]))
+          ? const Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [CircularProgressIndicator(), SizedBox(height: AppSpacing.l), Text('正在更新...')]))
           : books.isEmpty
               ? AppEmptyState(
                   icon: Icons.menu_book_outlined,
@@ -1513,7 +1513,7 @@ class _BookshelfScreenState extends State<BookshelfScreen> {
       // 分组 section 级别懒构建：屏幕外分组的书籍项完全不构建
       return ListView.builder(
         controller: _scrollController,
-        padding: const EdgeInsets.only(bottom: 12),
+        padding: const EdgeInsets.only(bottom: AppSpacing.m),
         itemCount: sections.length,
         itemBuilder: (c, i) {
           final sec = sections[i];
@@ -1554,7 +1554,7 @@ class _BookshelfScreenState extends State<BookshelfScreen> {
         return GridView.builder(
           shrinkWrap: true,
           physics: const NeverScrollableScrollPhysics(),
-          padding: const EdgeInsets.symmetric(horizontal: 8),
+          padding: const EdgeInsets.symmetric(horizontal: AppSpacing.s),
           gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
             crossAxisCount: cols,
             childAspectRatio: layout == 4 ? 0.6 : 0.65,
@@ -1589,11 +1589,11 @@ class _BookshelfScreenState extends State<BookshelfScreen> {
       case 1:
         return ListView.separated(
           controller: _scrollController,
-          padding: const EdgeInsets.all(8),
+          padding: const EdgeInsets.all(AppSpacing.s),
           itemCount: books.length,
           separatorBuilder: (_, __) => _cfg.showDivider
               ? const Divider(height: 1)
-              : const SizedBox(height: 4),
+              : const SizedBox(height: AppSpacing.xs),
           itemBuilder: (c, i) =>
               _buildListItem(books[i], compact: layout == 1 || _cfg.compactDetails),
         );
@@ -1618,7 +1618,7 @@ class _BookshelfScreenState extends State<BookshelfScreen> {
       case 4:
         return GridView.builder(
           controller: _scrollController,
-          padding: const EdgeInsets.all(12),
+          padding: const EdgeInsets.all(AppSpacing.m),
           gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
             crossAxisCount: _cfg.columnCount.clamp(1, 8),
             childAspectRatio: 0.6,
@@ -1741,7 +1741,7 @@ class _BookshelfScreenState extends State<BookshelfScreen> {
             alignment: Alignment.bottomCenter,
             child: Container(
               width: double.infinity,
-              padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 3),
+              padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xs, vertical: 3),
               decoration: BoxDecoration(
                 borderRadius: const BorderRadius.vertical(bottom: Radius.circular(8)),
                 gradient: LinearGradient(
@@ -1790,7 +1790,7 @@ class _BookshelfScreenState extends State<BookshelfScreen> {
         onTap: () => _openBook(book),
         onLongPress: () => _showBookMenu(book),
         child: ClipRRect(
-          borderRadius: BorderRadius.circular(8),
+          borderRadius: AppRadius.sAll,
           child: _buildCover(book,
               width: double.infinity, height: double.infinity, radius: 0),
         ),

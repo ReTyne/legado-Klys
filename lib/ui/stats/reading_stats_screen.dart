@@ -103,7 +103,7 @@ class _ReadingStatsScreenState extends State<ReadingStatsScreen>
 
   Widget _buildOverviewTab() {
     return ListView(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(AppSpacing.l),
       children: [
         AppSwitchTile(
           title: '启用阅读统计',
@@ -115,25 +115,25 @@ class _ReadingStatsScreenState extends State<ReadingStatsScreen>
         ),
         if (!_recordEnabled)
           _buildPausedBanner('阅读记录已暂停（enableReadRecord），统计不再累加'),
-        const SizedBox(height: 12),
+        const SizedBox(height: AppSpacing.m),
         Row(
           children: [
             Expanded(child: _buildStatCard('今日阅读', ReadingRecordService.formatDuration(_statsEnabled ? _todayDuration : 0), Icons.today)),
-            const SizedBox(width: 12),
+            const SizedBox(width: AppSpacing.m),
             Expanded(child: _buildStatCard('累计阅读', ReadingRecordService.formatDuration(_statsEnabled ? _totalDuration : 0), Icons.menu_book)),
           ],
         ),
-        const SizedBox(height: 12),
+        const SizedBox(height: AppSpacing.m),
         Row(
           children: [
             Expanded(child: _buildStatCard('阅读天数', '${_statsEnabled ? _readingDays : 0} 天', Icons.calendar_today)),
-            const SizedBox(width: 12),
+            const SizedBox(width: AppSpacing.m),
             Expanded(child: _buildStatCard('连续阅读', '${_statsEnabled ? _continuousDays : 0} 天', Icons.local_fire_department)),
           ],
         ),
-        const SizedBox(height: 24),
+        const SizedBox(height: AppSpacing.xl),
         Text('近30天阅读趋势', style: Theme.of(context).textTheme.titleMedium?.copyWith(fontWeight: FontWeight.bold)),
-        const SizedBox(height: 16),
+        const SizedBox(height: AppSpacing.l),
         _statsEnabled ? _buildChart() : const AppEmptyState(
           icon: Icons.bar_chart_outlined,
           title: '统计已暂停',
@@ -147,10 +147,10 @@ class _ReadingStatsScreenState extends State<ReadingStatsScreen>
     final cs = Theme.of(context).colorScheme;
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.all(AppSpacing.m),
       decoration: BoxDecoration(
         color: cs.errorContainer,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: AppRadius.mAll,
       ),
       child: Text(text,
           style: TextStyle(fontSize: 12, color: cs.onErrorContainer)),
@@ -161,14 +161,14 @@ class _ReadingStatsScreenState extends State<ReadingStatsScreen>
     final theme = Theme.of(context);
     return Card(
       child: Padding(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(AppSpacing.l),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Icon(icon, color: theme.colorScheme.primary, size: 24),
-            const SizedBox(height: 8),
+            const SizedBox(height: AppSpacing.s),
             Text(value, style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold)),
-            const SizedBox(height: 4),
+            const SizedBox(height: AppSpacing.xs),
             Text(title, style: theme.textTheme.bodySmall?.copyWith(color: theme.colorScheme.onSurfaceVariant)),
           ],
         ),
@@ -203,7 +203,7 @@ class _ReadingStatsScreenState extends State<ReadingStatsScreen>
                     height: height,
                     decoration: BoxDecoration(
                       color: Theme.of(context).colorScheme.primary,
-                      borderRadius: BorderRadius.circular(12),
+                      borderRadius: AppRadius.mAll,
                     ),
                   ),
                 ],
@@ -227,7 +227,7 @@ class _ReadingStatsScreenState extends State<ReadingStatsScreen>
     final entries = _recentStats.entries.toList()..sort((a, b) => b.key.compareTo(a.key));
     final maxVal = entries.map((e) => e.value).fold<int>(0, (a, b) => a > b ? a : b);
     return ListView.builder(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(AppSpacing.l),
       itemCount: entries.length,
       itemBuilder: (context, index) {
         final entry = entries[index];
@@ -268,7 +268,7 @@ class _ReadingStatsScreenState extends State<ReadingStatsScreen>
     }
     final maxVal = _bookStats.first.seconds;
     return ListView.builder(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(AppSpacing.l),
       itemCount: _bookStats.length,
       itemBuilder: (context, index) {
         final s = _bookStats[index];
@@ -283,7 +283,7 @@ class _ReadingStatsScreenState extends State<ReadingStatsScreen>
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: const TextStyle(fontSize: 11)),
-                const SizedBox(height: 4),
+                const SizedBox(height: AppSpacing.xs),
                 LinearProgressIndicator(
                     value: maxVal > 0 ? s.seconds / maxVal : 0),
               ],

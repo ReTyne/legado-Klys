@@ -70,7 +70,7 @@ class _DictLookupSheetState extends State<DictLookupSheet> {
         children: [
           // 标题 + 被查询词
           Padding(
-            padding: const EdgeInsets.fromLTRB(16, 12, 8, 8),
+            padding: const EdgeInsets.fromLTRB(AppSpacing.l, AppSpacing.m, AppSpacing.s, AppSpacing.s),
             child: Row(
               children: [
                 Expanded(
@@ -102,9 +102,9 @@ class _DictLookupSheetState extends State<DictLookupSheet> {
               height: 44,
               child: ListView.separated(
                 scrollDirection: Axis.horizontal,
-                padding: const EdgeInsets.symmetric(horizontal: 12),
+                padding: const EdgeInsets.symmetric(horizontal: AppSpacing.m),
                 itemCount: _rules.length,
-                separatorBuilder: (_, __) => const SizedBox(width: 8),
+                separatorBuilder: (_, __) => const SizedBox(width: AppSpacing.s),
                 itemBuilder: (context, i) {
                   final r = _rules[i];
                   final selected = r == _active;
@@ -126,9 +126,9 @@ class _DictLookupSheetState extends State<DictLookupSheet> {
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       Icon(Icons.menu_book_outlined, size: 44, color: theme.colorScheme.onSurfaceVariant),
-                      const SizedBox(height: 8),
+                      const SizedBox(height: AppSpacing.s),
                       const Text('还没有可用的词典规则'),
-                      const SizedBox(height: 4),
+                      const SizedBox(height: AppSpacing.xs),
                       Text('当前使用在线词典兜底', style: TextStyle(fontSize: 12, color: theme.colorScheme.onSurfaceVariant)),
                     ],
                   ),
@@ -137,7 +137,7 @@ class _DictLookupSheetState extends State<DictLookupSheet> {
             // 加载进度
             if (_active != null && _progress > 0 && _progress < 1)
               const Padding(
-                padding: EdgeInsets.symmetric(horizontal: 16),
+                padding: EdgeInsets.symmetric(horizontal: AppSpacing.l),
                 child: LinearProgressIndicator(minHeight: 2),
               ),
             Expanded(

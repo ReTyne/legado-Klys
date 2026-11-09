@@ -346,19 +346,19 @@ class _BottomWebViewDialogState extends State<BottomWebViewDialog> {
         children: [
           // 拖拽把手
           Padding(
-            padding: const EdgeInsets.symmetric(vertical: 8),
+            padding: const EdgeInsets.symmetric(vertical: AppSpacing.s),
             child: Container(
               width: 36,
               height: 4,
               decoration: BoxDecoration(
                 color: cs.onSurfaceVariant.withOpacity(0.4),
-                borderRadius: BorderRadius.circular(12),
+                borderRadius: AppRadius.mAll,
               ),
             ),
           ),
           // 标题栏
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12),
+            padding: const EdgeInsets.symmetric(horizontal: AppSpacing.m),
             child: Row(
               children: [
                 Expanded(
@@ -413,16 +413,16 @@ class _BottomWebViewDialogState extends State<BottomWebViewDialog> {
             child: _error != null
                 ? Center(
                     child: Padding(
-                      padding: const EdgeInsets.all(16),
+                      padding: const EdgeInsets.all(AppSpacing.l),
                       child: Column(
                         mainAxisSize: MainAxisSize.min,
                         children: [
                           Icon(Icons.error_outline, size: 40, color: cs.error),
-                          const SizedBox(height: 8),
+                          const SizedBox(height: AppSpacing.s),
                           Text('页面加载失败：$_error',
                               textAlign: TextAlign.center,
                               style: TextStyle(color: cs.onSurfaceVariant)),
-                          const SizedBox(height: 12),
+                          const SizedBox(height: AppSpacing.m),
                           FilledButton(
                             onPressed: () {
                               setState(() => _error = null);

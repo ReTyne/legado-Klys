@@ -704,18 +704,18 @@ class _BrowserScreenState extends State<BrowserScreen> {
             ),
             Expanded(
               child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 4),
+                padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xs),
                 child: TextField(
                   controller: _urlController,
                   style: const TextStyle(fontSize: 13),
                   textInputAction: TextInputAction.go,
                   onSubmitted: _load,
-                  decoration: InputDecoration(
+                  decoration: const InputDecoration(
                     isDense: true,
                     contentPadding:
-                        const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                        EdgeInsets.symmetric(horizontal: AppSpacing.m, vertical: AppSpacing.s),
                     border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12)),
+                        borderRadius: AppRadius.mAll),
                   ),
                 ),
               ),
@@ -822,11 +822,11 @@ class _BrowserScreenState extends State<BrowserScreen> {
       elevation: 4,
       child: Container(
         width: double.infinity,
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        padding: const EdgeInsets.symmetric(horizontal: AppSpacing.m, vertical: AppSpacing.s),
         child: Row(
           children: [
             const Icon(Icons.travel_explore, size: 18),
-            const SizedBox(width: 8),
+            const SizedBox(width: AppSpacing.s),
             Expanded(
               child: Text(
                 '嗅探到：${parts.join(' · ')}',

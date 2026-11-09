@@ -109,7 +109,7 @@ class _MangaConfigScreenState extends State<MangaConfigScreen> {
               '阅读时经翻译服务译成中文后覆盖原图。也可直接粘贴 OCR 结果。',
               style: TextStyle(fontSize: 12),
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: AppSpacing.s),
             TextField(
               controller: ctl,
               maxLines: 12,
@@ -206,7 +206,7 @@ class _MangaConfigScreenState extends State<MangaConfigScreen> {
           trailing: const Icon(Icons.chevron_right),
           onTap: _editTranslateRules,
         ),
-        const SizedBox(height: 24),
+        const SizedBox(height: AppSpacing.xl),
       ]),
     );
   }

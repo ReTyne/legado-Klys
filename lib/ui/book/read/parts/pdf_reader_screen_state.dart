@@ -483,21 +483,21 @@ class _PdfReaderScreenState extends State<PdfReaderScreen>
   Widget _buildError(ColorScheme colorScheme, String message) {
     return Center(
       child: Padding(
-        padding: const EdgeInsets.all(24),
+        padding: const EdgeInsets.all(AppSpacing.xl),
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             Icon(Icons.error_outline, size: 56, color: colorScheme.error),
-            const SizedBox(height: 16),
+            const SizedBox(height: AppSpacing.l),
             Text('PDF 无法打开',
                 style: Theme.of(context).textTheme.titleMedium),
-            const SizedBox(height: 8),
+            const SizedBox(height: AppSpacing.s),
             Text(
               message,
               textAlign: TextAlign.center,
               style: TextStyle(color: colorScheme.onSurfaceVariant),
             ),
-            const SizedBox(height: 24),
+            const SizedBox(height: AppSpacing.xl),
             FilledButton.icon(
               onPressed: _init,
               icon: const Icon(Icons.refresh),
@@ -563,7 +563,7 @@ class _PdfReaderScreenState extends State<PdfReaderScreen>
       child: Row(
         children: [
           Icon(icon, size: 20),
-          const SizedBox(width: 12),
+          const SizedBox(width: AppSpacing.m),
           Text(label),
         ],
       ),
@@ -607,7 +607,7 @@ class _PdfReaderScreenState extends State<PdfReaderScreen>
           children: [
             // 上一页 / 翻页滑杆 / 下一页（拖动只更新局部页码，松手才跳页）
             Padding(
-              padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+              padding: const EdgeInsets.fromLTRB(AppSpacing.l, AppSpacing.l, AppSpacing.l, AppSpacing.s),
               child: Row(
                 children: [
                   IconButton(
@@ -646,7 +646,7 @@ class _PdfReaderScreenState extends State<PdfReaderScreen>
             ),
             // 页码 / 跳页 / 护眼 / 亮度
             Padding(
-              padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+              padding: const EdgeInsets.fromLTRB(AppSpacing.l, 0, AppSpacing.l, AppSpacing.s),
               child: Row(
                 children: [
                   Text(
@@ -680,7 +680,7 @@ class _PdfReaderScreenState extends State<PdfReaderScreen>
             // 亮度滑杆（复用 ReadProvider，与 reading_screen 同一份亮度状态）
             if (_showBrightnessRow)
               Padding(
-                padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                padding: const EdgeInsets.fromLTRB(AppSpacing.l, 0, AppSpacing.l, AppSpacing.l),
                 child: Row(
                   children: [
                     const Icon(Icons.brightness_6),

@@ -27,7 +27,7 @@ class _GridSection extends StatelessWidget {
                 : 3;
         const spacing = 10.0;
         return Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16),
+          padding: const EdgeInsets.symmetric(horizontal: AppSpacing.l),
           child: GridView.builder(
             shrinkWrap: true,
             physics: const NeverScrollableScrollPhysics(),
@@ -41,7 +41,7 @@ class _GridSection extends StatelessWidget {
             itemBuilder: (context, i) {
               final item = items[i];
               return InkWell(
-                borderRadius: BorderRadius.circular(12),
+                borderRadius: AppRadius.mAll,
                 onTap: () => onTap(item),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -63,7 +63,7 @@ class _GridSection extends StatelessWidget {
                         ],
                       ),
                     ),
-                    const SizedBox(height: 4),
+                    const SizedBox(height: AppSpacing.xs),
                     Text(item.title,
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,

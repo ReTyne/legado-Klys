@@ -158,14 +158,14 @@ class _HomepageModuleScreenState extends State<HomepageModuleScreen> {
       );
     }
     return ReorderableListView.builder(
-      padding: const EdgeInsets.only(bottom: 24),
+      padding: const EdgeInsets.only(bottom: AppSpacing.xl),
       itemCount: _modules.length,
       onReorder: _reorder,
       itemBuilder: (context, i) {
         final m = _modules[i];
         return Card(
           key: ValueKey('homepage_module_${m.id ?? i}'),
-          margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+          margin: const EdgeInsets.symmetric(horizontal: AppSpacing.m, vertical: AppSpacing.xs),
           child: ListTile(
             leading: Icon(
               m.enabled ? Icons.widgets : Icons.widgets_outlined,

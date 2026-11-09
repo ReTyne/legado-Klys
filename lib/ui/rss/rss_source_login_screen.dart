@@ -68,7 +68,7 @@ class _RssSourceLoginScreenState extends State<RssSourceLoginScreen> {
         final c = TextEditingController();
         _controllers[name] = c;
         _fields.add(Padding(
-          padding: const EdgeInsets.symmetric(vertical: 8),
+          padding: const EdgeInsets.symmetric(vertical: AppSpacing.s),
           child: TextField(
             controller: c,
             obscureText: type == 'password',
@@ -188,21 +188,21 @@ class _RssSourceLoginScreenState extends State<RssSourceLoginScreen> {
               ),
             )
           : ListView(
-              padding: const EdgeInsets.all(16),
+              padding: const EdgeInsets.all(AppSpacing.l),
               children: [
                 if ((source.sourceComment ?? '').trim().isNotEmpty)
                   Container(
-                    margin: const EdgeInsets.only(bottom: 12),
+                    margin: const EdgeInsets.only(bottom: AppSpacing.m),
                     padding: const EdgeInsets.all(10),
                     decoration: BoxDecoration(
                       color: cs.surfaceContainerHighest,
-                      borderRadius: BorderRadius.circular(12),
+                      borderRadius: AppRadius.mAll,
                     ),
                     child: Text(source.sourceComment!,
                         style: const TextStyle(fontSize: 12)),
                   ),
                 ..._fields,
-                const SizedBox(height: 8),
+                const SizedBox(height: AppSpacing.s),
                 Wrap(
                   spacing: 8,
                   runSpacing: 8,
@@ -220,10 +220,10 @@ class _RssSourceLoginScreenState extends State<RssSourceLoginScreen> {
                 if (_logs.isNotEmpty) ...[
                   const AppSectionHeader('运行日志'),
                   Container(
-                    padding: const EdgeInsets.all(12),
+                    padding: const EdgeInsets.all(AppSpacing.m),
                     decoration: BoxDecoration(
                       color: cs.surfaceContainerHighest,
-                      borderRadius: BorderRadius.circular(12),
+                      borderRadius: AppRadius.mAll,
                     ),
                     child: SelectableText(
                       _logs.join('\n'),

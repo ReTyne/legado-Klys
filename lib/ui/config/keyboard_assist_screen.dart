@@ -71,7 +71,7 @@ class _KeyboardAssistScreenState extends State<KeyboardAssistScreen> {
               controller: nameController,
               decoration: const InputDecoration(labelText: '名称'),
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: AppSpacing.m),
             TextField(
               controller: ruleController,
               decoration: const InputDecoration(labelText: '触发词 / 插入文本'),
@@ -136,9 +136,9 @@ class _KeyboardAssistScreenState extends State<KeyboardAssistScreen> {
           : _assists.isEmpty
               ? _buildEmptyState()
               : ListView.separated(
-                  padding: const EdgeInsets.all(16),
+                  padding: const EdgeInsets.all(AppSpacing.l),
                   itemCount: _assists.length,
-                  separatorBuilder: (_, __) => const SizedBox(height: 8),
+                  separatorBuilder: (_, __) => const SizedBox(height: AppSpacing.s),
                   itemBuilder: (context, index) {
                     final a = _assists[index];
                     return Card(

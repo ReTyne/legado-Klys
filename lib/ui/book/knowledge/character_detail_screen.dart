@@ -18,7 +18,7 @@ class CharacterDetailScreen extends StatelessWidget {
       body: ListView(
         children: [
           Container(
-            padding: const EdgeInsets.all(24),
+            padding: const EdgeInsets.all(AppSpacing.xl),
             color: bg.withOpacity(0.1),
             child: Column(
               children: [
@@ -38,14 +38,14 @@ class CharacterDetailScreen extends StatelessWidget {
                               fontSize: 36, color: Colors.white))
                       : null,
                 ),
-                const SizedBox(height: 16),
+                const SizedBox(height: AppSpacing.l),
                 Text(character.name,
                     style: const TextStyle(
                         fontSize: 24, fontWeight: FontWeight.bold)),
                 if (character.gender != null)
                   Text(character.gender!,
                       style: TextStyle(color: cs.onSurfaceVariant)),
-                const SizedBox(height: 8),
+                const SizedBox(height: AppSpacing.s),
                 Text('出自: $bookName',
                     style: TextStyle(
                         color: cs.onSurfaceVariant, fontSize: 13)),
@@ -70,13 +70,13 @@ class CharacterDetailScreen extends StatelessWidget {
                 '名言',
                 character.quotes!
                     .map((q) => Padding(
-                          padding: const EdgeInsets.only(bottom: 8),
+                          padding: const EdgeInsets.only(bottom: AppSpacing.s),
                           child: Text('"$q"',
                               style: const TextStyle(
                                   fontStyle: FontStyle.italic, fontSize: 15)),
                         ))
                     .toList()),
-          const SizedBox(height: 24),
+          const SizedBox(height: AppSpacing.xl),
         ],
       ),
     );
@@ -88,11 +88,11 @@ class CharacterDetailScreen extends StatelessWidget {
       children: [
         AppSectionHeader(title),
         Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16),
+          padding: const EdgeInsets.symmetric(horizontal: AppSpacing.l),
           child: Column(
               crossAxisAlignment: CrossAxisAlignment.start, children: children),
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: AppSpacing.s),
       ],
     );
   }

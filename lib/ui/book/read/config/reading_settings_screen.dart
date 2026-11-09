@@ -482,7 +482,7 @@ class _ReadingSettingsScreenState extends State<ReadingSettingsScreen>
           },
         ),
         Padding(
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+          padding: const EdgeInsets.fromLTRB(AppSpacing.l, AppSpacing.s, AppSpacing.l, AppSpacing.s),
           child: Text('电量与亮度读数来自原生通道；颜色与背景按当前 MD3 主题呈现。',
               style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
         ),
@@ -698,11 +698,11 @@ void showReaderSettingsSectionsSheet(BuildContext context, {Book? book}) {
         mainAxisSize: MainAxisSize.min,
         children: [
           Padding(
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.all(AppSpacing.l),
             child: Row(
               children: [
                 const Icon(Icons.layers_outlined, size: 20),
-                const SizedBox(width: 8),
+                const SizedBox(width: AppSpacing.s),
                 Expanded(
                   child: Text(
                     book != null ? '阅读设置分区 · ${book.name}' : '阅读设置分区',
@@ -744,7 +744,7 @@ void showReaderSettingsSectionsSheet(BuildContext context, {Book? book}) {
               unawaited(ReadPresetSheet.open(context));
             },
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: AppSpacing.s),
         ],
       ),
     ),
@@ -853,7 +853,7 @@ class _ReadPresetSheetState extends State<ReadPresetSheet> {
     final cs = Theme.of(context).colorScheme;
     return SafeArea(
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(16, 16, 16, 16),
+        padding: const EdgeInsets.fromLTRB(AppSpacing.l, AppSpacing.l, AppSpacing.l, AppSpacing.l),
         child: SizedBox(
           height: MediaQuery.of(context).size.height * 0.55,
           child: Column(
@@ -862,7 +862,7 @@ class _ReadPresetSheetState extends State<ReadPresetSheet> {
               Row(
                 children: [
                   const Icon(Icons.style_outlined, size: 20),
-                  const SizedBox(width: 8),
+                  const SizedBox(width: AppSpacing.s),
                   const Text('排版预设',
                       style: TextStyle(
                           fontSize: 16, fontWeight: FontWeight.bold)),
@@ -874,10 +874,10 @@ class _ReadPresetSheetState extends State<ReadPresetSheet> {
                   ),
                 ],
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: AppSpacing.s),
               Text('每套预设保存完整 ReadConfig（字号 / 配色 / 边距 / 翻页动画等）。',
                   style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
-              const SizedBox(height: 8),
+              const SizedBox(height: AppSpacing.s),
               const Divider(height: 1),
               Expanded(
                 child: _loading

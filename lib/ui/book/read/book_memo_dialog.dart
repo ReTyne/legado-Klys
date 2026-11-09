@@ -59,7 +59,7 @@ Future<void> showBookMemoDialog(
                   decoration: const InputDecoration(hintText: '记录本章的备忘...'),
                 ),
                 if (others.isNotEmpty) ...[
-                  const SizedBox(height: 12),
+                  const SizedBox(height: AppSpacing.m),
                   const AppSectionHeader('本书其它章节的备忘'),
                   ...others.map((m) => ListTile(
                         dense: true,

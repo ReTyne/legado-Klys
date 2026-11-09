@@ -28,25 +28,25 @@ class _TextBody extends StatelessWidget {
     final cs = Theme.of(context).colorScheme;
     return SingleChildScrollView(
       controller: scrollController,
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(AppSpacing.l),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Text(article.title, style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, height: 1.4)),
-        const SizedBox(height: 12),
+        const SizedBox(height: AppSpacing.m),
         if ((article.image ?? '').isNotEmpty)
           Padding(
-            padding: const EdgeInsets.only(bottom: 12),
+            padding: const EdgeInsets.only(bottom: AppSpacing.m),
             child: Image.network(article.image!,
                 errorBuilder: (_, __, ___) => const SizedBox.shrink()),
           ),
         Row(children: [
           if (article.author != null) ...[
             Icon(Icons.person_outline, size: 14, color: cs.onSurfaceVariant),
-            const SizedBox(width: 4),
+            const SizedBox(width: AppSpacing.xs),
             Text(article.author!, style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
-            const SizedBox(width: 12),
+            const SizedBox(width: AppSpacing.m),
           ],
           Icon(Icons.access_time, size: 14, color: cs.onSurfaceVariant),
-          const SizedBox(width: 4),
+          const SizedBox(width: AppSpacing.xs),
           Text(article.pubDate != null ? DateTime.fromMillisecondsSinceEpoch(article.pubDate!).toString().substring(0, 16) : '', style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
         ]),
         const Divider(height: 24),
@@ -56,7 +56,7 @@ class _TextBody extends StatelessWidget {
             width: double.infinity,
             margin: const EdgeInsets.only(bottom: 10),
             padding: i == highlightIndex
-                ? const EdgeInsets.symmetric(horizontal: 8, vertical: 4)
+                ? const EdgeInsets.symmetric(horizontal: AppSpacing.s, vertical: AppSpacing.xs)
                 : null,
             decoration: i == highlightIndex
                 ? BoxDecoration(
@@ -70,7 +70,7 @@ class _TextBody extends StatelessWidget {
             child: Text(paragraphs[i],
                 style: TextStyle(fontSize: fontSize, height: 1.8)),
           ),
-        const SizedBox(height: 24),
+        const SizedBox(height: AppSpacing.xl),
         if (article.link.isNotEmpty)
           Center(child: TextButton.icon(
             onPressed: onOriginal,

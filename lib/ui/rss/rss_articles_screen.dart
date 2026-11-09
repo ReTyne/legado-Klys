@@ -351,7 +351,7 @@ class _RssArticlesScreenState extends State<RssArticlesScreen> {
         builder: (ctx, setSheet) => SafeArea(
           child: Column(mainAxisSize: MainAxisSize.min, children: [
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+              padding: const EdgeInsets.symmetric(horizontal: AppSpacing.l, vertical: AppSpacing.xs),
               child: Row(children: [
                 const Expanded(
                     child: Text('阅读记录',
@@ -389,7 +389,7 @@ class _RssArticlesScreenState extends State<RssArticlesScreen> {
             const Divider(height: 1),
             if (current.isEmpty)
               const Padding(
-                padding: EdgeInsets.symmetric(vertical: 32),
+                padding: EdgeInsets.symmetric(vertical: AppSpacing.xxl),
                 child: AppEmptyState(
                     icon: Icons.history_outlined, title: '暂无阅读记录'),
               )
@@ -621,7 +621,7 @@ class _RssArticlesScreenState extends State<RssArticlesScreen> {
       );
 
   Widget _buildGrid() => GridView.builder(
-        padding: const EdgeInsets.all(12),
+        padding: const EdgeInsets.all(AppSpacing.m),
         gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
           crossAxisCount: 2,
           mainAxisSpacing: 8,
@@ -655,7 +655,7 @@ class _RssArticlesScreenState extends State<RssArticlesScreen> {
               ),
             ),
             Padding(
-              padding: const EdgeInsets.all(8),
+              padding: const EdgeInsets.all(AppSpacing.s),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [

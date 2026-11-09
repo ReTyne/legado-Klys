@@ -318,7 +318,7 @@ class _OtherConfigScreenState extends State<OtherConfigScreen> {
         // 布尔开关影响；残留字段 AppPrefs.processText / AppPrefs.recordHeapDump
         // 建议主代理从 app_config.dart 清理（见交付报告「已删除字段清单」）。
         Padding(
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+          padding: const EdgeInsets.fromLTRB(AppSpacing.l, AppSpacing.s, AppSpacing.l, AppSpacing.s),
           child: Text(
             '说明：系统文本菜单入口（PROCESS_TEXT）由原生层统一注册，无需应用内开关；'
             '堆转储记录无对应采集链路。两项记账式开关已从本页下架，避免留下无效开关。',
@@ -326,7 +326,7 @@ class _OtherConfigScreenState extends State<OtherConfigScreen> {
                 fontSize: 11, color: Theme.of(context).colorScheme.onSurfaceVariant),
           ),
         ),
-        const SizedBox(height: 24),
+        const SizedBox(height: AppSpacing.xl),
       ]),
     );
   }

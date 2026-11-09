@@ -4,6 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:legado_md3/data/local/app_database.dart';
 import 'package:legado_md3/di/book_provider.dart';
 
+import 'package:legado_md3/ui/theme/app_design.dart';
 /// 下载缓存配置
 ///
 /// 本页只保留「有真实消费方」的设置与「可执行动作」：
@@ -79,7 +80,7 @@ class _DownloadCacheConfigScreenState extends State<DownloadCacheConfigScreen> {
     await (await SharedPreferences.getInstance()).setInt('bk_updateThreads', count);
   }
 
-  Widget _section(String t) => Padding(padding: const EdgeInsets.fromLTRB(16, 20, 16, 8),
+  Widget _section(String t) => Padding(padding: const EdgeInsets.fromLTRB(AppSpacing.l, 20, AppSpacing.l, AppSpacing.s),
     child: Text(t, style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Theme.of(context).colorScheme.primary)));
 
   @override
@@ -113,7 +114,7 @@ class _DownloadCacheConfigScreenState extends State<DownloadCacheConfigScreen> {
           subtitle: const Text('刷新书架时同时更新的书籍数量（bk_updateThreads）', style: TextStyle(fontSize: 11)),
         ),
         Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16),
+          padding: const EdgeInsets.symmetric(horizontal: AppSpacing.l),
           child: Slider(
             value: _updateThreads.clamp(1, 64).toDouble(),
             min: 1, max: 64, divisions: 63,
@@ -150,7 +151,7 @@ class _DownloadCacheConfigScreenState extends State<DownloadCacheConfigScreen> {
           subtitle: const Text('回收数据库空闲空间', style: TextStyle(fontSize: 11)),
           onTap: _vacuum,
         ),
-        const SizedBox(height: 24),
+        const SizedBox(height: AppSpacing.xl),
       ]),
     );
   }

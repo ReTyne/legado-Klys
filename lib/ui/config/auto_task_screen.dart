@@ -108,7 +108,7 @@ class _AutoTaskScreenState extends State<AutoTaskScreen> {
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: logs
                         .map((l) => Padding(
-                              padding: const EdgeInsets.symmetric(vertical: 4),
+                              padding: const EdgeInsets.symmetric(vertical: AppSpacing.xs),
                               child: Text(l,
                                   style: const TextStyle(fontSize: 12)),
                             ))
@@ -156,7 +156,7 @@ class _AutoTaskScreenState extends State<AutoTaskScreen> {
                 const AppSectionHeader('任务列表'),
                 if (_tasks.isEmpty)
                   Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 48),
+                    padding: const EdgeInsets.symmetric(vertical: AppSpacing.xxxl),
                     child: AppEmptyState(
                       icon: Icons.schedule_outlined,
                       title: '暂无定时任务',
@@ -170,7 +170,7 @@ class _AutoTaskScreenState extends State<AutoTaskScreen> {
                   )
                 else
                   for (final task in _tasks) _buildTaskTile(task, cs),
-                const SizedBox(height: 24),
+                const SizedBox(height: AppSpacing.xl),
               ],
             ),
       floatingActionButton: FloatingActionButton(
@@ -183,7 +183,7 @@ class _AutoTaskScreenState extends State<AutoTaskScreen> {
 
   Widget _buildTaskTile(AutoTask task, ColorScheme cs) {
     return Card(
-      margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+      margin: const EdgeInsets.symmetric(horizontal: AppSpacing.m, vertical: AppSpacing.xs),
       child: ListTile(
         leading: Icon(
           task.enabled == 1 ? Icons.schedule : Icons.schedule_outlined,
@@ -322,7 +322,7 @@ class _AutoTaskEditDialogState extends State<_AutoTaskEditDialog> {
               autofocus: true,
               decoration: const InputDecoration(labelText: '任务名称'),
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: AppSpacing.s),
             ListTile(
               dense: true,
               contentPadding: EdgeInsets.zero,
@@ -363,7 +363,7 @@ class _AutoTaskEditDialogState extends State<_AutoTaskEditDialog> {
                 onChanged: (v) => setState(() => _minute = v),
               ),
             ],
-            const SizedBox(height: 8),
+            const SizedBox(height: AppSpacing.s),
             TextField(
               controller: _js,
               maxLines: 3,
@@ -372,7 +372,7 @@ class _AutoTaskEditDialogState extends State<_AutoTaskEditDialog> {
                 border: OutlineInputBorder(),
               ),
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: AppSpacing.s),
             TextField(
               controller: _note,
               decoration: const InputDecoration(labelText: '备注（可选）'),

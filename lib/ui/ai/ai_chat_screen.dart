@@ -116,7 +116,7 @@ class _AiChatScreenState extends State<AiChatScreen> {
                 controller: modelCtrl,
                 decoration: const InputDecoration(labelText: '模型', hintText: 'gpt-4o-mini'),
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: AppSpacing.s),
               const Text('留空 BaseUrl 则使用内置离线助手；接口需兼容 /v1/chat/completions。', style: TextStyle(fontSize: 12)),
             ],
           ),
@@ -173,7 +173,7 @@ class _AiChatScreenState extends State<AiChatScreen> {
                   Container(
                     width: double.infinity,
                     color: theme.colorScheme.secondaryContainer,
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+                    padding: const EdgeInsets.symmetric(horizontal: AppSpacing.l, vertical: 6),
                     child: Text('离线工具模式：工具可直接使用；配置接口后模型可自动调用工具', style: theme.textTheme.bodySmall),
                   ),
                 Expanded(
@@ -185,12 +185,12 @@ class _AiChatScreenState extends State<AiChatScreen> {
                         )
                       : ListView.builder(
                     controller: _scroll,
-                    padding: const EdgeInsets.all(12),
+                    padding: const EdgeInsets.all(AppSpacing.m),
                     itemCount: _messages.length + (_sending ? 1 : 0),
                     itemBuilder: (ctx, i) {
                       if (i == _messages.length) {
                         return const Padding(
-                          padding: EdgeInsets.all(8),
+                          padding: EdgeInsets.all(AppSpacing.s),
                           child: Align(alignment: Alignment.centerLeft, child: SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))),
                         );
                       }
@@ -202,11 +202,11 @@ class _AiChatScreenState extends State<AiChatScreen> {
                   height: 44,
                   child: ListView(
                     scrollDirection: Axis.horizontal,
-                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                    padding: const EdgeInsets.symmetric(horizontal: AppSpacing.s),
                     children: [
                       for (final p in _quickPrompts)
                         Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 4),
+                          padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xs),
                           child: ActionChip(label: Text(p), onPressed: _sending ? null : () => _send(p)),
                         ),
                     ],
@@ -214,7 +214,7 @@ class _AiChatScreenState extends State<AiChatScreen> {
                 ),
                 SafeArea(
                   child: Padding(
-                    padding: const EdgeInsets.fromLTRB(12, 6, 12, 8),
+                    padding: const EdgeInsets.fromLTRB(AppSpacing.m, 6, AppSpacing.m, AppSpacing.s),
                     child: Row(
                       children: [
                         Expanded(
@@ -224,10 +224,10 @@ class _AiChatScreenState extends State<AiChatScreen> {
                             maxLines: 4,
                             textInputAction: TextInputAction.send,
                             onSubmitted: (_) => _send(),
-                            decoration: const InputDecoration(hintText: '输入消息…', border: OutlineInputBorder(), isDense: true, contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10)),
+                            decoration: const InputDecoration(hintText: '输入消息…', border: OutlineInputBorder(), isDense: true, contentPadding: EdgeInsets.symmetric(horizontal: AppSpacing.m, vertical: 10)),
                           ),
                         ),
-                        const SizedBox(width: 8),
+                        const SizedBox(width: AppSpacing.s),
                         IconButton.filled(
                           icon: const Icon(Icons.send),
                           onPressed: _sending ? null : () => _send(),
@@ -249,8 +249,8 @@ class _AiChatScreenState extends State<AiChatScreen> {
       alignment: isUser ? Alignment.centerRight : Alignment.centerLeft,
       child: Container(
         constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.78),
-        margin: const EdgeInsets.symmetric(vertical: 4),
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+        margin: const EdgeInsets.symmetric(vertical: AppSpacing.xs),
+        padding: const EdgeInsets.symmetric(horizontal: AppSpacing.m, vertical: 9),
         decoration: BoxDecoration(
           color: isUser
               ? cs.primaryContainer

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:legado_md3/data/model/book_chapter.dart';
 
+import 'package:legado_md3/ui/theme/app_design.dart';
 /// 离线缓存下载范围选择 - 对齐原版DownloadSheet
 /// 返回 [startIndex, endIndex]
 class DownloadSheet extends StatefulWidget {
@@ -29,7 +30,7 @@ class _DownloadSheetState extends State<DownloadSheet> {
     return SafeArea(child: Padding(
       padding: EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
       child: Column(mainAxisSize: MainAxisSize.min, children: [
-        const Padding(padding: EdgeInsets.all(16), child: Text('离线缓存', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold))),
+        const Padding(padding: EdgeInsets.all(AppSpacing.l), child: Text('离线缓存', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold))),
         // 快捷范围
         Wrap(spacing: 8, children: [
           _quickChip('后5章', widget.currentIndex, widget.currentIndex + 4),
@@ -38,7 +39,7 @@ class _DownloadSheetState extends State<DownloadSheet> {
           _quickChip('后100章', widget.currentIndex, widget.currentIndex + 99),
           _quickChip('全部', 0, widget.chapters.length - 1),
         ]),
-        const SizedBox(height: 16),
+        const SizedBox(height: AppSpacing.l),
         ListTile(
           dense: true, title: const Text('起始章节'),
           subtitle: Text(widget.chapters.isNotEmpty ? widget.chapters[_start].title : ''),
@@ -51,12 +52,12 @@ class _DownloadSheetState extends State<DownloadSheet> {
           trailing: const Icon(Icons.chevron_right),
           onTap: () => _pickChapter(false),
         ),
-        Padding(padding: const EdgeInsets.all(16), child: Text('将缓存第 ${_start + 1} 章 到第 ${_end + 1} 章，共 ${_end - _start + 1} 章', style: TextStyle(fontSize: 13, color: cs.onSurfaceVariant))),
+        Padding(padding: const EdgeInsets.all(AppSpacing.l), child: Text('将缓存第 ${_start + 1} 章 到第 ${_end + 1} 章，共 ${_end - _start + 1} 章', style: TextStyle(fontSize: 13, color: cs.onSurfaceVariant))),
         Row(mainAxisAlignment: MainAxisAlignment.end, children: [
           TextButton(onPressed: () => Navigator.pop(context), child: const Text('取消')),
-          const SizedBox(width: 8),
+          const SizedBox(width: AppSpacing.s),
           FilledButton(onPressed: () => Navigator.pop(context, [_start, _end]), child: const Text('开始缓存')),
-          const SizedBox(width: 16),
+          const SizedBox(width: AppSpacing.l),
         ]),
       ]),
     ));
@@ -76,7 +77,7 @@ class _DownloadSheetState extends State<DownloadSheet> {
     await showModalBottomSheet(context: context, isScrollControlled: true, builder: (context) => DraggableScrollableSheet(
       initialChildSize: 0.7, maxChildSize: 0.9, minChildSize: 0.4, expand: false,
       builder: (context, _) => StatefulBuilder(builder: (context, setSheet) => Column(children: [
-        Padding(padding: const EdgeInsets.all(16), child: Text(isStart ? '选择起始章节' : '选择结束章节', style: const TextStyle(fontWeight: FontWeight.bold))),
+        Padding(padding: const EdgeInsets.all(AppSpacing.l), child: Text(isStart ? '选择起始章节' : '选择结束章节', style: const TextStyle(fontWeight: FontWeight.bold))),
         Expanded(child: ListView.builder(
           controller: controller,
           itemCount: widget.chapters.length,
@@ -91,7 +92,7 @@ class _DownloadSheetState extends State<DownloadSheet> {
         } else {
           _end = selected;
         } }); Navigator.pop(context); }, child: const Text('确定')),
-        const SizedBox(height: 8),
+        const SizedBox(height: AppSpacing.s),
       ])),
     ));
   }

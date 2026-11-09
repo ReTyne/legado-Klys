@@ -22,11 +22,11 @@ class _HsvColorPickerDialogState extends State<_HsvColorPickerDialog> {
       content: Column(mainAxisSize: MainAxisSize.min, children: [
         Container(
           width: double.infinity, height: 56,
-          decoration: BoxDecoration(color: _color, borderRadius: BorderRadius.circular(12)),
+          decoration: BoxDecoration(color: _color, borderRadius: AppRadius.mAll),
           child: Center(child: Text('#${(_hsv.toColor().value & 0xFFFFFF).toRadixString(16).toUpperCase().padLeft(6, '0')}',
             style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold))),
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: AppSpacing.s),
         _hsvSlider('色相 H', _hsv.hue, 0.0, 360.0, Theme.of(context).sliderTheme.activeTrackColor ?? cs.primary,
           (v) => setState(() => _hsv = _hsv.withHue(v))),
         _hsvSlider('饱和度 S', _hsv.saturation, 0.0, 1.0, cs.onSurfaceVariant,

@@ -214,7 +214,7 @@ class _RssSourceEditScreenState extends State<RssSourceEditScreen>
       builder: (ctx) => AlertDialog(
         content: Row(children: [
           const SizedBox(width: 26, height: 26, child: CircularProgressIndicator(strokeWidth: 2.4)),
-          const SizedBox(width: 16),
+          const SizedBox(width: AppSpacing.l),
           Expanded(child: ValueListenableBuilder<String>(
             valueListenable: log,
             builder: (_, v, __) => Text(v, maxLines: 2, overflow: TextOverflow.ellipsis),
@@ -331,7 +331,7 @@ class _RssSourceEditScreenState extends State<RssSourceEditScreen>
   Widget _fieldCard(_F f) {
     final c = _c[f.key]!;
     return Card(
-      margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+      margin: const EdgeInsets.symmetric(horizontal: AppSpacing.m, vertical: AppSpacing.xs),
       child: ListTile(
         dense: true,
         title: Text(f.label, maxLines: 1, overflow: TextOverflow.ellipsis),
@@ -374,7 +374,7 @@ class _RssSourceEditScreenState extends State<RssSourceEditScreen>
             maxChildSize: 0.94,
             builder: (_, scrollCtrl) => Column(children: [
               Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                padding: const EdgeInsets.symmetric(horizontal: AppSpacing.l, vertical: AppSpacing.xs),
                 child: Row(children: [
                   Expanded(child: Text(label, style: Theme.of(ctx).textTheme.titleMedium)),
                   TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('取消')),
@@ -385,7 +385,7 @@ class _RssSourceEditScreenState extends State<RssSourceEditScreen>
                 ]),
               ),
               Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 12),
+                padding: const EdgeInsets.symmetric(horizontal: AppSpacing.m),
                 child: Wrap(spacing: 6, runSpacing: 4, children: [
                   for (final t in _quickTokens)
                     ActionChip(
@@ -397,7 +397,7 @@ class _RssSourceEditScreenState extends State<RssSourceEditScreen>
               ),
               Expanded(
                 child: Padding(
-                  padding: const EdgeInsets.all(12),
+                  padding: const EdgeInsets.all(AppSpacing.m),
                   child: TextField(
                     controller: editCtrl,
                     scrollController: scrollCtrl,

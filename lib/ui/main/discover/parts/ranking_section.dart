@@ -13,7 +13,7 @@ class _RankingSection extends StatelessWidget {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16),
+      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.l),
       child: Column(
         children: items.asMap().entries.map((e) {
           final item = e.value;
@@ -24,7 +24,7 @@ class _RankingSection extends StatelessWidget {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   _RankBadge(index: e.key),
-                  const SizedBox(width: 8),
+                  const SizedBox(width: AppSpacing.s),
                   _itemCover(context, item, width: 40, height: 56),
                 ],
               ),

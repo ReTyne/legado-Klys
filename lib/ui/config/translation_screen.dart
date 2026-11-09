@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:legado_md3/help/translate/translation_service.dart';
 
+import 'package:legado_md3/ui/theme/app_design.dart';
 /// 翻译设置：引擎/源语言/目标语言/自定义端点，全部持久化，可发送测试请求
 class TranslationScreen extends StatefulWidget {
   const TranslationScreen({super.key});
@@ -97,17 +98,17 @@ class _TranslationScreenState extends State<TranslationScreen> {
           ),
         ),
         const Divider(),
-        Padding(padding: const EdgeInsets.fromLTRB(16, 12, 16, 4), child: Text('自定义端点（留空使用免费谷歌翻译）', style: TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.onSurfaceVariant))),
-        Padding(padding: const EdgeInsets.symmetric(horizontal: 16), child: TextField(controller: _apiUrlController, decoration: const InputDecoration(labelText: 'API URL，可用 {text}/{from}/{to}/{key}', border: OutlineInputBorder()))),
-        const SizedBox(height: 12),
-        Padding(padding: const EdgeInsets.symmetric(horizontal: 16), child: TextField(controller: _apiKeyController, decoration: const InputDecoration(labelText: 'API Key（可选）', border: OutlineInputBorder()))),
-        const SizedBox(height: 16),
-        Padding(padding: const EdgeInsets.symmetric(horizontal: 16), child: FilledButton.icon(
+        Padding(padding: const EdgeInsets.fromLTRB(AppSpacing.l, AppSpacing.m, AppSpacing.l, AppSpacing.xs), child: Text('自定义端点（留空使用免费谷歌翻译）', style: TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.onSurfaceVariant))),
+        Padding(padding: const EdgeInsets.symmetric(horizontal: AppSpacing.l), child: TextField(controller: _apiUrlController, decoration: const InputDecoration(labelText: 'API URL，可用 {text}/{from}/{to}/{key}', border: OutlineInputBorder()))),
+        const SizedBox(height: AppSpacing.m),
+        Padding(padding: const EdgeInsets.symmetric(horizontal: AppSpacing.l), child: TextField(controller: _apiKeyController, decoration: const InputDecoration(labelText: 'API Key（可选）', border: OutlineInputBorder()))),
+        const SizedBox(height: AppSpacing.l),
+        Padding(padding: const EdgeInsets.symmetric(horizontal: AppSpacing.l), child: FilledButton.icon(
           onPressed: _testing ? null : _test,
           icon: _testing ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2)) : const Icon(Icons.network_check),
           label: const Text('测试翻译'),
         )),
-        const SizedBox(height: 24),
+        const SizedBox(height: AppSpacing.xl),
       ]),
     );
   }

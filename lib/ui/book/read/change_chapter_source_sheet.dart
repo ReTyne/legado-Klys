@@ -40,9 +40,9 @@ class _ChangeChapterSourceSheetState extends State<ChangeChapterSourceSheet> {
     return DraggableScrollableSheet(
       initialChildSize: 0.7, minChildSize: 0.4, maxChildSize: 0.95, expand: false,
       builder: (context, scrollController) => Column(children: [
-        const Padding(padding: EdgeInsets.all(16), child: Text('章节换源', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold))),
-        Padding(padding: const EdgeInsets.symmetric(horizontal: 16), child: Text('选择其他书源加载本章内容', style: TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.onSurfaceVariant))),
-        const SizedBox(height: 8),
+        const Padding(padding: EdgeInsets.all(AppSpacing.l), child: Text('章节换源', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold))),
+        Padding(padding: const EdgeInsets.symmetric(horizontal: AppSpacing.l), child: Text('选择其他书源加载本章内容', style: TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.onSurfaceVariant))),
+        const SizedBox(height: AppSpacing.s),
         Expanded(child: _loading
           ? const AppLoadingIndicator()
           : _sources.isEmpty

@@ -223,15 +223,15 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
       title: const Text('编辑书籍信息'),
       content: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, children: [
         TextField(controller: nameController, decoration: const InputDecoration(labelText: '书名')),
-        const SizedBox(height: 8),
+        const SizedBox(height: AppSpacing.s),
         TextField(controller: authorController, decoration: const InputDecoration(labelText: '作者')),
-        const SizedBox(height: 8),
+        const SizedBox(height: AppSpacing.s),
         TextField(controller: coverController, decoration: const InputDecoration(labelText: '封面URL')),
-        const SizedBox(height: 8),
+        const SizedBox(height: AppSpacing.s),
         TextField(controller: kindController, decoration: const InputDecoration(labelText: '分类')),
-        const SizedBox(height: 8),
+        const SizedBox(height: AppSpacing.s),
         TextField(controller: introController, maxLines: 4, decoration: const InputDecoration(labelText: '简介')),
-        const SizedBox(height: 8),
+        const SizedBox(height: AppSpacing.s),
         TextField(controller: commentController, maxLines: 2, decoration: const InputDecoration(labelText: '备注')),
       ])),
       actions: [
@@ -490,7 +490,7 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
                       children: [
                         // 信息行：作者 / 来源(换源) / 读到或最新章节 / 分组 / 目录
                         Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                          padding: const EdgeInsets.symmetric(horizontal: AppSpacing.l, vertical: AppSpacing.s),
                           child: Column(
                             children: [
                               _infoRow(
@@ -540,11 +540,11 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
                           ),
                         ),
 
-                        const SizedBox(height: 8),
+                        const SizedBox(height: AppSpacing.s),
 
                         // 简介（默认 4 行，可展开）
                         Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 16),
+                          padding: const EdgeInsets.symmetric(horizontal: AppSpacing.l),
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
@@ -569,11 +569,11 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
                           ),
                         ),
 
-                        const SizedBox(height: 8),
+                        const SizedBox(height: AppSpacing.s),
 
                         // 最新章节列表
                         Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 16),
+                          padding: const EdgeInsets.symmetric(horizontal: AppSpacing.l),
                           child: Column(
                             crossAxisAlignment: CrossAxisAlignment.start,
                             children: [
@@ -589,16 +589,16 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
                                 ],
                               ),
                               if (_isLoading)
-                                const Padding(padding: EdgeInsets.all(16), child: AppLoadingIndicator())
+                                const Padding(padding: EdgeInsets.all(AppSpacing.l), child: AppLoadingIndicator())
                               else if (_chapters.isEmpty)
                                 Padding(
-                                  padding: const EdgeInsets.all(16),
+                                  padding: const EdgeInsets.all(AppSpacing.l),
                                   child: Column(
                                     crossAxisAlignment: CrossAxisAlignment.start,
                                     children: [
                                       Text(_tocError ?? '暂无章节', style: TextStyle(color: cs.onSurfaceVariant)),
                                       if (_tocError != null) ...[
-                                        const SizedBox(height: 8),
+                                        const SizedBox(height: AppSpacing.s),
                                         FilledButton.icon(
                                           icon: const Icon(Icons.refresh, size: 16),
                                           label: const Text('重新获取目录'),
@@ -626,7 +626,7 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
                           ),
                         ),
 
-                        const SizedBox(height: 24),
+                        const SizedBox(height: AppSpacing.xl),
                       ],
                     ),
                   ),
@@ -701,7 +701,7 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
             ),
             const SizedBox(height: 10),
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 24),
+              padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xl),
               child: Text(book.name,
                   textAlign: TextAlign.center,
                   maxLines: 1,
@@ -711,7 +711,7 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
             const SizedBox(height: 6),
             if (book.kind?.isNotEmpty == true || (book.wordCount ?? 0) > 0)
               Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 24),
+                padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xl),
                 child: Wrap(
                   alignment: WrapAlignment.center,
                   spacing: 6,
@@ -739,7 +739,7 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
           Icon(icon, size: 18, color: cs.onSurfaceVariant),
           const SizedBox(width: 6),
           child,
-          if (trailing != null) ...[const SizedBox(width: 8), trailing],
+          if (trailing != null) ...[const SizedBox(width: AppSpacing.s), trailing],
         ],
       ),
     );
@@ -888,7 +888,7 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
                   ),
                 ],
               ),
-              const SizedBox(height: 12),
+              const SizedBox(height: AppSpacing.m),
               TextField(
                 decoration: const InputDecoration(labelText: '新建分组', isDense: true),
                 onSubmitted: (v) => setS(() => selected = v.trim()),

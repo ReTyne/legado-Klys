@@ -30,10 +30,10 @@ class ReviewColumn extends StatelessWidget {
       onTap: onTap,
       onLongPress: onLongPress ?? onTap,
       child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+        padding: const EdgeInsets.symmetric(horizontal: AppSpacing.s, vertical: AppSpacing.xs),
         decoration: BoxDecoration(
           color: cs.surfaceContainerHighest.withOpacity(0.92),
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: AppRadius.mAll,
           border: Border.all(color: cs.outlineVariant, width: 0.5),
         ),
         child: Row(
@@ -41,7 +41,7 @@ class ReviewColumn extends StatelessWidget {
           children: [
             Icon(Icons.mode_comment_outlined, size: 14, color: fg),
             if (countText.isNotEmpty) ...[
-              const SizedBox(width: 4),
+              const SizedBox(width: AppSpacing.xs),
               Text(countText, style: TextStyle(fontSize: 11, color: fg)),
             ],
           ],
@@ -186,9 +186,9 @@ class _BookReviewSheetState extends State<BookReviewSheet> {
     return SafeArea(
       child: Padding(
         padding: EdgeInsets.only(
-          left: 16,
-          right: 16,
-          top: 12,
+          left: AppSpacing.l,
+          right: AppSpacing.l,
+          top: AppSpacing.m,
           bottom: MediaQuery.of(context).viewInsets.bottom + 12,
         ),
         child: SizedBox(
@@ -200,7 +200,7 @@ class _BookReviewSheetState extends State<BookReviewSheet> {
               Row(
                 children: [
                   const Icon(Icons.mode_comment_outlined, size: 20),
-                  const SizedBox(width: 8),
+                  const SizedBox(width: AppSpacing.s),
                   Expanded(
                     child: Text('段评 · ${widget.chapterTitle}',
                         maxLines: 1,
@@ -217,7 +217,7 @@ class _BookReviewSheetState extends State<BookReviewSheet> {
                   ),
                 ],
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: AppSpacing.s),
               // 段落选择：按页内段落切换，评论按 paragraphIndex 归档
               if (widget.paragraphs.isNotEmpty)
                 SizedBox(
@@ -225,7 +225,7 @@ class _BookReviewSheetState extends State<BookReviewSheet> {
                   child: ListView.separated(
                     scrollDirection: Axis.horizontal,
                     itemCount: widget.paragraphs.length,
-                    separatorBuilder: (_, __) => const SizedBox(width: 8),
+                    separatorBuilder: (_, __) => const SizedBox(width: AppSpacing.s),
                     itemBuilder: (c, i) {
                       final selected = i == _paragraphIndex;
                       final count =
@@ -242,7 +242,7 @@ class _BookReviewSheetState extends State<BookReviewSheet> {
                     },
                   ),
                 ),
-              const SizedBox(height: 8),
+              const SizedBox(height: AppSpacing.s),
               const Divider(height: 1),
               Expanded(
                 child: _loading
@@ -296,7 +296,7 @@ class _BookReviewSheetState extends State<BookReviewSheet> {
                           ),
               ),
               const Divider(height: 1),
-              const SizedBox(height: 8),
+              const SizedBox(height: AppSpacing.s),
               Row(
                 children: [
                   Expanded(
@@ -311,7 +311,7 @@ class _BookReviewSheetState extends State<BookReviewSheet> {
                       onSubmitted: (_) => _publish(),
                     ),
                   ),
-                  const SizedBox(width: 8),
+                  const SizedBox(width: AppSpacing.s),
                   FilledButton(
                     onPressed: _publish,
                     child: const Text('发表'),

@@ -70,7 +70,7 @@ class _RssFavoritesScreenState extends State<RssFavoritesScreen> {
                         background: Container(
                             color: cs.error,
                             alignment: Alignment.centerRight,
-                            padding: const EdgeInsets.only(right: 16),
+                            padding: const EdgeInsets.only(right: AppSpacing.l),
                             child: Icon(Icons.delete, color: cs.onError)),
                         onDismissed: (_) async {
                           if (article.id != null) {
@@ -89,7 +89,7 @@ class _RssFavoritesScreenState extends State<RssFavoritesScreen> {
                                       maxLines: 1,
                                       overflow: TextOverflow.ellipsis,
                                       style: const TextStyle(fontSize: 12)),
-                                const SizedBox(height: 4),
+                                const SizedBox(height: AppSpacing.xs),
                                 Text(article.sourceName ?? '',
                                     style: TextStyle(
                                         fontSize: 11, color: cs.primary)),

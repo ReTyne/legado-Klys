@@ -124,7 +124,7 @@ class _ExportConfigScreenState extends State<ExportConfigScreen> {
         title: const Text('选择导出章节'),
         content: Row(children: [
           Expanded(child: TextField(controller: s, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: '起始章'))),
-          const Padding(padding: EdgeInsets.symmetric(horizontal: 8), child: Text('至')),
+          const Padding(padding: EdgeInsets.symmetric(horizontal: AppSpacing.s), child: Text('至')),
           Expanded(child: TextField(controller: e, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: '结束章'))),
         ]),
         actions: [
@@ -262,7 +262,7 @@ class _ExportConfigScreenState extends State<ExportConfigScreen> {
   }
 
   Widget _section(String t) => Padding(
-        padding: const EdgeInsets.fromLTRB(16, 20, 16, 8),
+        padding: const EdgeInsets.fromLTRB(AppSpacing.l, 20, AppSpacing.l, AppSpacing.s),
         child: Text(t, style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Theme.of(context).colorScheme.primary)),
       );
 
@@ -284,17 +284,17 @@ class _ExportConfigScreenState extends State<ExportConfigScreen> {
               _section('导出选项（对齐 E book_cache.xml）'),
               // menu_export_type：导出类型
               Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                padding: const EdgeInsets.symmetric(horizontal: AppSpacing.l, vertical: AppSpacing.xs),
                 child: Row(children: [
                   const Text('导出类型'),
-                  const SizedBox(width: 12),
+                  const SizedBox(width: AppSpacing.m),
                   ChoiceChip(label: const Text('TXT'), selected: _exportType == 0,
                     onSelected: (_) async {
                       final p = await SharedPreferences.getInstance();
                       await p.setInt('exportType', 0);
                       if (mounted) setState(() => _exportType = 0);
                     }),
-                  const SizedBox(width: 8),
+                  const SizedBox(width: AppSpacing.s),
                   ChoiceChip(label: const Text('EPUB'), selected: _exportType == 1,
                     onSelected: (_) async {
                       final p = await SharedPreferences.getInstance();
@@ -305,13 +305,13 @@ class _ExportConfigScreenState extends State<ExportConfigScreen> {
               ),
               // menu_export_charset：导出编码（AppPrefs.exportCharset）
               Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                padding: const EdgeInsets.symmetric(horizontal: AppSpacing.l, vertical: AppSpacing.xs),
                 child: Row(children: [
                   const Text('导出编码'),
-                  const SizedBox(width: 12),
+                  const SizedBox(width: AppSpacing.m),
                   ChoiceChip(label: const Text('UTF-8'), selected: _charset.toUpperCase() != 'GBK',
                     onSelected: (_) => _apply(() => AppPrefs.exportCharset = 'UTF-8')),
-                  const SizedBox(width: 8),
+                  const SizedBox(width: AppSpacing.s),
                   ChoiceChip(label: const Text('GBK'), selected: _charset.toUpperCase() == 'GBK',
                     onSelected: (_) => _apply(() => AppPrefs.exportCharset = 'GBK')),
                 ]),
@@ -375,7 +375,7 @@ class _ExportConfigScreenState extends State<ExportConfigScreen> {
               // 对齐 E menu_export_pics_file：Klys 导出引擎仅输出纯文本 TXT/EPUB，
               // 不生成独立图片文件引用，无法真实接线，按约定从 UI 下架（AppPrefs.exportPictureFile 不暴露开关）。
               Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                padding: const EdgeInsets.symmetric(horizontal: AppSpacing.l, vertical: AppSpacing.s),
                 child: Text('注：「图片导出为文件」(E: export_pics_file) 因导出引擎不含图片落盘能力，本域从 UI 下架，未做假开关。',
                     style: TextStyle(fontSize: 11, color: Theme.of(context).colorScheme.onSurfaceVariant)),
               ),
@@ -402,7 +402,7 @@ class _ExportConfigScreenState extends State<ExportConfigScreen> {
                       onPressed: _busy ? null : () => _exportOne(book),
                     ),
                   ),
-              const SizedBox(height: 24),
+              const SizedBox(height: AppSpacing.xl),
             ]),
     );
   }

@@ -316,7 +316,7 @@ class _SubscribeScreenState extends State<SubscribeScreen> {
                     builder: (_) => const RuleSubscriptionScreen()),
               ),
               child: const Padding(
-                padding: EdgeInsets.symmetric(horizontal: 12),
+                padding: EdgeInsets.symmetric(horizontal: AppSpacing.m),
                 child: Row(children: [
                   Icon(Icons.dynamic_feed_outlined, size: 20),
                   SizedBox(width: 10),
@@ -413,7 +413,7 @@ class _SubscribeScreenState extends State<SubscribeScreen> {
 
   Widget _buildGridView(List<RssSource> groups) {
     return GridView.builder(
-      padding: const EdgeInsets.all(12),
+      padding: const EdgeInsets.all(AppSpacing.m),
       gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
         crossAxisCount: 4,
         mainAxisSpacing: 8,
@@ -425,7 +425,7 @@ class _SubscribeScreenState extends State<SubscribeScreen> {
         final source = groups[index];
         final enabled = source.enabled == true;
         return InkWell(
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: AppRadius.mAll,
           onTap: () => Navigator.push(context,
               MaterialPageRoute(builder: (_) => RssArticlesScreen(source: source))),
           onLongPress: () => _showSourceOptions(source),
@@ -437,7 +437,7 @@ class _SubscribeScreenState extends State<SubscribeScreen> {
                 height: 50,
                 decoration: BoxDecoration(
                   color: Theme.of(context).colorScheme.secondaryContainer,
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius: AppRadius.mAll,
                   image: (source.sourceIcon ?? '').isNotEmpty
                       ? DecorationImage(
                           image: NetworkImage(source.sourceIcon!),
@@ -456,7 +456,7 @@ class _SubscribeScreenState extends State<SubscribeScreen> {
                       ),
               ),
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: AppSpacing.s),
             Text(source.sourceName,
                 maxLines: 2,
                 textAlign: TextAlign.center,
@@ -508,7 +508,7 @@ class _SubscribeScreenState extends State<SubscribeScreen> {
           height: 40,
           decoration: BoxDecoration(
             color: cs.secondaryContainer,
-            borderRadius: BorderRadius.circular(12),
+            borderRadius: AppRadius.mAll,
             image: (source.sourceIcon ?? '').isNotEmpty
                 ? DecorationImage(
                     image: NetworkImage(source.sourceIcon!), fit: BoxFit.cover)

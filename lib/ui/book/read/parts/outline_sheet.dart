@@ -22,14 +22,14 @@ class _OutlineSheet extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           children: [
             Padding(
-              padding: const EdgeInsets.fromLTRB(16, 12, 8, 8),
+              padding: const EdgeInsets.fromLTRB(AppSpacing.l, AppSpacing.m, AppSpacing.s, AppSpacing.s),
               child: Row(
                 children: [
                   Text('目录 / 大纲',
                       style: Theme.of(context).textTheme.titleMedium),
                   if (totalPages > 0)
                     Padding(
-                      padding: const EdgeInsets.only(left: 8),
+                      padding: const EdgeInsets.only(left: AppSpacing.s),
                       child: Text('共 $totalPages 页',
                           style: TextStyle(
                               fontSize: 12, color: cs.onSurfaceVariant)),
@@ -64,7 +64,7 @@ class _OutlineSheet extends StatelessWidget {
                         return ListTile(
                           dense: true,
                           contentPadding: EdgeInsets.only(
-                              left: 16.0 + o.level * 16, right: 16),
+                              left: 16.0 + o.level * 16, right: AppSpacing.l),
                           leading: Icon(Icons.bookmark_outline,
                               size: 18, color: cs.primary),
                           title: Text(o.title,
@@ -78,7 +78,7 @@ class _OutlineSheet extends StatelessWidget {
                       },
                     ),
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: AppSpacing.s),
           ],
         ),
       ),

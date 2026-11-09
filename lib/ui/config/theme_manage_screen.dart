@@ -9,6 +9,7 @@ import 'package:legado_md3/constant/app_theme.dart';
 import 'package:legado_md3/help/config/app_config.dart';
 import 'package:legado_md3/help/config/theme_share.dart';
 
+import 'package:legado_md3/ui/theme/app_design.dart';
 part 'parts/preset.dart';
 part 'parts/theme_manage_screen.dart';
 part 'parts/theme_manage_screen_state.dart';

@@ -12,7 +12,7 @@ class _ButtonGroupSection extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16),
+      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.l),
       child: Wrap(
         spacing: 8,
         runSpacing: 8,

@@ -218,7 +218,7 @@ class _OpdsCatalogScreenState extends State<OpdsCatalogScreen> {
       body: Column(
         children: [
           Padding(
-            padding: const EdgeInsets.fromLTRB(12, 12, 12, 4),
+            padding: const EdgeInsets.fromLTRB(AppSpacing.m, AppSpacing.m, AppSpacing.m, AppSpacing.xs),
             child: Row(
               children: [
                 Expanded(
@@ -233,7 +233,7 @@ class _OpdsCatalogScreenState extends State<OpdsCatalogScreen> {
                     onSubmitted: (v) => _open(v.trim()),
                   ),
                 ),
-                const SizedBox(width: 8),
+                const SizedBox(width: AppSpacing.s),
                 FilledButton(
                   onPressed: _loading ? null : () => _open(_urlController.text.trim()),
                   child: const Text('打开'),
@@ -243,7 +243,7 @@ class _OpdsCatalogScreenState extends State<OpdsCatalogScreen> {
           ),
           if (_engine != null)
             Padding(
-              padding: const EdgeInsets.fromLTRB(12, 4, 12, 8),
+              padding: const EdgeInsets.fromLTRB(AppSpacing.m, AppSpacing.xs, AppSpacing.m, AppSpacing.s),
               child: TextField(
                 controller: _searchController,
                 decoration: InputDecoration(
@@ -262,7 +262,7 @@ class _OpdsCatalogScreenState extends State<OpdsCatalogScreen> {
             ),
           if (_error != null)
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              padding: const EdgeInsets.symmetric(horizontal: AppSpacing.l, vertical: AppSpacing.s),
               child: Text(_error!, style: TextStyle(color: Theme.of(context).colorScheme.error)),
             ),
           if (_loading) const LinearProgressIndicator(),

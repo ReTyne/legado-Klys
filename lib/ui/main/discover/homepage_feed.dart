@@ -185,7 +185,7 @@ class _HomepageFeedState extends State<HomepageFeed> {
 
   Widget _buildToolbar(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.s, vertical: 2),
       child: Row(
         children: [
           if (_sets.isNotEmpty)
@@ -222,7 +222,7 @@ class _HomepageFeedState extends State<HomepageFeed> {
     final selected = (id == null && _activeSetId == null) ||
         (id != null && id == _activeSetId);
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 4),
+      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xs),
       child: FilterChip(
         label: Text(label),
         selected: selected,
@@ -239,7 +239,7 @@ class _HomepageFeedState extends State<HomepageFeed> {
     return RefreshIndicator(
       onRefresh: _load,
       child: ListView.builder(
-        padding: const EdgeInsets.only(bottom: 24),
+        padding: const EdgeInsets.only(bottom: AppSpacing.xl),
         itemCount: _sections.length,
         itemBuilder: (context, i) {
           final s = _sections[i];

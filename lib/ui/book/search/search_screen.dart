@@ -314,10 +314,10 @@ class _SearchScreenState extends State<SearchScreen> {
                   selected: {mode},
                   onSelectionChanged: (v) => setS(() => mode = v.first),
                 ),
-                const SizedBox(height: 8),
+                const SizedBox(height: AppSpacing.s),
                 if (mode == 1)
                   Padding(
-                    padding: const EdgeInsets.only(bottom: 8),
+                    padding: const EdgeInsets.only(bottom: AppSpacing.s),
                     child: TextField(
                       decoration: const InputDecoration(
                         prefixIcon: Icon(Icons.search),
@@ -482,7 +482,7 @@ class _SearchScreenState extends State<SearchScreen> {
 
   Widget _buildSearchHistory() {
     return ListView(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(AppSpacing.l),
       children: [
         if (_searchHistory.isNotEmpty) ...[
           Row(
@@ -492,16 +492,16 @@ class _SearchScreenState extends State<SearchScreen> {
               TextButton(onPressed: _clearHistory, child: const Text('清空')),
             ],
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: AppSpacing.s),
           Wrap(
             spacing: 8,
             runSpacing: 8,
             children: _searchHistory.map((kw) => ActionChip(label: Text(kw), onPressed: () => _search(kw))).toList(),
           ),
-          const SizedBox(height: 24),
+          const SizedBox(height: AppSpacing.xl),
         ],
         const Text('热门搜索', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
-        const SizedBox(height: 8),
+        const SizedBox(height: AppSpacing.s),
         Wrap(
           spacing: 8,
           runSpacing: 8,
@@ -518,9 +518,9 @@ class _SearchScreenState extends State<SearchScreen> {
     if (_isSearching && _results.isEmpty) {
       return Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
         const CircularProgressIndicator(),
-        const SizedBox(height: 16),
+        const SizedBox(height: AppSpacing.l),
         Text('正在搜索 ($_searchedSources/$_totalSources)...'),
-        const SizedBox(height: 8),
+        const SizedBox(height: AppSpacing.s),
         TextButton.icon(
           icon: const Icon(Icons.stop, size: 18),
           label: const Text('停止搜索'),
@@ -542,12 +542,12 @@ class _SearchScreenState extends State<SearchScreen> {
         if (_isSearching) LinearProgressIndicator(value: _totalSources > 0 ? _searchedSources / _totalSources : 0),
         // 搜索范围 + 精准搜索
         Padding(
-          padding: const EdgeInsets.fromLTRB(12, 8, 12, 0),
+          padding: const EdgeInsets.fromLTRB(AppSpacing.m, AppSpacing.s, AppSpacing.m, 0),
           child: Row(
             children: [
               for (final e in const [(0, '全部'), (1, '书名'), (2, '作者')])
                 Padding(
-                  padding: const EdgeInsets.only(right: 8),
+                  padding: const EdgeInsets.only(right: AppSpacing.s),
                   child: ChoiceChip(
                     label: Text(e.$2),
                     selected: _searchScope == e.$1,
@@ -566,7 +566,7 @@ class _SearchScreenState extends State<SearchScreen> {
           ),
         ),
         Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          padding: const EdgeInsets.symmetric(horizontal: AppSpacing.l, vertical: AppSpacing.s),
           child: Row(
             children: [
               Text('共找到 ${display.length} 条', style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
@@ -652,7 +652,7 @@ class _SearchScreenState extends State<SearchScreen> {
     final coverW = (MediaQuery.of(context).size.width - 12 * 2 - 10 * 2) / 3;
     final coverH = coverW / 0.72; // 约 3:4 封面比例
     return InkWell(
-      borderRadius: BorderRadius.circular(8),
+      borderRadius: AppRadius.sAll,
       onTap: () => _openDetail(book),
       onLongPress: () => _showResultMenu(book),
       child: Column(
@@ -674,7 +674,7 @@ class _SearchScreenState extends State<SearchScreen> {
                   color: cs.surfaceContainerHighest.withOpacity(0.82),
                   shape: const CircleBorder(),
                   child: InkWell(
-                    borderRadius: BorderRadius.circular(16),
+                    borderRadius: AppRadius.lAll,
                     onTap: () => _addToShelf(book),
                     child: Padding(
                       padding: const EdgeInsets.all(3),

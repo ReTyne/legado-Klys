@@ -325,7 +325,7 @@ class _ThemeManageScreenState extends State<ThemeManageScreen> {
       title: const Text('新建主题'),
       content: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, children: [
         TextField(controller: nameController, decoration: const InputDecoration(labelText: '主题名称', border: OutlineInputBorder())),
-        const SizedBox(height: 12),
+        const SizedBox(height: AppSpacing.m),
         OutlinedButton.icon(
           icon: const Icon(Icons.colorize),
           label: Text('主色 ${_toHex(primary)}'),
@@ -336,9 +336,9 @@ class _ThemeManageScreenState extends State<ThemeManageScreen> {
             }
           },
         ),
-        const SizedBox(height: 12),
+        const SizedBox(height: AppSpacing.m),
         _colorPresetsRow(primary, (c) => setD(() => primary = c), Theme.of(context).colorScheme),
-        const SizedBox(height: 12),
+        const SizedBox(height: AppSpacing.m),
         OutlinedButton.icon(
           icon: const Icon(Icons.format_color_fill),
           label: Text('背景 ${_toHex(bg)}'),
@@ -349,7 +349,7 @@ class _ThemeManageScreenState extends State<ThemeManageScreen> {
             }
           },
         ),
-        const SizedBox(height: 12),
+        const SizedBox(height: AppSpacing.m),
         _colorPresetsRow(bg, (c) => setD(() => bg = c), Theme.of(context).colorScheme),
         SwitchListTile(
           dense: true,
@@ -384,10 +384,10 @@ class _ThemeManageScreenState extends State<ThemeManageScreen> {
     showModalBottomSheet(
       context: context,
       builder: (sheetCtx) => StatefulBuilder(builder: (context, setSheet) => Padding(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(AppSpacing.l),
         child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
           Text('主题: ${theme.name}', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-          const SizedBox(height: 16),
+          const SizedBox(height: AppSpacing.l),
           _colorPickerRow('主色调', theme.primaryColor, (c) {
             final nt = CustomTheme(id: theme.id, name: theme.name, primaryColor: c, secondaryColor: theme.secondaryColor, backgroundColor: theme.backgroundColor, surfaceColor: theme.surfaceColor, isDark: theme.isDark, amoled: theme.amoled);
             setSheet(() => _updateTheme(theme.id, nt));
@@ -396,7 +396,7 @@ class _ThemeManageScreenState extends State<ThemeManageScreen> {
             final nt = CustomTheme(id: theme.id, name: theme.name, primaryColor: theme.primaryColor, secondaryColor: theme.secondaryColor, backgroundColor: c, surfaceColor: c, isDark: theme.isDark, amoled: theme.amoled);
             setSheet(() => _updateTheme(theme.id, nt));
           }),
-          const SizedBox(height: 16),
+          const SizedBox(height: AppSpacing.l),
           Row(children: [
             if (!isBuiltin) TextButton.icon(onPressed: () async {
               setState(() => _custom.removeWhere((t) => t.id == theme.id));
@@ -438,7 +438,7 @@ class _ThemeManageScreenState extends State<ThemeManageScreen> {
 
   Widget _colorPickerRow(String label, int color, ValueChanged<int> onChanged) {
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8),
+      padding: const EdgeInsets.symmetric(vertical: AppSpacing.s),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(children: [
           SizedBox(width: 60, child: Text(label)),
@@ -454,7 +454,7 @@ class _ThemeManageScreenState extends State<ThemeManageScreen> {
             },
           ),
         ]),
-        const SizedBox(height: 8),
+        const SizedBox(height: AppSpacing.s),
         _colorPresetsRow(color, onChanged, Theme.of(context).colorScheme),
       ]),
     );
@@ -487,18 +487,18 @@ class _ThemeManageScreenState extends State<ThemeManageScreen> {
         _buildBookshelfBackgroundSection(cs),
         _buildPresetSection(),
         Padding(
-          padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+          padding: const EdgeInsets.fromLTRB(AppSpacing.l, AppSpacing.l, AppSpacing.l, AppSpacing.s),
           child: Text('我的主题', style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: cs.primary)),
         ),
         if (visibleThemes.isEmpty)
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            padding: const EdgeInsets.symmetric(horizontal: AppSpacing.l, vertical: AppSpacing.s),
             child: Text('当前分类下没有主题', style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
           ),
         ...visibleThemes.map((theme) {
           final selected = _selectedThemeId == theme.id;
           return Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+            padding: const EdgeInsets.symmetric(horizontal: AppSpacing.s, vertical: 2),
             child: Card(
               color: selected ? Color(theme.primaryColor).withOpacity(0.1) : Theme.of(context).cardTheme.color,
               child: ListTile(
@@ -523,7 +523,7 @@ class _ThemeManageScreenState extends State<ThemeManageScreen> {
             onPressed: _showCustomColorPicker,
             child: const Icon(Icons.colorize),
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: AppSpacing.m),
           FloatingActionButton(
             heroTag: 'addFab',
             tooltip: '新建主题',
@@ -538,11 +538,11 @@ class _ThemeManageScreenState extends State<ThemeManageScreen> {
   Widget _buildAppearanceSection(ColorScheme cs) {
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       Padding(
-        padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+        padding: const EdgeInsets.fromLTRB(AppSpacing.l, AppSpacing.l, AppSpacing.l, AppSpacing.s),
         child: Text('外观模式', style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: cs.primary)),
       ),
       Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 12),
+        padding: const EdgeInsets.symmetric(horizontal: AppSpacing.m),
         child: SegmentedButton<ThemeMode>(
           segments: const [
             ButtonSegment(value: ThemeMode.system, icon: Icon(Icons.brightness_auto), label: Text('跟随系统')),
@@ -555,7 +555,7 @@ class _ThemeManageScreenState extends State<ThemeManageScreen> {
       ),
       SwitchListTile(
         dense: true,
-        contentPadding: const EdgeInsets.symmetric(horizontal: 16),
+        contentPadding: const EdgeInsets.symmetric(horizontal: AppSpacing.l),
         title: const Text('AMOLED 纯黑前景', style: TextStyle(fontSize: 14)),
         subtitle: const Text('深色时使用纯黑背景，省电（theme_amoled）', style: TextStyle(fontSize: 11)),
         value: _amoled,
@@ -585,7 +585,7 @@ class _ThemeManageScreenState extends State<ThemeManageScreen> {
       ),
       SwitchListTile(
         dense: true,
-        contentPadding: const EdgeInsets.symmetric(horizontal: 16),
+        contentPadding: const EdgeInsets.symmetric(horizontal: AppSpacing.l),
         title: const Text('透明状态栏', style: TextStyle(fontSize: 14)),
         subtitle: const Text('状态栏透明，内容延伸到状态栏下方（transparentStatusBar）', style: TextStyle(fontSize: 11)),
         value: AppPrefs.transparentStatusBar,
@@ -596,7 +596,7 @@ class _ThemeManageScreenState extends State<ThemeManageScreen> {
       ),
       SwitchListTile(
         dense: true,
-        contentPadding: const EdgeInsets.symmetric(horizontal: 16),
+        contentPadding: const EdgeInsets.symmetric(horizontal: AppSpacing.l),
         title: const Text('沉浸式导航栏', style: TextStyle(fontSize: 14)),
         subtitle: const Text('底部系统导航栏透明（immNavigationBar）', style: TextStyle(fontSize: 11)),
         value: AppPrefs.immNavigationBar,
@@ -631,11 +631,11 @@ class _ThemeManageScreenState extends State<ThemeManageScreen> {
       ),
       // 主题分类：全部 / 明亮 / 黑暗 / AMOLED
       Padding(
-        padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+        padding: const EdgeInsets.fromLTRB(AppSpacing.l, AppSpacing.m, AppSpacing.l, AppSpacing.xs),
         child: Text('主题分类', style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: cs.primary)),
       ),
       Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 12),
+        padding: const EdgeInsets.symmetric(horizontal: AppSpacing.m),
         child: SegmentedButton<int>(
           segments: const [
             ButtonSegment(value: 0, label: Text('全部')),
@@ -649,7 +649,7 @@ class _ThemeManageScreenState extends State<ThemeManageScreen> {
       ),
       if (_loaded && _selectedThemeId.startsWith('preset_'))
         Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+          padding: const EdgeInsets.symmetric(horizontal: AppSpacing.l, vertical: AppSpacing.xs),
           child: Text('当前：预设主色方案（未保存到「我的主题」）', style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant)),
         ),
     ]);
@@ -660,7 +660,7 @@ class _ThemeManageScreenState extends State<ThemeManageScreen> {
     final hasImage = AppPrefs.backgroundImage.isNotEmpty;
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       Padding(
-        padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+        padding: const EdgeInsets.fromLTRB(AppSpacing.l, AppSpacing.l, AppSpacing.l, AppSpacing.s),
         child: Text('书架背景', style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: cs.primary)),
       ),
       ListTile(
@@ -675,9 +675,9 @@ class _ThemeManageScreenState extends State<ThemeManageScreen> {
       ),
       if (hasImage)
         Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+          padding: const EdgeInsets.symmetric(horizontal: AppSpacing.l, vertical: AppSpacing.xs),
           child: ClipRRect(
-            borderRadius: BorderRadius.circular(12),
+            borderRadius: AppRadius.mAll,
             child: SizedBox(
               height: 120,
               width: double.infinity,
@@ -747,16 +747,16 @@ class _ThemeManageScreenState extends State<ThemeManageScreen> {
     final visiblePresets = _presets.where(_presetMatchesCategory).toList();
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       Padding(
-        padding: const EdgeInsets.fromLTRB(16, 20, 16, 8),
+        padding: const EdgeInsets.fromLTRB(AppSpacing.l, 20, AppSpacing.l, AppSpacing.s),
         child: Text('预设主题色（${visiblePresets.length}/${_presets.length}）', style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Theme.of(context).colorScheme.primary)),
       ),
       if (visiblePresets.isEmpty)
         Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+          padding: const EdgeInsets.symmetric(horizontal: AppSpacing.l, vertical: AppSpacing.xs),
           child: Text('当前分类下没有预设主色', style: TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.onSurfaceVariant)),
         ),
       Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 12),
+        padding: const EdgeInsets.symmetric(horizontal: AppSpacing.m),
         child: Wrap(
           spacing: 10,
           runSpacing: 10,
@@ -774,7 +774,7 @@ class _ThemeManageScreenState extends State<ThemeManageScreen> {
                   ),
                   child: selected ? const Icon(Icons.check, color: Colors.white, size: 22) : null,
                 ),
-                const SizedBox(height: 4),
+                const SizedBox(height: AppSpacing.xs),
                 SizedBox(width: 52, child: Text(p.name, style: const TextStyle(fontSize: 10), textAlign: TextAlign.center, maxLines: 1, overflow: TextOverflow.ellipsis)),
               ]),
             );

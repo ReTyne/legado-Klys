@@ -18,7 +18,7 @@ class _WaterfallSection extends StatelessWidget {
       (i % 2 == 0 ? left : right).add(items[i]);
     }
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16),
+      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.l),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -44,13 +44,13 @@ class _WaterfallSection extends StatelessWidget {
         return Padding(
           padding: const EdgeInsets.only(bottom: 10),
           child: InkWell(
-            borderRadius: BorderRadius.circular(12),
+            borderRadius: AppRadius.mAll,
             onTap: () => onTap(item),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 ClipRRect(
-                  borderRadius: BorderRadius.circular(12),
+                  borderRadius: AppRadius.mAll,
                   child: SizedBox(
                     width: double.infinity,
                     height: h,
@@ -58,7 +58,7 @@ class _WaterfallSection extends StatelessWidget {
                         width: double.infinity, height: h, radius: 0),
                   ),
                 ),
-                const SizedBox(height: 4),
+                const SizedBox(height: AppSpacing.xs),
                 Text(item.title,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,

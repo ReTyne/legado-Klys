@@ -402,7 +402,7 @@ class _MangaReaderScreenState extends State<MangaReaderScreen> {
         mainAxisSize: MainAxisSize.min,
         children: [
           CircularProgressIndicator(color: Colors.white),
-          SizedBox(height: 12),
+          SizedBox(height: AppSpacing.m),
           Text('正在加载图片…', style: TextStyle(color: Colors.white70)),
         ],
       ));
@@ -415,7 +415,7 @@ class _MangaReaderScreenState extends State<MangaReaderScreen> {
           Text(error ?? '本章暂无图片',
               style: const TextStyle(color: Colors.white70), textAlign: TextAlign.center),
           if (error != null) ...[
-            const SizedBox(height: 12),
+            const SizedBox(height: AppSpacing.m),
                 FilledButton(
                   onPressed: () {
                     // 重试：清除失败标记后重新拉取
@@ -425,7 +425,7 @@ class _MangaReaderScreenState extends State<MangaReaderScreen> {
                   },
                   child: const Text('重试'),
                 ),
-                const SizedBox(height: 8),
+                const SizedBox(height: AppSpacing.s),
                 TextButton.icon(
                   onPressed: () => unawaited(_switchToNextSource()),
                   icon: const Icon(Icons.autorenew_outlined),
@@ -490,7 +490,7 @@ class _MangaReaderScreenState extends State<MangaReaderScreen> {
           const Spacer(),
           Container(
             color: Colors.black87,
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.all(AppSpacing.l),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
@@ -509,7 +509,7 @@ class _MangaReaderScreenState extends State<MangaReaderScreen> {
                     _buildMenuButton(Icons.skip_next, '下一章', _nextChapter),
                   ],
                 ),
-                const SizedBox(height: 8),
+                const SizedBox(height: AppSpacing.s),
                 Row(
                   mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                   children: [
@@ -525,13 +525,13 @@ class _MangaReaderScreenState extends State<MangaReaderScreen> {
                         () => unawaited(_toggleAiTranslate())),
                   ],
                 ),
-                const SizedBox(height: 8),
+                const SizedBox(height: AppSpacing.s),
                 // 展示当前生效的自动滚动速度与书源
                 Text(
                     '自动滚动速度：$_autoSpeed 秒/次 · 当前书源：'
                     '${_activeSourceName.isEmpty ? "自动" : _activeSourceName}',
                     style: const TextStyle(color: Colors.white54, fontSize: 11)),
-                const SizedBox(height: 16),
+                const SizedBox(height: AppSpacing.l),
                 Row(
                   children: [
                     const Text('章节', style: TextStyle(color: Colors.white70, fontSize: 12)),
@@ -556,14 +556,14 @@ class _MangaReaderScreenState extends State<MangaReaderScreen> {
   Widget _buildMenuButton(IconData icon, String label, VoidCallback onTap) {
     return InkWell(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(8),
+      borderRadius: AppRadius.sAll,
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: AppSpacing.s),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             Icon(icon, color: Colors.white, size: 22),
-            const SizedBox(height: 4),
+            const SizedBox(height: AppSpacing.xs),
             Text(label, style: const TextStyle(color: Colors.white70, fontSize: 11)),
           ],
         ),

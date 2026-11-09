@@ -479,7 +479,7 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
     final controls = _controlKinds;
     if (controls.isEmpty) return const SizedBox.shrink();
     return Padding(
-      padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
+      padding: const EdgeInsets.fromLTRB(AppSpacing.m, AppSpacing.s, AppSpacing.m, AppSpacing.xs),
       child: Wrap(
         spacing: 8,
         runSpacing: 8,
@@ -504,8 +504,8 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
             decoration: InputDecoration(
               labelText: kind.title,
               isDense: true,
-              contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-              border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+              contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: AppSpacing.s),
+              border: const OutlineInputBorder(borderRadius: AppRadius.mAll),
             ),
             onChanged: (v) {
               _infoMap[kind.title] = v;
@@ -560,7 +560,7 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
               labelText: kind.title,
               isDense: true,
               contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-              border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+              border: const OutlineInputBorder(borderRadius: AppRadius.mAll),
             ),
             items: chars
                 .map((c) => DropdownMenuItem<String>(value: c, child: Text(c, style: const TextStyle(fontSize: 13))))
@@ -649,7 +649,7 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
             width: double.maxFinite,
             child: Column(mainAxisSize: MainAxisSize.min, children: [
               Padding(
-                padding: const EdgeInsets.only(bottom: 8),
+                padding: const EdgeInsets.only(bottom: AppSpacing.s),
                 child: Text('勾选要在发现页显示的分类，取消勾选则隐藏',
                     style: TextStyle(
                         fontSize: 12,
@@ -737,7 +737,7 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
           child: Row(children: [
             Icon(i == _sortMode ? Icons.radio_button_checked : Icons.radio_button_off, size: 18,
                 color: i == _sortMode ? Theme.of(context).colorScheme.primary : Theme.of(context).colorScheme.onSurfaceVariant),
-            const SizedBox(width: 12),
+            const SizedBox(width: AppSpacing.m),
             Text(names[i]),
           ]),
           onPressed: () {
@@ -997,7 +997,7 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
         await _loadSources();
       },
       child: ListView.builder(
-        padding: const EdgeInsets.all(12),
+        padding: const EdgeInsets.all(AppSpacing.m),
         itemCount: visible.length,
         itemBuilder: (context, i) => _buildSourceCard(visible[i]),
       ),
@@ -1012,19 +1012,19 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
     final controlKinds = (kinds ?? const []).where((k) => k.isControl).toList();
     final errorKinds = (kinds ?? const []).where((k) => k.isError).toList();
     return Card(
-      margin: const EdgeInsets.only(bottom: 8),
+      margin: const EdgeInsets.only(bottom: AppSpacing.s),
       child: InkWell(
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: AppRadius.mAll,
         onLongPress: () => _showSourceMenu(source),
         child: Padding(
-        padding: const EdgeInsets.fromLTRB(12, 8, 12, 4),
+        padding: const EdgeInsets.fromLTRB(AppSpacing.m, AppSpacing.s, AppSpacing.m, AppSpacing.xs),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(children: [
               Icon(Icons.rss_feed,
                   size: 16, color: Theme.of(context).colorScheme.primary),
-              const SizedBox(width: 8),
+              const SizedBox(width: AppSpacing.s),
               Expanded(
                 child: Text(source.bookSourceName,
                     maxLines: 1,
@@ -1039,7 +1039,7 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
             ]),
             if (kinds == null && !loading)
               Padding(
-                padding: const EdgeInsets.symmetric(vertical: 8),
+                padding: const EdgeInsets.symmetric(vertical: AppSpacing.s),
                 child: Text('未配置发现分类',
                     style: TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.onSurfaceVariant)),
               ),
@@ -1171,10 +1171,10 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
     return RefreshIndicator(
       onRefresh: _refresh,
       child: ListView(
-        padding: const EdgeInsets.all(12),
+        padding: const EdgeInsets.all(AppSpacing.m),
         children: [
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 8),
+            padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xs, vertical: AppSpacing.s),
             child: Row(children: [
               Expanded(child: Text('${_currentSource?.bookSourceName ?? ''} 的发现分类', style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold))),
               TextButton.icon(onPressed: _showCategoryManager, icon: const Icon(Icons.tune, size: 16), label: const Text('管理')),
@@ -1182,7 +1182,7 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
           ),
           if (_loadingKinds)
             const Padding(
-              padding: EdgeInsets.all(24),
+              padding: EdgeInsets.all(AppSpacing.xl),
               child: AppLoadingIndicator(),
             ),
           // 控件区（text/button/toggle/select，对齐 legado flexbox 控件）
@@ -1190,7 +1190,7 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
           ...visible.map((c) {
             if (c.isError) {
               return Card(
-                margin: const EdgeInsets.symmetric(vertical: 4),
+                margin: const EdgeInsets.symmetric(vertical: AppSpacing.xs),
                 child: ListTile(
                   leading: Icon(Icons.error_outline, color: Theme.of(context).colorScheme.error),
                   title: Text(c.title, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 13)),
@@ -1201,7 +1201,7 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
             }
             final empty = (c.url ?? '').trim().isEmpty;
             return Card(
-              margin: const EdgeInsets.symmetric(vertical: 4),
+              margin: const EdgeInsets.symmetric(vertical: AppSpacing.xs),
               child: ListTile(
                 leading: Icon(empty ? Icons.check_box_outline_blank : Icons.folder_outlined),
                 title: Text(c.title),
@@ -1217,7 +1217,7 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
           }),
           if (!_loadingKinds && visible.isEmpty && _controlKinds.isEmpty)
             const Padding(
-              padding: EdgeInsets.only(top: 48),
+              padding: EdgeInsets.only(top: AppSpacing.xxxl),
               child: Center(child: Text('没有可用的发现分类')),
             ),
         ],
@@ -1237,7 +1237,7 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
       children: [
         _buildControls(),
         Padding(
-          padding: const EdgeInsets.all(12),
+          padding: const EdgeInsets.all(AppSpacing.m),
           child: TextField(
             controller: _searchController,
             decoration: InputDecoration(
@@ -1246,7 +1246,7 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
               suffixIcon: _searchController.text.isNotEmpty
                   ? IconButton(icon: const Icon(Icons.clear_outlined), tooltip: '清除', onPressed: () { _searchController.clear(); setState(() => _searchQuery = ''); })
                   : null,
-              border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+              border: const OutlineInputBorder(borderRadius: AppRadius.mAll),
               isDense: true,
             ),
             onChanged: (v) => setState(() => _searchQuery = v),
@@ -1259,11 +1259,11 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
                 ? ListView(children: const [SizedBox(height: 200), Center(child: Text('没有匹配的书籍'))])
                 : ListView.builder(
                     controller: _scrollController,
-                    padding: const EdgeInsets.symmetric(horizontal: 12),
+                    padding: const EdgeInsets.symmetric(horizontal: AppSpacing.m),
                     itemCount: books.length + (_isLoadingMore ? 1 : 0),
                     itemBuilder: (context, index) {
                       if (index >= books.length) {
-                        return const Padding(padding: EdgeInsets.all(16), child: AppLoadingIndicator());
+                        return const Padding(padding: EdgeInsets.all(AppSpacing.l), child: AppLoadingIndicator());
                       }
                       return _buildBookItem(books[index]);
                     },
@@ -1276,7 +1276,7 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
 
   Widget _buildBookItem(SearchBook book) {
     return Card(
-      margin: const EdgeInsets.only(bottom: 8),
+      margin: const EdgeInsets.only(bottom: AppSpacing.s),
       child: ListTile(
         leading: _buildCover(book),
         title: Text(book.name, maxLines: 2, overflow: TextOverflow.ellipsis, style: const TextStyle(fontWeight: FontWeight.w500)),

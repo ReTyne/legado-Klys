@@ -96,7 +96,7 @@ class _DownloadManageScreenState extends State<DownloadManageScreen> {
                     .toList(),
                 onChanged: (v) => setD(() => selected = v ?? selected),
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: AppSpacing.s),
               const Text('选择下载范围（从当前章开始按书籍阅读进度计算）：',
                   style: TextStyle(fontSize: 12)),
             ],
@@ -194,7 +194,7 @@ class _DownloadManageScreenState extends State<DownloadManageScreen> {
             children: [
               const AppSectionHeader('下载任务'),
               Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                padding: const EdgeInsets.symmetric(horizontal: AppSpacing.m, vertical: AppSpacing.xs),
                 child: FilledButton.icon(
                   onPressed: _showEnqueueDialog,
                   icon: const Icon(Icons.download),
@@ -214,7 +214,7 @@ class _DownloadManageScreenState extends State<DownloadManageScreen> {
                 for (final task in tasks) _buildTaskTile(task, cs),
               const AppSectionHeader('已缓存章节'),
               _buildCachedSection(cs),
-              const SizedBox(height: 24),
+              const SizedBox(height: AppSpacing.xl),
             ],
           );
         },
@@ -230,9 +230,9 @@ class _DownloadManageScreenState extends State<DownloadManageScreen> {
   Widget _buildTaskTile(DownloadTask t, ColorScheme cs) {
     final id = t.id;
     return Card(
-      margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+      margin: const EdgeInsets.symmetric(horizontal: AppSpacing.m, vertical: AppSpacing.xs),
       child: Padding(
-        padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
+        padding: const EdgeInsets.fromLTRB(AppSpacing.m, AppSpacing.s, AppSpacing.m, AppSpacing.s),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -250,11 +250,11 @@ class _DownloadManageScreenState extends State<DownloadManageScreen> {
             Text('${t.author} · 章节 ${t.startIndex + 1}-${t.endIndex + 1} · '
                 '已完成 ${t.done}/${t.total}',
                 style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant)),
-            const SizedBox(height: 8),
+            const SizedBox(height: AppSpacing.s),
             LinearProgressIndicator(value: t.progress, minHeight: 4),
             if (t.error.isNotEmpty)
               Padding(
-                padding: const EdgeInsets.only(top: 4),
+                padding: const EdgeInsets.only(top: AppSpacing.xs),
                 child: Text(t.error,
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
@@ -297,7 +297,7 @@ class _DownloadManageScreenState extends State<DownloadManageScreen> {
   Widget _buildCachedSection(ColorScheme cs) {
     if (_loadingCache) {
       return const Padding(
-        padding: EdgeInsets.all(16),
+        padding: EdgeInsets.all(AppSpacing.l),
         child: AppLoadingIndicator(),
       );
     }

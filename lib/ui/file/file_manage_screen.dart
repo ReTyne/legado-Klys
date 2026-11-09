@@ -264,8 +264,8 @@ class _FileManageScreenState extends State<FileManageScreen> {
           ],
         ),
         body: Column(children: [
-          Padding(padding: const EdgeInsets.all(8), child: TextField(
-            decoration: InputDecoration(hintText: '搜索文件', prefixIcon: const Icon(Icons.search_outlined), isDense: true, border: OutlineInputBorder(borderRadius: BorderRadius.circular(12))),
+          Padding(padding: const EdgeInsets.all(AppSpacing.s), child: TextField(
+            decoration: const InputDecoration(hintText: '搜索文件', prefixIcon: Icon(Icons.search_outlined), isDense: true, border: OutlineInputBorder(borderRadius: AppRadius.mAll)),
             onChanged: (v) => setState(() => _searchQuery = v),
           )),
           Expanded(child: _loading

@@ -17,7 +17,7 @@ class _RankBadge extends StatelessWidget {
       height: small ? 20 : 24,
       decoration: BoxDecoration(
         color: top ? cs.primary : cs.surfaceContainerHighest,
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: AppRadius.sAll,
       ),
       alignment: Alignment.center,
       child: Text(

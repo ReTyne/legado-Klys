@@ -16,9 +16,9 @@ class _BannerSection extends StatelessWidget {
       height: 152,
       child: ListView.separated(
         scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.symmetric(horizontal: 16),
+        padding: const EdgeInsets.symmetric(horizontal: AppSpacing.l),
         itemCount: items.length,
-        separatorBuilder: (_, __) => const SizedBox(width: 12),
+        separatorBuilder: (_, __) => const SizedBox(width: AppSpacing.m),
         itemBuilder: (context, i) {
           final item = items[i];
           return SizedBox(
@@ -33,7 +33,7 @@ class _BannerSection extends StatelessWidget {
                     _itemCover(context, item, width: 100, height: 152, radius: 0),
                     Expanded(
                       child: Padding(
-                        padding: const EdgeInsets.all(12),
+                        padding: const EdgeInsets.all(AppSpacing.m),
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           mainAxisAlignment: MainAxisAlignment.center,
@@ -55,7 +55,7 @@ class _BannerSection extends StatelessWidget {
                                       color: cs.onSurfaceVariant)),
                             ],
                             if (item.badge != null && item.badge!.isNotEmpty) ...[
-                              const SizedBox(height: 8),
+                              const SizedBox(height: AppSpacing.s),
                               AppTag(item.badge!, accent: true),
                             ],
                           ],

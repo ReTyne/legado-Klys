@@ -66,7 +66,7 @@ class _HighlightTagRuleScreenState extends State<HighlightTagRuleScreen> {
               const SizedBox(height: AppSpacing.s),
               TextField(controller: _ruleController, decoration: const InputDecoration(labelText: '匹配规则(正则)', border: OutlineInputBorder())),
               const SizedBox(height: AppSpacing.s),
-              SizedBox(height: 40, child: ListView(scrollDirection: Axis.horizontal, children: _colors.map((c) => GestureDetector(onTap: () => setState(() => _selectedColor = c), child: Container(width: 32, height: 32, margin: const EdgeInsets.symmetric(horizontal: 4), decoration: BoxDecoration(color: c, shape: BoxShape.circle, border: _selectedColor == c ? Border.all(color: Theme.of(context).colorScheme.primary, width: 2) : null)))).toList())),
+              SizedBox(height: 40, child: ListView(scrollDirection: Axis.horizontal, children: _colors.map((c) => GestureDetector(onTap: () => setState(() => _selectedColor = c), child: Container(width: 32, height: 32, margin: const EdgeInsets.symmetric(horizontal: AppSpacing.xs), decoration: BoxDecoration(color: c, shape: BoxShape.circle, border: _selectedColor == c ? Border.all(color: Theme.of(context).colorScheme.primary, width: 2) : null)))).toList())),
               const SizedBox(height: AppSpacing.s),
               SizedBox(width: double.infinity, child: FilledButton(onPressed: _addRule, child: const Text('添加规则'))),
             ]),

@@ -386,7 +386,7 @@ class _SourceEditScreenState extends State<SourceEditScreen> with SingleTickerPr
         content: Row(children: [
           const SizedBox(
               width: 26, height: 26, child: CircularProgressIndicator(strokeWidth: 2.4)),
-          const SizedBox(width: 16),
+          const SizedBox(width: AppSpacing.l),
           Expanded(child: ValueListenableBuilder<String>(
             valueListenable: log,
             builder: (_, v, __) => Text(v, maxLines: 2, overflow: TextOverflow.ellipsis),
@@ -632,19 +632,19 @@ class _SourceEditScreenState extends State<SourceEditScreen> with SingleTickerPr
             children: [
               Text('CSS 选择器', style: TextStyle(fontWeight: FontWeight.bold)),
               Text('class.xxx / id.xxx / tag.li，@text 取文本、@href 取链接、@src 取图片'),
-              SizedBox(height: 8),
+              SizedBox(height: AppSpacing.s),
               Text('XPath', style: TextStyle(fontWeight: FontWeight.bold)),
               Text('//div[@class="xxx"]/text()'),
-              SizedBox(height: 8),
+              SizedBox(height: AppSpacing.s),
               Text('JSONPath', style: TextStyle(fontWeight: FontWeight.bold)),
               Text(r'$.data.list[*].name'),
-              SizedBox(height: 8),
+              SizedBox(height: AppSpacing.s),
               Text('正则', style: TextStyle(fontWeight: FontWeight.bold)),
               Text('@Regex:正则表达式@@替换结果'),
-              SizedBox(height: 8),
+              SizedBox(height: AppSpacing.s),
               Text('JS', style: TextStyle(fontWeight: FontWeight.bold)),
               Text('<js>...</js> 或 @js: 结果为脚本返回值'),
-              SizedBox(height: 8),
+              SizedBox(height: AppSpacing.s),
               Text('URL 模板', style: TextStyle(fontWeight: FontWeight.bold)),
               Text('{{key}} 关键词  {{page}} 页码  {{(page-1)*20}} 计算'),
             ],
@@ -682,7 +682,7 @@ class _SourceEditScreenState extends State<SourceEditScreen> with SingleTickerPr
             builder: (ctx, scrollCtrl) => Column(
               children: [
                 Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  padding: const EdgeInsets.symmetric(horizontal: AppSpacing.l),
                   child: Row(
                     children: [
                       Expanded(child: Text(label, style: Theme.of(ctx).textTheme.titleMedium)),
@@ -699,11 +699,11 @@ class _SourceEditScreenState extends State<SourceEditScreen> with SingleTickerPr
                     height: 40,
                     child: ListView(
                       scrollDirection: Axis.horizontal,
-                      padding: const EdgeInsets.symmetric(horizontal: 12),
+                      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.m),
                       children: [
                         for (final t in tokens)
                           Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: 4),
+                            padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xs),
                             child: ActionChip(
                               label: Text(t),
                               onPressed: () => _insertAtCursor(editCtrl, t),
@@ -720,11 +720,11 @@ class _SourceEditScreenState extends State<SourceEditScreen> with SingleTickerPr
                     height: 40,
                     child: ListView(
                       scrollDirection: Axis.horizontal,
-                      padding: const EdgeInsets.symmetric(horizontal: 12),
+                      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.m),
                       children: [
                         for (final a in _keyboardAssists)
                           Padding(
-                            padding: const EdgeInsets.symmetric(horizontal: 4),
+                            padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xs),
                             child: ActionChip(
                               avatar: const Icon(Icons.keyboard, size: 16),
                               label: Text(a.name.isEmpty ? a.rule : a.name),
@@ -737,7 +737,7 @@ class _SourceEditScreenState extends State<SourceEditScreen> with SingleTickerPr
                   ),
                 Expanded(
                   child: Padding(
-                    padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+                    padding: const EdgeInsets.fromLTRB(AppSpacing.l, AppSpacing.s, AppSpacing.l, AppSpacing.m),
                     child: TextField(
                       controller: editCtrl,
                       autofocus: true,
@@ -813,7 +813,7 @@ class _SourceEditScreenState extends State<SourceEditScreen> with SingleTickerPr
     final theme = Theme.of(context);
     final filled = value.trim().isNotEmpty;
     return Card(
-      margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+      margin: const EdgeInsets.symmetric(horizontal: AppSpacing.m, vertical: AppSpacing.xs),
       color: theme.colorScheme.surfaceContainerHighest.withOpacity(0.4),
       child: ListTile(
         dense: true,
@@ -860,12 +860,12 @@ class _SourceEditScreenState extends State<SourceEditScreen> with SingleTickerPr
   Widget _typeSelector() {
     const names = ['文本', '音频', '图片', '文件', '视频']; // legado 标准顺序 3=文件 4=视频
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.m, vertical: AppSpacing.xs),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Padding(
-            padding: const EdgeInsets.only(left: 4, bottom: 6),
+            padding: const EdgeInsets.only(left: AppSpacing.xs, bottom: 6),
             child: Text('书源类型', style: Theme.of(context).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600)),
           ),
           Wrap(
@@ -1043,7 +1043,7 @@ class _SourceEditScreenState extends State<SourceEditScreen> with SingleTickerPr
         ...top,
         _sectionTitle('规则'),
         for (final f in defs) _ruleCard(group, f),
-        const SizedBox(height: 8),
+        const SizedBox(height: AppSpacing.s),
       ],
     );
   }
@@ -1069,9 +1069,9 @@ class _SourceEditScreenState extends State<SourceEditScreen> with SingleTickerPr
         _sectionTitle('首页模块'),
         _fieldCard('homepageModules', '首页模块 (JSON)',
             hint: 'JSON 数组，每项含 title/url/rule 等字段', mono: true),
-        const SizedBox(height: 12),
+        const SizedBox(height: AppSpacing.m),
         Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16),
+          padding: const EdgeInsets.symmetric(horizontal: AppSpacing.l),
           child: Text(
             r'示例：' '\n'
             r'[' '\n'

@@ -119,11 +119,11 @@ class _ExploreBooksScreenState extends State<ExploreBooksScreen> {
                     )
                   : ListView.builder(
                       controller: _scroll,
-                      padding: const EdgeInsets.all(12),
+                      padding: const EdgeInsets.all(AppSpacing.m),
                       itemCount: _books.length + (_loadingMore ? 1 : 0),
                       itemBuilder: (context, i) {
                         if (i >= _books.length) {
-                          return const Padding(padding: EdgeInsets.all(16), child: AppLoadingIndicator());
+                          return const Padding(padding: EdgeInsets.all(AppSpacing.l), child: AppLoadingIndicator());
                         }
                         final book = _books[i];
                         return ListTile(

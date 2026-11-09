@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:legado_md3/data/model/book_chapter.dart';
 import 'package:legado_md3/help/readaloud/tts_service.dart';
 
+import 'package:legado_md3/ui/theme/app_design.dart';
 /// 朗读控制条（阅读页 TTS 控制页与 RSS 朗读迷你条共用）
 /// * [isPlaying]：播放中（非暂停）时为 true，图标在播放/暂停间切换
 /// * [progressText]：进度说明（如「正在朗读第 3 / 20 段」），null 时不显示
@@ -37,7 +38,7 @@ class TtsControlBar extends StatelessWidget {
           LinearProgressIndicator(value: progress, minHeight: 3),
         if (progressText != null)
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+            padding: const EdgeInsets.symmetric(horizontal: AppSpacing.l, vertical: 6),
             child: Text(
               progressText!,
               style: theme.textTheme.bodySmall
@@ -193,7 +194,7 @@ class _TtsPlayerScreenState extends State<TtsPlayerScreen> {
         title: Text(widget.bookName, maxLines: 1, overflow: TextOverflow.ellipsis),
       ),
       body: Padding(
-        padding: const EdgeInsets.all(24),
+        padding: const EdgeInsets.all(AppSpacing.xl),
         child: Column(
           children: [
             // 章节信息
@@ -203,13 +204,13 @@ class _TtsPlayerScreenState extends State<TtsPlayerScreen> {
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
                     Icon(Icons.headphones, size: 80, color: theme.colorScheme.primary),
-                    const SizedBox(height: 24),
+                    const SizedBox(height: AppSpacing.xl),
                     Text(
                       currentChapter?.title ?? '无章节',
                       style: theme.textTheme.titleLarge?.copyWith(fontWeight: FontWeight.bold),
                       textAlign: TextAlign.center,
                     ),
-                    const SizedBox(height: 8),
+                    const SizedBox(height: AppSpacing.s),
                     Text(
                       '第 ${_currentIndex + 1} / ${widget.chapters.length} 章',
                       style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.onSurfaceVariant),
@@ -230,7 +231,7 @@ class _TtsPlayerScreenState extends State<TtsPlayerScreen> {
               onNext: _nextChapter,
               onExit: () => Navigator.pop(context),
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: AppSpacing.s),
             // 定时停止
             TextButton.icon(
               onPressed: _showTimerDialog,
@@ -240,7 +241,7 @@ class _TtsPlayerScreenState extends State<TtsPlayerScreen> {
                   : '定时停止'),
             ),
 
-            const SizedBox(height: 32),
+            const SizedBox(height: AppSpacing.xxl),
 
             // 语速调节（范围与设置页 tts_rate 一致：0.3 ~ 3.0）
             _buildSlider(
@@ -284,11 +285,11 @@ class _TtsPlayerScreenState extends State<TtsPlayerScreen> {
             // 语言选择
             if (_languages.isNotEmpty)
               Padding(
-                padding: const EdgeInsets.symmetric(vertical: 8),
+                padding: const EdgeInsets.symmetric(vertical: AppSpacing.s),
                 child: Row(
                   children: [
                     const Text('语言:', style: TextStyle(fontWeight: FontWeight.w500)),
-                    const SizedBox(width: 12),
+                    const SizedBox(width: AppSpacing.m),
                     Expanded(
                       child: DropdownButton<String>(
                         isExpanded: true,
@@ -318,7 +319,7 @@ class _TtsPlayerScreenState extends State<TtsPlayerScreen> {
     required ValueChanged<double> onChanged,
   }) {
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
+      padding: const EdgeInsets.symmetric(vertical: AppSpacing.xs),
       child: Row(
         children: [
           SizedBox(width: 50, child: Text(label, style: const TextStyle(fontWeight: FontWeight.w500))),
@@ -345,7 +346,7 @@ class _TtsPlayerScreenState extends State<TtsPlayerScreen> {
           mainAxisSize: MainAxisSize.min,
           children: [
             const Padding(
-              padding: EdgeInsets.all(16),
+              padding: EdgeInsets.all(AppSpacing.l),
               child: Text('定时停止', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
             ),
             ListTile(
@@ -388,7 +389,7 @@ class _TtsPlayerScreenState extends State<TtsPlayerScreen> {
                 Navigator.pop(context);
               },
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: AppSpacing.l),
           ],
         ),
       ),

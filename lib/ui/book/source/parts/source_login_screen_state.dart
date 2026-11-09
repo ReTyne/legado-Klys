@@ -167,7 +167,7 @@ class _SourceLoginScreenState extends State<SourceLoginScreen> {
           final current = _selectValues[name0] ?? options.first['value']!;
           _selectValues[name0] = current;
           _fields.add(Padding(
-            padding: const EdgeInsets.symmetric(vertical: 8),
+            padding: const EdgeInsets.symmetric(vertical: AppSpacing.s),
             child: DropdownButtonFormField<String>(
               value: current,
               isExpanded: true,
@@ -193,7 +193,7 @@ class _SourceLoginScreenState extends State<SourceLoginScreen> {
         _controllers[name] = c;
         _allControllers.add(c);
         _fields.add(Padding(
-          padding: const EdgeInsets.symmetric(vertical: 8),
+          padding: const EdgeInsets.symmetric(vertical: AppSpacing.s),
           child: TextField(
             controller: c,
             obscureText: type == 'password',
@@ -420,11 +420,11 @@ class _SourceLoginScreenState extends State<SourceLoginScreen> {
         : (ok ? cs.primary : cs.error);
     final text = _checkingLogin ? '正在检测登录状态…' : (ok ? '已登录' : '未登录');
     return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
+      margin: const EdgeInsets.only(bottom: AppSpacing.m),
+      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.m, vertical: 2),
       decoration: BoxDecoration(
         color: color.withOpacity(0.08),
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: AppRadius.mAll,
         border: Border.all(color: color.withOpacity(0.4)),
       ),
       child: ListTile(
@@ -510,9 +510,9 @@ class _SourceLoginScreenState extends State<SourceLoginScreen> {
       body: isWeb
           ? Column(
               children: [
-                const SizedBox(height: 8),
+                const SizedBox(height: AppSpacing.s),
                 Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  padding: const EdgeInsets.symmetric(horizontal: AppSpacing.l),
                   child: _loginStatusBanner(),
                 ),
                 Expanded(
@@ -530,17 +530,17 @@ class _SourceLoginScreenState extends State<SourceLoginScreen> {
               children: [
                 Expanded(
                   child: ListView(
-                    padding: const EdgeInsets.all(16),
+                    padding: const EdgeInsets.all(AppSpacing.l),
                     children: [
                       // 登录状态检测横幅（loginCheckJs）
                       _loginStatusBanner(),
                       if ((source.bookSourceComment ?? '').trim().isNotEmpty)
                         Container(
-                          margin: const EdgeInsets.only(bottom: 12),
+                          margin: const EdgeInsets.only(bottom: AppSpacing.m),
                           padding: const EdgeInsets.all(10),
                           decoration: BoxDecoration(
                             color: Theme.of(context).colorScheme.surfaceContainerHighest,
-                            borderRadius: BorderRadius.circular(12),
+                            borderRadius: AppRadius.mAll,
                           ),
                           child: Text(
                             source.bookSourceComment!,
@@ -548,7 +548,7 @@ class _SourceLoginScreenState extends State<SourceLoginScreen> {
                           ),
                         ),
                       ..._fields,
-                      const SizedBox(height: 8),
+                      const SizedBox(height: AppSpacing.s),
                       Wrap(
                         spacing: 8,
                         runSpacing: 8,
@@ -567,10 +567,10 @@ class _SourceLoginScreenState extends State<SourceLoginScreen> {
                         const Text('运行日志', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
                         const SizedBox(height: 6),
                         Container(
-                          padding: const EdgeInsets.all(8),
+                          padding: const EdgeInsets.all(AppSpacing.s),
                           decoration: BoxDecoration(
                             color: Theme.of(context).colorScheme.surfaceContainerHighest,
-                            borderRadius: BorderRadius.circular(12),
+                            borderRadius: AppRadius.mAll,
                           ),
                           child: SelectableText(
                             _logs.join('\n'),

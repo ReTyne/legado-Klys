@@ -11,6 +11,7 @@ import 'package:legado_md3/help/bgm/bgm_service.dart';
 import 'package:legado_md3/help/readaloud/lrc_parser.dart';
 import 'package:legado_md3/ui/book/audio/bgm_panel.dart';
 
+import 'package:legado_md3/ui/theme/app_design.dart';
 /// 有声书播放器界面，对齐原版 AudioPlayActivity。
 ///
 /// 播放逻辑全部在 [AudioPlaybackController]（对应原版 AudioPlayService）中：
@@ -219,11 +220,11 @@ class _AudioPlayerScreenState extends State<AudioPlayerScreen> {
       context: context,
       builder: (c) => SafeArea(
         child: Padding(
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.all(AppSpacing.l),
           child: Column(mainAxisSize: MainAxisSize.min, children: [
             const Text('播放倍速',
                 style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-            const SizedBox(height: 12),
+            const SizedBox(height: AppSpacing.m),
             Wrap(
               spacing: 8,
               children: _rates
@@ -286,7 +287,7 @@ class _AudioPlayerScreenState extends State<AudioPlayerScreen> {
       builder: (c) => SafeArea(
         child: Column(mainAxisSize: MainAxisSize.min, children: [
           const Padding(
-            padding: EdgeInsets.all(16),
+            padding: EdgeInsets.all(AppSpacing.l),
             child: Text('定时关闭',
                 style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
           ),
@@ -377,11 +378,11 @@ class _AudioPlayerScreenState extends State<AudioPlayerScreen> {
         var end = _skipEnd.toDouble();
         return SafeArea(
           child: Padding(
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.all(AppSpacing.l),
             child: Column(mainAxisSize: MainAxisSize.min, children: [
               const Text('跳过片头片尾',
                   style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-              const SizedBox(height: 8),
+              const SizedBox(height: AppSpacing.s),
               Row(children: [
                 const SizedBox(width: 70, child: Text('跳过片头')),
                 Expanded(
@@ -414,7 +415,7 @@ class _AudioPlayerScreenState extends State<AudioPlayerScreen> {
                     width: 40,
                     child: Text('${end.toInt()}s', textAlign: TextAlign.right)),
               ]),
-              const SizedBox(height: 8),
+              const SizedBox(height: AppSpacing.s),
               FilledButton(
                 onPressed: () async {
                   await _audio.setSkip(start: start.toInt(), end: end.toInt());
@@ -448,7 +449,7 @@ class _AudioPlayerScreenState extends State<AudioPlayerScreen> {
         expand: false,
         builder: (c, ctrl) => Column(children: [
           const Padding(
-            padding: EdgeInsets.all(16),
+            padding: EdgeInsets.all(AppSpacing.l),
             child: Text('歌词',
                 style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
           ),
@@ -494,10 +495,10 @@ class _AudioPlayerScreenState extends State<AudioPlayerScreen> {
         child: Column(
           children: [
             Padding(
-              padding: const EdgeInsets.all(16),
+              padding: const EdgeInsets.all(AppSpacing.l),
               child: Row(children: [
                 const Icon(Icons.queue_music),
-                const SizedBox(width: 8),
+                const SizedBox(width: AppSpacing.s),
                 Expanded(
                   child: Text('章节列表（${_chapters.length}）',
                       style: const TextStyle(
@@ -657,17 +658,17 @@ class _AudioPlayerScreenState extends State<AudioPlayerScreen> {
         .clamp(0.0, maxMs);
     return SafeArea(
       child: Column(children: [
-        const SizedBox(height: 16),
+        const SizedBox(height: AppSpacing.l),
         _buildCover(theme),
         const SizedBox(height: 20),
         Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 24),
+          padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xl),
           child: Text(widget.book.name,
               style: theme.textTheme.titleLarge, textAlign: TextAlign.center),
         ),
         const SizedBox(height: 6),
         Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 24),
+          padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xl),
           child: Text(current?.title ?? '加载中...',
               style: theme.textTheme.bodyMedium?.copyWith(
                   color: theme.colorScheme.onSurfaceVariant),
@@ -676,7 +677,7 @@ class _AudioPlayerScreenState extends State<AudioPlayerScreen> {
               overflow: TextOverflow.ellipsis),
         ),
         // 状态行：缓冲 / 多片段 / 进度记忆
-        const SizedBox(height: 8),
+        const SizedBox(height: AppSpacing.s),
         Wrap(
           alignment: WrapAlignment.center,
           spacing: 8,
@@ -708,9 +709,9 @@ class _AudioPlayerScreenState extends State<AudioPlayerScreen> {
           ],
         ),
         if (_lyrics.isNotEmpty) ...[
-          const SizedBox(height: 12),
+          const SizedBox(height: AppSpacing.m),
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 24),
+            padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xl),
             child: GestureDetector(
               onTap: _showLyricList,
               child: Text(
@@ -732,7 +733,7 @@ class _AudioPlayerScreenState extends State<AudioPlayerScreen> {
         ],
         const Spacer(),
         Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 12),
+          padding: const EdgeInsets.symmetric(horizontal: AppSpacing.m),
           child: Column(children: [
             SliderTheme(
               data: SliderTheme.of(context).copyWith(
@@ -756,7 +757,7 @@ class _AudioPlayerScreenState extends State<AudioPlayerScreen> {
               ),
             ),
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 12),
+              padding: const EdgeInsets.symmetric(horizontal: AppSpacing.m),
               child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
@@ -766,7 +767,7 @@ class _AudioPlayerScreenState extends State<AudioPlayerScreen> {
             ),
           ]),
         ),
-        const SizedBox(height: 8),
+        const SizedBox(height: AppSpacing.s),
         Row(
           mainAxisAlignment: MainAxisAlignment.spaceEvenly,
           children: [
@@ -826,7 +827,7 @@ class _AudioPlayerScreenState extends State<AudioPlayerScreen> {
     final url = widget.book.customCoverUrl ?? widget.book.coverUrl;
     if (url != null && url.startsWith('http')) {
       return ClipRRect(
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: AppRadius.lAll,
         child: CachedNetworkImage(
           imageUrl: url,
           width: 200,
@@ -849,7 +850,7 @@ class _AudioPlayerScreenState extends State<AudioPlayerScreen> {
       width: 200,
       height: 200,
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(16),
+        borderRadius: AppRadius.lAll,
         gradient: LinearGradient(
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
@@ -892,12 +893,12 @@ class _AudioPlayerScreenState extends State<AudioPlayerScreen> {
         onTap: () => setState(() => _miniMode = false),
         child: Material(
           elevation: 6,
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: AppRadius.mAll,
           color: Theme.of(context).colorScheme.surfaceContainerHighest,
           child: Row(children: [
-            const SizedBox(width: 8),
+            const SizedBox(width: AppSpacing.s),
             Icon(Icons.album, color: Theme.of(context).colorScheme.primary),
-            const SizedBox(width: 8),
+            const SizedBox(width: AppSpacing.s),
             Expanded(
               child: Column(
                 mainAxisAlignment: MainAxisAlignment.center,

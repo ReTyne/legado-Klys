@@ -12,6 +12,7 @@ import 'package:legado_md3/help/source/source_engine.dart';
 import 'package:legado_md3/help/storage/book_progress_sync.dart';
 import 'package:legado_md3/help/translate/manga_translate_overlay.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:legado_md3/ui/theme/app_design.dart';
 part 'parts/manga_reader_screen_state.dart';
 part 'parts/manga_image.dart';
 part 'parts/manga_image_state.dart';

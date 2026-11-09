@@ -99,7 +99,7 @@ class _CloudTtsScreenState extends State<CloudTtsScreen> {
         padding: EdgeInsets.only(
             bottom: MediaQuery.of(sheetCtx).viewInsets.bottom),
         child: SingleChildScrollView(
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.all(AppSpacing.l),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.start,
@@ -107,24 +107,24 @@ class _CloudTtsScreenState extends State<CloudTtsScreen> {
               Text(engine.name,
                   style: const TextStyle(
                       fontSize: 18, fontWeight: FontWeight.bold)),
-              const SizedBox(height: 16),
+              const SizedBox(height: AppSpacing.l),
               if (engine.type != 'system') ...[
                 TextField(
                   controller: apiKeyController,
                   decoration: const InputDecoration(labelText: 'API Key'),
                   obscureText: true,
                 ),
-                const SizedBox(height: 12),
+                const SizedBox(height: AppSpacing.m),
                 TextField(
                   controller: urlController,
                   decoration: const InputDecoration(labelText: 'API URL'),
                 ),
-                const SizedBox(height: 12),
+                const SizedBox(height: AppSpacing.m),
                 TextField(
                   controller: regionController,
                   decoration: const InputDecoration(labelText: '区域'),
                 ),
-                const SizedBox(height: 12),
+                const SizedBox(height: AppSpacing.m),
                 // 语音改为「下拉选择」：点击右侧按钮调 getVoices() 后填入 voiceController。
                 TextField(
                   controller: voiceController,
@@ -138,7 +138,7 @@ class _CloudTtsScreenState extends State<CloudTtsScreen> {
                     ),
                   ),
                 ),
-                const SizedBox(height: 16),
+                const SizedBox(height: AppSpacing.l),
               ],
               SizedBox(
                 width: double.infinity,
@@ -285,7 +285,7 @@ class _CloudTtsScreenState extends State<CloudTtsScreen> {
                   onTap: () => _editHttpTts(),
                 ),
                 Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 24),
+                  padding: const EdgeInsets.fromLTRB(AppSpacing.l, AppSpacing.s, AppSpacing.l, AppSpacing.xl),
                   child: Text(
                     '说明：自定义 HTTP TTS 已可增删改与启用；其参与朗读需主代理在 tts_service 启动时读取 getHttpTTS() 注册引擎。',
                     style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant),
@@ -299,7 +299,7 @@ class _CloudTtsScreenState extends State<CloudTtsScreen> {
   Widget _buildEngineTile(CloudTtsEngine engine, ColorScheme cs) {
     final isSystem = engine.type == 'system';
     return Card(
-      margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+      margin: const EdgeInsets.symmetric(horizontal: AppSpacing.m, vertical: AppSpacing.xs),
       child: ListTile(
         leading: Icon(isSystem ? Icons.phone_android : Icons.cloud_outlined),
         title: Text(engine.name),
@@ -318,7 +318,7 @@ class _CloudTtsScreenState extends State<CloudTtsScreen> {
 
   Widget _buildHttpTtsTile(HttpTTS tts, ColorScheme cs) {
     return Card(
-      margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+      margin: const EdgeInsets.symmetric(horizontal: AppSpacing.m, vertical: AppSpacing.xs),
       child: ListTile(
         leading: Icon(Icons.http_outlined,
             color: tts.enabled == 1 ? cs.primary : cs.onSurfaceVariant),
@@ -416,13 +416,13 @@ class _HttpTtsEditDialogState extends State<_HttpTtsEditDialog> {
               autofocus: true,
               decoration: const InputDecoration(labelText: '名称'),
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: AppSpacing.s),
             TextField(
               controller: _url,
               decoration: const InputDecoration(
                   labelText: 'URL', hintText: 'https://example.com/tts'),
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: AppSpacing.s),
             ListTile(
               dense: true,
               contentPadding: EdgeInsets.zero,
@@ -439,7 +439,7 @@ class _HttpTtsEditDialogState extends State<_HttpTtsEditDialog> {
                 border: OutlineInputBorder(),
               ),
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: AppSpacing.s),
             TextField(
               controller: _body,
               maxLines: 3,

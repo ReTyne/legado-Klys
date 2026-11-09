@@ -79,16 +79,16 @@ class _ClickActionConfigScreenState extends State<ClickActionConfigScreen> {
         ],
       ),
       body: Column(children: [
-        Padding(padding: const EdgeInsets.all(16), child: Text('点击下方格子，为屏幕对应区域设置点击动作（从上到下、从左到右对应屏幕 3×3 分区）', style: TextStyle(fontSize: 13, color: cs.onSurfaceVariant))),
-        Expanded(child: Padding(padding: const EdgeInsets.all(16), child: GridView.builder(
+        Padding(padding: const EdgeInsets.all(AppSpacing.l), child: Text('点击下方格子，为屏幕对应区域设置点击动作（从上到下、从左到右对应屏幕 3×3 分区）', style: TextStyle(fontSize: 13, color: cs.onSurfaceVariant))),
+        Expanded(child: Padding(padding: const EdgeInsets.all(AppSpacing.l), child: GridView.builder(
           physics: const NeverScrollableScrollPhysics(),
           gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(crossAxisCount: 3, mainAxisSpacing: 8, crossAxisSpacing: 8, childAspectRatio: 1),
           itemCount: 9,
           itemBuilder: (c, i) => InkWell(
             onTap: () => _editCell(i),
-            borderRadius: BorderRadius.circular(12),
+            borderRadius: AppRadius.mAll,
             child: Container(
-              decoration: BoxDecoration(border: Border.all(color: Theme.of(context).colorScheme.outlineVariant), borderRadius: BorderRadius.circular(12), color: Theme.of(context).colorScheme.surfaceContainerHighest),
+              decoration: BoxDecoration(border: Border.all(color: Theme.of(context).colorScheme.outlineVariant), borderRadius: AppRadius.mAll, color: Theme.of(context).colorScheme.surfaceContainerHighest),
               child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [
                 Icon(icons[_grid[i]], size: 28),
                 const SizedBox(height: 6),
@@ -97,7 +97,7 @@ class _ClickActionConfigScreenState extends State<ClickActionConfigScreen> {
             ),
           ),
         ))),
-        Padding(padding: const EdgeInsets.all(16), child: Text('提示：中间区域通常设为「显示菜单」，左右两侧用于翻页', style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant))),
+        Padding(padding: const EdgeInsets.all(AppSpacing.l), child: Text('提示：中间区域通常设为「显示菜单」，左右两侧用于翻页', style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant))),
       ]),
     );
   }

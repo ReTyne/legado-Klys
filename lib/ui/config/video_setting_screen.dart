@@ -47,7 +47,7 @@ class _VideoSettingScreenState extends State<VideoSettingScreen> {
       body: _loading
           ? const AppLoadingIndicator()
           : ListView(
-              padding: const EdgeInsets.only(bottom: 24),
+              padding: const EdgeInsets.only(bottom: AppSpacing.xl),
               children: [
                 AppSettingsGroup(
                   title: '播放行为',

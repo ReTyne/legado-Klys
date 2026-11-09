@@ -309,11 +309,11 @@ class _CacheManageScreenState extends State<CacheManageScreen> {
               children: [
                 if (_overLimit)
                   Container(
-                    margin: const EdgeInsets.fromLTRB(12, 12, 12, 0),
-                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                    margin: const EdgeInsets.fromLTRB(AppSpacing.m, AppSpacing.m, AppSpacing.m, 0),
+                    padding: const EdgeInsets.symmetric(horizontal: AppSpacing.l, vertical: AppSpacing.s),
                     decoration: BoxDecoration(
                       color: theme.colorScheme.errorContainer,
-                      borderRadius: BorderRadius.circular(12),
+                      borderRadius: AppRadius.mAll,
                     ),
                     child: Row(
                       children: [
@@ -331,7 +331,7 @@ class _CacheManageScreenState extends State<CacheManageScreen> {
                     ),
                   ),
                 Container(
-                  padding: const EdgeInsets.all(16),
+                  padding: const EdgeInsets.all(AppSpacing.l),
                   color: theme.colorScheme.primaryContainer,
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -343,14 +343,14 @@ class _CacheManageScreenState extends State<CacheManageScreen> {
                 ),
                 // 精确体积明细（真实 UTF-8 字节与文件体积，不再 ×2 估算）
                 Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+                  padding: const EdgeInsets.fromLTRB(AppSpacing.l, AppSpacing.s, AppSpacing.l, AppSpacing.s),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       _sizeRow('caches 表正文', _cacheTableBytes),
                       _sizeRow('章节正文缓存', _chapterBytes),
                       _sizeRow('本地文件', _fileBytes),
-                      const SizedBox(height: 4),
+                      const SizedBox(height: AppSpacing.xs),
                       Text(
                         '体积按 content 的真实 UTF-8 字节与文件实际大小统计；'
                         '写缓存时 DownloadService 依下列阈值自动 LRU。',
@@ -456,30 +456,30 @@ class _CacheManageScreenState extends State<CacheManageScreen> {
   /// 本地备份卡片：展示 backup_path 解析结果、备份文件与「清理旧备份（保留 N 份）」
   Widget _buildBackupSection(ThemeData theme) {
     return Padding(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(AppSpacing.l),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text('本地备份', style: theme.textTheme.titleSmall),
-          const SizedBox(height: 8),
+          const SizedBox(height: AppSpacing.s),
           Text(
             _backupDirPath.isEmpty ? '目录读取中…' : '目录: $_backupDirPath',
             style: TextStyle(fontSize: 11, color: theme.colorScheme.onSurfaceVariant),
           ),
           if (_backupDirWarning != null)
             Padding(
-              padding: const EdgeInsets.only(top: 4),
+              padding: const EdgeInsets.only(top: AppSpacing.xs),
               child: Text(
                 '$_backupDirWarning，已回退默认目录',
                 style: TextStyle(fontSize: 11, color: theme.colorScheme.error),
               ),
             ),
-          const SizedBox(height: 4),
+          const SizedBox(height: AppSpacing.xs),
           Text(
             '${_backupFiles.length} 个备份 · ${_formatBytes(_backupTotalBytes)} · 保留最近 $_keepCount 份',
             style: TextStyle(fontSize: 11, color: theme.colorScheme.onSurfaceVariant),
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: AppSpacing.s),
           Align(
             alignment: Alignment.centerRight,
             child: OutlinedButton.icon(

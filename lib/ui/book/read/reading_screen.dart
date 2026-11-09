@@ -794,12 +794,12 @@ class _ReadingScreenState extends State<ReadingScreen>
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text('原文', style: TextStyle(fontSize: 12, color: cs.primary)),
-                const SizedBox(height: 4),
+                const SizedBox(height: AppSpacing.xs),
                 Text(src, style: const TextStyle(fontSize: 13)),
                 const Divider(height: 16),
                 Text('结果（${enabled.length} 条规则）',
                     style: TextStyle(fontSize: 12, color: cs.primary)),
-                const SizedBox(height: 4),
+                const SizedBox(height: AppSpacing.xs),
                 Text(out, style: const TextStyle(fontSize: 13)),
               ],
             ),
@@ -1008,10 +1008,10 @@ class _ReadingScreenState extends State<ReadingScreen>
             children: [
               Text(progress,
                   style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
-              const SizedBox(height: 12),
+              const SizedBox(height: AppSpacing.m),
               Text('章节摘要（从正文自动提取，可编辑保存）',
                   style: TextStyle(fontSize: 12, color: cs.primary)),
-              const SizedBox(height: 8),
+              const SizedBox(height: AppSpacing.s),
               TextField(
                 controller: controller,
                 maxLines: 6,
@@ -1116,11 +1116,11 @@ class _ReadingScreenState extends State<ReadingScreen>
         (idx.calibratedProgress(_currentChapterIndex, _currentPage) * 100)
             .toStringAsFixed(1);
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+      padding: const EdgeInsets.fromLTRB(AppSpacing.l, 0, AppSpacing.l, AppSpacing.s),
       child: Row(
         children: [
           Icon(Icons.menu_book_outlined, size: 14, color: fg),
-          const SizedBox(width: 8),
+          const SizedBox(width: AppSpacing.s),
           Expanded(
             child: Text(
               '${idx.summary(_currentChapterIndex)} · 已读 $pct%',
@@ -1147,14 +1147,14 @@ class _ReadingScreenState extends State<ReadingScreen>
   Widget _buildBrightnessSystemRow(Color fg) {
     final rp = context.read<ReadProvider>();
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+      padding: const EdgeInsets.fromLTRB(AppSpacing.l, 0, AppSpacing.l, AppSpacing.s),
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
           Row(
             children: [
               Icon(Icons.brightness_6_outlined, size: 18, color: fg),
-              const SizedBox(width: 8),
+              const SizedBox(width: AppSpacing.s),
               Text('跟随系统亮度', style: TextStyle(color: fg, fontSize: 13)),
               Switch(
                 value: _followSystemBrightness,
@@ -1171,7 +1171,7 @@ class _ReadingScreenState extends State<ReadingScreen>
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Icon(_batteryIcon(_batteryLevel), size: 14, color: fg),
-                    const SizedBox(width: 4),
+                    const SizedBox(width: AppSpacing.xs),
                     Text('$_batteryLevel%',
                         style: TextStyle(color: fg, fontSize: 12)),
                   ],
@@ -2311,7 +2311,7 @@ class _ReadingScreenState extends State<ReadingScreen>
             // 章节进度行（对齐 E tv_pre / seek_read_page / tv_next）
             // 接分支：progressBarBehavior='page' 时滑块控制章内页，否则保持原按章行为
             Padding(
-              padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+              padding: const EdgeInsets.fromLTRB(AppSpacing.l, AppSpacing.s, AppSpacing.l, AppSpacing.s),
               child: Row(
                 children: [
                   IconButton(
@@ -2400,7 +2400,7 @@ class _ReadingScreenState extends State<ReadingScreen>
             ),
             // 字号 / 行距（对齐 E「界面」ReadStyleDialog 的字号调节，常驻便于快捷调整）
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              padding: const EdgeInsets.symmetric(horizontal: AppSpacing.l, vertical: AppSpacing.s),
               child: Row(
                 children: [
                   Text('字号', style: TextStyle(color: barFg)),
@@ -2420,7 +2420,7 @@ class _ReadingScreenState extends State<ReadingScreen>
               height: 60,
               child: ListView.builder(
                 scrollDirection: Axis.horizontal,
-                padding: const EdgeInsets.symmetric(horizontal: 16),
+                padding: const EdgeInsets.symmetric(horizontal: AppSpacing.l),
                 itemCount: ReadConfig.presets.length,
                 itemBuilder: (context, index) {
                   final preset = ReadConfig.presets[index];
@@ -2434,10 +2434,10 @@ class _ReadingScreenState extends State<ReadingScreen>
                     },
                     child: Container(
                       width: 56,
-                      margin: const EdgeInsets.only(right: 12),
+                      margin: const EdgeInsets.only(right: AppSpacing.m),
                       decoration: BoxDecoration(
                         color: Color(bg),
-                        borderRadius: BorderRadius.circular(8),
+                        borderRadius: AppRadius.sAll,
                         border: Border.all(
                           color: isSelected ? Theme.of(context).colorScheme.primary : Colors.transparent,
                           width: 2,
@@ -2454,7 +2454,7 @@ class _ReadingScreenState extends State<ReadingScreen>
             // 对齐 E view_read_menu.xml ll_bottom_bg 的五个主按钮：
             // 目录 / 朗读 / 界面 / 设置 / 备忘（ll_memo，§3.B3）
             Padding(
-              padding: const EdgeInsets.symmetric(vertical: 8),
+              padding: const EdgeInsets.symmetric(vertical: AppSpacing.s),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                 children: [
@@ -2479,7 +2479,7 @@ class _ReadingScreenState extends State<ReadingScreen>
   /// 对齐 E view_read_menu.xml ll_floating_button：搜索 / 自动翻页 / 替换 / 夜间 水平行
   Widget _buildFloatingButtonRow(Color fg) {
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.l, vertical: AppSpacing.xs),
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceEvenly,
         children: [
@@ -2592,7 +2592,7 @@ class _ReadingScreenState extends State<ReadingScreen>
     final rp = context.read<ReadProvider>();
     const names = ['无', '预览', '浏览器'];
     showModalBottomSheet(context: context, builder: (ctx) => SafeArea(child: Column(mainAxisSize: MainAxisSize.min, children: [
-      const Padding(padding: EdgeInsets.all(16), child: Text('图片样式', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold))),
+      const Padding(padding: EdgeInsets.all(AppSpacing.l), child: Text('图片样式', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold))),
       for (var i = 0; i < names.length; i++)
         RadioListTile<int>(title: Text(names[i]), value: i, groupValue: rp.config.clickImgWay,
           onChanged: (v) { rp.updateConfig((c) => c.clickImgWay = v ?? 0); Navigator.pop(ctx); }),
@@ -2618,14 +2618,14 @@ class _ReadingScreenState extends State<ReadingScreen>
   Widget _buildBottomAction(IconData icon, String label, Color fg, VoidCallback onTap) {
     return InkWell(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(12),
+      borderRadius: AppRadius.mAll,
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+        padding: const EdgeInsets.symmetric(horizontal: AppSpacing.m, vertical: AppSpacing.s),
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
             Icon(icon, size: 22, color: fg),
-            const SizedBox(height: 4),
+            const SizedBox(height: AppSpacing.xs),
             Text(label, style: TextStyle(fontSize: 11, color: fg)),
           ],
         ),
@@ -2786,70 +2786,70 @@ class _ReadingScreenState extends State<ReadingScreen>
             state.copySelection(SelectionChangedCause.toolbar);
             Navigator.pop(context);
             ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('已复制'), duration: Duration(seconds: 1)));
-          }, child: const Padding(padding: EdgeInsets.all(12), child: Text('复制'))));
+          }, child: const Padding(padding: EdgeInsets.all(AppSpacing.m), child: Text('复制'))));
           break;
         case 'marking':
           children.add(InkWell(onTap: () async {
             final text = await grab();
             if (mounted && context.mounted) Navigator.pop(context);
             _addMarking(text);
-          }, child: const Padding(padding: EdgeInsets.all(12), child: Text('划线'))));
+          }, child: const Padding(padding: EdgeInsets.all(AppSpacing.m), child: Text('划线'))));
           break;
         case 'dict':
           children.add(InkWell(onTap: () async {
             final w = await grab();
             if (mounted && context.mounted) Navigator.pop(context);
             _dictLookup(w);
-          }, child: const Padding(padding: EdgeInsets.all(12), child: Text('查词'))));
+          }, child: const Padding(padding: EdgeInsets.all(AppSpacing.m), child: Text('查词'))));
           break;
         case 'translate':
           children.add(InkWell(onTap: () async {
             final w = await grab();
             if (mounted && context.mounted) Navigator.pop(context);
             _translateSelection(w);
-          }, child: const Padding(padding: EdgeInsets.all(12), child: Text('翻译'))));
+          }, child: const Padding(padding: EdgeInsets.all(AppSpacing.m), child: Text('翻译'))));
           break;
         case 'bookmark':
           children.add(InkWell(onTap: () async {
             final w = await grab();
             if (mounted && context.mounted) Navigator.pop(context);
             _addBookmark(note: w);
-          }, child: const Padding(padding: EdgeInsets.all(12), child: Text('加书签'))));
+          }, child: const Padding(padding: EdgeInsets.all(AppSpacing.m), child: Text('加书签'))));
           break;
         case 'tts':
           children.add(InkWell(onTap: () async {
             final w = await grab();
             if (mounted && context.mounted) Navigator.pop(context);
             if (w.trim().isNotEmpty) _speakSelection(w);
-          }, child: const Padding(padding: EdgeInsets.all(12), child: Text('朗读'))));
+          }, child: const Padding(padding: EdgeInsets.all(AppSpacing.m), child: Text('朗读'))));
           break;
         case 'search':
           children.add(InkWell(onTap: () async {
             final w = await grab();
             if (mounted && context.mounted) Navigator.pop(context);
             _showSearchInBook(initialKeyword: w.trim());
-          }, child: const Padding(padding: EdgeInsets.all(12), child: Text('搜索正文'))));
+          }, child: const Padding(padding: EdgeInsets.all(AppSpacing.m), child: Text('搜索正文'))));
           break;
         case 'browser':
           children.add(InkWell(onTap: () async {
             final w = await grab();
             if (mounted && context.mounted) Navigator.pop(context);
             _openInBrowser(w.trim());
-          }, child: const Padding(padding: EdgeInsets.all(12), child: Text('浏览器'))));
+          }, child: const Padding(padding: EdgeInsets.all(AppSpacing.m), child: Text('浏览器'))));
           break;
         case 'share':
           children.add(InkWell(onTap: () async {
             final w = await grab();
             if (mounted && context.mounted) Navigator.pop(context);
             _shareSelection(w);
-          }, child: const Padding(padding: EdgeInsets.all(12), child: Text('分享'))));
+          }, child: const Padding(padding: EdgeInsets.all(AppSpacing.m), child: Text('分享'))));
           break;
         case 'replace':
           children.add(InkWell(onTap: () async {
             final w = await grab();
             if (mounted && context.mounted) Navigator.pop(context);
             _previewReplace(w);
-          }, child: const Padding(padding: EdgeInsets.all(12), child: Text('替换'))));
+          }, child: const Padding(padding: EdgeInsets.all(AppSpacing.m), child: Text('替换'))));
           break;
       }
     }
@@ -2903,7 +2903,7 @@ class _ReadingScreenState extends State<ReadingScreen>
         title: const Text('替换预览'),
         content: SingleChildScrollView(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Text('原文：$text', style: TextStyle(fontSize: 13, color: Theme.of(context).colorScheme.onSurfaceVariant)),
-          const SizedBox(height: 8),
+          const SizedBox(height: AppSpacing.s),
           Text('结果：$out', style: const TextStyle(fontSize: 15)),
         ])),
         actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('关闭'))],
@@ -2921,7 +2921,7 @@ class _ReadingScreenState extends State<ReadingScreen>
         title: const Text('翻译'),
         content: SingleChildScrollView(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Text('原文：$text', style: TextStyle(fontSize: 13, color: Theme.of(context).colorScheme.onSurfaceVariant)),
-          const SizedBox(height: 8),
+          const SizedBox(height: AppSpacing.s),
           Text('译文：$out', style: const TextStyle(fontSize: 15)),
         ])),
         actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('关闭'))],
@@ -2948,7 +2948,7 @@ class _ReadingScreenState extends State<ReadingScreen>
   void _selectCharset() {
     const charsets = ['UTF-8', 'GBK', 'GB2312', 'GB18030', 'Big5', 'ISO-8859-1'];
     showModalBottomSheet(context: context, builder: (c) => SafeArea(child: Column(mainAxisSize: MainAxisSize.min, children: [
-      const Padding(padding: EdgeInsets.all(16), child: Text('选择编码', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold))),
+      const Padding(padding: EdgeInsets.all(AppSpacing.l), child: Text('选择编码', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold))),
       ...charsets.map((cs) => ListTile(title: Text(cs), onTap: () async {
         Navigator.pop(c);
         _engine.setCharset(cs == 'UTF-8' ? null : cs.toLowerCase());
@@ -2966,7 +2966,7 @@ class _ReadingScreenState extends State<ReadingScreen>
     final current = context.read<ReadProvider>().config.chineseConverter;
     const names = ['不转换', '转为简体', '转为繁体'];
     showModalBottomSheet(context: context, builder: (c) => SafeArea(child: Column(mainAxisSize: MainAxisSize.min, children: [
-      const Padding(padding: EdgeInsets.all(16), child: Text('简繁转换', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold))),
+      const Padding(padding: EdgeInsets.all(AppSpacing.l), child: Text('简繁转换', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold))),
       for (var i = 0; i < names.length; i++)
         RadioListTile<int>(
           title: Text(names[i]),
@@ -3079,12 +3079,12 @@ class _ReadingScreenState extends State<ReadingScreen>
           mainAxisSize: MainAxisSize.min,
           children: [
             const Padding(
-              padding: EdgeInsets.all(16),
+              padding: EdgeInsets.all(AppSpacing.l),
               child: Text('书签列表', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
             ),
             if (bookmarks.isEmpty)
               Padding(
-                padding: const EdgeInsets.all(32),
+                padding: const EdgeInsets.all(AppSpacing.xxl),
                 child: Text('暂无书签',
                     style: TextStyle(
                         color: Theme.of(context).colorScheme.onSurfaceVariant)),

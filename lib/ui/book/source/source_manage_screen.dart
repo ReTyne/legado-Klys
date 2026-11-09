@@ -723,12 +723,12 @@ class _SourceManageScreenState extends State<SourceManageScreen> {
           width: double.maxFinite,
           child: Column(mainAxisSize: MainAxisSize.min, children: [
             Padding(
-              padding: const EdgeInsets.only(bottom: 8),
+              padding: const EdgeInsets.only(bottom: AppSpacing.s),
               child: Text('分组来源于书源；可在此重命名或解散（解散后书源回到未分组）。新建分组请在编辑书源或多选“添加分组”中设置。',
                   style: TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.onSurfaceVariant)),
             ),
             if (_groups.isEmpty)
-              const Padding(padding: EdgeInsets.all(16), child: Text('暂无分组'))
+              const Padding(padding: EdgeInsets.all(AppSpacing.l), child: Text('暂无分组'))
             else
               Flexible(
                 child: ListView(
@@ -972,7 +972,7 @@ class _SourceManageScreenState extends State<SourceManageScreen> {
             Container(
               width: double.infinity,
               color: Theme.of(context).colorScheme.secondaryContainer,
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 2),
+              padding: const EdgeInsets.symmetric(horizontal: AppSpacing.m, vertical: 2),
               child: Row(
                 children: [
                   const Icon(Icons.filter_alt, size: 16),
@@ -1001,9 +1001,9 @@ class _SourceManageScreenState extends State<SourceManageScreen> {
                 : _filteredSources.isEmpty
                     ? _buildEmptyState()
                     : ListView.separated(
-                        padding: const EdgeInsets.all(16),
+                        padding: const EdgeInsets.all(AppSpacing.l),
                         itemCount: _filteredSources.length,
-                        separatorBuilder: (_, __) => const SizedBox(height: 8),
+                        separatorBuilder: (_, __) => const SizedBox(height: AppSpacing.s),
                         itemBuilder: (context, index) {
                           final source = _filteredSources[index];
                           final selected = _selectedIds.contains(source.bookSourceUrl);
@@ -1101,10 +1101,10 @@ class _SourceManageScreenState extends State<SourceManageScreen> {
           title: const Text('书源校验'),
           content: Column(mainAxisSize: MainAxisSize.min, children: [
             LinearProgressIndicator(value: sources.isEmpty ? 0 : done / sources.length),
-            const SizedBox(height: 12),
+            const SizedBox(height: AppSpacing.m),
             Text('进度 $done/${sources.length}  有效 $valid  无效 $invalid'),
             if (current.isNotEmpty) ...[
-              const SizedBox(height: 4),
+              const SizedBox(height: AppSpacing.xs),
               Text('正在校验：$current',
                   maxLines: 1, overflow: TextOverflow.ellipsis,
                   style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 12)),
@@ -1189,7 +1189,7 @@ class _SourceManageScreenState extends State<SourceManageScreen> {
                     helperText: '单个书源校验的总超时时间',
                   ),
                 ),
-                const SizedBox(height: 8),
+                const SizedBox(height: AppSpacing.s),
                 SwitchListTile(
                   title: const Text('写入错误注释'),
                   subtitle: const Text('校验失败时把错误信息写入书源注释'),
@@ -1386,19 +1386,19 @@ class _SourceManageScreenState extends State<SourceManageScreen> {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Text('URL: ${source.bookSourceUrl}'),
-                  const SizedBox(height: 8),
+                  const SizedBox(height: AppSpacing.s),
                   Text('分组: ${source.bookSourceGroup ?? "默认"}'),
-                  const SizedBox(height: 8),
+                  const SizedBox(height: AppSpacing.s),
                   Text('类型: ${source.bookSourceType == 0 ? "文本" : source.bookSourceType == 1 ? "音频" : source.bookSourceType == 2 ? "图片" : source.bookSourceType == 3 ? "文件" : "视频"}'),
-                  const SizedBox(height: 8),
+                  const SizedBox(height: AppSpacing.s),
                   Text('搜索URL: ${source.searchUrl ?? "无"}'),
-                  const SizedBox(height: 8),
+                  const SizedBox(height: AppSpacing.s),
                   Text('发现URL: ${source.exploreUrl ?? "无"}'),
-                  const SizedBox(height: 8),
+                  const SizedBox(height: AppSpacing.s),
                   Text('响应时间: ${source.respondTime}ms'),
-                  const SizedBox(height: 8),
+                  const SizedBox(height: AppSpacing.s),
                   Text('权重: ${source.weight}'),
-                  const SizedBox(height: 8),
+                  const SizedBox(height: AppSpacing.s),
                   Text('备注: ${source.bookSourceComment ?? "无"}'),
                 ],
               )),

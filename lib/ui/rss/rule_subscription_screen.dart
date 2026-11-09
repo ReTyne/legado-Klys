@@ -95,10 +95,10 @@ class _RuleSubscriptionScreenState extends State<RuleSubscriptionScreen> {
             child: Column(mainAxisSize: MainAxisSize.min, children: [
               TextField(controller: nameCtl,
                   decoration: const InputDecoration(labelText: '名称')),
-              const SizedBox(height: 12),
+              const SizedBox(height: AppSpacing.m),
               TextField(controller: urlCtl, maxLines: 2,
                   decoration: const InputDecoration(labelText: '订阅URL')),
-              const SizedBox(height: 12),
+              const SizedBox(height: AppSpacing.m),
               DropdownButtonFormField<int>(
                 value: type,
                 decoration: const InputDecoration(labelText: '规则类型'),
@@ -106,7 +106,7 @@ class _RuleSubscriptionScreenState extends State<RuleSubscriptionScreen> {
                     (i) => DropdownMenuItem(value: i, child: Text(_typeNames[i]))),
                 onChanged: (v) => setD(() => type = v ?? 3),
               ),
-              const SizedBox(height: 8),
+              const SizedBox(height: AppSpacing.s),
               SwitchListTile(
                 contentPadding: EdgeInsets.zero,
                 title: const Text('自动更新'),

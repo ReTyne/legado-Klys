@@ -162,11 +162,11 @@ class _RefreshProgressSheetState extends State<RefreshProgressSheet> {
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Padding(
-              padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+              padding: const EdgeInsets.fromLTRB(AppSpacing.l, AppSpacing.l, AppSpacing.l, AppSpacing.s),
               child: Row(
                 children: [
                   const Icon(Icons.sync_outlined, size: 20),
-                  const SizedBox(width: 8),
+                  const SizedBox(width: AppSpacing.s),
                   Expanded(
                     child: Text('刷新与云进度 · ${widget.bookName}',
                         maxLines: 1,
@@ -225,7 +225,7 @@ class _RefreshProgressSheetState extends State<RefreshProgressSheet> {
               title: const Text('查看本地进度快照'),
               onTap: _snapshot,
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: AppSpacing.m),
           ],
         ),
       ),

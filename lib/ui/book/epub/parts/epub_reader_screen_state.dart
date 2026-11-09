@@ -338,7 +338,7 @@ class _EpubReaderScreenState extends State<EpubReaderScreen> {
       builder: (c) => SafeArea(
         child: Column(mainAxisSize: MainAxisSize.min, children: [
           const Padding(
-            padding: EdgeInsets.all(16),
+            padding: EdgeInsets.all(AppSpacing.l),
             child: Text('目录',
                 style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
           ),
@@ -369,11 +369,11 @@ class _EpubReaderScreenState extends State<EpubReaderScreen> {
       builder: (c) => StatefulBuilder(builder: (c, setLocal) {
         return SafeArea(
           child: Padding(
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.all(AppSpacing.l),
             child: Column(mainAxisSize: MainAxisSize.min, children: [
               const Text('阅读设置',
                   style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-              const SizedBox(height: 12),
+              const SizedBox(height: AppSpacing.m),
               Row(children: [
                 const Text('正文字号'),
                 Expanded(
@@ -505,7 +505,7 @@ class _EpubReaderScreenState extends State<EpubReaderScreen> {
                     SafeArea(
                       child: Container(
                         padding: const EdgeInsets.symmetric(
-                            horizontal: 12, vertical: 6),
+                            horizontal: AppSpacing.m, vertical: 6),
                         color: cs.surfaceContainerHighest,
                         child: Row(
                           children: [

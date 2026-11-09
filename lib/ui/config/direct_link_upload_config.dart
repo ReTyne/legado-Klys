@@ -5,6 +5,7 @@ import 'package:flutter/services.dart';
 
 import 'package:legado_md3/help/storage/direct_link_upload.dart';
 
+import 'package:legado_md3/ui/theme/app_design.dart';
 /// 直链上传规则配置对话框（E: ui/config/DirectLinkUploadConfig.kt）。
 ///
 /// 编辑当前生效的上传规则；支持从内置默认规则导入、复制/粘贴规则 JSON、
@@ -118,7 +119,7 @@ class _DirectLinkUploadConfigDialogState
                 ),
                 onTap: () => Navigator.pop(c, rule),
               ),
-            const SizedBox(height: 8),
+            const SizedBox(height: AppSpacing.s),
           ],
         ),
       ),
@@ -230,7 +231,7 @@ class _DirectLinkUploadConfigDialogState
               maxLines: 3,
               minLines: 1,
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: AppSpacing.m),
             TextField(
               controller: _downloadRuleCtl,
               enabled: !_busy,
@@ -242,7 +243,7 @@ class _DirectLinkUploadConfigDialogState
               maxLines: 4,
               minLines: 1,
             ),
-            const SizedBox(height: 12),
+            const SizedBox(height: AppSpacing.m),
             TextField(
               controller: _summaryCtl,
               enabled: !_busy,
@@ -251,7 +252,7 @@ class _DirectLinkUploadConfigDialogState
                 border: OutlineInputBorder(),
               ),
             ),
-            const SizedBox(height: 4),
+            const SizedBox(height: AppSpacing.xs),
             SwitchListTile(
               dense: true,
               contentPadding: EdgeInsets.zero,

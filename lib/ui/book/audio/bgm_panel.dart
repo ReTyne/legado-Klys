@@ -37,7 +37,7 @@ class _BgmPanelState extends State<BgmPanel> {
         final cs = Theme.of(context).colorScheme;
         return SafeArea(
           child: Padding(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 16),
+            padding: const EdgeInsets.fromLTRB(AppSpacing.l, AppSpacing.m, AppSpacing.l, AppSpacing.l),
             child: Column(
               mainAxisSize: MainAxisSize.min,
               crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -55,9 +55,9 @@ class _BgmPanelState extends State<BgmPanel> {
                     ),
                   ],
                 ),
-                const SizedBox(height: 8),
+                const SizedBox(height: AppSpacing.s),
                 _buildNowPlaying(cs),
-                const SizedBox(height: 8),
+                const SizedBox(height: AppSpacing.s),
                 Row(
                   children: [
                     Icon(Icons.volume_up_outlined,
@@ -153,7 +153,7 @@ class _BgmPanelState extends State<BgmPanel> {
                 ),
                 if (_bgm.error != null)
                   Padding(
-                    padding: const EdgeInsets.only(top: 8),
+                    padding: const EdgeInsets.only(top: AppSpacing.s),
                     child: Text(_bgm.error!,
                         style: TextStyle(color: cs.error, fontSize: 12)),
                   ),
@@ -168,15 +168,15 @@ class _BgmPanelState extends State<BgmPanel> {
   Widget _buildNowPlaying(ColorScheme cs) {
     final t = _bgm.current;
     return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.m, vertical: AppSpacing.s),
       decoration: BoxDecoration(
         color: cs.surfaceContainerHighest,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: AppRadius.mAll,
       ),
       child: Row(
         children: [
           Icon(Icons.music_note, color: cs.primary),
-          const SizedBox(width: 8),
+          const SizedBox(width: AppSpacing.s),
           Expanded(
             child: Text(
               t?.title ?? '未在播放',

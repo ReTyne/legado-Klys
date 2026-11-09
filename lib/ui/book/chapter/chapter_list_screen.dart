@@ -442,7 +442,7 @@ class _ChapterListScreenState extends State<ChapterListScreen>
         children: [
           // 搜索框对当前 Tab 生效（对齐 E SearchView，点击时隐藏 TabLayout）
           Padding(
-            padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+            padding: const EdgeInsets.fromLTRB(AppSpacing.l, AppSpacing.s, AppSpacing.l, AppSpacing.s),
             child: TextField(
               controller: _searchController,
               decoration: InputDecoration(
@@ -459,7 +459,7 @@ class _ChapterListScreenState extends State<ChapterListScreen>
                           _onSearchChanged('');
                         })
                     : null,
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                border: const OutlineInputBorder(borderRadius: AppRadius.mAll),
                 isDense: true,
               ),
               onChanged: _onSearchChanged,
@@ -497,7 +497,7 @@ class _ChapterListScreenState extends State<ChapterListScreen>
         if (chapter.isVolume) {
           return Container(
             color: Theme.of(context).colorScheme.secondaryContainer,
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            padding: const EdgeInsets.symmetric(horizontal: AppSpacing.l, vertical: AppSpacing.s),
             child: Text(_displayTitle(chapter.title), style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
           );
         }

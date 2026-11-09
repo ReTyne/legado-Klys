@@ -71,10 +71,10 @@ class _QrScannerScreenState extends State<QrScannerScreen> {
         // 取景框与提示条叠加在实时相机预览上，背景明暗不可控，
         // 故固定高对比「白描边 / 半透黑底白字」，不随主题反色（功能性例外）。
         Container(width: 240, height: 240,
-          decoration: BoxDecoration(border: Border.all(color: Colors.white.withOpacity(0.8), width: 3), borderRadius: BorderRadius.circular(12))),
+          decoration: BoxDecoration(border: Border.all(color: Colors.white.withOpacity(0.8), width: 3), borderRadius: AppRadius.mAll)),
         Positioned(bottom: 48, child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-          decoration: BoxDecoration(color: Colors.black54, borderRadius: BorderRadius.circular(12)),
+          padding: const EdgeInsets.symmetric(horizontal: AppSpacing.l, vertical: AppSpacing.s),
+          decoration: const BoxDecoration(color: Colors.black54, borderRadius: AppRadius.mAll),
           child: const Text('将二维码放入框内自动识别', style: TextStyle(color: Colors.white, fontSize: 13)),
         )),
       ]),

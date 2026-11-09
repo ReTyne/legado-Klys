@@ -332,7 +332,7 @@ class _DictSourceTabState extends State<_DictSourceTab> {
     return Column(
       children: [
         Padding(
-          padding: const EdgeInsets.all(12),
+          padding: const EdgeInsets.all(AppSpacing.m),
           child: Row(
             children: [
               Icon(Icons.info_outline, size: 16, color: Theme.of(context).colorScheme.onSurfaceVariant),

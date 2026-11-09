@@ -206,7 +206,7 @@ class _SourceWebViewLoginScreenState extends State<SourceWebViewLoginScreen> {
               icon: const Icon(Icons.check, size: 18),
               label: const Text('完成登录'),
             ),
-            const SizedBox(width: 8),
+            const SizedBox(width: AppSpacing.s),
           ],
         ),
         body: Column(
@@ -217,14 +217,14 @@ class _SourceWebViewLoginScreenState extends State<SourceWebViewLoginScreen> {
             Container(
               width: double.infinity,
               color: cs.surfaceContainerHighest,
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              padding: const EdgeInsets.symmetric(horizontal: AppSpacing.m, vertical: 6),
               child: Row(
                 children: [
                   Icon(Icons.cookie_outlined, size: 16, color: cs.primary),
                   const SizedBox(width: 6),
                   Text('已回收 $_cookieCount 项 Cookie',
                       style: TextStyle(fontSize: 12, color: cs.primary)),
-                  const SizedBox(width: 12),
+                  const SizedBox(width: AppSpacing.m),
                   Expanded(
                     child: Text(
                       _currentUrl,

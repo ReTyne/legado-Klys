@@ -93,7 +93,7 @@ class _AppIconScreenState extends State<AppIconScreen> {
       body: _loading
           ? const AppLoadingIndicator()
           : ListView(
-              padding: const EdgeInsets.all(16),
+              padding: const EdgeInsets.all(AppSpacing.l),
               children: [
                 const AppSectionHeader('选择一个应用图标'),
                 Text(
@@ -101,10 +101,10 @@ class _AppIconScreenState extends State<AppIconScreen> {
                   '当前：${_labels[_current] ?? _current}。',
                   style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant),
                 ),
-                const SizedBox(height: 16),
+                const SizedBox(height: AppSpacing.l),
                 for (var i = 0; i < _aliases.length; i++)
                   _buildAliasTile(_aliases[i], i),
-                const SizedBox(height: 12),
+                const SizedBox(height: AppSpacing.m),
                 Text(
                   '通过 NativeBridge.instance.setLauncherIcon / getLauncherAliases '
                   '/ getLauncherIcon 与原生通道 legado/launcher_icon 交互。',
@@ -120,7 +120,7 @@ class _AppIconScreenState extends State<AppIconScreen> {
     final selected = name == _current;
     final icon = _icons[index % _icons.length];
     return Card(
-      margin: const EdgeInsets.only(bottom: 8),
+      margin: const EdgeInsets.only(bottom: AppSpacing.s),
       color: selected ? cs.primaryContainer : null,
       child: ListTile(
         leading: CircleAvatar(

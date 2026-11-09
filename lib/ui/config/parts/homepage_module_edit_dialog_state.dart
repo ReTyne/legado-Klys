@@ -68,7 +68,7 @@ class _HomepageModuleEditDialogState
               autofocus: true,
               decoration: const InputDecoration(labelText: '模块名称'),
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: AppSpacing.s),
             ListTile(
               dense: true,
               contentPadding: EdgeInsets.zero,
@@ -82,12 +82,12 @@ class _HomepageModuleEditDialogState
               decoration:
                   const InputDecoration(labelText: '关联书源 URL（可选）'),
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: AppSpacing.s),
             TextField(
               controller: _exploreUrl,
               decoration: const InputDecoration(labelText: '发现 URL（可选）'),
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: AppSpacing.s),
             TextField(
               controller: _config,
               maxLines: 4,

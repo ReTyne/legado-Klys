@@ -70,4 +70,34 @@ void main() {
           reason: '裸加载态应统一收敛到 AppLoadingIndicator');
     });
   });
+
+  group('UI 重构契约 · 设计令牌规模化', () {
+    test('设计令牌覆盖 ≥ 95 个 UI 文件', () {
+      final files = Directory('lib/ui')
+          .listSync(recursive: true)
+          .whereType<File>()
+          .where((f) =>
+              f.path.endsWith('.dart') && !f.path.endsWith('app_design.dart'))
+          .toList();
+      final covered = files.where((f) {
+        final s = f.readAsStringSync();
+        return s.contains('AppSpacing.') || s.contains('AppRadius.');
+      }).length;
+      expect(covered, greaterThanOrEqualTo(95),
+          reason: '设计令牌应规模化覆盖 UI 层，实际 $covered/${files.length}');
+    });
+
+    test('UI 层不再残留 4pt 阶梯硬编码间距', () {
+      final re = RegExp(
+          r'EdgeInsets\.all\(\s*(?:4|8|12|16|24|32|48)\s*\)'
+          r'|SizedBox\(\s*(?:height|width)\s*:\s*(?:4|8|12|16|24|32|48)\s*\)');
+      final left = <String>[];
+      for (final entity in Directory('lib/ui').listSync(recursive: true)) {
+        if (entity is! File || !entity.path.endsWith('.dart')) continue;
+        if (re.hasMatch(entity.readAsStringSync())) left.add(entity.path);
+      }
+      expect(left, isEmpty,
+          reason: '4pt 栅格间距应统一收敛到 AppSpacing 令牌');
+    });
+  });
 }

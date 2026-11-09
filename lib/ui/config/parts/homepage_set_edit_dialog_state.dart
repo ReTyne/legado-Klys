@@ -40,7 +40,7 @@ class _HomepageSetEditDialogState extends State<_HomepageSetEditDialog> {
               autofocus: true,
               decoration: const InputDecoration(labelText: '模块集名称'),
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: AppSpacing.s),
             const Align(
               alignment: Alignment.centerLeft,
               child: Text('勾选纳入的模块（勾选顺序即首页展示顺序）',
@@ -48,7 +48,7 @@ class _HomepageSetEditDialogState extends State<_HomepageSetEditDialog> {
             ),
             if (widget.modules.isEmpty)
               const Padding(
-                padding: EdgeInsets.symmetric(vertical: 16),
+                padding: EdgeInsets.symmetric(vertical: AppSpacing.l),
                 child: Text('暂无可加入的模块', style: TextStyle(fontSize: 12)),
               )
             else

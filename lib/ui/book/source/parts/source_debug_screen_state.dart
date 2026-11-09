@@ -529,27 +529,27 @@ class _SourceDebugScreenState extends State<SourceDebugScreen>
         break;
     }
     return Card(
-      margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+      margin: const EdgeInsets.symmetric(horizontal: AppSpacing.m, vertical: 6),
       child: Padding(
-        padding: const EdgeInsets.all(12),
+        padding: const EdgeInsets.all(AppSpacing.m),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
               children: [
                 Icon(step.icon, size: 20),
-                const SizedBox(width: 8),
+                const SizedBox(width: AppSpacing.s),
                 Text(step.title,
                     style: const TextStyle(
                         fontWeight: FontWeight.bold, fontSize: 14)),
-                const SizedBox(width: 8),
+                const SizedBox(width: AppSpacing.s),
                 // 状态标签
                 Container(
                   padding:
-                      const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                      const EdgeInsets.symmetric(horizontal: AppSpacing.s, vertical: 2),
                   decoration: BoxDecoration(
                     color: statusColor.withOpacity(0.12),
-                    borderRadius: BorderRadius.circular(12),
+                    borderRadius: AppRadius.mAll,
                   ),
                   child: Text(statusText,
                       style: TextStyle(color: statusColor, fontSize: 11)),
@@ -562,7 +562,7 @@ class _SourceDebugScreenState extends State<SourceDebugScreen>
                           fontSize: 11,
                           color: colorScheme.onSurfaceVariant,
                           fontFamily: 'monospace')),
-                const SizedBox(width: 8),
+                const SizedBox(width: AppSpacing.s),
                 FilledButton.tonalIcon(
                   icon: const Icon(Icons.play_arrow, size: 16),
                   label: const Text('执行'),
@@ -573,7 +573,7 @@ class _SourceDebugScreenState extends State<SourceDebugScreen>
             ),
             // 请求 URL
             if (step.url.isNotEmpty) ...[
-              const SizedBox(height: 8),
+              const SizedBox(height: AppSpacing.s),
               _stepField('请求 URL', step.url),
             ],
             // 返回摘要
@@ -588,7 +588,7 @@ class _SourceDebugScreenState extends State<SourceDebugScreen>
             ],
             // 引擎日志（可展开）
             if (step.engineLogs.isNotEmpty) ...[
-              const SizedBox(height: 4),
+              const SizedBox(height: AppSpacing.xs),
               ExpansionTile(
                 tilePadding: EdgeInsets.zero,
                 title: Text('引擎日志（${step.engineLogs.length} 行）',
@@ -596,10 +596,10 @@ class _SourceDebugScreenState extends State<SourceDebugScreen>
                 children: [
                   Container(
                     width: double.infinity,
-                    padding: const EdgeInsets.all(8),
+                    padding: const EdgeInsets.all(AppSpacing.s),
                     decoration: BoxDecoration(
                       color: Theme.of(context).colorScheme.surfaceContainerHighest,
-                      borderRadius: BorderRadius.circular(12),
+                      borderRadius: AppRadius.mAll,
                     ),
                     child: SelectableText(
                       step.engineLogs.join('\n'),
@@ -636,12 +636,12 @@ class _SourceDebugScreenState extends State<SourceDebugScreen>
       );
     }
     return ListView(
-      padding: const EdgeInsets.symmetric(vertical: 8),
+      padding: const EdgeInsets.symmetric(vertical: AppSpacing.s),
       children: [
         for (final e in items)
           if (e.$2 != null && e.$2!.isNotEmpty)
             Card(
-              margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              margin: const EdgeInsets.symmetric(horizontal: AppSpacing.m, vertical: 6),
               clipBehavior: Clip.antiAlias,
               child: ExpansionTile(
                 leading: const Icon(Icons.code, size: 20),
@@ -650,7 +650,7 @@ class _SourceDebugScreenState extends State<SourceDebugScreen>
                 children: [
                   Container(
                     width: double.infinity,
-                    padding: const EdgeInsets.all(8),
+                    padding: const EdgeInsets.all(AppSpacing.s),
                     color: Theme.of(context).colorScheme.surfaceContainerHighest,
                     child: SelectableText(
                       e.$2!.length > 20000
@@ -695,17 +695,17 @@ class _SourceDebugScreenState extends State<SourceDebugScreen>
   /// 分步调试页签内容
   Widget _buildStepView() {
     return ListView(
-      padding: const EdgeInsets.symmetric(vertical: 8),
+      padding: const EdgeInsets.symmetric(vertical: AppSpacing.s),
       children: [
         Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+          padding: const EdgeInsets.symmetric(horizontal: AppSpacing.l, vertical: AppSpacing.xs),
           child: Text(
             '每步可单独执行并统计耗时；「详情 / 目录 / 正文」依赖前序步骤结果，请按顺序执行。',
             style: TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.onSurfaceVariant),
           ),
         ),
         ..._steps.map(_stepCard),
-        const SizedBox(height: 16),
+        const SizedBox(height: AppSpacing.l),
       ],
     );
   }
@@ -751,7 +751,7 @@ class _SourceDebugScreenState extends State<SourceDebugScreen>
       body: Column(
         children: [
           Padding(
-            padding: const EdgeInsets.all(12),
+            padding: const EdgeInsets.all(AppSpacing.m),
             child: Row(
               children: [
                 Expanded(
@@ -769,7 +769,7 @@ class _SourceDebugScreenState extends State<SourceDebugScreen>
                     ),
                   ),
                 ),
-                const SizedBox(width: 8),
+                const SizedBox(width: AppSpacing.s),
                 FilledButton(
                   onPressed: (_running || _stepRunning) ? null : _runAll,
                   child: _running

@@ -141,11 +141,11 @@ class _SearchContentScreenState extends State<SearchContentScreen> {
         ],
       ),
       body: _searching && _results.isEmpty
-        ? Center(child: Column(mainAxisSize: MainAxisSize.min, children: [const CircularProgressIndicator(), const SizedBox(height: 12), Text(_progress.isEmpty ? '搜索中...' : _progress)]))
+        ? Center(child: Column(mainAxisSize: MainAxisSize.min, children: [const CircularProgressIndicator(), const SizedBox(height: AppSpacing.m), Text(_progress.isEmpty ? '搜索中...' : _progress)]))
         : _results.isNotEmpty
           ? Column(children: [
               if (_searching) LinearProgressIndicator(minHeight: 2, backgroundColor: cs.surfaceContainerHighest),
-              if (_progress.isNotEmpty) Padding(padding: const EdgeInsets.all(4), child: Text(_progress, style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant))),
+              if (_progress.isNotEmpty) Padding(padding: const EdgeInsets.all(AppSpacing.xs), child: Text(_progress, style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant))),
               Expanded(child: _buildResultList()),
             ])
           : _buildEmpty(),
@@ -163,7 +163,7 @@ class _SearchContentScreenState extends State<SearchContentScreen> {
           subtitle: Text('${r.snippets.length} 处匹配', style: const TextStyle(fontSize: 11)),
           children: r.snippets.map((s) => ListTile(
             dense: true,
-            contentPadding: const EdgeInsets.only(left: 56, right: 16),
+            contentPadding: const EdgeInsets.only(left: 56, right: AppSpacing.l),
             title: Text(s.text, style: const TextStyle(fontSize: 13), maxLines: 2, overflow: TextOverflow.ellipsis),
             // 跳转时带上章内偏移，阅读页可精确定位到所在页
             onTap: () => Navigator.pop(context, ContentSearchHit(r.chapterIndex, s.pos)),
@@ -176,7 +176,7 @@ class _SearchContentScreenState extends State<SearchContentScreen> {
   Widget _buildEmpty() {
     if (_controller.text.isEmpty && _history.isNotEmpty) {
       return ListView(children: [
-        const Padding(padding: EdgeInsets.all(16), child: Text('搜索历史', style: TextStyle(fontWeight: FontWeight.bold))),
+        const Padding(padding: EdgeInsets.all(AppSpacing.l), child: Text('搜索历史', style: TextStyle(fontWeight: FontWeight.bold))),
         ..._history.map((h) => ListTile(
           leading: const Icon(Icons.history, size: 20),
           title: Text(h),

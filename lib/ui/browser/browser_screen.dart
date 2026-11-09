@@ -15,6 +15,7 @@ import 'package:legado_md3/help/device/native_bridge.dart';
 import 'package:legado_md3/help/source/source_engine.dart';
 import 'package:legado_md3/help/storage/import_book_service.dart';
 
+import 'package:legado_md3/ui/theme/app_design.dart';
 part 'parts/browser_tab.dart';
 part 'parts/sniff_result.dart';
 part 'parts/browser_screen_state.dart';

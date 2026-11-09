@@ -183,18 +183,18 @@ class _WelcomeScreenState extends State<WelcomeScreen> {
               for (var i = 0; i < _total; i++)
                 AnimatedContainer(
                   duration: const Duration(milliseconds: 200),
-                  margin: const EdgeInsets.symmetric(horizontal: 4),
+                  margin: const EdgeInsets.symmetric(horizontal: AppSpacing.xs),
                   width: i == _page ? 22 : 8,
                   height: 8,
                   decoration: BoxDecoration(
                       color: i == _page
                           ? Theme.of(context).colorScheme.primary
                           : Theme.of(context).colorScheme.outlineVariant,
-                      borderRadius: BorderRadius.circular(12)),
+                      borderRadius: AppRadius.mAll),
                 ),
             ]),
             Padding(
-              padding: const EdgeInsets.fromLTRB(24, 12, 24, 24),
+              padding: const EdgeInsets.fromLTRB(AppSpacing.xl, AppSpacing.m, AppSpacing.xl, AppSpacing.xl),
               child: Row(children: [
                 TextButton.icon(
                   icon: const Icon(Icons.arrow_back, size: 18),
@@ -265,7 +265,7 @@ class _CustomWelcomeView extends StatelessWidget {
         children: [
           background,
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 32),
+            padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xxl),
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
               children: [
@@ -274,18 +274,18 @@ class _CustomWelcomeView extends StatelessWidget {
                   size: 96,
                   color: cs.primary,
                 ),
-                const SizedBox(height: 32),
+                const SizedBox(height: AppSpacing.xxl),
                 Text(
                   text,
                   textAlign: TextAlign.center,
                   style: Theme.of(context).textTheme.headlineSmall,
                 ),
-                const SizedBox(height: 16),
+                const SizedBox(height: AppSpacing.l),
                 Text(
                   '${cfg.showTime} 秒后自动进入',
                   style: TextStyle(fontSize: 13, color: cs.onSurfaceVariant),
                 ),
-                const SizedBox(height: 32),
+                const SizedBox(height: AppSpacing.xxl),
                 FilledButton.icon(
                   onPressed: onEnter,
                   icon: const Icon(Icons.arrow_forward, size: 18),
@@ -318,16 +318,16 @@ class _Intro extends StatelessWidget {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 32),
+      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xxl),
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
           Icon(icon, size: 96, color: cs.primary),
-          const SizedBox(height: 32),
+          const SizedBox(height: AppSpacing.xxl),
           Text(title,
               style: Theme.of(context).textTheme.headlineSmall,
               textAlign: TextAlign.center),
-          const SizedBox(height: 16),
+          const SizedBox(height: AppSpacing.l),
           Text(desc,
               style: TextStyle(
                   fontSize: 15, color: cs.onSurfaceVariant, height: 1.6),
@@ -393,30 +393,30 @@ class _PolicyView extends StatelessWidget {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 12, 20, 4),
+      padding: const EdgeInsets.fromLTRB(20, AppSpacing.m, 20, AppSpacing.xs),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(children: [
             Icon(Icons.policy_outlined, color: cs.primary, size: 22),
-            const SizedBox(width: 8),
+            const SizedBox(width: AppSpacing.s),
             Text('隐私政策',
                 style: Theme.of(context)
                     .textTheme
                     .titleMedium
                     ?.copyWith(fontWeight: FontWeight.bold)),
           ]),
-          const SizedBox(height: 12),
+          const SizedBox(height: AppSpacing.m),
           Expanded(
             child: Container(
               decoration: BoxDecoration(
                 color: cs.surfaceContainerHighest.withOpacity(0.4),
-                borderRadius: BorderRadius.circular(12),
+                borderRadius: AppRadius.mAll,
                 border: Border.all(color: cs.outlineVariant.withOpacity(0.5)),
               ),
               child: Scrollbar(
                 child: SingleChildScrollView(
-                  padding: const EdgeInsets.all(16),
+                  padding: const EdgeInsets.all(AppSpacing.l),
                   child: Text(policyText,
                       style: TextStyle(
                           fontSize: 13, height: 1.7, color: cs.onSurfaceVariant)),
@@ -424,7 +424,7 @@ class _PolicyView extends StatelessWidget {
               ),
             ),
           ),
-          const SizedBox(height: 8),
+          const SizedBox(height: AppSpacing.s),
           CheckboxListTile(
             dense: true,
             contentPadding: EdgeInsets.zero,

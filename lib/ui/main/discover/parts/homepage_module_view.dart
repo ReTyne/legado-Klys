@@ -30,12 +30,12 @@ class HomepageModuleView extends StatelessWidget {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.only(bottom: AppSpacing.m),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
+            padding: const EdgeInsets.symmetric(horizontal: AppSpacing.l, vertical: 6),
             child: Row(
               children: [
                 Expanded(
@@ -63,18 +63,18 @@ class HomepageModuleView extends StatelessWidget {
   Widget _buildBody(BuildContext context) {
     if (loading) {
       return const Padding(
-        padding: EdgeInsets.symmetric(vertical: 24),
+        padding: EdgeInsets.symmetric(vertical: AppSpacing.xl),
         child: AppLoadingIndicator(),
       );
     }
     if (error != null) {
       final cs = Theme.of(context).colorScheme;
       return Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+        padding: const EdgeInsets.symmetric(horizontal: AppSpacing.l, vertical: AppSpacing.s),
         child: Row(
           children: [
             Icon(Icons.error_outline, size: 18, color: cs.error),
-            const SizedBox(width: 8),
+            const SizedBox(width: AppSpacing.s),
             Expanded(
               child: Text('加载失败：$error',
                   maxLines: 2,
@@ -94,11 +94,11 @@ class HomepageModuleView extends StatelessWidget {
     if (items.isEmpty) {
       final cs = Theme.of(context).colorScheme;
       return Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        padding: const EdgeInsets.symmetric(horizontal: AppSpacing.l, vertical: AppSpacing.m),
         child: Row(
           children: [
             Icon(Icons.widgets_outlined, size: 18, color: cs.onSurfaceVariant),
-            const SizedBox(width: 8),
+            const SizedBox(width: AppSpacing.s),
             Expanded(
               child: Text(
                 '该模块暂无内容，可在「首页模块」中配置卡片或发现地址',

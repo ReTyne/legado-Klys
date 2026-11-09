@@ -83,7 +83,7 @@ class _HomepageSetSheetState extends State<_HomepageSetSheet> {
         child: SingleChildScrollView(
           child: Column(mainAxisSize: MainAxisSize.min, children: [
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+              padding: const EdgeInsets.symmetric(horizontal: AppSpacing.l, vertical: AppSpacing.xs),
               child: Row(children: [
                 const Expanded(
                   child: Text('模块集',
@@ -133,7 +133,7 @@ class _HomepageSetSheetState extends State<_HomepageSetSheet> {
               ),
             if (_sets.isEmpty)
               const Padding(
-                padding: EdgeInsets.symmetric(vertical: 24),
+                padding: EdgeInsets.symmetric(vertical: AppSpacing.xl),
                 child: AppEmptyState(
                   icon: Icons.layers_clear_outlined,
                   title: '暂无模块集',

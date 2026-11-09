@@ -280,7 +280,7 @@ class _WelcomeConfigScreenState extends State<WelcomeConfigScreen> {
       body: _loading
           ? const AppLoadingIndicator()
           : ListView(
-              padding: const EdgeInsets.only(bottom: 24),
+              padding: const EdgeInsets.only(bottom: AppSpacing.xl),
               children: [
                 AppSettingsGroup(
                   title: '启用与展示',
@@ -344,7 +344,7 @@ class _WelcomeConfigScreenState extends State<WelcomeConfigScreen> {
                     _textTile('按钮文案', 'welcomeButtonText', _buttonCtl,
                         '留空则为「进入阅读」/「同意并开始使用」'),
                     Padding(
-                      padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+                      padding: const EdgeInsets.fromLTRB(AppSpacing.l, AppSpacing.s, AppSpacing.l, AppSpacing.s),
                       child: TextField(
                         controller: _policyCtl,
                         maxLines: 5,
@@ -396,7 +396,7 @@ class _WelcomeConfigScreenState extends State<WelcomeConfigScreen> {
                   ],
                 ),
                 Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+                  padding: const EdgeInsets.fromLTRB(AppSpacing.l, AppSpacing.s, AppSpacing.l, AppSpacing.s),
                   child: Text(
                     '背景图使用本机文件路径（留空则用主题色背景）。日/夜间图标与背景'
                     '按系统亮度自动切换。配置即时保存开关，文本修改后请点击底部「保存」。',
@@ -404,7 +404,7 @@ class _WelcomeConfigScreenState extends State<WelcomeConfigScreen> {
                   ),
                 ),
                 Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                  padding: const EdgeInsets.symmetric(horizontal: AppSpacing.l, vertical: AppSpacing.s),
                   child: FilledButton.icon(
                     onPressed: _saveAll,
                     icon: const Icon(Icons.save_outlined, size: 18),
@@ -419,7 +419,7 @@ class _WelcomeConfigScreenState extends State<WelcomeConfigScreen> {
   Widget _textTile(String title, String keyName, TextEditingController ctl,
       String hint) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+      padding: const EdgeInsets.fromLTRB(AppSpacing.l, AppSpacing.s, AppSpacing.l, AppSpacing.s),
       child: TextField(
         controller: ctl,
         decoration: InputDecoration(
@@ -435,7 +435,7 @@ class _WelcomeConfigScreenState extends State<WelcomeConfigScreen> {
   Widget _imageTile(String title, String keyName, TextEditingController ctl,
       bool dark) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+      padding: const EdgeInsets.fromLTRB(AppSpacing.l, AppSpacing.s, AppSpacing.l, AppSpacing.s),
       child: Row(
         children: [
           Expanded(
@@ -448,7 +448,7 @@ class _WelcomeConfigScreenState extends State<WelcomeConfigScreen> {
               ),
             ),
           ),
-          const SizedBox(width: 8),
+          const SizedBox(width: AppSpacing.s),
           IconButton(
             icon: const Icon(Icons.image_outlined),
             tooltip: '选择图片',

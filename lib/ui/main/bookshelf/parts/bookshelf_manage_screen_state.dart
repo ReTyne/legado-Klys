@@ -122,7 +122,7 @@ class _BookshelfManageScreenState extends State<BookshelfManageScreen> {
                   _applyGroupToSelected(null);
                 }),
           ]),
-          const SizedBox(height: 12),
+          const SizedBox(height: AppSpacing.m),
           TextField(
               controller: controller,
               decoration: const InputDecoration(labelText: '新分组名称')),
@@ -450,7 +450,7 @@ class _BookshelfManageScreenState extends State<BookshelfManageScreen> {
                   child: Text(_query.isEmpty ? '书架为空' : '没有匹配的书籍',
                       style: TextStyle(color: cs.onSurfaceVariant)))
               : ReorderableListView.builder(
-                  padding: const EdgeInsets.only(bottom: 12),
+                  padding: const EdgeInsets.only(bottom: AppSpacing.m),
                   buildDefaultDragHandles: false,
                   itemCount: _visible.length,
                   onReorder: _onReorder,
@@ -486,7 +486,7 @@ class _BookshelfManageScreenState extends State<BookshelfManageScreen> {
                 const Divider(height: 1),
                 SingleChildScrollView(
                   scrollDirection: Axis.horizontal,
-                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                  padding: const EdgeInsets.symmetric(horizontal: AppSpacing.s),
                   child: Row(children: [
                     _batchBtn(Icons.drive_file_move_outline, '移动分组',
                         _batchMoveGroup),

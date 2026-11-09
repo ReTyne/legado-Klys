@@ -122,26 +122,26 @@ class _ChangeCoverScreenState extends State<ChangeCoverScreen> {
     return Scaffold(
       appBar: AppBar(title: Text('换封面 - ${widget.book.name}')),
       body: ListView(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.all(AppSpacing.l),
         children: [
           Center(
             child: Container(
               width: 150,
               height: 200,
               decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(12),
+                borderRadius: AppRadius.mAll,
                 color: cs.surfaceContainerHighest,
               ),
               child: _previewUrl != null && _previewUrl!.isNotEmpty
                   ? ClipRRect(
-                      borderRadius: BorderRadius.circular(12),
+                      borderRadius: AppRadius.mAll,
                       child: Image.network(_previewUrl!, fit: BoxFit.cover,
                           errorBuilder: (_, __, ___) => Icon(Icons.broken_image,
                               size: 48, color: cs.onSurfaceVariant)))
                   : Icon(Icons.book, size: 48, color: cs.onSurfaceVariant),
             ),
           ),
-          const SizedBox(height: 24),
+          const SizedBox(height: AppSpacing.xl),
           TextField(
             controller: _urlController,
             decoration: const InputDecoration(
@@ -150,7 +150,7 @@ class _ChangeCoverScreenState extends State<ChangeCoverScreen> {
             ),
             onChanged: (v) => setState(() => _previewUrl = v.isEmpty ? null : v),
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: AppSpacing.l),
           Row(children: [
             Expanded(
               child: OutlinedButton(
@@ -158,12 +158,12 @@ class _ChangeCoverScreenState extends State<ChangeCoverScreen> {
                 child: const Text('恢复默认封面'),
               ),
             ),
-            const SizedBox(width: 16),
+            const SizedBox(width: AppSpacing.l),
             Expanded(
               child: FilledButton(onPressed: _saveCover, child: const Text('保存')),
             ),
           ]),
-          const SizedBox(height: 16),
+          const SizedBox(height: AppSpacing.l),
           // 对齐原版 ChangeCoverDialog：封面来自书源搜索结果（§4-5）
           const AppSectionHeader('从书源搜索封面'),
           Row(
@@ -179,7 +179,7 @@ class _ChangeCoverScreenState extends State<ChangeCoverScreen> {
               ),
             ],
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: AppSpacing.m),
           if (_coverSearched && _sourceCovers.isEmpty)
             const AppEmptyState(
               icon: Icons.image_not_supported_outlined,
@@ -199,7 +199,7 @@ class _ChangeCoverScreenState extends State<ChangeCoverScreen> {
               itemCount: _sourceCovers.length,
               itemBuilder: (_, i) => _buildCoverChoice(_sourceCovers[i]),
             ),
-          const SizedBox(height: 16),
+          const SizedBox(height: AppSpacing.l),
           const AppSectionHeader('预设封面'),
           Wrap(spacing: 8, runSpacing: 8, children: [
             _buildPresetCover('https://picsum.photos/seed/book1/300/400'),
@@ -207,7 +207,7 @@ class _ChangeCoverScreenState extends State<ChangeCoverScreen> {
             _buildPresetCover('https://picsum.photos/seed/book3/300/400'),
             _buildPresetCover('https://picsum.photos/seed/book4/300/400'),
           ]),
-          const SizedBox(height: 16),
+          const SizedBox(height: AppSpacing.l),
         ],
       ),
     );

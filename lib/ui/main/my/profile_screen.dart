@@ -35,6 +35,7 @@ import 'package:share_plus/share_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import 'package:legado_md3/ui/theme/app_design.dart';
 /// 本项目 GitHub 仓库
 const _kRepoUrl = 'https://github.com/ReTyne/legado-Klys';
 /// 最新 release 查询接口（GitHub API）
@@ -131,7 +132,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
           ),
           if (_webServiceRunning)
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
+              padding: const EdgeInsets.symmetric(horizontal: AppSpacing.l),
               child: Text('在浏览器中打开上述地址即可管理书架、书源、RSS等', style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
             ),
 
@@ -159,14 +160,14 @@ class _ProfileScreenState extends State<ProfileScreen> {
           _buildMenuItem(context, Icons.info_outline, '关于', '应用信息', () => _showAbout(context)),
           _buildMenuItem(context, Icons.exit_to_app_outlined, '退出', '退出应用', () => SystemNavigator.pop()),
 
-          const SizedBox(height: 24),
+          const SizedBox(height: AppSpacing.xl),
           Center(
             child: Text(
               _versionLabel.isEmpty ? appDisplayName : '$appDisplayName v$_versionLabel',
               style: TextStyle(color: cs.onSurfaceVariant, fontSize: 12),
             ),
           ),
-          const SizedBox(height: 16),
+          const SizedBox(height: AppSpacing.l),
         ],
       ),
     );
@@ -348,9 +349,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
       title: const Text('关于'),
       content: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
         Text(appDisplayName, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-        const SizedBox(height: 8),
+        const SizedBox(height: AppSpacing.s),
         Text('版本: ${_versionLabel.isEmpty ? '加载中...' : _versionLabel}'),
-        const SizedBox(height: 4),
+        const SizedBox(height: AppSpacing.xs),
         const Text('基于 legado 的 Material Design 3 跨平台阅读应用，支持Android和iOS'),
         const Divider(height: 24),
         ListTile(
@@ -422,7 +423,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Widget _buildSectionHeader(String title) => Padding(
-    padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+    padding: const EdgeInsets.fromLTRB(AppSpacing.l, AppSpacing.l, AppSpacing.l, AppSpacing.s),
     child: Text(title, style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Theme.of(context).colorScheme.primary)),
   );
 

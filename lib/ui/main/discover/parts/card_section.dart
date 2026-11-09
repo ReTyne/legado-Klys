@@ -13,11 +13,11 @@ class _CardSection extends StatelessWidget {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 16),
+      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.l),
       child: Column(
         children: items.map((item) {
           return Card(
-            margin: const EdgeInsets.only(bottom: 8),
+            margin: const EdgeInsets.only(bottom: AppSpacing.s),
             child: ListTile(
               leading: _itemCover(context, item, width: 48, height: 66),
               title: Text(item.title,

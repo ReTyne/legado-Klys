@@ -355,11 +355,11 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       context: context,
       builder: (c) => SafeArea(
         child: Padding(
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.all(AppSpacing.l),
           child: Column(mainAxisSize: MainAxisSize.min, children: [
             const Text('播放倍速',
                 style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-            const SizedBox(height: 12),
+            const SizedBox(height: AppSpacing.m),
             Wrap(
               spacing: 8,
               children: _rates
@@ -609,7 +609,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
         final cs = Theme.of(context).colorScheme;
         return SafeArea(
           child: Padding(
-            padding: const EdgeInsets.all(16),
+            padding: const EdgeInsets.all(AppSpacing.l),
             child: Column(mainAxisSize: MainAxisSize.min, children: [
               const Text('弹幕设置',
                   style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
@@ -696,7 +696,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
         child: ListView(
           children: [
             const Padding(
-              padding: EdgeInsets.all(16),
+              padding: EdgeInsets.all(AppSpacing.l),
               child: Text('弹幕列表',
                   style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
             ),
@@ -883,12 +883,12 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
           if (_error != null)
             Center(
               child: Padding(
-                padding: const EdgeInsets.all(16),
+                padding: const EdgeInsets.all(AppSpacing.l),
                 child: Column(mainAxisSize: MainAxisSize.min, children: [
                   Text(_error!,
                       style: const TextStyle(color: Colors.white),
                       textAlign: TextAlign.center),
-                  const SizedBox(height: 8),
+                  const SizedBox(height: AppSpacing.s),
                   TextButton.icon(
                     onPressed: () => unawaited(_playAt(_index, line: _lineIndex)),
                     icon: const Icon(Icons.refresh, color: Colors.white),
@@ -909,9 +909,9 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       if (_longPressing)
         Center(
           child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            decoration: BoxDecoration(
-                color: Colors.black54, borderRadius: BorderRadius.circular(8)),
+            padding: const EdgeInsets.symmetric(horizontal: AppSpacing.l, vertical: AppSpacing.s),
+            decoration: const BoxDecoration(
+                color: Colors.black54, borderRadius: AppRadius.sAll),
             child: Text(
               '${VideoPlayConfig.longPressSpeedLabel}倍速播放中',
               style: const TextStyle(color: Colors.white, fontSize: 16),
@@ -921,9 +921,9 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       if (_seekPreview != null)
         Center(
           child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            decoration: BoxDecoration(
-                color: Colors.black54, borderRadius: BorderRadius.circular(8)),
+            padding: const EdgeInsets.symmetric(horizontal: AppSpacing.l, vertical: AppSpacing.s),
+            decoration: const BoxDecoration(
+                color: Colors.black54, borderRadius: AppRadius.sAll),
             child: Text(
               '${_fmt(_seekPreview!)} / ${_fmt(c?.value.duration ?? Duration.zero)}',
               style: const TextStyle(color: Colors.white, fontSize: 16),
@@ -933,8 +933,8 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       if (_locked)
         Center(
           child: Container(
-            decoration: BoxDecoration(
-                color: Colors.black54, borderRadius: BorderRadius.circular(24)),
+            decoration: const BoxDecoration(
+                color: Colors.black54, borderRadius: AppRadius.xlAll),
             child: IconButton(
               icon: const Icon(Icons.lock, color: Colors.white),
               tooltip: '点击解锁',
@@ -968,7 +968,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   Widget _buildTopBar() {
     final current = _index >= 0 && _index < _chapters.length ? _chapters[_index] : null;
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 4),
+      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xs),
       child: Row(children: [
         IconButton(
           icon: const Icon(Icons.arrow_back, color: Colors.white),
@@ -1031,7 +1031,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       if (buffering)
         const LinearProgressIndicator(minHeight: 2, color: Colors.white),
       Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 8),
+        padding: const EdgeInsets.symmetric(horizontal: AppSpacing.s),
         child: Row(children: [
           IconButton(
             icon: Icon(_playing ? Icons.pause : Icons.play_arrow, color: Colors.white),
@@ -1094,7 +1094,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
           ),
         ],
       ),
-      const SizedBox(height: 8),
+      const SizedBox(height: AppSpacing.s),
     ]);
   }
 
@@ -1102,15 +1102,15 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     final current = _index >= 0 && _index < _chapters.length ? _chapters[_index] : null;
     return Container(
       color: Colors.black,
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+      padding: const EdgeInsets.fromLTRB(AppSpacing.l, AppSpacing.m, AppSpacing.l, AppSpacing.m),
       child: ListView(
         children: [
           Text(widget.book.name,
               style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.w600)),
-          const SizedBox(height: 4),
+          const SizedBox(height: AppSpacing.xs),
           Text('第 ${_index + 1} / ${_chapters.length} 集${current != null ? ' · ${current.title}' : ''}',
               style: const TextStyle(color: Colors.white70, fontSize: 12)),
-          const SizedBox(height: 12),
+          const SizedBox(height: AppSpacing.m),
           _buildChipRow(
             label: '选集',
             count: _chapters.length,
@@ -1119,7 +1119,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
             onTap: (i) => unawaited(_playAt(i)),
           ),
           if (_lines.length > 1) ...[
-            const SizedBox(height: 12),
+            const SizedBox(height: AppSpacing.m),
             _buildChipRow(
               label: '线路',
               count: _lines.length,
@@ -1128,7 +1128,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
               onTap: (i) => unawaited(_switchLine(i)),
             ),
           ],
-          const SizedBox(height: 12),
+          const SizedBox(height: AppSpacing.m),
           Row(children: [
             Text('亮度遮罩 ${(_dim * 100).round()}%',
                 style: const TextStyle(color: Colors.white70, fontSize: 12)),
@@ -1164,7 +1164,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
         child: ListView.separated(
           scrollDirection: Axis.horizontal,
           itemCount: count,
-          separatorBuilder: (_, __) => const SizedBox(width: 8),
+          separatorBuilder: (_, __) => const SizedBox(width: AppSpacing.s),
           itemBuilder: (c, i) => ChoiceChip(
             label: Text(titleOf(i)),
             selected: i == selected,
@@ -1182,7 +1182,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       isScrollControlled: true,
       builder: (c) => SafeArea(
         child: Padding(
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.all(AppSpacing.l),
           child: Column(mainAxisSize: MainAxisSize.min, children: [
             _buildChipRow(
               label: '选集',
@@ -1195,7 +1195,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
               },
             ),
             if (_lines.length > 1) ...[
-              const SizedBox(height: 12),
+              const SizedBox(height: AppSpacing.m),
               _buildChipRow(
                 label: '线路',
                 count: _lines.length,
@@ -1207,7 +1207,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                 },
               ),
             ],
-            const SizedBox(height: 16),
+            const SizedBox(height: AppSpacing.l),
           ]),
         ),
       ),
@@ -1236,7 +1236,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
         child: Material(
           color: Colors.black,
           elevation: 8,
-          borderRadius: BorderRadius.circular(8),
+          borderRadius: AppRadius.sAll,
           clipBehavior: Clip.antiAlias,
           child: Column(children: [
             SizedBox(

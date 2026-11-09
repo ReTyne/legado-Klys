@@ -25,12 +25,12 @@ class _MigrationSheetState extends State<_MigrationSheet> {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 4),
+                  padding: const EdgeInsets.fromLTRB(AppSpacing.l, AppSpacing.l, AppSpacing.l, AppSpacing.xs),
                   child: Text('换源迁移选项',
                       style: Theme.of(context).textTheme.titleMedium),
                 ),
                 Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+                  padding: const EdgeInsets.fromLTRB(AppSpacing.l, 0, AppSpacing.l, AppSpacing.s),
                   child: Text('《${widget.bookName}》→ ${widget.sourceName}',
                       style: TextStyle(
                           fontSize: 12, color: cs.onSurfaceVariant)),
@@ -87,7 +87,7 @@ class _MigrationSheetState extends State<_MigrationSheet> {
                       : null,
                 ),
                 Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 8),
+                  padding: const EdgeInsets.fromLTRB(AppSpacing.l, AppSpacing.s, AppSpacing.l, AppSpacing.s),
                   child: Text(
                     '无法匹配到新章节的书签 / 高亮会原样保留，不会丢失。',
                     style: TextStyle(
@@ -95,14 +95,14 @@ class _MigrationSheetState extends State<_MigrationSheet> {
                   ),
                 ),
                 Padding(
-                  padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
+                  padding: const EdgeInsets.fromLTRB(AppSpacing.l, AppSpacing.s, AppSpacing.l, AppSpacing.l),
                   child: Row(
                     mainAxisAlignment: MainAxisAlignment.end,
                     children: [
                       TextButton(
                           onPressed: () => Navigator.pop(context),
                           child: const Text('取消')),
-                      const SizedBox(width: 8),
+                      const SizedBox(width: AppSpacing.s),
                       FilledButton(
                           onPressed: () => Navigator.pop(context, _opt),
                           child: const Text('确定换源')),

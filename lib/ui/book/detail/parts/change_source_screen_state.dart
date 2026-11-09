@@ -305,7 +305,7 @@ class _ChangeSourceScreenState extends State<ChangeSourceScreen> {
         title: Text('换源 - ${widget.book.name}'),
         actions: [
           if (_done < _total)
-            Padding(padding: const EdgeInsets.symmetric(horizontal: 16), child: Center(child: Text('$_done/$_total', style: const TextStyle(fontSize: 12))))
+            Padding(padding: const EdgeInsets.symmetric(horizontal: AppSpacing.l), child: Center(child: Text('$_done/$_total', style: const TextStyle(fontSize: 12))))
           else
             IconButton(
               icon: const Icon(Icons.refresh),

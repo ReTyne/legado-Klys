@@ -17,7 +17,7 @@ class AppSectionHeader extends StatelessWidget {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+      padding: const EdgeInsets.fromLTRB(AppSpacing.l, AppSpacing.l, AppSpacing.l, AppSpacing.s),
       child: Text(
         title,
         style: TextStyle(
@@ -95,7 +95,7 @@ class AppSwitchTile extends StatelessWidget {
   Widget build(BuildContext context) {
     return SwitchListTile(
       dense: dense,
-      contentPadding: contentPadding ?? const EdgeInsets.symmetric(horizontal: 16),
+      contentPadding: contentPadding ?? const EdgeInsets.symmetric(horizontal: AppSpacing.l),
       secondary: icon == null ? null : Icon(icon),
       title: Text(title, style: const TextStyle(fontSize: 14)),
       subtitle: subtitle == null
@@ -130,7 +130,7 @@ class AppStepTile extends StatelessWidget {
   Widget build(BuildContext context) {
     return ListTile(
       dense: true,
-      contentPadding: const EdgeInsets.symmetric(horizontal: 16),
+      contentPadding: const EdgeInsets.symmetric(horizontal: AppSpacing.l),
       title: Text(title, style: const TextStyle(fontSize: 14)),
       subtitle: subtitle == null
           ? null
@@ -317,9 +317,9 @@ class AppChipTabs<T> extends StatelessWidget {
       height: height,
       child: ListView.separated(
         scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.symmetric(horizontal: 8),
+        padding: const EdgeInsets.symmetric(horizontal: AppSpacing.s),
         itemCount: items.length,
-        separatorBuilder: (_, __) => const SizedBox(width: 8),
+        separatorBuilder: (_, __) => const SizedBox(width: AppSpacing.s),
         itemBuilder: (context, index) {
           final item = items[index];
           return FilterChip(
@@ -347,10 +347,10 @@ class AppTag extends StatelessWidget {
     final bg = accent ? cs.primaryContainer : cs.secondaryContainer;
     final fg = accent ? cs.onPrimaryContainer : cs.onSecondaryContainer;
     final child = Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
+      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.s, vertical: 3),
       decoration: BoxDecoration(
         color: bg,
-        borderRadius: BorderRadius.circular(8),
+        borderRadius: AppRadius.sAll,
       ),
       child: Text(text, style: TextStyle(fontSize: 11, color: fg)),
     );
@@ -377,11 +377,11 @@ class AppInfoRow extends StatelessWidget {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
+      padding: const EdgeInsets.symmetric(vertical: AppSpacing.xs),
       child: Row(
         children: [
           Icon(icon, size: 18, color: cs.onSurfaceVariant),
-          const SizedBox(width: 8),
+          const SizedBox(width: AppSpacing.s),
           Expanded(child: child),
           if (trailing != null) trailing!,
         ],

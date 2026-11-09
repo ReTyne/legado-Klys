@@ -296,15 +296,15 @@ class _CharacterListScreenState extends State<CharacterListScreen>
             TextField(
                 controller: nameCtl,
                 decoration: const InputDecoration(labelText: '角色名')),
-            const SizedBox(height: 8),
+            const SizedBox(height: AppSpacing.s),
             Row(children: [
               const Text('性别: '),
-              const SizedBox(width: 8),
+              const SizedBox(width: AppSpacing.s),
               ChoiceChip(
                   label: const Text('男'),
                   selected: gender == '男',
                   onSelected: (_) => setD(() => gender = '男')),
-              const SizedBox(width: 8),
+              const SizedBox(width: AppSpacing.s),
               ChoiceChip(
                   label: const Text('女'),
                   selected: gender == '女',
@@ -322,7 +322,7 @@ class _CharacterListScreenState extends State<CharacterListScreen>
                 controller: relCtl,
                 decoration: const InputDecoration(
                     labelText: '关系（逗号分隔，如 李四|盟友）')),
-            const SizedBox(height: 12),
+            const SizedBox(height: AppSpacing.m),
             Wrap(
               spacing: 8,
               children: colors
@@ -481,22 +481,22 @@ class _CharacterListScreenState extends State<CharacterListScreen>
       context: context,
       builder: (c) => SafeArea(
         child: Padding(
-          padding: const EdgeInsets.all(16),
+          padding: const EdgeInsets.all(AppSpacing.l),
           child: Column(mainAxisSize: MainAxisSize.min, children: [
             Row(children: [
               _avatar(selected, radius: 28),
-              const SizedBox(width: 12),
+              const SizedBox(width: AppSpacing.m),
               Expanded(
                   child: Text(selected.name,
                       style: Theme.of(context).textTheme.titleLarge)),
             ]),
-            const SizedBox(height: 12),
+            const SizedBox(height: AppSpacing.m),
             if (selected.description != null &&
                 selected.description!.isNotEmpty)
               Text(selected.description!),
             if (selected.relations != null &&
                 selected.relations!.isNotEmpty) ...[
-              const SizedBox(height: 12),
+              const SizedBox(height: AppSpacing.m),
               Wrap(
                 spacing: 8,
                 children: selected.relations!
@@ -504,7 +504,7 @@ class _CharacterListScreenState extends State<CharacterListScreen>
                     .toList(),
               ),
             ],
-            const SizedBox(height: 12),
+            const SizedBox(height: AppSpacing.m),
             FilledButton.icon(
               onPressed: () {
                 Navigator.pop(c);
@@ -610,7 +610,7 @@ class _CharacterListScreenState extends State<CharacterListScreen>
     return Column(
       children: [
         Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          padding: const EdgeInsets.symmetric(horizontal: AppSpacing.l, vertical: AppSpacing.s),
           child: Text('拖拽节点调整布局（自动保存）· 点击节点查看详情 · 共 ${edges.length} 条关系',
               style: TextStyle(color: cs.onSurfaceVariant, fontSize: 12)),
         ),
@@ -686,13 +686,13 @@ class _CharacterListScreenState extends State<CharacterListScreen>
     }
     final cs = Theme.of(context).colorScheme;
     return ListView.builder(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(AppSpacing.l),
       itemCount: _events.length,
       itemBuilder: (context, i) {
         final e = _events[i].event;
         return InkWell(
           onLongPress: () => _deleteEvent(_events[i]),
-          borderRadius: BorderRadius.circular(12),
+          borderRadius: AppRadius.mAll,
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -710,12 +710,12 @@ class _CharacterListScreenState extends State<CharacterListScreen>
                     Container(width: 2, height: 56, color: cs.outlineVariant),
                 ],
               ),
-              const SizedBox(width: 12),
+              const SizedBox(width: AppSpacing.m),
               Expanded(
                 child: Card(
-                  margin: const EdgeInsets.only(bottom: 12),
+                  margin: const EdgeInsets.only(bottom: AppSpacing.m),
                   child: Padding(
-                    padding: const EdgeInsets.all(12),
+                    padding: const EdgeInsets.all(AppSpacing.m),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
@@ -726,7 +726,7 @@ class _CharacterListScreenState extends State<CharacterListScreen>
                                     color: cs.primary,
                                     fontSize: 12,
                                     fontWeight: FontWeight.w600)),
-                          const SizedBox(width: 8),
+                          const SizedBox(width: AppSpacing.s),
                           Expanded(
                               child: Text(e.title,
                                   style: const TextStyle(
@@ -739,7 +739,7 @@ class _CharacterListScreenState extends State<CharacterListScreen>
                                   color: cs.onSurfaceVariant, fontSize: 13)),
                         ],
                         if (e.related != null && e.related!.isNotEmpty) ...[
-                          const SizedBox(height: 8),
+                          const SizedBox(height: AppSpacing.s),
                           Align(
                             alignment: Alignment.centerLeft,
                             child: Chip(

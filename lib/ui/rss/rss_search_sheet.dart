@@ -64,7 +64,7 @@ class _RssArticleSearchSheetState extends State<_RssArticleSearchSheet> {
           child: Column(
             children: [
               Padding(
-                padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+                padding: const EdgeInsets.fromLTRB(AppSpacing.l, AppSpacing.xs, AppSpacing.l, AppSpacing.s),
                 child: TextField(
                   controller: _controller,
                   autofocus: true,
@@ -81,15 +81,15 @@ class _RssArticleSearchSheetState extends State<_RssArticleSearchSheet> {
                               setState(() => _query = '');
                             },
                           ),
-                    border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12)),
+                    border: const OutlineInputBorder(
+                        borderRadius: AppRadius.mAll),
                     isDense: true,
                   ),
                   onChanged: (v) => setState(() => _query = v),
                 ),
               ),
               Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
+                padding: const EdgeInsets.symmetric(horizontal: AppSpacing.l),
                 child: Row(
                   children: [
                     Text('匹配 ${results.length} 篇',
@@ -97,7 +97,7 @@ class _RssArticleSearchSheetState extends State<_RssArticleSearchSheet> {
                   ],
                 ),
               ),
-              const SizedBox(height: 4),
+              const SizedBox(height: AppSpacing.xs),
               Expanded(
                 child: _query.trim().isEmpty
                     ? const AppEmptyState(
