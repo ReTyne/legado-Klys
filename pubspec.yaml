@@ -1,7 +1,7 @@
 name: legado_md3
 description: legado（阅读）- 跨平台开源阅读器 / Cross-platform open-source reader
 publish_to: 'none'
-version: 1.1.0+2
+version: 1.0.0-beta+2
 
 environment:
   sdk: '>=3.3.0 <4.0.0'

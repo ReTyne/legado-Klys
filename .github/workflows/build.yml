@@ -63,11 +63,12 @@ jobs:
         id: version
         run: |
           VERSION=$(grep '^version:' pubspec.yaml | awk '{print $2}' | cut -d'+' -f1)
-          # tag 发布用完整三段式（1.1.0）；beta 标签去掉尾缀 .0（v1.1-beta）
+          # 版本号自带 -beta 预发布标识，release tag 完全由 pubspec 驱动：
+          # 1.0.0-beta -> v1.0.0-beta；后续 1.0.1-beta -> v1.0.1-beta，以此类推。
           if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
             TAG="${GITHUB_REF_NAME}"
           else
-            TAG="v${VERSION%.0}-beta"
+            TAG="v${VERSION}"
           fi
           echo "tag=$TAG" >> $GITHUB_OUTPUT
           echo "version=$VERSION" >> $GITHUB_OUTPUT
@@ -76,8 +77,8 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.version.outputs.tag }}
-          name: ${{ steps.version.outputs.version }}${{ github.ref_type != 'tag' && ' -beta' || '' }}
-          prerelease: ${{ github.ref_type != 'tag' }}
+          name: ${{ steps.version.outputs.version }}
+          prerelease: true
           body: |
             界面与 legado-E 全面对齐（书架重构 / 发现 / 订阅 / 我的）。
             iOS 为未签名 IPA，需自行签名或 sideload 后安装。
@@ -131,11 +132,12 @@ jobs:
         id: version
         run: |
           VERSION=$(grep '^version:' pubspec.yaml | awk '{print $2}' | cut -d'+' -f1)
-          # tag 发布用完整三段式（1.1.0）；beta 标签去掉尾缀 .0（v1.1-beta）
+          # 版本号自带 -beta 预发布标识，release tag 完全由 pubspec 驱动：
+          # 1.0.0-beta -> v1.0.0-beta；后续 1.0.1-beta -> v1.0.1-beta，以此类推。
           if [ "${GITHUB_REF_TYPE}" = "tag" ]; then
             TAG="${GITHUB_REF_NAME}"
           else
-            TAG="v${VERSION%.0}-beta"
+            TAG="v${VERSION}"
           fi
           echo "tag=$TAG" >> $GITHUB_OUTPUT
           echo "version=$VERSION" >> $GITHUB_OUTPUT
@@ -144,8 +146,8 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.version.outputs.tag }}
-          name: ${{ steps.version.outputs.version }}${{ github.ref_type != 'tag' && ' -beta' || '' }}
-          prerelease: ${{ github.ref_type != 'tag' }}
+          name: ${{ steps.version.outputs.version }}
+          prerelease: true
           body: |
             界面与 legado-E 全面对齐（书架重构 / 发现 / 订阅 / 我的）。
             iOS 为未签名 IPA，需自行签名或 sideload 后安装。

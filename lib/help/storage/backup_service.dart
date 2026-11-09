@@ -106,7 +106,7 @@ class BackupService {
   /* ================= 新版 zip 备份 ================= */
 
   /// 与 pubspec.yaml 的 version 保持一致；仅在平台通道不可用（如纯 Dart 单元测试）时兜底。
-  static const String fallbackAppVersion = '1.1.0+2';
+  static const String fallbackAppVersion = '1.0.0-beta+2';
 
   /// 真实应用版本：优先读 PackageInfo（version+buildNumber），
   /// 平台通道不可用或返回空值时回退到 pubspec 版本常量。
