@@ -242,8 +242,15 @@ class _ChapterListScreenState extends State<ChapterListScreen>
   /// 章节标题按替换规则处理（对齐 E clearDisplayTitle / upChapterList）
   String _displayTitle(String raw) {
     if (!_tocUseReplace || _replaceRules.isEmpty) return raw;
-    return ReplaceRuleService()
-        .applyRules(raw, _replaceRules, scope: widget.book?.origin ?? 'all');
+    // 目录标题走 scopeTitle 通道（上游 ReplaceRuleDao.findEnabledByTitleScope），
+    // 并同时传书名与书源 origin 供 scope / excludeScope 匹配。
+    return ReplaceRuleService().applyRules(
+      raw,
+      _replaceRules,
+      scope: widget.book?.origin,
+      name: widget.book?.name,
+      isTitle: true,
+    );
   }
 
   /// 是否本地 TXT（长章节拆分仅对此生效，对齐 E isLocalTxt 判断）

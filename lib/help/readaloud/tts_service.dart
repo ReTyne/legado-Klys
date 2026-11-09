@@ -16,6 +16,13 @@ class TtsService {
   /// 媒体按键 / 系统快捷入口通过它控制正在朗读的会话，而非新建空实例。
   static TtsService? active;
 
+  /// 忽略音频焦点（legado-E ignoreAudioFocus）：开启后朗读不因来电/切后台
+  /// 等音频焦点变化而暂停。由设置页与启动期同步，是真实消费点。
+  static bool ignoreAudioFocus = false;
+
+  /// 退出应用时停止朗读（legado-E mediaButtonOnExit，默认 true）。
+  static bool stopReadAloudOnExit = true;
+
   final FlutterTts _flutterTts = FlutterTts();
   final DatabaseService _db = DatabaseService();
   CloudTtsProvider? _cloudProvider;

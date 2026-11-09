@@ -1,9 +1,17 @@
+import 'dart:io' show File;
+import 'dart:ui' as ui;
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:legado_md3/ui/widgets/app_widgets.dart';
+import 'package:legado_md3/ui/file/file_manage_screen.dart';
+import 'package:legado_md3/ui/book/detail/parts/intro_render.dart';
+import 'package:legado_md3/ui/book/detail/parts/delete_book_helper.dart';
+import 'package:legado_md3/ui/main/bookshelf/parts/update_error_store.dart';
+import 'package:legado_md3/ui/book/search/search_screen.dart';
 import 'package:legado_md3/data/model/book.dart';
 import 'package:legado_md3/data/model/book_chapter.dart';
 import 'package:legado_md3/di/book_provider.dart';
@@ -40,6 +48,10 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
   bool _deleteAlert = true;
   // 对齐 E onMenuOpened：当前书源，控制「登录 / 源变量 / 书籍变量」可见性
   BookSource? _detailSource;
+  // 对齐 E AppConfig.isEInkMode：墨水屏不启用封面高斯模糊背景
+  bool _eink = false;
+  // 对齐 E upKinds：本地书在标签里追加文件大小（formatFileSize）
+  int? _localFileSize;
 
   @override
   void initState() {
@@ -49,7 +61,47 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
     _checkInShelf();
     _loadDeleteAlert();
     _loadDetailSource();
+    _loadEink();
+    _loadLocalFileSize();
   }
+
+  Future<void> _loadEink() async {
+    final p = await SharedPreferences.getInstance();
+    if (mounted) {
+      setState(() => _eink =
+          (p.getBool('lab_enabled') ?? false) && (p.getBool('lab_eink') ?? false));
+    }
+  }
+
+  /// 对齐 E upKinds：`FileDoc.fromFile(book.bookUrl).size` → formatFileSize。
+  Future<void> _loadLocalFileSize() async {
+    if (!widget.book.local) return;
+    final path = localBookSourcePath(widget.book);
+    if (path == null) return;
+    try {
+      final f = File(path);
+      if (await f.exists()) {
+        final size = await f.length();
+        if (mounted) setState(() => _localFileSize = size);
+      }
+    } catch (_) {}
+  }
+
+  /// 点击书名 / 作者 / 分类标签按该词搜索（对齐 E CLICK_BOOK_NAME /
+  /// CLICK_AUTHOR / CLICK_BOOK_LABEL → SearchActivity.start(...keyword)）。
+  void _searchKeyword(String keyword) {
+    final kw = keyword.trim();
+    if (kw.isEmpty) return;
+    Navigator.push(context,
+        MaterialPageRoute(builder: (_) => SearchScreen(initialKeyword: kw)));
+  }
+
+  /// 分类字符串拆成可点标签（对齐 E Book.getKindList()）。
+  List<String> _kindParts(String kind) => kind
+      .split(RegExp(r'[,，、|\s]+'))
+      .map((e) => e.trim())
+      .where((e) => e.isNotEmpty)
+      .toList();
 
   Future<void> _loadDeleteAlert() async {
     final p = await SharedPreferences.getInstance();
@@ -405,12 +457,20 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
               title: const Text('复制目录URL'),
               onTap: () async { Navigator.pop(context); await Clipboard.setData(ClipboardData(text: widget.book.noteUrl ?? '')); if (mounted && context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('已复制'))); },
             ),
-            // 9. 允许更新（E: menu_can_update，checkable）
+            // 9. 允许更新（E: menu_can_update → Book.canUpdate，checkable）
+            // 关闭「允许更新」时顺手清掉 updateError 标记（对齐 E:370-379）；
+            // canUpdate 才是书架 _updateAllBooks 的真实过滤字段。
             ListTile(
               leading: const Icon(Icons.sync),
               title: const Text('允许更新'),
-              trailing: Icon(widget.book.allowUpdate ? Icons.check_box : Icons.check_box_outline_blank),
-              onTap: () async { Navigator.pop(context); widget.book.allowUpdate = !widget.book.allowUpdate; await _db.updateBook(widget.book); if (mounted) setState(() {}); },
+              trailing: Icon(widget.book.canUpdate ? Icons.check_box : Icons.check_box_outline_blank),
+              onTap: () async {
+                Navigator.pop(context);
+                widget.book.canUpdate = !widget.book.canUpdate;
+                if (!widget.book.canUpdate) await clearUpdateError(widget.book);
+                await _db.updateBook(widget.book);
+                if (mounted) setState(() {});
+              },
             ),
             // 10. 长章节拆分（E: menu_split_long_chapter，checkable，仅本地 TXT）
             if (_isLocalTxt)
@@ -496,8 +556,13 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
                               _infoRow(
                                 icon: Icons.person_outline,
                                 child: Expanded(
-                                  child: Text(book.author, maxLines: 1, overflow: TextOverflow.ellipsis,
-                                      style: TextStyle(fontSize: 13, color: cs.onSurfaceVariant)),
+                                  // 对齐 E tvAuthor 点击/长按 → SearchActivity.start(author)。
+                                  child: GestureDetector(
+                                    onTap: () => _searchKeyword(book.author),
+                                    onLongPress: () => _searchKeyword(book.author),
+                                    child: Text(book.author, maxLines: 1, overflow: TextOverflow.ellipsis,
+                                        style: TextStyle(fontSize: 13, color: cs.onSurfaceVariant)),
+                                  ),
                                 ),
                               ),
                               _infoRow(
@@ -542,31 +607,12 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
 
                         const SizedBox(height: AppSpacing.s),
 
-                        // 简介（默认 4 行，可展开）
+                        // 简介：对齐 E showBookIntro 的 <useweb>/<usehtml>/<md>
+                        // 富文本分派（WebView + scheme 拦截 + 图片长按）；
+                        // 纯文本维持 4 行展开/收起。
                         Padding(
                           padding: const EdgeInsets.symmetric(horizontal: AppSpacing.l),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              GestureDetector(
-                                onTap: () => setState(() => _introExpanded = !_introExpanded),
-                                child: Text(
-                                  book.intro?.isNotEmpty == true ? book.intro! : '暂无简介',
-                                  style: TextStyle(fontSize: 14, height: 1.6, color: cs.onSurfaceVariant),
-                                  maxLines: _introExpanded ? null : 4,
-                                  overflow: _introExpanded ? TextOverflow.visible : TextOverflow.ellipsis,
-                                ),
-                              ),
-                              if ((book.intro?.length ?? 0) > 100)
-                                Align(
-                                  alignment: Alignment.centerRight,
-                                  child: TextButton(
-                                    onPressed: () => setState(() => _introExpanded = !_introExpanded),
-                                    child: Text(_introExpanded ? '收起' : '展开'),
-                                  ),
-                                ),
-                            ],
-                          ),
+                          child: _buildIntro(book, cs),
                         ),
 
                         const SizedBox(height: AppSpacing.s),
@@ -678,55 +724,144 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
     );
   }
 
+  /// 简介渲染（对齐 E `BookInfoActivity.showBookIntro`）：
+  /// 富文本按前缀分派到 [IntroRichView]（WebView + scheme 拦截 + 图片长按），
+  /// 纯文本维持 4 行展开/收起。
+  Widget _buildIntro(Book book, ColorScheme cs) {
+    final spec = parseIntro(book.intro);
+    if (spec.kind != IntroKind.plain) {
+      return IntroRichView(spec: spec, bookUrl: book.bookUrl);
+    }
+    final text = book.intro?.isNotEmpty == true ? book.intro! : '暂无简介';
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        GestureDetector(
+          onTap: () => setState(() => _introExpanded = !_introExpanded),
+          child: Text(
+            text,
+            style: TextStyle(fontSize: 14, height: 1.6, color: cs.onSurfaceVariant),
+            maxLines: _introExpanded ? null : 4,
+            overflow: _introExpanded ? TextOverflow.visible : TextOverflow.ellipsis,
+          ),
+        ),
+        if ((book.intro?.length ?? 0) > 100)
+          Align(
+            alignment: Alignment.centerRight,
+            child: TextButton(
+              onPressed: () => setState(() => _introExpanded = !_introExpanded),
+              child: Text(_introExpanded ? '收起' : '展开'),
+            ),
+          ),
+      ],
+    );
+  }
+
   /// 头部：封面 + 书名 + 分类标签（对齐 activity_book_info 的 ArcView 区域）
   Widget _buildHeader(Book book) {
     final cs = Theme.of(context).colorScheme;
-    return Container(
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [cs.primaryContainer, cs.surface],
+    final cover = (book.customCoverUrl != null && book.customCoverUrl!.isNotEmpty)
+        ? book.customCoverUrl
+        : book.coverUrl;
+    // 对齐 E showCover / BookCover.loadBlur：非墨水屏时用封面做高斯模糊背景。
+    final Widget? blurBg = !_eink && cover != null && cover.isNotEmpty
+        ? Positioned.fill(
+            child: ImageFiltered(
+              imageFilter: ui.ImageFilter.blur(sigmaX: 24, sigmaY: 24),
+              child: Image.network(
+                cover,
+                fit: BoxFit.cover,
+                errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+              ),
+            ),
+          )
+        : null;
+    return Stack(
+      fit: StackFit.expand,
+      children: [
+        if (blurBg != null) blurBg,
+        // 半透明渐变叠层保证书名/标签可读（对齐 ArcView 遮罩）。
+        Container(
+          decoration: BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [
+                cs.primaryContainer.withOpacity(blurBg != null ? 0.55 : 1),
+                cs.surface.withOpacity(blurBg != null ? 0.88 : 1),
+              ],
+            ),
+          ),
         ),
-      ),
-      child: SafeArea(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            const SizedBox(height: 36),
-            // 对齐 E ivCover.setOnClickListener → ChangeCoverDialog：点击封面换封面
-            GestureDetector(
-              onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => ChangeCoverScreen(book: book))),
-              child: _buildCover(book, large: true),
-            ),
-            const SizedBox(height: 10),
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xl),
-              child: Text(book.name,
-                  textAlign: TextAlign.center,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-            ),
-            const SizedBox(height: 6),
-            if (book.kind?.isNotEmpty == true || (book.wordCount ?? 0) > 0)
+        SafeArea(
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const SizedBox(height: 36),
+              // 点击封面换封面（E: setOnClickListener）；
+              // 长按封面看大图（E: setOnLongClickListener → PhotoDialog）。
+              GestureDetector(
+                onTap: () => Navigator.push(context,
+                    MaterialPageRoute(builder: (_) => ChangeCoverScreen(book: book))),
+                onLongPress: () => _showCoverFullImage(book),
+                child: _buildCover(book, large: true),
+              ),
+              const SizedBox(height: 10),
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xl),
-                child: Wrap(
-                  alignment: WrapAlignment.center,
-                  spacing: 6,
-                  runSpacing: 4,
-                  children: [
-                    if (book.kind?.isNotEmpty == true) _buildTag(book.kind!),
-                    if ((book.wordCount ?? 0) > 0) _buildTag('${(book.wordCount! / 10000).toStringAsFixed(1)}万字'),
-                    _buildTag(book.local ? '本地' : '网络'),
-                  ],
+                // 对齐 E tvName 点击/长按 → SearchActivity.start(book.name)。
+                child: GestureDetector(
+                  onTap: () => _searchKeyword(book.name),
+                  onLongPress: () => _searchKeyword(book.name),
+                  child: Text(book.name,
+                      textAlign: TextAlign.center,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
                 ),
               ),
-          ],
+              const SizedBox(height: 6),
+              if (book.kind?.isNotEmpty == true ||
+                  (book.wordCount ?? 0) > 0 ||
+                  _localFileSize != null)
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xl),
+                  child: Wrap(
+                    alignment: WrapAlignment.center,
+                    spacing: 6,
+                    runSpacing: 4,
+                    children: [
+                      // 分类标签可点（E: lbKind.setLabels 的 CLICK_BOOK_LABEL）。
+                      if (book.kind?.isNotEmpty == true)
+                        ..._kindParts(book.kind!).map((k) => _searchableTag(k)),
+                      if ((book.wordCount ?? 0) > 0)
+                        _buildTag('${(book.wordCount! / 10000).toStringAsFixed(1)}万字'),
+                      _buildTag(book.local ? '本地' : '网络'),
+                      // 本地书标签追加文件大小（E: upKinds → formatFileSize）。
+                      if (_localFileSize != null)
+                        _buildTag(FileHelper.formatFileSize(_localFileSize!)),
+                    ],
+                  ),
+                ),
+            ],
+          ),
         ),
-      ),
+      ],
     );
+  }
+
+  /// 可点击的分类标签（对齐 E lbKind.setLabels 点击回调 → 按该词搜索）。
+  Widget _searchableTag(String text) =>
+      AppTag(text, onTap: () => _searchKeyword(text));
+
+  /// 封面长按看大图（对齐 E ivCover.setOnLongClickListener → PhotoDialog）。
+  void _showCoverFullImage(Book book) {
+    final cover = (book.customCoverUrl != null && book.customCoverUrl!.isNotEmpty)
+        ? book.customCoverUrl
+        : book.coverUrl;
+    if (cover == null || cover.isEmpty) return;
+    Navigator.push(context,
+        MaterialPageRoute(builder: (_) => IntroImagePreview(url: cover)));
   }
 
   /// 一行「图标 + 内容 + 右侧强调按钮」（对齐 ll_info 内的各 LinearLayout 行）
@@ -827,30 +962,33 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
 
   Future<void> _confirmRemoveFromShelf() async {
     final book = widget.book;
-    // 对齐 E LocalConfig.bookInfoDeleteAlert：关闭删除提醒时直接移出书架，不弹确认框
+    // 对齐 E BookInfoActivity.deleteBook()：本地书删除确认框带「同时删除源文件」
+    // 复选框（deleteBookOriginal 持久化）；关闭删除提醒时直接删，但仍按该偏好
+    // 决定是否删除源文件（E: delBook(LocalConfig.deleteBookOriginal)）。
+    late final DeleteBookChoice choice;
     if (!_deleteAlert) {
-      await _db.deleteBook(book.name, book.author);
-      if (mounted && context.mounted) await Provider.of<BookProvider>(context, listen: false).loadBooks();
-      if (mounted) {
-        setState(() => _inShelf = false);
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('已移出书架')));
-      }
-      return;
+      final prefs = await SharedPreferences.getInstance();
+      choice = DeleteBookChoice(
+          true, prefs.getBool(kDeleteBookOriginalPref) ?? false);
+    } else {
+      choice = await showDeleteBookConfirm(
+        context,
+        book: book,
+        title: '移除书籍',
+        message: '确定要从书架移除《${book.name}》吗？',
+        confirmText: '移除',
+      );
     }
-    final confirmed = await showAppConfirmDialog(
-      context,
-      title: '移除书籍',
-      content: '确定要从书架移除《${book.name}》吗？',
-      confirmText: '移除',
-      danger: true,
-    );
-    if (confirmed) {
-      await _db.deleteBook(book.name, book.author);
-      if (mounted && context.mounted) await Provider.of<BookProvider>(context, listen: false).loadBooks();
-      if (mounted) {
-        setState(() => _inShelf = false);
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('已移出书架')));
-      }
+    if (!choice.confirmed) return;
+    await applyDeleteBookChoice(
+        book, choice, () => _db.deleteBook(book.name, book.author));
+    if (mounted && context.mounted) {
+      await Provider.of<BookProvider>(context, listen: false).loadBooks();
+    }
+    if (mounted) {
+      setState(() => _inShelf = false);
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('已移出书架')));
     }
   }
 

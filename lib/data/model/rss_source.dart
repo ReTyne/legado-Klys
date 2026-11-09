@@ -54,7 +54,9 @@ class RssSource implements JsSource {
   String? variable;
   @override
   bool enabledCookieJar;
-  int? articleStyle; // JSON articleStyle（0 默认 / 1 图片 / 2 视频等）
+  /// 文章列表布局 0..4（legado-E RssSource.articleStyle，非正文渲染方式）：
+  /// 0 标准列表 / 1 紧凑列表 / 2 双列网格 / 3 瀑布流 / 4 大图卡片。
+  int? articleStyle;
   bool enableJs;
   bool loadWithBaseUrl;
   bool preload;

@@ -258,6 +258,13 @@ class WebViewLegadoJs implements LegadoJs {
 
     // 内部协议：zip 解压 / TTF 字体反爬 / 下载 / 分享（书源 JS 通过同步 XHR 调用）
     if (url.startsWith('legado://zip')) return await _handleZip(uri);
+    // 对齐 E JsExtensions.kt / StringUtils.kt / HtmlFormatter.kt：
+    // java.strToBytes / bytesToStr / htmlFormat / toNumChapter 转交 Dart 侧
+    // JsTextUtils（Flutter 侧无 Java Charset.forName 全字符集能力，由
+    // enough_convert + 纯 Dart 正则提供唯一权威语义，避免 JS/Dart 两套漂移）。
+    if (url.startsWith('legado://charset')) {
+      return await _handleCharset(request, uri);
+    }
     if (url.startsWith('legado://ttf')) return await _handleTtf(request);
     if (url.startsWith('legado://download')) return await _handleDownload(uri);
     if (url.startsWith('legado://share')) return await _handleShare(request);
@@ -514,6 +521,49 @@ class WebViewLegadoJs implements LegadoJs {
       return _textResponse('false', 200);
     } catch (e) {
       return _textResponse('false', 200);
+    }
+  }
+
+  /// legado://charset 协议：把书源脚本的 4 个文本/编码扩展函数转交 Dart 侧
+  /// [JsTextUtils]，使上游 JsExtensions.kt / StringUtils.kt / HtmlFormatter.kt
+  /// 的语义只有一份权威实现（JS 桥只做参数封送，不再各写一套简化正则）。
+  ///
+  /// 请求体沿用 `__doXhr` 的 `X-Legado-Body`（`__b64Unicode`：UTF-8 base64）；
+  /// 返回体为 `text/plain`：
+  ///  * `op=encode`       body=原串，返回字节数组的 JSON（`[214,208,...]`）
+  ///  * `op=decode`       body=字节数组 JSON，返回按 charset 解码的字符串
+  ///  * `op=htmlFormat`   body=HTML，返回 formatKeepImg 结果
+  ///  * `op=toNumChapter` body=章节名，返回数字归一化后的章节名
+  /// `cs` 为 Java 风格 charset 名（GBK / GB_2312 / ISO-8859-1 / UTF-8 ...）。
+  Future<iw.WebResourceResponse> _handleCharset(
+      iw.WebResourceRequest request, iw.WebUri uri) async {
+    try {
+      final op = uri.queryParameters['op'] ?? '';
+      final cs = uri.queryParameters['cs'];
+      final b64 =
+          (request.headers ?? const <String, String>{})['X-Legado-Body'] ?? '';
+      final body = b64.isEmpty
+          ? ''
+          : utf8.decode(base64Decode(b64), allowMalformed: true);
+      switch (op) {
+        case 'encode':
+          return _textResponse(
+              jsonEncode(JsTextUtils.strToBytes(body, charset: cs)), 200);
+        case 'decode':
+          final arr = (jsonDecode(body) as List?) ?? const <dynamic>[];
+          final bytes = arr
+              .map((e) => (e is num ? e.toInt() : 0) & 0xff)
+              .toList();
+          return _textResponse(JsTextUtils.bytesToStr(bytes, charset: cs), 200);
+        case 'htmlFormat':
+          return _textResponse(JsTextUtils.htmlFormat(body), 200);
+        case 'toNumChapter':
+          return _textResponse(JsTextUtils.toNumChapter(body) ?? '', 200);
+        default:
+          return _textResponse('unknown op', 400);
+      }
+    } catch (e) {
+      return _textResponse('charset 处理失败: $e', 502);
     }
   }
 

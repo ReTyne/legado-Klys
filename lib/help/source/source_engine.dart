@@ -16,8 +16,8 @@ import 'package:legado_md3/help/source/js/legado_js_runtime.dart';
 import 'package:legado_md3/help/source/js/headless_webview.dart';
 import 'js_mini_eval.dart';
 import 'package:legado_md3/help/http/cookie_manager.dart';
+import 'package:legado_md3/help/http/http_response_decoder.dart';
 import 'package:legado_md3/data/local/app_database.dart';
-import 'package:enough_convert/enough_convert.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 /// Legado书源引擎 - 对齐原版规则格式（CSS / XPath / JSONPath / 正则 / JS子集）
@@ -530,7 +530,11 @@ class BookSourceEngine {
     if (optCharset != null && optCharset.isNotEmpty) {
       forcedCharset = optCharset;
     }
-    final text = _decodeBytes(response.data ?? [], response.headers.map);
+    // Range 请求（206 分片）不透明解压，对齐上游 DecompressInterceptor 的 Range 保护
+    final rangeRequested =
+        headers.keys.any((k) => k.toLowerCase() == 'range');
+    final text = _decodeBytes(response.data ?? [], response.headers.map,
+        rangeRequested: rangeRequested);
     forcedCharset = originalForced;
     _log('解码完成，文本 ${text.length} 字符');
     lastRawResponse = text;
@@ -538,34 +542,17 @@ class BookSourceEngine {
     return text;
   }
 
-  /// 按编码解码字节：强制编码 > Content-Type > HTML meta > utf-8（失败回退 GBK）
-  String _decodeBytes(List<int> bytes, Map<String, List<String>> respHeaders) {
-    String? cs = forcedCharset;
-    final ct = (respHeaders['content-type'] ?? respHeaders['Content-Type'] ?? []).join(';').toLowerCase();
-    final m = RegExp(r'charset=([a-z0-9\-]+)').firstMatch(ct);
-    if (m != null) cs ??= m.group(1);
-    if (cs == null) {
-      final head = String.fromCharCodes(bytes.take(2048).map((b) => b & 0xff)).toLowerCase();
-      final mm = RegExp(r"""charset=["']?([a-z0-9\-]+)""").firstMatch(head);
-      if (mm != null) cs = mm.group(1);
-    }
-    cs = cs?.toLowerCase();
-    try {
-      if (cs == 'gbk' || cs == 'gb2312' || cs == 'gb18030') return const GbkCodec().decode(bytes);
-      if (cs == 'big5' || cs == 'big-5') return const Big5Codec().decode(bytes);
-      if (cs == 'latin1' || cs == 'iso-8859-1') return latin1.decode(bytes);
-      return utf8.decode(bytes, allowMalformed: false);
-    } catch (_) {
-      try {
-        return utf8.decode(bytes, allowMalformed: true);
-      } catch (_) {
-        try {
-          return const GbkCodec().decode(bytes);
-        } catch (_) {
-          return latin1.decode(bytes);
-        }
-      }
-    }
+  /// 按编码解码字节：委托共享解码器，对齐上游
+  /// `forcedCharset > Content-Type > HTML meta > 统计探测`，并统一处理
+  /// gzip/deflate 透明解压、UTF-8/UTF-16 BOM、Range 保护。
+  String _decodeBytes(List<int> bytes, Map<String, List<String>> respHeaders,
+      {bool rangeRequested = false}) {
+    return HttpResponseDecoder.decode(
+      bytes,
+      headers: respHeaders,
+      forcedCharset: forcedCharset,
+      rangeRequested: rangeRequested,
+    );
   }
 
   /// 解析相对URL

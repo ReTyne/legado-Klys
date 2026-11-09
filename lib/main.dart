@@ -79,7 +79,7 @@ void main() async {
     AutoTaskService.instance.start();
     // 启动期自动更新有「自动更新」标记的规则订阅（对齐 legado-E ruleSubsUp()）。
     RuleSubAutoUpdate.runDue();
-    if (prefs.getBool('oc_autoClearExpired') ?? false) {
+    if (prefs.getBool('oc_autoClearExpired') ?? true) {
       DatabaseService().clearExpiredChapterContent().catchError((_) => 0);
     }
     if (prefs.getBool('oc_webAutoStart') ?? false) {

@@ -47,6 +47,13 @@ class ReadConfig {
   int paragraphSpacing;
   double letterSpacing;
   double wordSpacing;
+  // 排版数值换算（对齐 E ChapterProvider.kt:186-199 / ReadStyleDialog.kt:78-85）：
+  // 上游存「十分之一单位」整数，绘制前 `lineSpacingExtra / 10f`；字距为 em，
+  // 缩进宽按 `'　' * N` 整串测量后除以字符数；滑杆显示带偏移（字号=进度+5、
+  // 字距=(进度-50)/100）。Flutter 的 TextStyle.height 是行高倍数、letterSpacing
+  // 是逻辑像素、缩进用全角空格串，属于不同的单位模型，强行套 /10 会造成
+  // 首屏行距骤变（行为不等价）。此处保留 Flutter 自有换算单位，不伪造换算，
+  // 换算对照见 lib/ui/book/read/read_detail_utils.dart 的说明。
 
   // 背景
   int bgColor;
@@ -102,6 +109,8 @@ class ReadConfig {
 
   // 其他
   bool keepScreenOn;
+  /// 屏幕超时档位：0 跟随系统 / 60 / 300 / 600 秒 / -1 常亮（legado-E keep_light）
+  int keepLight;
   bool showMenuOnTap;
   bool longPressSelect;
   String? charset;
@@ -140,6 +149,33 @@ class ReadConfig {
   bool streamReadAloudAudio;             // 流式朗读音频
   bool sysTtsConfig;                     // 系统 TTS 跟随系统语速
   bool ttsFlowSys;                       // 朗读语速跟随系统
+
+  /* ===== 批次 3 · 日/夜/墨水屏三套独立配置 =====
+     对齐 legado-E help/config/ReadBookConfig.kt:539-723 的 Config：
+     白天 bgStr/#EEEEEE、textColor/#3E3D3B、textAccentColor/#E53935、
+     darkStatusIcon=true、pageAnim=0；夜间 bgStrNight/#000000、
+     textColorNight/#ADADAD、textAccentColorNight/#FE4D55、darkStatusIconNight=false；
+     EInk bgStrEInk/#FFFFFF、textColorEInk/#000000、textAccentColorEInk/#000000、
+     darkStatusIconEInk=true、pageAnimEInk=4（无动画）。
+     「同一字段三份存储」：白天调的配色/动画不会覆盖夜间与墨水屏，切回各自还原。 */
+  // 当前生效模式：0 日间 / 1 夜间 / 2 墨水屏（对齐 AppConfig.isNightTheme/isEInkMode）。
+  int readThemeMode;
+  int textAccentColor;              // 白天强调色
+  bool darkStatusIcon;              // 白天状态栏暗色图标
+  int bgColorNight;                 // 夜间背景
+  int textColorNight;               // 夜间文字
+  int textAccentColorNight;         // 夜间强调色
+  bool darkStatusIconNight;         // 夜间状态栏暗色图标
+  int bgColorEInk;                  // 墨水屏背景
+  int textColorEInk;                // 墨水屏文字
+  int textAccentColorEInk;          // 墨水屏强调色
+  bool darkStatusIconEInk;          // 墨水屏状态栏暗色图标
+  int pageAnimEInk;                 // 墨水屏专用翻页动画（默认 4 无动画）
+
+  /* ===== 批次 3 · 极端值容错 / 文本选择菜单 / 退出提示 ===== */
+  int systemTypefaces;              // 0 无衬线 / 1 衬线 / 2 等宽系统字体
+  int contentSelectSpeakMod;        // 0 只朗读选中内容 / 1 从选择处一直朗读
+  bool showAddToShelfAlert;         // 退出未入架书时弹「加入书架」确认
 
   ReadConfig({
     this.textSize = 20,
@@ -197,6 +233,7 @@ class ReadConfig {
     this.footerAlignCenter = false,
     this.footerColor = 0xFF6B6B6B,
     this.keepScreenOn = false,
+    this.keepLight = 0,
     this.showMenuOnTap = true,
     this.longPressSelect = true,
     this.charset,
@@ -227,6 +264,22 @@ class ReadConfig {
     this.streamReadAloudAudio = false,
     this.sysTtsConfig = false,
     this.ttsFlowSys = true,
+    // ===== 批次 3 默认值（对齐上游 ReadBookConfig.Config）=====
+    this.readThemeMode = 0,
+    this.textAccentColor = 0xFFE53935,
+    this.darkStatusIcon = true,
+    this.bgColorNight = 0xFF000000,
+    this.textColorNight = 0xFFADADAD,
+    this.textAccentColorNight = 0xFFFE4D55,
+    this.darkStatusIconNight = false,
+    this.bgColorEInk = 0xFFFFFFFF,
+    this.textColorEInk = 0xFF000000,
+    this.textAccentColorEInk = 0xFF000000,
+    this.darkStatusIconEInk = true,
+    this.pageAnimEInk = 4,
+    this.systemTypefaces = 0,
+    this.contentSelectSpeakMod = 0,
+    this.showAddToShelfAlert = true,
   });
 
   Map<String, dynamic> toJson() => {
@@ -250,6 +303,7 @@ class ReadConfig {
     'footerSlots': footerSlots?.map((e) => e.index).toList(),
     'headerSize': headerSize, 'footerSize': footerSize,
     'headerBold': headerBold, 'footerBold': footerBold,
+    'keepLight': keepLight,
     'keepScreenOn': keepScreenOn, 'showMenuOnTap': showMenuOnTap, 'longPressSelect': longPressSelect,
     'charset': charset, 'chineseConverter': chineseConverter, 'preDownloadCount': preDownloadCount,
     'showTimeBattery': showTimeBattery,
@@ -276,6 +330,22 @@ class ReadConfig {
     'streamReadAloudAudio': streamReadAloudAudio,
     'sysTtsConfig': sysTtsConfig,
     'ttsFlowSys': ttsFlowSys,
+    // ===== 批次 3 字段序列化 =====
+    'readThemeMode': readThemeMode,
+    'textAccentColor': textAccentColor,
+    'darkStatusIcon': darkStatusIcon,
+    'bgColorNight': bgColorNight,
+    'textColorNight': textColorNight,
+    'textAccentColorNight': textAccentColorNight,
+    'darkStatusIconNight': darkStatusIconNight,
+    'bgColorEInk': bgColorEInk,
+    'textColorEInk': textColorEInk,
+    'textAccentColorEInk': textAccentColorEInk,
+    'darkStatusIconEInk': darkStatusIconEInk,
+    'pageAnimEInk': pageAnimEInk,
+    'systemTypefaces': systemTypefaces,
+    'contentSelectSpeakMod': contentSelectSpeakMod,
+    'showAddToShelfAlert': showAddToShelfAlert,
   };
 
   factory ReadConfig.fromJson(Map<String, dynamic> json) => ReadConfig(
@@ -338,6 +408,9 @@ class ReadConfig {
     footerAlignCenter: json['footerAlignCenter'] ?? false,
     footerColor: json['footerColor'] ?? 0xFF999999,
     keepScreenOn: json['keepScreenOn'] ?? false,
+    keepLight: json['keepLight'] is int
+        ? json['keepLight'] as int
+        : (int.tryParse(json['keepLight']?.toString() ?? '') ?? 0),
     showMenuOnTap: json['showMenuOnTap'] ?? true,
     longPressSelect: json['longPressSelect'] ?? true,
     charset: json['charset'],
@@ -368,7 +441,117 @@ class ReadConfig {
     streamReadAloudAudio: json['streamReadAloudAudio'] ?? false,
     sysTtsConfig: json['sysTtsConfig'] ?? false,
     ttsFlowSys: json['ttsFlowSys'] ?? true,
+    // ===== 批次 3 字段反序列化（旧配置缺省时用上游默认值；越界值钳回合法域）=====
+    readThemeMode: _readInt(json['readThemeMode'], 0).clamp(0, 2).toInt(),
+    textAccentColor: json['textAccentColor'] ?? 0xFFE53935,
+    darkStatusIcon: json['darkStatusIcon'] ?? true,
+    bgColorNight: json['bgColorNight'] ?? 0xFF000000,
+    textColorNight: json['textColorNight'] ?? 0xFFADADAD,
+    textAccentColorNight: json['textAccentColorNight'] ?? 0xFFFE4D55,
+    darkStatusIconNight: json['darkStatusIconNight'] ?? false,
+    bgColorEInk: json['bgColorEInk'] ?? 0xFFFFFFFF,
+    textColorEInk: json['textColorEInk'] ?? 0xFF000000,
+    textAccentColorEInk: json['textAccentColorEInk'] ?? 0xFF000000,
+    darkStatusIconEInk: json['darkStatusIconEInk'] ?? true,
+    pageAnimEInk: _readInt(json['pageAnimEInk'], 4).clamp(0, 5).toInt(),
+    systemTypefaces: _readInt(json['systemTypefaces'], 0).clamp(0, 2).toInt(),
+    contentSelectSpeakMod: _readInt(json['contentSelectSpeakMod'], 0).clamp(0, 1).toInt(),
+    showAddToShelfAlert: json['showAddToShelfAlert'] ?? true,
   );
+
+  /// 反序列化时把 num / 数字字符串统一为 int（兼容 Android 备份互通）。
+  static int _readInt(dynamic v, int fallback) {
+    if (v is num) return v.toInt();
+    if (v is String) return int.tryParse(v) ?? fallback;
+    return fallback;
+  }
+
+  /* ===== 批次 3 · 三套配置的「当前模式」选择器 =====
+     对齐上游 Config 的 curBgStr()/curTextColor()/curStatusIconDark()/curPageAnim()
+     与 setCurBg()/setCurTextColor()/setCurStatusIconDark()/setCurPageAnim()：
+     读取时按当前模式选对应那份，写入时只写当前那份，互不覆盖。 */
+
+  bool get isNightMode => readThemeMode == 1;
+  bool get isEInkMode => readThemeMode == 2;
+
+  int get curBgColor => switch (readThemeMode) {
+        1 => bgColorNight,
+        2 => bgColorEInk,
+        _ => bgColor,
+      };
+
+  int get curTextColor => switch (readThemeMode) {
+        1 => textColorNight,
+        2 => textColorEInk,
+        _ => textColor,
+      };
+
+  int get curTextAccentColor => switch (readThemeMode) {
+        1 => textAccentColorNight,
+        2 => textAccentColorEInk,
+        _ => textAccentColor,
+      };
+
+  bool get curStatusIconDark => switch (readThemeMode) {
+        1 => darkStatusIconNight,
+        2 => darkStatusIconEInk,
+        _ => darkStatusIcon,
+      };
+
+  /// 墨水屏用独立翻页动画（默认 4 无动画），日/夜共用 pageAnim。
+  int get curPageAnim => isEInkMode ? pageAnimEInk : pageAnim;
+
+  void setCurBgColor(int color) {
+    switch (readThemeMode) {
+      case 1:
+        bgColorNight = color;
+      case 2:
+        bgColorEInk = color;
+      default:
+        bgColor = color;
+    }
+  }
+
+  void setCurTextColor(int color) {
+    switch (readThemeMode) {
+      case 1:
+        textColorNight = color;
+      case 2:
+        textColorEInk = color;
+      default:
+        textColor = color;
+    }
+  }
+
+  void setCurTextAccentColor(int color) {
+    switch (readThemeMode) {
+      case 1:
+        textAccentColorNight = color;
+      case 2:
+        textAccentColorEInk = color;
+      default:
+        textAccentColor = color;
+    }
+  }
+
+  void setCurStatusIconDark(bool dark) {
+    switch (readThemeMode) {
+      case 1:
+        darkStatusIconNight = dark;
+      case 2:
+        darkStatusIconEInk = dark;
+      default:
+        darkStatusIcon = dark;
+    }
+  }
+
+  void setCurPageAnim(int anim) {
+    if (isEInkMode) {
+      pageAnimEInk = anim;
+    } else {
+      pageAnim = anim;
+    }
+  }
 
   String toJsonString() => jsonEncode(toJson());
   factory ReadConfig.fromJsonString(String str) => ReadConfig.fromJson(jsonDecode(str));

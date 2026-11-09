@@ -37,6 +37,8 @@ class _PdfReaderScreenState extends State<PdfReaderScreen>
 
   // 翻页进度防抖保存
   Timer? _saveTimer;
+  Timer? _keepLightTimer;
+  int? _appliedKeepLight;
 
   /// 文档加载完成且拿到总页数后才允许翻页/滑杆操作
   bool get _ready => _pdfController != null && _totalPages > 0 && _error == null;
@@ -57,7 +59,7 @@ class _PdfReaderScreenState extends State<PdfReaderScreen>
     } catch (_) {}
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      _applyWakeLock(context.read<ReadProvider>().config.keepScreenOn);
+      _applyKeepLight(context.read<ReadProvider>().config.keepLight);
     });
     _init();
   }
@@ -65,6 +67,7 @@ class _PdfReaderScreenState extends State<PdfReaderScreen>
   @override
   void dispose() {
     _saveTimer?.cancel();
+    _keepLightTimer?.cancel();
     // 退出时兜底保存当前页
     if (_currentPage > 0) _saveProgress(_currentPage);
     _pdfController?.loadingState.removeListener(_onLoadingStateChanged);
@@ -76,6 +79,27 @@ class _PdfReaderScreenState extends State<PdfReaderScreen>
       SystemChrome.setPreferredOrientations(DeviceOrientation.values);
     } catch (_) {}
     super.dispose();
+  }
+
+  /// 对齐 legado-E `ReadBookActivity.upScreenTimeOut`：keep_light 为
+  /// 0=跟随系统、60/300/600=保持亮屏 N 秒、-1=常亮。
+  /// Flutter 无系统 SCREEN_OFF_TIMEOUT 写权限，用 wakelock + Timer 等价实现。
+  void _applyKeepLight(int seconds) {
+    if (_appliedKeepLight == seconds) return;
+    _appliedKeepLight = seconds;
+    _keepLightTimer?.cancel();
+    _keepLightTimer = null;
+    if (seconds < 0) {
+      _applyWakeLock(true);
+    } else if (seconds == 0) {
+      _applyWakeLock(false);
+    } else {
+      _applyWakeLock(true);
+      _keepLightTimer = Timer(Duration(seconds: seconds), () {
+        _keepLightTimer = null;
+        _applyWakeLock(false);
+      });
+    }
   }
 
   Future<void> _applyWakeLock(bool enable) async {
@@ -400,10 +424,8 @@ class _PdfReaderScreenState extends State<PdfReaderScreen>
   Widget build(BuildContext context) {
     final readProvider = context.watch<ReadProvider>();
     final config = readProvider.config;
-    // 屏幕常亮设置变化时实时生效（同 reading_screen）
-    if (_wakeEnabled != config.keepScreenOn) {
-      _applyWakeLock(config.keepScreenOn);
-    }
+    // 屏幕超时档位变化时实时生效（同 reading_screen）
+    _applyKeepLight(config.keepLight);
     final colorScheme = Theme.of(context).colorScheme;
 
     return AnnotatedRegion<SystemUiOverlayStyle>(

@@ -31,8 +31,11 @@ class SearchScreen extends StatefulWidget {
   State<SearchScreen> createState() => _SearchScreenState();
 }
 
-class _SearchScreenState extends State<SearchScreen> {
+class _SearchScreenState extends State<SearchScreen>
+    with WidgetsBindingObserver {
   final TextEditingController _controller = TextEditingController();
+  /// 输入框焦点：对齐 E `SearchActivity.finish()` 先 clearFocus 再退出。
+  final FocusNode _searchFocus = FocusNode();
   final DatabaseService _db = DatabaseService();
   final BookSourceEngine _engine = BookSourceEngine();
   List<SearchBook> _results = [];
@@ -44,6 +47,22 @@ class _SearchScreenState extends State<SearchScreen> {
   int _searchedSources = 0;
   int _totalSources = 0;
   bool _groupBySource = false;
+
+  // —— 搜索分页（对齐 E SearchViewModel / SearchModel）——
+  /// 当前页码：新搜索置 1，每次续页 `search("")` 自增。
+  int _searchPage = 1;
+  /// 本页是否至少有一个书源返回了结果（E: `hasMore = hasMore || items.isNotEmpty()`）。
+  bool _hasMore = true;
+  /// 用户手动停止（E: `isManualStopSearch`）：置位后不再自动续页、FAB 隐藏。
+  bool _isManualStop = false;
+  /// 页面不可见（E: `viewModel.pause()/resume()`）：暂停取源与自动续页。
+  bool _paused = false;
+  /// 搜索代数（E: `mSearchId`）：新搜索 / 停止时自增，让在途 worker 提前收工。
+  int _searchGeneration = 0;
+  /// 当前一轮搜索的书源列表（E: `SearchModel.bookSourceParts`），续页复用。
+  List<BookSource> _activeSources = [];
+  /// 空结果建议弹窗每轮只弹一次。
+  bool _suggestedEmpty = false;
 
   /// 搜索范围（对齐 legado-E SearchScope：全部 / 分组多选 / 单书源）
   late final SearchScope _scope = SearchScope(
@@ -60,9 +79,39 @@ class _SearchScreenState extends State<SearchScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    // 输入框焦点变化时刷新 PopScope 的 canPop 判定（用于「先清焦点再退出」）。
+    _searchFocus.addListener(() {
+      if (mounted) setState(() {});
+    });
     _loadHistory();
     _loadScope();
+    _loadPrecision();
     _initFromIntent();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // 对齐 E `repeatOnLifecycle(RESUMED) { resume(); awaitCancellation(); finally pause() }`：
+    // 页面不可见时暂停取源与自动续页，回到前台恢复。
+    _paused = state != AppLifecycleState.resumed;
+    if (mounted) setState(() {});
+  }
+
+  /// 精准搜索是持久化偏好（E: `PreferKey.precisionSearch`），非内存态。
+  Future<void> _loadPrecision() async {
+    final prefs = await SharedPreferences.getInstance();
+    if (mounted) {
+      setState(() => _precision = prefs.getBool('precisionSearch') ?? false);
+    }
+  }
+
+  Future<void> _setPrecision(bool v) async {
+    setState(() => _precision = v);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool('precisionSearch', v);
+    // 精准为客户端过滤（E 在引擎侧 filter），切换后 `_displayResults` 立即重算，
+    // 无需重置分页；不重跑联网以免误清已翻到的多页结果。
   }
 
   /// 处理外部入口（java.searchBook）：范围已由 [_scope] 构造时解析
@@ -113,6 +162,8 @@ class _SearchScreenState extends State<SearchScreen> {
 
   @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _searchFocus.dispose();
     _controller.dispose();
     super.dispose();
   }
@@ -137,9 +188,19 @@ class _SearchScreenState extends State<SearchScreen> {
     setState(() => _searchHistory = []);
   }
 
+  /// 对齐 E `SearchViewModel.search(key)`：
+  ///  - 非空 key：开启新一轮搜索（新 searchId、清结果、page=1、hasMore=true）；
+  ///  - 空 key：沿用当前 searchKey / 书源列表，`searchPage++` 续下一页。
   Future<void> _search(String keyword) async {
-    if (keyword.trim().isEmpty) return;
-    // 离线快速失败（E: NetworkUtils.isAvailable 守卫），避免逐源干等超时
+    if (keyword.trim().isEmpty) {
+      await _loadMore();
+      return;
+    }
+    await _startSearch(keyword);
+  }
+
+  Future<void> _startSearch(String keyword) async {
+    // 离线快速失败（E: NetworkUtils.isAvailable 守卫）
     if (!await NetworkMonitor.instance.isOnline) {
       if (mounted) {
         setState(() => _isSearching = false);
@@ -150,53 +211,156 @@ class _SearchScreenState extends State<SearchScreen> {
     _controller.text = keyword;
     _searchKeyword = keyword;
     _saveHistory(keyword);
+    _searchGeneration++;
+    final gen = _searchGeneration;
+    _searchCancelled = false;
+    _isManualStop = false;
+    _hasMore = true;
+    _searchPage = 1;
+    _suggestedEmpty = false;
     setState(() {
       _isSearching = true;
-      _searchCancelled = false;
       _results = [];
       _searchedSources = 0;
     });
 
     final sources = await _scope.getBookSourceParts(_db);
+    if (!mounted || gen != _searchGeneration) return;
     if (sources.isEmpty) {
-      if (mounted) {
-        setState(() => _isSearching = false);
-        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('搜索范围内没有启用的书源，请调整「搜索范围」或到「书源管理」启用书源')));
-      }
+      setState(() => _isSearching = false);
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('搜索范围内没有启用的书源，请调整「搜索范围」或到「书源管理」启用书源')));
       return;
     }
+    _activeSources = sources;
     _totalSources = sources.length;
-    final selectedSources = sources;
+    await _runPage(gen);
+  }
 
-    // 并发池搜索所有启用书源（限制同时 8 个，避免源过多时连接耗尽），结果到达即刷新。
-    // 单源超时 30s：大灰狼等聚合源一次搜索请求约 7-10s，15s 会误杀慢源。
+  /// 滚到底 / FAB「继续」触发的下一页（对齐 E `search("")` 与
+  /// SearchModel `searchId == mSearchId → searchPage++`）。
+  Future<void> _loadMore() async {
+    if (_isSearching || !_hasMore || _isManualStop || _paused) return;
+    final kw = _searchKeyword;
+    if (kw == null || kw.isEmpty || _activeSources.isEmpty) return;
+    final gen = _searchGeneration;
+    _searchCancelled = false;
+    _searchPage++;
+    setState(() {
+      _isSearching = true;
+      _searchedSources = 0;
+    });
+    await _runPage(gen);
+  }
+
+  /// 跑当前 `_searchPage`：并发池逐源 `engine.search(source, kw, page: page)`，
+  /// 结果累积归并；`hasMore` = 本页是否至少有一个源返回了非空结果
+  /// （对齐 E SearchModel `hasMore = hasMore || items.isNotEmpty()`）。
+  Future<void> _runPage(int gen) async {
+    final kw = _searchKeyword ?? '';
+    final page = _searchPage;
+    final sources = List<BookSource>.from(_activeSources);
+    _totalSources = sources.length;
     const concurrency = 8;
     const perSourceTimeout = Duration(seconds: 30);
     int cursor = 0;
+    bool pageHasMore = false;
+
     Future<void> worker() async {
       while (true) {
-        if (_searchCancelled) return;
+        if (_searchCancelled || gen != _searchGeneration) return;
+        // 对齐 E SearchModel `workingState.first { it }`：页面不可见时暂停取源。
+        while (_paused && !_searchCancelled && gen == _searchGeneration) {
+          await Future<void>.delayed(const Duration(milliseconds: 200));
+        }
+        if (_searchCancelled || gen != _searchGeneration) return;
         final i = cursor++;
-        if (i >= selectedSources.length) return;
-        final source = selectedSources[i];
+        if (i >= sources.length) return;
+        final source = sources[i];
         try {
-          final results = await _engine.search(source, keyword).timeout(perSourceTimeout, onTimeout: () => []);
-          if (mounted && results.isNotEmpty) {
+          final results = await _engine
+              .search(source, kw, page: page)
+              .timeout(perSourceTimeout, onTimeout: () => <SearchBook>[]);
+          if (results.isNotEmpty) pageHasMore = true;
+          if (mounted && results.isNotEmpty && gen == _searchGeneration) {
             setState(() => _mergeResults(results));
           }
         } catch (_) {}
-        if (mounted) setState(() => _searchedSources++);
+        if (mounted && gen == _searchGeneration) {
+          setState(() => _searchedSources++);
+        }
       }
     }
-    await Future.wait(List.generate(concurrency.clamp(1, selectedSources.isEmpty ? 1 : selectedSources.length), (_) => worker()));
 
+    await Future.wait(List.generate(
+        concurrency.clamp(1, sources.isEmpty ? 1 : sources.length),
+        (_) => worker()));
+
+    if (!mounted || gen != _searchGeneration) return;
+    _hasMore = pageHasMore;
+    setState(() => _isSearching = false);
+    await _maybeSuggestEmpty();
+  }
+
+  /// 对齐 E SearchActivity.scrollToBottom()：手动停止 / 搜索中 / 后台暂停时不续页。
+  void _scrollToBottom() {
+    if (_isManualStop || _isSearching || _paused) return;
+    if ((_searchKeyword ?? '').isEmpty || !_hasMore) return;
+    _loadMore();
+  }
+
+  /// 对齐 E `searchFinishLiveData` + `observeLiveBus`：结果为空且范围非全部时，
+  /// 给「关闭精准 / 切换到全部分组」的可操作建议（每轮只弹一次）。
+  Future<void> _maybeSuggestEmpty() async {
+    if (_suggestedEmpty || _isSearching || _isManualStop) return;
+    if (_results.isNotEmpty || _scope.isAll || !mounted) return;
+    _suggestedEmpty = true;
+    final precision = _precision;
+    final scopeName = _scope.display;
+    final ok = await showAppConfirmDialog(
+      context,
+      title: '搜索结果为空',
+      content: precision
+          ? '$scopeName 分组搜索结果为空，是否关闭精准搜索？'
+          : '$scopeName 分组搜索结果为空，是否切换到全部分组？',
+      confirmText: '确定',
+    );
+    if (!ok) return;
+    if (precision) {
+      await _setPrecision(false);
+    } else {
+      _scope.update('');
+    }
+    final kw = _searchKeyword;
+    if (kw != null && kw.isNotEmpty) await _search(kw);
+  }
+
+  /// 停止当前搜索（对齐 E FAB：搜索中点击 = 手动停止，保留已到达结果）。
+  void _stopSearch() {
+    _searchCancelled = true;
+    _isManualStop = true;
+    _searchGeneration++; // 让在途 worker 提前收工
     if (mounted) setState(() => _isSearching = false);
   }
 
-  /// 停止当前搜索（保留已到达的结果）
-  void _stopSearch() {
-    _searchCancelled = true;
-    setState(() => _isSearching = false);
+  /// 对齐 E FAB `fbStartStop`：搜索中=停止(stop)，自然结束且 hasMore=继续(play)，
+  /// 手动停止后隐藏（searchFinally）。
+  Widget? _buildSearchFab() {
+    if (_searchKeyword == null) return null;
+    if (_isSearching) {
+      return FloatingActionButton(
+        tooltip: '停止搜索',
+        onPressed: _stopSearch,
+        child: const Icon(Icons.stop),
+      );
+    }
+    if (_hasMore && !_isManualStop) {
+      return FloatingActionButton(
+        tooltip: '继续搜索下一页',
+        onPressed: _loadMore,
+        child: const Icon(Icons.play_arrow),
+      );
+    }
+    return null;
   }
 
   /// 合并新到达的搜索结果：同名同作者归并为一条并累计来源
@@ -444,39 +608,82 @@ class _SearchScreenState extends State<SearchScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: TextField(
-          controller: _controller,
-          autofocus: true,
-          decoration: InputDecoration(
-            hintText: '搜索书籍...',
-            border: InputBorder.none,
-            suffixIcon: _controller.text.isNotEmpty
-                ? IconButton(icon: const Icon(Icons.clear_outlined), tooltip: '清除', onPressed: () { _controller.clear(); setState(() { _results = []; _searchKeyword = null; }); })
-                : null,
+    // 对齐 E SearchActivity.finish()：返回键在输入框有焦点时先 clearFocus
+    // 不退出；无焦点才真正出栈。
+    return PopScope<Object?>(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) {
+        if (didPop) return;
+        if (_searchFocus.hasFocus) {
+          _searchFocus.unfocus();
+        } else if (context.mounted) {
+          Navigator.of(context).pop();
+        }
+      },
+      child: Scaffold(
+        appBar: AppBar(
+          title: TextField(
+            controller: _controller,
+            focusNode: _searchFocus,
+            autofocus: true,
+            decoration: InputDecoration(
+              hintText: '搜索书籍...',
+              border: InputBorder.none,
+              suffixIcon: _controller.text.isNotEmpty
+                  ? IconButton(icon: const Icon(Icons.clear_outlined), tooltip: '清除', onPressed: () {
+                      _controller.clear();
+                      _searchGeneration++;
+                      _searchCancelled = true;
+                      setState(() {
+                        _results = [];
+                        _searchKeyword = null;
+                        _isSearching = false;
+                        _activeSources = [];
+                        _hasMore = true;
+                        _isManualStop = false;
+                        _searchPage = 1;
+                      });
+                    })
+                  : null,
+            ),
+            // 对齐 E onQueryTextSubmit：提交即清焦点并重置手动停止标记。
+            onSubmitted: (v) {
+              _searchFocus.unfocus();
+              _isManualStop = false;
+              _search(v);
+            },
           ),
-          onSubmitted: _search,
-        ),
-        actions: [
-          if (_isSearching)
+          actions: [
+            if (_isSearching)
+              IconButton(
+                icon: const Icon(Icons.stop_circle_outlined),
+                tooltip: '停止搜索',
+                onPressed: _stopSearch,
+              )
+            else
+              IconButton(icon: const Icon(Icons.search_outlined), tooltip: '搜索', onPressed: () => _search(_controller.text)),
             IconButton(
-              icon: const Icon(Icons.stop_circle_outlined),
-              tooltip: '停止搜索',
-              onPressed: _stopSearch,
-            )
-          else
-            IconButton(icon: const Icon(Icons.search_outlined), tooltip: '搜索', onPressed: () => _search(_controller.text)),
-          IconButton(
-            icon: const Icon(Icons.filter_list_outlined),
-            tooltip: '搜索范围：${_scope.display}',
-            onPressed: _showSearchScopeDialog,
-          ),
-        ],
+              icon: const Icon(Icons.filter_list_outlined),
+              tooltip: '搜索范围：${_scope.display}',
+              onPressed: _showSearchScopeDialog,
+            ),
+          ],
+        ),
+        // 对齐 E fbStartStop：stop / play 两态。
+        floatingActionButton: _buildSearchFab(),
+        // 对齐 E RecyclerView.OnScrollListener：滚到底自动续页。
+        body: NotificationListener<ScrollNotification>(
+          onNotification: (n) {
+            if (n.metrics.axis == Axis.vertical && n.metrics.extentAfter <= 200) {
+              _scrollToBottom();
+            }
+            return false;
+          },
+          child: _searchKeyword == null
+              ? _buildSearchHistory()
+              : _buildSearchResults(),
+        ),
       ),
-      body: _searchKeyword == null
-          ? _buildSearchHistory()
-          : _buildSearchResults(),
     );
   }
 
@@ -560,7 +767,7 @@ class _SearchScreenState extends State<SearchScreen> {
                 label: const Text('精准'),
                 visualDensity: VisualDensity.compact,
                 selected: _precision,
-                onSelected: (v) => setState(() => _precision = v),
+                onSelected: _setPrecision,
               ),
             ],
           ),
@@ -576,7 +783,7 @@ class _SearchScreenState extends State<SearchScreen> {
                 label: Text(_scope.display, style: const TextStyle(fontSize: 12)),
                 onPressed: _showSearchScopeDialog,
               ),
-              Text('$_searchedSources/$_totalSources 源', style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
+              Text('第$_searchPage页 · $_searchedSources/$_totalSources 源', style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
               IconButton(
                 visualDensity: VisualDensity.compact,
                 iconSize: 18,

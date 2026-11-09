@@ -2,10 +2,10 @@ import 'dart:convert';
 import 'package:dio/dio.dart';
 import 'package:html/dom.dart' as dom;
 import 'package:html/parser.dart' as html_parser;
-import 'package:enough_convert/enough_convert.dart';
 import 'package:legado_md3/data/model/rss_source.dart';
 import 'package:legado_md3/data/model/rss_article.dart';
 import 'package:legado_md3/help/http/cookie_manager.dart';
+import 'package:legado_md3/help/http/http_response_decoder.dart';
 import 'package:legado_md3/help/source/rule_pipeline.dart';
 import 'package:legado_md3/help/source/js/legado_js_runtime.dart';
 

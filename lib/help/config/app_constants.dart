@@ -261,6 +261,16 @@ class AppPrefs {
   static set bitmapCacheSize(int v) {
     _bitmapCacheSize = v.clamp(10, 512);
     _save(keyBitmapCacheSize, _bitmapCacheSize);
+    applyBitmapCacheSize();
+  }
+
+  /// 对齐 legado-E `ImageProvider.getBitmapCacheSize`：MB → 引擎图片内存缓存上限。
+  /// 设置页拖动滑杆即时生效；启动期由 BootstrapService 再应用一次。
+  static void applyBitmapCacheSize() {
+    try {
+      PaintingBinding.instance.imageCache.maximumSizeBytes =
+          _bitmapCacheSize * 1024 * 1024;
+    } catch (_) {}
   }
 
   static set recordHeapDump(bool v) {
@@ -443,7 +453,7 @@ class AppPrefs {
     _exportUseReplace = p.getBool(keyExportUseReplace) ?? true;
     _exportNoChapterName = p.getBool(keyExportNoChapterName) ?? false;
     _exportPictureFile = p.getBool(keyExportPictureFile) ?? false;
-    _exportToWebDav = p.getBool(keyExportToWebDav) ?? false;
+    _exportToWebDav = _readBool(p, keyExportToWebDav, false);
     _parallelExportBook = p.getBool(keyParallelExportBook) ?? false;
     _checkSourceTimeout = (p.getInt(keyCheckSourceTimeout) ?? 180000).clamp(1000, 600000);
     _wSourceComment = p.getBool(keyWSourceComment) ?? true;
@@ -455,9 +465,9 @@ class AppPrefs {
     _checkContent = p.getBool(keyCheckContent) ?? true;
     _searchScope = p.getString(keySearchScope) ?? '';
     _searchGroup = p.getString(keySearchGroup) ?? '';
-    _useDefaultCover = p.getBool(keyUseDefaultCover) ?? false;
-    _coverShowName = p.getBool(keyCoverShowName) ?? true;
-    _coverShowAuthor = p.getBool(keyCoverShowAuthor) ?? true;
+    _useDefaultCover = _readBool(p, keyUseDefaultCover, false);
+    _coverShowName = _readBool(p, keyCoverShowName, true);
+    _coverShowAuthor = _readBool(p, keyCoverShowAuthor, true);
     _transparentStatusBar = p.getBool(keyTransparentStatusBar) ?? true;
     _immNavigationBar = p.getBool(keyImmNavigationBar) ?? true;
     _barElevation = (p.getInt(keyBarElevation) ?? 0).clamp(0, 8);
@@ -467,6 +477,56 @@ class AppPrefs {
     _restoreIgnore = p.getStringList(keyRestoreIgnore) ?? const [];
     _onlyLatestBackup = p.getBool(keyOnlyLatestBackup) ?? true;
     _autoCheckNewBackup = p.getBool(keyAutoCheckNewBackup) ?? true;
+  }
+
+  /* ---------- Android ↔ Flutter 备份互通（键名映射层真实消费点） ---------- */
+
+  /// 读偏好时「读双键」：先读 Flutter 键，缺失则经 [PreferKeyMap.toUpstream]
+  /// 读上游别名键。导入 Android `config.xml`（上游键名）后，4 个自造键名
+  /// (cover_useDefault / cover_showName / cover_showAuthor / exportToWebDav)
+  /// 的设置才不会静默丢失（扫描报告 #30）。
+  static bool _readBool(SharedPreferences p, String flutterKey, bool fallback) =>
+      p.getBool(flutterKey) ??
+      p.getBool(PreferKeyMap.toUpstream(flutterKey)) ??
+      fallback;
+
+  /// 备份导入：把 Android `config.xml` 的 prefs Map（上游键名）经
+  /// [PreferKeyMap.importFromUpstream] 转换后写入本地，并刷新内存缓存。
+  /// 与 BackupService 恢复链路对接的显式入口（键名映射被真实消费）。
+  static Future<void> importFromUpstream(
+    Map<String, dynamic> upstream,
+    SharedPreferences p,
+  ) async {
+    final Map<String, dynamic> mapped =
+        PreferKeyMap.importFromUpstream(upstream);
+    for (final MapEntry<String, dynamic> e in mapped.entries) {
+      final dynamic v = e.value;
+      if (v is bool) {
+        await p.setBool(e.key, v);
+      } else if (v is int) {
+        await p.setInt(e.key, v);
+      } else if (v is double) {
+        await p.setDouble(e.key, v);
+      } else if (v is String) {
+        await p.setString(e.key, v);
+      } else if (v is List) {
+        await p.setStringList(e.key, v.cast<String>());
+      }
+    }
+    loadFrom(p);
+  }
+
+  /// 备份导出：把本地 SharedPreferences（Flutter 键名）经
+  /// [PreferKeyMap.exportToUpstream] 映射成上游键名 Map，供写入 Android 可读配置。
+  static Map<String, dynamic> exportForUpstream(SharedPreferences p) {
+    final Map<String, dynamic> raw = <String, dynamic>{};
+    for (final String k in p.getKeys()) {
+      final Object? v = p.get(k);
+      if (v is String || v is bool || v is int || v is double || v is List<String>) {
+        raw[k] = v;
+      }
+    }
+    return PreferKeyMap.exportToUpstream(raw);
   }
 
   /* ---------- 内部落盘 ---------- */

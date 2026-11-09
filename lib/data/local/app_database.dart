@@ -19,6 +19,7 @@ import 'package:legado_md3/data/model/book_memo.dart';
 import 'package:legado_md3/data/model/book_highlight.dart';
 import 'package:legado_md3/data/model/download_task.dart';
 import 'package:legado_md3/data/model/v14_models.dart';
+import 'package:legado_md3/constant/book_group_virtual.dart';
 part '../dao/book_dao.dart';
 part '../dao/book_source_dao.dart';
 part '../dao/book_group_dao.dart';
@@ -112,7 +113,34 @@ class DatabaseService {
   Future<Database> _initDatabase() async {
     final dbPath = await getDatabasesPath();
     final fullPath = path.join(dbPath, 'legado_md3.db');
-    return openDatabase(fullPath, version: _dbVersion, onCreate: _onCreate, onUpgrade: _onUpgrade);
+    // onOpen 在 onCreate/onUpgrade 之后、每次开库都会调用（对齐
+    // legado-E AppDatabase.kt dbCallback.onOpen），用于幂等补插虚拟分组与脏数据修复。
+    return openDatabase(
+      fullPath,
+      version: _dbVersion,
+      onCreate: _onCreate,
+      onUpgrade: _onUpgrade,
+      onOpen: _onOpen,
+    );
+  }
+
+  /// 每次开库执行（对齐 legado-E AppDatabase.kt:177-260 onOpen）：
+  /// 1) 7 个内置虚拟分组 `where not exists` 幂等补插；
+  /// 2) 开库脏数据修复 SQL（loginUi='null' 转 NULL、concurrentRate 空值补 0）。
+  /// 全部 try/catch：旧库缺 groupId/enableRefresh 列时不影响开库。
+  /// 无法等价实现的部分（httpTTS.loginUi / keyboardAssists 默认数据）
+  /// 已在 VirtualBookGroup.buildRepairSqls 注释中显式标注并跳过。
+  Future<void> _onOpen(Database db) async {
+    for (final sql in VirtualBookGroup.buildInsertSqls()) {
+      try {
+        await db.execute(sql);
+      } catch (_) {}
+    }
+    for (final sql in VirtualBookGroup.buildRepairSqls()) {
+      try {
+        await db.execute(sql);
+      } catch (_) {}
+    }
   }
 
   Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
@@ -249,7 +277,7 @@ class DatabaseService {
     await db.execute('CREATE TABLE IF NOT EXISTS highlight_tag_rules (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, pattern TEXT, color INTEGER, enabled INTEGER DEFAULT 1, "order" INTEGER, scope TEXT)');
     await db.execute('CREATE TABLE IF NOT EXISTS http_tts (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, url TEXT, method TEXT, headers TEXT, body TEXT, enabled INTEGER DEFAULT 1, concurrentRate INTEGER)');
     await db.execute('CREATE TABLE IF NOT EXISTS read_records (id INTEGER PRIMARY KEY AUTOINCREMENT, bookName TEXT, author TEXT, duration INTEGER, date INTEGER, chapterIndex INTEGER, pagePos INTEGER)');
-    await db.execute('CREATE TABLE IF NOT EXISTS replace_rules (id INTEGER PRIMARY KEY AUTOINCREMENT, replaceSummary TEXT, replaceRule TEXT, replacement TEXT, enable INTEGER DEFAULT 1, isTitle INTEGER DEFAULT 0, isContent INTEGER DEFAULT 1, isRegex INTEGER DEFAULT 1, scope TEXT, order_num INTEGER, "order" INTEGER)');
+    await db.execute('CREATE TABLE IF NOT EXISTS replace_rules (id INTEGER PRIMARY KEY AUTOINCREMENT, replaceSummary TEXT, replaceRule TEXT, replacement TEXT, enable INTEGER DEFAULT 1, isTitle INTEGER DEFAULT 0, isContent INTEGER DEFAULT 1, isRegex INTEGER DEFAULT 1, scope TEXT, order_num INTEGER, "order" INTEGER, excludeScope TEXT, group_name TEXT, timeoutMillisecond INTEGER DEFAULT 3000, sortOrder INTEGER)');
     await db.execute('CREATE TABLE IF NOT EXISTS rss_sources (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, url TEXT, sourceIcon TEXT, group_name TEXT, sourceComment TEXT, searchUrl TEXT, sortUrl TEXT, loginUrl TEXT, loginUi TEXT, loginCheckJs TEXT, coverDecodeJs TEXT, header TEXT, variableComment TEXT, concurrentRate TEXT, jsLib TEXT, startHtml TEXT, startStyle TEXT, startJs TEXT, preloadJs TEXT, ruleArticles TEXT, ruleNextPage TEXT, ruleTitle TEXT, rulePubDate TEXT, ruleDescription TEXT, ruleImage TEXT, ruleLink TEXT, ruleContent TEXT, style TEXT, injectJs TEXT, contentWhitelist TEXT, contentBlacklist TEXT, shouldOverrideUrlLoading TEXT, enabled INTEGER DEFAULT 1, customOrder INTEGER, lastUpdateTime INTEGER, unreadCount INTEGER DEFAULT 0, variable TEXT, enabledCookieJar INTEGER DEFAULT 0, articleStyle INTEGER, enableJs INTEGER DEFAULT 0, loadWithBaseUrl INTEGER DEFAULT 0, preload INTEGER DEFAULT 0, singleUrl INTEGER DEFAULT 0, cacheFirst INTEGER DEFAULT 0, redirectPolicy TEXT, type INTEGER DEFAULT 0, "group" TEXT, icon TEXT, description TEXT)');
     await db.execute('CREATE TABLE IF NOT EXISTS rss_articles (id INTEGER PRIMARY KEY AUTOINCREMENT, sourceUrl TEXT, title TEXT, link TEXT, description TEXT, content TEXT, image TEXT, pubDate INTEGER, author TEXT, category TEXT, sourceName TEXT, isRead INTEGER DEFAULT 0, starred INTEGER DEFAULT 0, readTime INTEGER, star INTEGER DEFAULT 0, desc TEXT, read INTEGER DEFAULT 0)');
     await db.execute('CREATE TABLE IF NOT EXISTS rss_stars (id INTEGER PRIMARY KEY AUTOINCREMENT, sourceUrl TEXT, title TEXT, link TEXT, desc TEXT, content TEXT, starTime INTEGER)');
@@ -295,6 +323,14 @@ class DatabaseService {
     ]);
     await _addColumnsIfMissing(db, 'replace_rules', const [
       'useTo TEXT', 'scopeTitle INTEGER DEFAULT 0', 'scopeContent INTEGER DEFAULT 1',
+    ]);
+    // 细节轮：对齐 legado-E ReplaceRule 实体，补齐排除范围/分组/超时/排序字段。
+    // _onUpgrade 末尾会复用 _onCreate，因此新装与升级路径都会执行，且幂等。
+    await _addColumnsIfMissing(db, 'replace_rules', const [
+      'excludeScope TEXT',
+      'group_name TEXT',
+      'timeoutMillisecond INTEGER DEFAULT 3000',
+      'sortOrder INTEGER',
     ]);
     await _addColumnsIfMissing(db, 'txt_toc_rules', const [
       'replacement TEXT',

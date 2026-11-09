@@ -11,6 +11,8 @@ class _RssSourceEditScreenState extends State<RssSourceEditScreen>
   final Map<String, TextEditingController> _c = {};
   bool _enabled = true;
   bool _dirty = false;
+  /// 字符串规则补全（对齐上游 menu_auto_complete，默认关）。
+  bool _ruleCompleteEnabled = false;
 
   static const List<String> _tabs = ['基本', '起始', '列表', 'WebView'];
 
@@ -115,6 +117,17 @@ class _RssSourceEditScreenState extends State<RssSourceEditScreen>
 
   RssSource _collect() {
     String? opt(String k) => _trimmed(k);
+    /// 对齐上游 RssSourceEditActivity.save() 的 ruleComplete：
+    /// 按字段类型补 getter，preRule 为文章列表规则原文。
+    String? ruleVal(String k) {
+      final v = _trimmed(k);
+      if (v == null || !_ruleCompleteEnabled) return v;
+      final type = RuleComplete.fieldType(k);
+      if (type == null) return v;
+      return RuleComplete.autoComplete(
+              v, preRule: _trimmed('ruleArticles'), type: type) ??
+          v;
+    }
     return RssSource(
       id: widget.source?.id,
       sourceName: _c['sourceName']!.text.trim(),
@@ -137,13 +150,13 @@ class _RssSourceEditScreenState extends State<RssSourceEditScreen>
       startJs: opt('startJs'),
       preloadJs: opt('preloadJs'),
       ruleArticles: opt('ruleArticles'),
-      ruleNextPage: opt('ruleNextPage'),
-      ruleTitle: opt('ruleTitle'),
-      rulePubDate: opt('rulePubDate'),
-      ruleDescription: opt('ruleDescription'),
-      ruleImage: opt('ruleImage'),
-      ruleLink: opt('ruleLink'),
-      ruleContent: opt('ruleContent'),
+      ruleNextPage: ruleVal('ruleNextPage'),
+      ruleTitle: ruleVal('ruleTitle'),
+      rulePubDate: ruleVal('rulePubDate'),
+      ruleDescription: ruleVal('ruleDescription'),
+      ruleImage: ruleVal('ruleImage'),
+      ruleLink: ruleVal('ruleLink'),
+      ruleContent: ruleVal('ruleContent'),
       style: opt('style'),
       injectJs: opt('injectJs'),
       contentWhitelist: opt('contentWhitelist'),
@@ -310,6 +323,17 @@ class _RssSourceEditScreenState extends State<RssSourceEditScreen>
           onTap: () {
             _tabController.animateTo(2);
             _autoComplete();
+          }),
+      AppMenuSheetItem(
+          title: _ruleCompleteEnabled
+              ? '字符串规则补全：开'
+              : '字符串规则补全：关',
+          icon: Icons.data_object_outlined,
+          onTap: () {
+            setState(() => _ruleCompleteEnabled = !_ruleCompleteEnabled);
+            _toast(_ruleCompleteEnabled
+                ? '已开启：保存时按字段类型补 @text/@href/@src'
+                : '已关闭字符串规则补全');
           }),
       AppMenuSheetItem(title: '复制RSS源', icon: Icons.copy, onTap: _copy),
       AppMenuSheetItem(

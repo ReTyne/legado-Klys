@@ -10,6 +10,7 @@ import 'package:legado_md3/help/http/cookie_manager.dart';
 import 'package:legado_md3/help/source/source_engine.dart';
 import 'package:legado_md3/help/source/js/legado_js_runtime.dart';
 import 'package:legado_md3/help/source/rule_auto_completer.dart';
+import 'package:legado_md3/help/source/rule_complete.dart';
 import 'package:legado_md3/ui/book/source/source_debug_screen.dart';
 import 'package:legado_md3/ui/book/source/source_login_screen.dart';
 import 'package:legado_md3/ui/book/search/search_screen.dart';

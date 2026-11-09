@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:legado_md3/data/local/app_database.dart';
 import 'package:legado_md3/help/config/app_config.dart';
+import 'package:legado_md3/help/readaloud/tts_service.dart';
+import 'package:legado_md3/ui/book/reader_router.dart';
 import 'package:legado_md3/help/device/native_bridge.dart';
 import 'package:legado_md3/help/storage/download_service.dart';
 import 'package:legado_md3/help/storage/import_old_data.dart';
@@ -37,9 +39,9 @@ class _OtherConfigScreenState extends State<OtherConfigScreen> {
       _prefs['webAutoStart'] = p.getBool('oc_webAutoStart') ?? false;
       _prefs['autoRefresh'] = p.getBool('oc_autoRefresh') ?? false;
       _prefs['defaultRead'] = p.getBool('oc_defaultRead') ?? false;
-      _prefs['antiAlias'] = p.getBool('oc_antiAlias') ?? true;
+      _prefs['antiAlias'] = p.getBool('oc_antiAlias') ?? false;
       _prefs['replaceDefault'] = p.getBool('oc_replaceDefault') ?? true;
-      _prefs['autoClearExpired'] = p.getBool('oc_autoClearExpired') ?? false;
+      _prefs['autoClearExpired'] = p.getBool('oc_autoClearExpired') ?? true;
       _prefs['showAddShelfTip'] = p.getBool('oc_showAddShelfTip') ?? true;
       _prefs['showMangaUi'] = p.getBool('oc_showMangaUi') ?? true;
       _prefs['webWakeLock'] = p.getBool('oc_webWakeLock') ?? false;
@@ -63,6 +65,10 @@ class _OtherConfigScreenState extends State<OtherConfigScreen> {
     setState(() => _prefs[key] = v);
     final p = await SharedPreferences.getInstance();
     await p.setBool(prefKey, v);
+    // 即时同步到业务消费方，避免开关只写不读。
+    if (key == 'showMangaUi') showMangaUi = v;
+    if (key == 'mediaButtonOnExit') TtsService.stopReadAloudOnExit = v;
+    if (key == 'ignoreAudioFocus') TtsService.ignoreAudioFocus = v;
   }
 
   Future<void> _setString(String key, String prefKey, String v) async {

@@ -1,5 +1,7 @@
 import 'dart:convert';
 
+import 'package:legado_md3/constant/book_type.dart';
+
 class Book {
   /// 书籍类型常量（与 BookSource.bookSourceType 对应）
   static const int typeText = 0; // 网络/文本
@@ -134,41 +136,66 @@ class Book {
     'splitLongChapter': splitLongChapter ? 1 : 0,
   };
 
-  factory Book.fromMap(Map<String, dynamic> map) => Book(
-    name: map['name'] as String,
-    author: map['author'] as String,
-    coverUrl: map['coverUrl'] as String?,
-    intro: map['intro'] as String?,
-    kind: map['kind'] as String?,
-    lastChapter: map['lastChapter'] as String?,
-    lastChapterIndex: map['lastChapterIndex'] as int?,
-    durChapterIndex: map['durChapterIndex'] as int? ?? 0,
-    durChapterPos: map['durChapterPos'] as int? ?? 0,
-    durChapterTime: map['durChapterTime'] as int? ?? 0,
-    noteUrl: map['noteUrl'] as String?,
-    bookUrl: map['bookUrl'] as String?,
-    origin: map['origin'] as String?,
-    originName: map['originName'] as String?,
-    tag: map['tag'] as String?,
-    wordCount: map['wordCount'] as int?,
-    canUpdate: (map['canUpdate'] as int? ?? 1) == 1,
-    local: (map['local'] as int? ?? 0) == 1,
-    type: map['type'] as int? ?? 0,
-    group: map['group_name'] as String?,
-    order: map['order_num'] as int?,
-    latestChapterTime: map['latestChapterTime'] as int?,
-    lastCheckTime: map['lastCheckTime'] as int?,
-    infoHtml: map['infoHtml'] as String?,
-    tocHtml: map['tocHtml'] as String?,
-    variable: map['variable'] as String?,
-    customOrder: map['customOrder'] as int?,
-    allowUpdate: (map['allowUpdate'] as int? ?? 1) == 1,
-    fileName: map['fileName'] as String?,
-    customCoverUrl: map['customCoverUrl'] as String?,
-    bookComment: map['bookComment'] as String?,
-    // 旧库/旧备份无此列时默认开启（对齐 E 默认 true）
-    splitLongChapter: (map['splitLongChapter'] as int? ?? 1) == 1,
-  );
+  factory Book.fromMap(Map<String, dynamic> map) {
+    // 备份导入边界（BackupService 恢复书籍时调用本方法，是「旧备份 type 重映射」
+    // 的真实消费点）：上游/Android 备份的 type 是位标志（>=8），需转成
+    // 本项目顺序枚举落库；Flutter 自身备份的 type 为 0..4 顺序枚举，原样保留。
+    // 位标志中的 local 位叠加到 Book.local 布尔，避免类型信息丢失。
+    final int rawType = _rawTypeInt(map['type']);
+    final bool isBitmap = BookType.isBitmapType(rawType);
+    return Book(
+      name: map['name'] as String,
+      author: map['author'] as String,
+      coverUrl: map['coverUrl'] as String?,
+      intro: map['intro'] as String?,
+      kind: map['kind'] as String?,
+      lastChapter: map['lastChapter'] as String?,
+      lastChapterIndex: map['lastChapterIndex'] as int?,
+      durChapterIndex: map['durChapterIndex'] as int? ?? 0,
+      durChapterPos: map['durChapterPos'] as int? ?? 0,
+      durChapterTime: map['durChapterTime'] as int? ?? 0,
+      noteUrl: map['noteUrl'] as String?,
+      bookUrl: map['bookUrl'] as String?,
+      origin: map['origin'] as String?,
+      originName: map['originName'] as String?,
+      tag: map['tag'] as String?,
+      wordCount: map['wordCount'] as int?,
+      canUpdate: (map['canUpdate'] as int? ?? 1) == 1,
+      local: (map['local'] as int? ?? 0) == 1 ||
+          (isBitmap && BookType.hasFlag(rawType, BookType.local)),
+      type: isBitmap ? BookType.toFlutterEnum(rawType) : rawType,
+      group: map['group_name'] as String?,
+      order: map['order_num'] as int?,
+      latestChapterTime: map['latestChapterTime'] as int?,
+      lastCheckTime: map['lastCheckTime'] as int?,
+      infoHtml: map['infoHtml'] as String?,
+      tocHtml: map['tocHtml'] as String?,
+      variable: map['variable'] as String?,
+      customOrder: map['customOrder'] as int?,
+      allowUpdate: (map['allowUpdate'] as int? ?? 1) == 1,
+      fileName: map['fileName'] as String?,
+      customCoverUrl: map['customCoverUrl'] as String?,
+      bookComment: map['bookComment'] as String?,
+      // 旧库/旧备份无此列时默认开启（对齐 E 默认 true）
+      splitLongChapter: (map['splitLongChapter'] as int? ?? 1) == 1,
+    );
+  }
+
+  /// 兼容备份 JSON 中 type 为数字或字符串数字（旧版导出可能写成 "8"）。
+  static int _rawTypeInt(dynamic v) {
+    if (v is int) return v;
+    if (v is num) return v.toInt();
+    return int.tryParse(v?.toString() ?? '') ?? 0;
+  }
+
+  /// 跨端导出（Android 备份互通）：输出与上游 BookType 位标志一致的 Map。
+  /// `type` 由本项目顺序枚举转成位标志（[BookType.fromFlutterEnum]），
+  /// 并按 origin 前缀/`local` 补本地位。本项目自身备份仍用 [toMap]（顺序枚举），
+  /// 以免改变 reader_router / book_provider 依赖的 switch 语义。
+  Map<String, dynamic> toUpstreamMap() => <String, dynamic>{
+        ...toMap(),
+        'type': BookType.fromFlutterEnum(type, origin: origin, isLocal: local),
+      };
 
   Map<String, dynamic> toJson() => toMap();
 

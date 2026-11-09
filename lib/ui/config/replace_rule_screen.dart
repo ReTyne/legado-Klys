@@ -74,7 +74,9 @@ class _ReplaceRuleScreenState extends State<ReplaceRuleScreen> {
 
   Future<void> _export() async {
     final file = File('${Directory.systemTemp.path}/replace_rules.json');
-    await file.writeAsString(const JsonEncoder.withIndent('  ').convert(_rules.map((e) => e.toMap()).toList()));
+    // 导出用 legado-E 兼容字段（name/pattern/scopeTitle/excludeScope/...），
+    // 保证跨端备份与 Web 端导入不丢字段；fromMap 同时兼容本项目历史字段。
+    await file.writeAsString(const JsonEncoder.withIndent('  ').convert(_rules.map((e) => e.toLegadoJson()).toList()));
     await Share.shareXFiles([XFile(file.path)], text: '替换规则导出');
   }
 
@@ -102,6 +104,10 @@ class _ReplaceRuleScreenState extends State<ReplaceRuleScreen> {
     final regexController = TextEditingController(text: rule?.replaceRule ?? '');
     final replacementController = TextEditingController(text: rule?.replacement ?? '');
     final scopeController = TextEditingController(text: rule?.scope ?? '');
+    final excludeController = TextEditingController(text: rule?.excludeScope ?? '');
+    final groupController = TextEditingController(text: rule?.group ?? '');
+    final timeoutController =
+        TextEditingController(text: (rule?.timeoutMillisecond ?? 3000).toString());
 
     bool isTitle = rule?.isTitle ?? false;
     bool isContent = rule?.isContent ?? true;
@@ -147,7 +153,23 @@ class _ReplaceRuleScreenState extends State<ReplaceRuleScreen> {
               const SizedBox(height: AppSpacing.s),
               TextField(
                 controller: scopeController,
-                decoration: const InputDecoration(labelText: '作用范围(书源URL，留空为全部)'),
+                decoration: const InputDecoration(labelText: '作用范围(书名或书源，留空为全部)'),
+              ),
+              const SizedBox(height: AppSpacing.s),
+              TextField(
+                controller: excludeController,
+                decoration: const InputDecoration(labelText: '排除范围(书名或书源，命中则跳过本规则)'),
+              ),
+              const SizedBox(height: AppSpacing.s),
+              TextField(
+                controller: groupController,
+                decoration: const InputDecoration(labelText: '分组(便于归类管理)'),
+              ),
+              const SizedBox(height: AppSpacing.s),
+              TextField(
+                controller: timeoutController,
+                keyboardType: TextInputType.number,
+                decoration: const InputDecoration(labelText: '正则超时(毫秒，默认 3000)'),
               ),
             ],
           ),
@@ -161,7 +183,11 @@ class _ReplaceRuleScreenState extends State<ReplaceRuleScreen> {
                 replaceSummary: summaryController.text,
                 replaceRule: regexController.text,
                 replacement: replacementController.text,
-                scope: scopeController.text.isEmpty ? null : scopeController.text,
+                scope: scopeController.text.trim().isEmpty ? null : scopeController.text.trim(),
+                excludeScope: excludeController.text.trim().isEmpty ? null : excludeController.text.trim(),
+                group: groupController.text.trim().isEmpty ? null : groupController.text.trim(),
+                timeoutMillisecond: int.tryParse(timeoutController.text.trim()) ?? 3000,
+                order: rule?.order,
                 enable: rule?.enable ?? true,
                 isTitle: isTitle,
                 isContent: isContent,
@@ -220,12 +246,13 @@ class _ReplaceRuleScreenState extends State<ReplaceRuleScreen> {
                     final rule = _rules[index];
                     return Card(
                       child: ListTile(
-                        title: Text(rule.replaceSummary, maxLines: 1, overflow: TextOverflow.ellipsis),
+                        title: Text(rule.displayNameWithGroup, maxLines: 1, overflow: TextOverflow.ellipsis),
                         subtitle: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
                           children: [
                             Text(rule.replaceRule, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12, fontFamily: 'monospace')),
                             if (rule.scope != null) Text('范围: ${rule.scope}', style: TextStyle(fontSize: 11, color: Theme.of(context).colorScheme.primary)),
+                            if (rule.excludeScope != null) Text('排除: ${rule.excludeScope}', style: TextStyle(fontSize: 11, color: Theme.of(context).colorScheme.error)),
                           ],
                         ),
                         trailing: Switch(

@@ -231,7 +231,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       _cacheMaxMB = p.getInt('cache_contentMaxMB') ?? 500;
       _autoBackupHours = p.getInt('auto_backup_hours') ?? 24;
       // 自动清理过期内容与其他设置共用同一键 oc_autoClearExpired（main.dart 消费）
-      _autoCleanCache = p.getBool('oc_autoClearExpired') ?? false;
+      _autoCleanCache = p.getBool('oc_autoClearExpired') ?? true;
       final bd = p.getString('backup_path') ?? '';
       _backupPath = bd.isEmpty ? 'Legado/backup' : bd;
       _webdavUrl = p.getString('webdav_url') ?? '';

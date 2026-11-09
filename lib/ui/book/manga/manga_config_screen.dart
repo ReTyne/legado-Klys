@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:legado_md3/help/translate/manga_translate_overlay.dart';
+import 'package:legado_md3/ui/book/reader_router.dart';
 import 'package:legado_md3/ui/widgets/app_widgets.dart';
 
 /// 漫画阅读配置 - 对齐原版 ReadMangaConfig / Sigma MangaColorFilterConfig。
@@ -54,7 +55,8 @@ class _MangaConfigScreenState extends State<MangaConfigScreen> {
   Future<void> _load() async {
     final p = await SharedPreferences.getInstance();
     setState(() {
-      _showMangaUi = p.getBool('manga_ui') ?? true;
+      // 与 other_config / reader_router 共用同一键，兼容历史 manga_ui。
+      _showMangaUi = p.getBool('oc_showMangaUi') ?? p.getBool('manga_ui') ?? true;
       _disableScale = p.getBool('manga_noScale') ?? false;
       _disableScrollAnim = p.getBool('manga_noScrollAnim') ?? false;
       _disableCrossFade = p.getBool('manga_noCrossFade') ?? false;
@@ -147,7 +149,7 @@ class _MangaConfigScreenState extends State<MangaConfigScreen> {
       appBar: AppBar(title: const Text('漫画设置')),
       body: ListView(children: [
         _section('显示'),
-        SwitchListTile(dense: true, title: const Text('显示漫画界面'), value: _showMangaUi, onChanged: (v) { setState(() => _showMangaUi = v); _set('manga_ui', v); }),
+        SwitchListTile(dense: true, title: const Text('显示漫画界面'), value: _showMangaUi, onChanged: (v) { setState(() => _showMangaUi = v); _set('oc_showMangaUi', v); showMangaUi = v; }),
         SwitchListTile(dense: true, title: const Text('隐藏标题'), value: _hideTitle, onChanged: (v) { setState(() => _hideTitle = v); _set('manga_hideTitle', v); }),
         _section('阅读模式'),
         ListTile(dense: true, title: const Text('滚动模式'), trailing: DropdownButton<int>(

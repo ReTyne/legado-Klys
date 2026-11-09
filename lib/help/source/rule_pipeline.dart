@@ -105,9 +105,15 @@ class RulePipeline {
     return -1;
   }
 
-  /// 解析 `@put:` 花括号内部的 `key:rule,key2:rule2` 条目
-  ///（按第一个 `:` 切分，value 里的 `:`/`,` 不受影响）。
+  /// 解析 `@put:` 花括号内部的条目。
+  ///
+  /// 对齐上游 `AnalyzeRule.splitPutRule`：先用 **标准 JSON** 解析
+  /// `@put:{"k":"v","k2":"v2"}`（GSONStrict），失败再按宽松
+  /// `key:rule,key2:rule2`（对应 GSON 对非标准 JSON 的兼容回退）按第一个
+  /// `:` 切分，value 里的 `:`/`,` 不受影响。
   List<MapEntry<String, String>> parsePutEntries(String inner) {
+    final jsonEntries = _parseJsonPut(inner);
+    if (jsonEntries != null) return jsonEntries;
     final out = <MapEntry<String, String>>[];
     for (final part in _splitTop(inner, const [','])) {
       final p = part.trim();
@@ -119,6 +125,29 @@ class RulePipeline {
       out.add(MapEntry(key, p.substring(idx + 1).trim()));
     }
     return out;
+  }
+
+  /// 尝试把 `inner`（花括号内部文本，不含外层 `{}`）当作标准 JSON 对象。
+  /// 上游 put 的 value 是规则字符串，因此只接受字符串/数值标量；含内嵌
+  /// `<js>` / `@get:{...}` 等复杂规则时 JSON 解析会失败，自然回退到宽松格式。
+  List<MapEntry<String, String>>? _parseJsonPut(String inner) {
+    final t = inner.trim();
+    if (t.isEmpty || !t.contains('"')) return null;
+    try {
+      final decoded = jsonDecode('{$t}');
+      if (decoded is Map) {
+        final out = <MapEntry<String, String>>[];
+        for (final e in decoded.entries) {
+          final key = e.key?.toString() ?? '';
+          if (key.isEmpty || e.value == null) continue;
+          // 复杂对象/数组不是 put 值（上游 Map<String,String> 会拒绝）
+          if (e.value is Map || e.value is List) return null;
+          out.add(MapEntry(key, e.value.toString()));
+        }
+        return out.isEmpty ? null : out;
+      }
+    } catch (_) {}
+    return null;
   }
 
   /// 把规则中的 `@get:{key||default}` 替换为变量值（无匹配时原样返回）。
@@ -546,6 +575,9 @@ class RulePipeline {
         case _OpKind.replace:
           ops.add(FieldOp('replace', op.pattern, op.replacement));
           break;
+        case _OpKind.replaceFirst:
+          ops.add(FieldOp('replaceFirst', op.pattern, op.replacement));
+          break;
         case _OpKind.match:
           ops.add(FieldOp('match', op.pattern, null));
           break;
@@ -565,6 +597,8 @@ class RulePipeline {
       switch (o.kind) {
         case 'replace':
           return _PostOp.replace(o.pattern, o.replacement ?? '');
+        case 'replaceFirst':
+          return _PostOp.replaceFirst(o.pattern, o.replacement ?? '');
         case 'match':
           return _PostOp.match(o.pattern);
         default:
@@ -834,10 +868,21 @@ class RulePipeline {
     final parts = _splitByHash(body);
     result.selector = parts.first;
     for (var i = 1; i < parts.length;) {
-      var p = parts[i];
-      if (p.startsWith('#')) {
-        // ###regex：只保留首个匹配
-        result.ops.add(_PostOp.match(p.substring(1)));
+      final p = parts[i];
+      // 上游 `##match##replace###`：split("##") 得到 4 段，第 4 段存在即
+      // replaceFirst = true（取第一个匹配文本并替换）。_splitByHash 会把
+      // 结尾 `###` 的第三个 '#' 保留为单独一段 "#"，这里据此识别。
+      if (p == '#' && i == parts.length - 1 && result.ops.isNotEmpty &&
+          result.ops.last.kind == _OpKind.replace) {
+        final prev = result.ops.removeLast();
+        result.ops.add(
+            _PostOp.replaceFirst(prev.pattern, prev.replacement ?? ''));
+        i += 1;
+      } else if (p.startsWith('#')) {
+        // ###regex：只保留首个匹配（2 段形式，项目既有语义）
+        final regex = p.substring(1);
+        // 空正则会 firstMatch 到空串并把结果清空，属于无效操作，跳过
+        if (regex.isNotEmpty) result.ops.add(_PostOp.match(regex));
         i += 1;
       } else if (i + 1 < parts.length) {
         result.ops.add(_PostOp.replace(p, parts[i + 1]));
@@ -859,6 +904,21 @@ class RulePipeline {
           break;
         case _OpKind.replace:
           v = RegexParser.replace(v, op.pattern, op.replacement!);
+          break;
+        case _OpKind.replaceFirst:
+          // 上游 `##match##replace###`：取第一个匹配文本，再用同一正则对该
+          // 文本替换一次；无匹配返回空串。等价于对首个 match 展开 $N 模板。
+          final m =
+              RegExp(op.pattern, multiLine: true, dotAll: true).firstMatch(v);
+          if (m == null) {
+            v = '';
+          } else {
+            var out = op.replacement!;
+            for (var g = m.groupCount; g >= 0; g--) {
+              out = out.replaceAll('\$$g', m.group(g) ?? '');
+            }
+            v = out;
+          }
           break;
         case _OpKind.match:
           final m = RegExp(op.pattern, multiLine: true, dotAll: true).firstMatch(v);
@@ -1099,7 +1159,7 @@ class FieldOp {
   final String? replacement;
 }
 
-enum _OpKind { remove, replace, match }
+enum _OpKind { remove, replace, replaceFirst, match }
 
 class _PostOp {
   final _OpKind kind;
@@ -1108,6 +1168,11 @@ class _PostOp {
   _PostOp._(this.kind, this.pattern, this.replacement);
   factory _PostOp.remove(String p) => _PostOp._(_OpKind.remove, p, null);
   factory _PostOp.replace(String p, String r) => _PostOp._(_OpKind.replace, p, r);
+
+  /// 上游 `##match##replace###`：第 4 段触发 replaceFirst。
+  factory _PostOp.replaceFirst(String p, String r) =>
+      _PostOp._(_OpKind.replaceFirst, p, r);
+
   factory _PostOp.match(String p) => _PostOp._(_OpKind.match, p, null);
 }
 

@@ -23,6 +23,9 @@ class _SourceEditScreenState extends State<SourceEditScreen> with SingleTickerPr
   };
   int _sourceType = 0;
   bool _dirty = false;
+  /// 字符串规则补全（对齐上游 menu_auto_complete，默认关，内存态不持久化）：
+  /// 开启后保存时按字段类型对简写规则补 @text/@href/@src。
+  bool _ruleCompleteEnabled = false;
 
   /// 键盘助手（enabled 且 rule 非空）：规则编辑器聚焦时在键盘上方弹出工具条
   List<KeyboardAssist> _keyboardAssists = [];
@@ -218,7 +221,10 @@ class _SourceEditScreenState extends State<SourceEditScreen> with SingleTickerPr
 
   int _intField(String k, int fallback) => int.tryParse(_c[k]!.text.trim()) ?? fallback;
 
-  /// 收集某个规则组：保留原始未知键，覆盖已知键（空值移除）
+  /// 收集某个规则组：保留原始未知键，覆盖已知键（空值移除）。
+  /// 开启「字符串规则补全」时，对齐上游 BookSourceEditActivity.save()：
+  /// 对每个取值字段按 type 调用 RuleComplete.autoComplete，preRule 取本组
+  /// 列表/初始化规则的原文（复杂语法会让整组字段跳过补全）。
   Map<String, dynamic>? _collectRule(String group) {
     final map = Map<String, dynamic>.from(_origRules[group] ?? {});
     for (final f in _ruleDefs[group] ?? const <_RuleField>[]) {
@@ -227,6 +233,19 @@ class _SourceEditScreenState extends State<SourceEditScreen> with SingleTickerPr
         map.remove(f.key);
       } else {
         map[f.key] = v;
+      }
+    }
+    if (_ruleCompleteEnabled && map.isNotEmpty) {
+      final preKey = RuleComplete.preRuleKey(group);
+      final preRule = preKey == null ? null : map[preKey]?.toString();
+      for (final f in _ruleDefs[group] ?? const <_RuleField>[]) {
+        final type = RuleComplete.fieldType(f.key);
+        if (type == null) continue;
+        final cur = map[f.key];
+        if (cur == null) continue;
+        map[f.key] = RuleComplete.autoComplete(
+                cur.toString(), preRule: preRule, type: type) ??
+            cur;
       }
     }
     return map.isEmpty ? null : map;
@@ -611,6 +630,16 @@ class _SourceEditScreenState extends State<SourceEditScreen> with SingleTickerPr
         AppMenuSheetItem(title: '保存并搜索', icon: Icons.travel_explore_outlined, onTap: _saveAndSearch),
         AppMenuSheetItem(title: '清除 Cookie', icon: Icons.cookie_outlined, onTap: _clearCookie),
         AppMenuSheetItem(title: '规则补全', icon: Icons.auto_fix_high_outlined, onTap: _autoComplete),
+        AppMenuSheetItem(
+          title: _ruleCompleteEnabled ? '字符串规则补全：开' : '字符串规则补全：关',
+          icon: Icons.data_object_outlined,
+          onTap: () {
+            setState(() => _ruleCompleteEnabled = !_ruleCompleteEnabled);
+            _toast(_ruleCompleteEnabled
+                ? '已开启：保存时按字段类型补 @text/@href/@src'
+                : '已关闭字符串规则补全');
+          },
+        ),
         AppMenuSheetItem(title: '设置书源变量', icon: Icons.code_outlined, onTap: _setVariable),
         AppMenuSheetItem(title: '复制书源', icon: Icons.content_copy_outlined, onTap: _copySource),
         AppMenuSheetItem(title: '粘贴书源', icon: Icons.content_paste_outlined, onTap: _pasteSource),

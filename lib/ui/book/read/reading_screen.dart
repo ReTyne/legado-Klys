@@ -19,7 +19,9 @@ import 'package:legado_md3/data/model/db_models.dart';
 import 'package:legado_md3/data/model/read_config.dart';
 import 'package:legado_md3/di/book_provider.dart';
 import 'package:legado_md3/ui/book/read/text_paginator.dart';
+import 'package:legado_md3/ui/book/read/read_detail_utils.dart';
 import 'package:legado_md3/ui/widgets/app_widgets.dart';
+import 'package:legado_md3/help/storage/backup_service.dart';
 import 'package:legado_md3/help/device/native_bridge.dart';
 import 'package:legado_md3/help/storage/book_progress_sync.dart';
 import 'package:legado_md3/ui/book/read/read_prefs.dart';
@@ -108,6 +110,13 @@ class _ReadingScreenState extends State<ReadingScreen>
   List<String> _pages = [];
   // 重排防抖：连续触发（布局变化等）时 100ms 内只做最后一次
   Timer? _repaginateTimer;
+  Timer? _keepLightTimer;
+  int? _appliedKeepLight;
+  // ===== 批次 3 状态 =====
+  Timer? _autoBackupTimer; // 阅读会话 5 分钟定时自动备份（对齐 E startBackupJob）
+  String? _paddingFallbackKey; // 边距回退 Toast 去重
+  bool? _inBookshelf; // null=未知/在架，false=未入架，true=在架
+  final ClickTracker _clickTracker = ClickTracker(); // 单击 300ms 防抖 + 双击状态机
   // 章节进度滑块拖动中的局部下标（null 表示未在拖动，跟随 _currentChapterIndex）
   int? _dragChapterIndex;
   // 正文搜索命中其他章时的章内偏移：章节加载分页完成后按此定位页码
@@ -148,7 +157,7 @@ class _ReadingScreenState extends State<ReadingScreen>
   // 只禁横向 PageView 的手势翻页，纵向滚动模式与代码跳页（点击/音量键/菜单）不受影响。
   bool _disableHorizontalSwipe = false;
   // 文字抗锯齿（oc_antiAlias，Flutter 引擎限制，用禁用字距/连字近似）
-  bool _antiAlias = true;
+  bool _antiAlias = false;
   // 下载缓存配置：阅读时向后预缓存的章节数（0 表示关闭）
   int _preDownload = 5;
   // 正在预缓存的章节下标，避免重复请求
@@ -163,10 +172,10 @@ class _ReadingScreenState extends State<ReadingScreen>
   double? _lastSystemBrightness;
 
   // 4 个额外阅读配置项（ReadPrefs 持久化，ReadConfig 归主代理独占，故不写模型）
-  String _progressBarBehavior = 'chapter'; // 'page' | 'chapter'
+  String _progressBarBehavior = 'page'; // 'page' | 'chapter'
   bool _showBrightnessView = true;
-  bool _expandTextMenu = true;
-  bool _mouseWheelPage = false;
+  bool _expandTextMenu = false;
+  bool _mouseWheelPage = true;
   bool _twoFingerReplacePreview = false;
   bool _pageEstimateAuto = true;
 
@@ -300,7 +309,7 @@ class _ReadingScreenState extends State<ReadingScreen>
         _textSelectable = !labOn || (p.getBool('lab_selectable') ?? true);
         _pageDiag = labOn && (p.getBool('lab_pageDiag') ?? false);
         _accelerateDownload = labOn && (p.getBool('lab_accDownload') ?? false);
-        _antiAlias = p.getBool('oc_antiAlias') ?? true;
+        _antiAlias = p.getBool('oc_antiAlias') ?? false;
         // 阅读页禁用水平滑动翻页（read_disableHorizontalSwipe）
         _disableHorizontalSwipe = p.getBool('read_disableHorizontalSwipe') ?? false;
       });
@@ -329,6 +338,7 @@ class _ReadingScreenState extends State<ReadingScreen>
     _loadClickActions();
     _loadCurrentSource();
     _restoreCharset();
+    _checkInShelf();
     _loadMenuConfig();
     _loadLabFlags();
     _loadDownloadConfig();
@@ -360,10 +370,41 @@ class _ReadingScreenState extends State<ReadingScreen>
     // 屏幕常亮 + 沉浸/全屏/方向：延迟到第一帧后读取 config
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final cfg = context.read<ReadProvider>().config;
-      _applyWakeLock(cfg.keepScreenOn);
+      _applyKeepLight(cfg.keepLight);
       _applyScreenMode(cfg);
       _applyCustomPageKeys(cfg);
       _loadPageIndex();
+      _validateFontFamily(cfg);
+      _startAutoBackupJob();
+    });
+  }
+
+  /// 对齐 E ChapterProvider.getTypeface().getOrElse：自定义字体坏路径时
+  /// 清空 fontFamily、落盘并回退系统字体（避免每次启动都失败）。
+  void _validateFontFamily(ReadConfig cfg) {
+    final ff = cfg.fontFamily;
+    // 中文预设名（衬线体等）不是路径，不参与校验；仅清理真实坏路径。
+    if (ff == null || !isFontFilePath(ff)) return;
+    if (fontPathExists(ff)) return; // 路径存在，正常
+    context.read<ReadProvider>().updateConfig((c) => c.fontFamily = null);
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('字体文件已丢失，已回退系统字体')));
+    }
+  }
+
+  /// 对齐 E ReadBookActivity.startBackupJob()（1667-1678）：进入/翻页后
+  /// 5 分钟（300000ms）静默上传进度 + 保存 + 自动备份；再次触发先 cancel 上一个。
+  void _startAutoBackupJob() {
+    _autoBackupTimer?.cancel();
+    _autoBackupTimer = Timer(const Duration(minutes: 5), () async {
+      _autoBackupTimer = null;
+      if (!mounted) return;
+      try {
+        await BookProgressSync.instance.push(); // AppWebDav.uploadBookProgress
+        await _saveCurrentProgress();          // it.update()
+        await BackupService.runAutoBackup();   // Backup.autoBack
+      } catch (_) {}
     });
   }
 
@@ -372,13 +413,13 @@ class _ReadingScreenState extends State<ReadingScreen>
   /// 读取不落在 ReadConfig 内的额外配置项（ReadPrefs）。
   Future<void> _loadExtraPrefs() async {
     final behavior = await ReadPrefs.getString(ReadPrefs.kProgressBarBehavior,
-        fallback: 'chapter');
+        fallback: 'page');
     final showBrightness =
         await ReadPrefs.getBool(ReadPrefs.kShowBrightnessView, fallback: true);
     final expandMenu =
-        await ReadPrefs.getBool(ReadPrefs.kExpandTextMenu, fallback: true);
+        await ReadPrefs.getBool(ReadPrefs.kExpandTextMenu, fallback: false);
     final wheel =
-        await ReadPrefs.getBool(ReadPrefs.kMouseWheelPage, fallback: false);
+        await ReadPrefs.getBool(ReadPrefs.kMouseWheelPage, fallback: true);
     final twoFinger = await ReadPrefs.getBool(
         ReadPrefs.kTwoFingerReplacePreview,
         fallback: false);
@@ -428,7 +469,9 @@ class _ReadingScreenState extends State<ReadingScreen>
   /// 真实亮度写入：跟随系统时调 setSystemBrightness / setWindowBrightness，
   /// 否则沿用阅读页的遮罩亮度（ReadProvider.brightness）。
   Future<void> _applyBrightness(double value, {bool system = false}) async {
-    final v = value.clamp(0.0, 1.0);
+    // 对齐 E ReadMenu.setScreenBrightness()：0 亮度仍保留 0.004 最小背光，
+    // 避免把屏幕调到全黑不可读（见 read_detail_utils.minBacklight）。
+    final v = minBacklight(value.clamp(0.0, 1.0));
     context.read<ReadProvider>().setBrightness(v);
     if (!_followSystemBrightness) return;
     final bridge = NativeBridge.instance;
@@ -646,6 +689,8 @@ class _ReadingScreenState extends State<ReadingScreen>
     _autoReadTimer?.cancel();
     _clockTimer?.cancel();
     _repaginateTimer?.cancel();
+    _keepLightTimer?.cancel();
+    _autoBackupTimer?.cancel();
     _menuController.dispose();
     _pageController.dispose();
     _recordService.endSession(
@@ -677,6 +722,7 @@ class _ReadingScreenState extends State<ReadingScreen>
     }
     try {
       if (context.read<ReadProvider>().config.pauseReadAloudWhilePhoneCalls &&
+          !TtsService.ignoreAudioFocus &&
           _ttsService.isPlaying) {
         _ttsService.pause();
       }
@@ -760,7 +806,7 @@ class _ReadingScreenState extends State<ReadingScreen>
     // 仅在滚动模式生效，避免与 PageView 自带水平滑动手势重复翻页。
     try {
       final cfg = context.read<ReadProvider>().config;
-      if (cfg.pageTouchSlop > 0 && cfg.pageAnim == 3) {
+      if (cfg.pageTouchSlop > 0 && cfg.curPageAnim == 3) {
         final threshold = cfg.pageTouchSlop * 8.0 + 24.0;
         if (_dragDx.abs() > threshold) {
           _dragDx > 0 ? _prevPage() : _nextPage();
@@ -1095,13 +1141,13 @@ class _ReadingScreenState extends State<ReadingScreen>
   }
 
   /// 正文每页右下角段评气泡（对齐 Sigma ReviewColumn）。
-  Widget _reviewOverlay(ReadConfig config) {
+  Widget _reviewOverlay(ReadConfig config, ReadPadding pad) {
     return Positioned(
-      right: config.paddingRight.toDouble() + 8,
+      right: pad.right.toDouble() + 8,
       bottom: 12,
       child: ReviewColumn(
         count: _chapterReviewCount,
-        foreground: Color(config.textColor),
+        foreground: Color(config.curTextColor),
         onTap: _openReviewSheet,
         onLongPress: _openReviewSheet,
       ),
@@ -1188,11 +1234,43 @@ class _ReadingScreenState extends State<ReadingScreen>
     );
   }
 
+  /// 对齐 legado-E `ReadBookActivity.upScreenTimeOut`：keep_light 为
+  /// 0=跟随系统、60/300/600=保持亮屏 N 秒、-1=常亮。
+  /// Flutter 无系统 SCREEN_OFF_TIMEOUT 写权限，用 wakelock + Timer 等价实现。
+  void _applyKeepLight(int seconds) {
+    if (_appliedKeepLight == seconds) return;
+    _appliedKeepLight = seconds;
+    _keepLightTimer?.cancel();
+    _keepLightTimer = null;
+    if (seconds < 0) {
+      _applyWakeLock(true);
+    } else if (seconds == 0) {
+      _applyWakeLock(false);
+    } else {
+      _applyWakeLock(true);
+      _keepLightTimer = Timer(Duration(seconds: seconds), () {
+        _keepLightTimer = null;
+        _applyWakeLock(false);
+      });
+    }
+  }
+
   Future<void> _applyWakeLock(bool enable) async {
     if (_wakeEnabled == enable) return;
     _wakeEnabled = enable;
     try {
       await _wakeChannel.invokeMethod(enable ? 'enable' : 'disable');
+    } catch (_) {}
+  }
+
+  /// 对齐 E ReadBookActivity.finish() 的 `ReadBook.inBookshelf` 判定：
+  /// 书架里存在同名同作者的书即视为在架。
+  Future<void> _checkInShelf() async {
+    try {
+      final books = await _db.getAllBooks();
+      final found = books.any(
+          (b) => b.name == widget.book.name && b.author == widget.book.author);
+      if (mounted) _inBookshelf = found;
     } catch (_) {}
   }
 
@@ -1556,7 +1634,7 @@ class _ReadingScreenState extends State<ReadingScreen>
     final config = context.read<ReadProvider>().config;
     // noAnimScrollPage：滚动模式下代码跳页也不做动画（对齐 E）
     final noAnim =
-        config.pageAnim == 4 || (config.pageAnim == 3 && config.noAnimScrollPage);
+        config.curPageAnim == 4 || (config.curPageAnim == 3 && config.noAnimScrollPage);
     if (_currentPage < _pages.length - 1) {
       final next = _currentPage + 1;
       if (noAnim) {
@@ -1575,7 +1653,7 @@ class _ReadingScreenState extends State<ReadingScreen>
     final config = context.read<ReadProvider>().config;
     // noAnimScrollPage：滚动模式下代码跳页也不做动画（对齐 E）
     final noAnim =
-        config.pageAnim == 4 || (config.pageAnim == 3 && config.noAnimScrollPage);
+        config.curPageAnim == 4 || (config.curPageAnim == 3 && config.noAnimScrollPage);
     if (_currentPage > 0) {
       final prev = _currentPage - 1;
       if (noAnim) {
@@ -1682,33 +1760,63 @@ class _ReadingScreenState extends State<ReadingScreen>
   Widget build(BuildContext context) {
     final readProvider = context.watch<ReadProvider>();
     final config = readProvider.config;
-    // 屏幕常亮设置变化时实时生效
-    if (_wakeEnabled != config.keepScreenOn) {
-      _applyWakeLock(config.keepScreenOn);
-    }
+    // 屏幕超时档位变化时实时生效（对齐 legado-E upScreenTimeOut）
+    _applyKeepLight(config.keepLight);
 
-    // 对齐 E pref_config_read.disableReturnKey：开启时由 PopScope 拦截系统返回键
+    // 对齐 E pref_config_read.disableReturnKey + ReadBookActivity.finish()->showAddToShelfAlert：
+    // 由 PopScope 拦截系统返回。canPop=false 只门控 Navigator.maybePop，
+    // 直接 Navigator.pop（文本选择菜单等内部弹层）不受影响。
     return PopScope(
-      canPop: !config.disableReturnKey,
+      canPop: false,
+      onPopInvokedWithResult: (didPop, result) async {
+        if (didPop) return;
+        if (config.disableReturnKey) return; // 禁用返回键：直接吞掉
+        // 先取 NavigatorState，避免异步间隙后跨 BuildContext 使用。
+        final navigator = Navigator.of(context);
+        // 退出未入架的书时弹「加入书架」确认（对齐 E showAddToShelfAlert，默认 true）。
+        if (_inBookshelf == false && config.showAddToShelfAlert) {
+          final choice = await showDialog<String>(
+            context: context,
+            builder: (c) => AlertDialog(
+              title: const Text('加入书架'),
+              content: Text('是否将《${widget.book.name}》加入书架？'),
+              actions: [
+                TextButton(onPressed: () => Navigator.pop(c, 'no'), child: const Text('不加入并退出')),
+                FilledButton(onPressed: () => Navigator.pop(c, 'yes'), child: const Text('加入书架')),
+              ],
+            ),
+          );
+          if (!mounted) return;
+          if (choice == 'yes') {
+            try {
+              await _db.insertBook(widget.book);
+            } catch (_) {}
+            _inBookshelf = true; // 对齐 E okButton：加入书架后留在阅读页，不 finish
+            return;
+          }
+        }
+        // 在架 / 未知 / 关闭提示 / 选择「不加入」：正常出栈（直接 pop 绕过 PopScope）。
+        if (mounted) navigator.pop();
+      },
       child: Focus(
       autofocus: true,
       onKeyEvent: _handleKeyEvent,
       child: AnnotatedRegion<SystemUiOverlayStyle>(
         value: SystemUiOverlayStyle(
-          statusBarColor: Color(config.bgColor),
-          statusBarIconBrightness: ThemeData.estimateBrightnessForColor(Color(config.bgColor)) == Brightness.dark
-              ? Brightness.light
-              : Brightness.dark,
+          // 批次 3：三套独立配置——背景色、状态栏图标、强调色、翻页动画按当前模式取。
+          statusBarColor: Color(config.curBgColor),
+          // 对齐 E darkStatusIcon*：true=暗色图标（浅背景），false=亮色图标（深背景）。
+          statusBarIconBrightness: config.curStatusIconDark ? Brightness.dark : Brightness.light,
         ),
         child: Scaffold(
-          backgroundColor: Color(config.bgColor),
+          backgroundColor: Color(config.curBgColor),
           body: Listener(
             onPointerSignal: _onPointerSignal,
             onPointerDown: _onPointerDown,
             onPointerMove: _onPointerMove,
             onPointerUp: _onPointerUp,
             child: _isLoading
-              ? Center(child: CircularProgressIndicator(color: Color(config.textColor)))
+              ? Center(child: CircularProgressIndicator(color: Color(config.curTextColor)))
               : GestureDetector(
                   behavior: HitTestBehavior.opaque,
                   onTapUp: (details) {
@@ -1716,6 +1824,19 @@ class _ReadingScreenState extends State<ReadingScreen>
                     final col = details.globalPosition.dx < size.width / 3 ? 0 : (details.globalPosition.dx > size.width * 2 / 3 ? 2 : 1);
                     final row = details.globalPosition.dy < size.height / 3 ? 0 : (details.globalPosition.dy > size.height * 2 / 3 ? 2 : 1);
                     final action = _clickActions[row * 3 + col];
+                    // 批次 3 · 单击 300ms 防抖 + 双击状态机（对齐 E
+                    // ContentTextView.click():245-253 与 clickImgWay:267-308 的 5 档）。
+                    // 上游 doubleClick 仅驱动 inline ImageColumn；Flutter 正文为整页
+                    // 单个 Text、无 inline 图片命中（Flutter 无等价能力），故降级为把
+                    // 点击语义作用于整页区域动作，保证 300ms 状态有真实消费点。
+                    final click =
+                        _clickTracker.onTap(DateTime.now().millisecondsSinceEpoch);
+                    final imgWay = config.clickImgWay;
+                    if (imgWay == 3) return; // 关闭点击
+                    if (imgWay == 4 && !click.doubleClick) return; // 双击才生效
+                    if (imgWay != 4 && click.debounced && (action == 4 || action == 5)) {
+                      return; // 300ms 防抖：过滤误触连翻（章内翻页）
+                    }
                     // 点击中央显示菜单开关关闭时，中央区域不响应菜单动作
                     if (action == 3 && !config.showMenuOnTap) return;
                     // 点击翻页开关关闭时，点击不翻页（仅菜单动作生效）
@@ -1750,7 +1871,7 @@ class _ReadingScreenState extends State<ReadingScreen>
                             _buildHeader(config),
                           Expanded(
                             child: _isLoadingChapter
-                                ? Center(child: CircularProgressIndicator(color: Color(config.textColor)))
+                                ? Center(child: CircularProgressIndicator(color: Color(config.curTextColor)))
                                 : RotatedBox(
                                     quarterTurns: config.verticalLayout,
                                     child: Transform(
@@ -1766,7 +1887,10 @@ class _ReadingScreenState extends State<ReadingScreen>
                               value: (_currentPage + 1) / _pages.length,
                               minHeight: 2,
                               backgroundColor: Colors.transparent,
-                              valueColor: AlwaysStoppedAnimation<Color>(Color(config.textColor).withOpacity(0.25)),
+                              // 上游 textAccentColor 用于朗读当前行高亮；Flutter 正文为整页
+                              // 单个 Text、无逐行朗读高亮（Flutter 无等价能力），降级为进度
+                              // 指示强调色，保证 curTextAccentColor 有真实消费点而非死字段。
+                              valueColor: AlwaysStoppedAnimation<Color>(Color(config.curTextAccentColor).withOpacity(0.55)),
                             ),
                           if (config.pageNumberVisibility || config.timeVisibility || config.batteryVisibility)
                             _buildFooter(config),
@@ -1838,7 +1962,7 @@ class _ReadingScreenState extends State<ReadingScreen>
   TextStyle _textStyle(ReadConfig config) {
     return TextStyle(
       fontSize: config.textSize.toDouble(),
-      color: Color(config.textColor),
+      color: Color(config.curTextColor),
       height: config.lineSpacing * 0.5 + 1.0,
       letterSpacing: config.letterSpacing,
       wordSpacing: config.wordSpacing,
@@ -1846,7 +1970,9 @@ class _ReadingScreenState extends State<ReadingScreen>
       fontWeight: config.boldText
           ? FontWeight.bold
           : FontWeight.values[((config.fontWeight ~/ 100) - 1).clamp(0, FontWeight.values.length - 1)],
-      fontFamily: config.fontFamily,
+      // 批次 3：未指定自定义字体时按 systemTypefaces 选系统衬线/等宽/无衬线
+      // （对齐 E ChapterProvider.getTypeface），坏路径由 _validateFontFamily 清空。
+      fontFamily: config.fontFamily ?? systemFontFamily(config.systemTypefaces),
       shadows: config.shadowLevel > 0
           ? [
               Shadow(
@@ -1892,54 +2018,93 @@ class _ReadingScreenState extends State<ReadingScreen>
   }
 
   Widget _buildReadingContent(ReadConfig config) {
-    // 翻页动画：0覆盖 1仿真 2滑动 3滚动 4无动画 5上下
-    final isVertical = config.pageAnim == 5;
-    final noAnim = config.pageAnim == 4;
-    final scrollMode = config.pageAnim == 3;
+    // 翻页动画：0覆盖 1仿真 2滑动 3滚动 4无动画 5上下（墨水屏取 pageAnimEInk）
+    final isVertical = config.curPageAnim == 5;
+    final noAnim = config.curPageAnim == 4;
+    final scrollMode = config.curPageAnim == 3;
 
     // 用 LayoutBuilder 测量可用文本区域，尺寸变化时重新真实分页
     return LayoutBuilder(builder: (ctx, constraints) {
-      final availW = constraints.maxWidth - config.paddingLeft - config.paddingRight;
-      final availH = constraints.maxHeight - config.paddingTop - config.paddingBottom;
+      // 批次 3：边距过大回退（对齐 E ChapterProvider.setFallbackLayout，避免
+      // 可视宽为负导致 TextPainter 白屏/除零）。
+      final pad = resolveReadPadding(
+        viewWidth: constraints.maxWidth,
+        viewHeight: constraints.maxHeight,
+        left: config.paddingLeft,
+        top: config.paddingTop,
+        right: config.paddingRight,
+        bottom: config.paddingBottom,
+        doublePage: config.doubleHorizontalPage != 0,
+      );
+      _notifyPaddingFallback(pad, config);
+      final availW = constraints.maxWidth - pad.left - pad.right;
+      final availH = constraints.maxHeight - pad.top - pad.bottom;
       _maybeRepaginate(availW, availH);
       return scrollMode
-          ? _buildScrollMode(config, isVertical)
-          : _buildPageView(config, isVertical, noAnim);
+          ? _buildScrollMode(config, isVertical, pad)
+          : _buildPageView(config, isVertical, noAnim, pad);
+    });
+  }
+
+  /// 边距回退时提示一次（对齐 E `AppLog.put("边距设置过大", toast=true)`）。
+  /// build 期间不能弹 SnackBar，延到帧后；同一组坏边距不重复弹。
+  void _notifyPaddingFallback(ReadPadding pad, ReadConfig config) {
+    if (!pad.fellBack) {
+      _paddingFallbackKey = null;
+      return;
+    }
+    final key = '${config.paddingLeft}/${config.paddingTop}/'
+        '${config.paddingRight}/${config.paddingBottom}';
+    if (_paddingFallbackKey == key) return;
+    _paddingFallbackKey = key;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('边距设置过大，请重新设置')));
+      }
     });
   }
 
   /// 可用区域变化时重新分页（保持当前阅读锚点）
   void _maybeRepaginate(double w, double h) {
     if (w <= 0 || h <= 0) return;
-    final pw = _pageW;
-    final ph = _pageH;
-    if (pw != null && ph != null && (pw - w).abs() < 0.5 && (ph - h).abs() < 0.5) return;
+    // 对齐 E ChapterProvider.upViewSize()：宽度变化立即重排；仅高度变化
+    // （键盘/状态栏/分屏）延迟 300ms 再重排，连续抖动取消上一次；尺寸回到
+    // 原值时取消挂起回调，避免每帧重排全书。
+    final kind = classifyViewSizeChange(
+        oldW: _pageW, oldH: _pageH, newW: w, newH: h);
+    if (kind == ViewSizeChange.none) {
+      _repaginateTimer?.cancel();
+      return;
+    }
     _pageW = w;
     _pageH = h;
-    // 重排防抖：连续布局变化只做最后一次，避免逐帧/逐次全文测量
-    _scheduleRepaginate();
+    _scheduleRepaginate(
+        delayMs: kind == ViewSizeChange.debounced ? viewSizeDebounceMs : 0);
   }
 
-  /// 防抖重排：取消待执行的重排，100ms 静默后执行（dispose 时 cancel）
-  void _scheduleRepaginate() {
+  /// 防抖重排：取消待执行的重排，静默后执行（dispose 时 cancel）。
+  /// 宽度变化用 0ms（下一事件循环即重排，避免在 build 内 setState）；
+  /// 仅高度变化用 300ms trailing 防抖。
+  void _scheduleRepaginate({int delayMs = 0}) {
     _repaginateTimer?.cancel();
-    _repaginateTimer = Timer(const Duration(milliseconds: 100), () {
+    _repaginateTimer = Timer(Duration(milliseconds: delayMs), () {
       if (!mounted) return;
       _paginateContent();
       if (mounted) setState(() {});
     });
   }
 
-  Widget _buildScrollMode(ReadConfig config, bool isVertical) {
+  Widget _buildScrollMode(ReadConfig config, bool isVertical, ReadPadding pad) {
     final chapterText = _content ?? '加载中...';
     final child = _styledText(config, chapterText);
     return SingleChildScrollView(
       scrollDirection: isVertical ? Axis.horizontal : Axis.vertical,
       padding: EdgeInsets.fromLTRB(
-        config.paddingLeft.toDouble(),
-        config.paddingTop.toDouble(),
-        config.paddingRight.toDouble(),
-        config.paddingBottom.toDouble(),
+        pad.left.toDouble(),
+        pad.top.toDouble(),
+        pad.right.toDouble(),
+        pad.bottom.toDouble(),
       ),
       child: (_textSelectable && config.longPressSelect)
           ? SelectionArea(
@@ -1964,9 +2129,9 @@ class _ReadingScreenState extends State<ReadingScreen>
     );
   }
 
-  Widget _buildPageView(ReadConfig config, bool isVertical, bool noAnim) {
-    final cover = config.pageAnim == 0; // 覆盖
-    final simulate = config.pageAnim == 1; // 仿真
+  Widget _buildPageView(ReadConfig config, bool isVertical, bool noAnim, ReadPadding pad) {
+    final cover = config.curPageAnim == 0; // 覆盖
+    final simulate = config.curPageAnim == 1; // 仿真
     // 无动画翻页或用户禁用了水平滑动时，禁掉手势翻页（代码跳页仍然可用）
     final lockGesture = noAnim || (_disableHorizontalSwipe && !isVertical);
     final physics =
@@ -1980,9 +2145,13 @@ class _ReadingScreenState extends State<ReadingScreen>
       scrollDirection: isVertical ? Axis.vertical : Axis.horizontal,
       physics: physics,
       itemCount: _pages.length,
-      onPageChanged: (page) => setState(() => _currentPage = page),
+      onPageChanged: (page) {
+        setState(() => _currentPage = page);
+        // 对齐 E pageChanged()->startBackupJob()：翻页重置 5 分钟自动备份计时。
+        _startAutoBackupJob();
+      },
       itemBuilder: (context, index) {
-        final item = _pageItem(config, index);
+        final item = _pageItem(config, index, pad);
         // optimizeRender：开启时额外隔离整页（含动画层）重绘
         Widget wrap(Widget w) =>
             config.optimizeRender ? RepaintBoundary(child: w) : w;
@@ -2002,7 +2171,7 @@ class _ReadingScreenState extends State<ReadingScreen>
   }
 
   /// 单页内容（含长按选择）；最外层 RepaintBoundary 隔离翻页时的逐页重绘
-  Widget _pageItem(ReadConfig config, int index) {
+  Widget _pageItem(ReadConfig config, int index, ReadPadding pad) {
     final child = _pageText(config, index);
     // 第十轮：外层 Stack 只追加段评气泡，原有正文渲染 / 长按选择逻辑完全保留
     return Stack(
@@ -2010,10 +2179,10 @@ class _ReadingScreenState extends State<ReadingScreen>
         RepaintBoundary(
           child: SingleChildScrollView(
             padding: EdgeInsets.fromLTRB(
-              config.paddingLeft.toDouble(),
-              config.paddingTop.toDouble(),
-              config.paddingRight.toDouble(),
-              config.paddingBottom.toDouble(),
+              pad.left.toDouble(),
+              pad.top.toDouble(),
+              pad.right.toDouble(),
+              pad.bottom.toDouble(),
             ),
             child: (_textSelectable && config.longPressSelect)
                 ? SelectionArea(
@@ -2037,7 +2206,7 @@ class _ReadingScreenState extends State<ReadingScreen>
                 : child,
           ),
         ),
-        _reviewOverlay(config),
+        _reviewOverlay(config, pad),
       ],
     );
   }
@@ -2194,8 +2363,8 @@ class _ReadingScreenState extends State<ReadingScreen>
   Widget _buildTopMenu() {
     final config = context.read<ReadProvider>().config;
     // 对齐 E ReadMenu.immersiveMenu：阅读栏背景/文字跟随当前页面背景
-    final barBg = config.readBarStyleFollowPage ? Color(config.bgColor) : null;
-    final barFg = config.readBarStyleFollowPage ? Color(config.textColor) : null;
+    final barBg = config.readBarStyleFollowPage ? Color(config.curBgColor) : null;
+    final barFg = config.readBarStyleFollowPage ? Color(config.curTextColor) : null;
     return AnimatedBuilder(
       animation: _menuController,
       builder: (context, child) {
@@ -2291,10 +2460,10 @@ class _ReadingScreenState extends State<ReadingScreen>
     final pageMode = _progressBarBehavior == 'page';
     // 对齐 E ReadMenu.immersiveMenu：底部设置栏背景/文字跟随页面背景
     final barBg = config.readBarStyleFollowPage
-        ? Color(config.bgColor)
+        ? Color(config.curBgColor)
         : Theme.of(context).colorScheme.surface;
     final barFg = config.readBarStyleFollowPage
-        ? Color(config.textColor)
+        ? Color(config.curTextColor)
         : Theme.of(context).colorScheme.onSurface;
     return Container(
       decoration: BoxDecoration(
@@ -2426,11 +2595,14 @@ class _ReadingScreenState extends State<ReadingScreen>
                   final preset = ReadConfig.presets[index];
                   final bg = preset['bgColor'] as int;
                   final fg = preset['textColor'] as int;
-                  final isSelected = config.bgColor == bg;
+                  final isSelected = config.curBgColor == bg;
                   return GestureDetector(
                     onTap: () {
-                      readProvider.setBgColor(bg);
-                      readProvider.setTextColor(fg);
+                      // 对齐 E Config.setCurBg()：配色预设写入当前模式那份，不覆盖其它模式。
+                      readProvider.updateConfig((c) {
+                        c.setCurBgColor(bg);
+                        c.setCurTextColor(fg);
+                      });
                     },
                     child: Container(
                       width: 56,
@@ -2496,17 +2668,12 @@ class _ReadingScreenState extends State<ReadingScreen>
     );
   }
 
-  /// 对齐 E fabNightTheme：切换日/夜间阅读配色（真实改变正文背景与文字色）
+  /// 对齐 E fabNightTheme（切 isNightTheme）：在日间/夜间模式间切换。
+  /// 批次 3 起改为切换 readThemeMode，直接取用各自独立持久化的配色/强调色/
+  /// 状态栏图标，不再改写白天那份（避免夜间切换覆盖白天设置）。
   void _toggleNightTheme() {
     final rp = context.read<ReadProvider>();
-    final isNight = rp.config.bgColor == 0xFF1A1A2E;
-    if (isNight) {
-      rp.setBgColor(0xFFFFF8E1);
-      rp.setTextColor(0xFF333333);
-    } else {
-      rp.setBgColor(0xFF1A1A2E);
-      rp.setTextColor(0xFFE0E0E0);
-    }
+    rp.updateConfig((c) => c.readThemeMode = c.isNightMode ? 0 : 1);
   }
 
   /// 对齐 E llReadAloud：点击朗读、长按弹出朗读配置
@@ -2590,11 +2757,12 @@ class _ReadingScreenState extends State<ReadingScreen>
   /// 对齐 E menu_image_style：图片样式（真实消费 clickImgWay 配置）
   void _showImageStylePicker() {
     final rp = context.read<ReadProvider>();
-    const names = ['无', '预览', '浏览器'];
+    // 对齐 E click_image_way 5 档（默认/预览/兼容/关闭/双击），与设置页共用标签。
+    const names = clickImgWayLabels;
     showModalBottomSheet(context: context, builder: (ctx) => SafeArea(child: Column(mainAxisSize: MainAxisSize.min, children: [
       const Padding(padding: EdgeInsets.all(AppSpacing.l), child: Text('图片样式', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold))),
       for (var i = 0; i < names.length; i++)
-        RadioListTile<int>(title: Text(names[i]), value: i, groupValue: rp.config.clickImgWay,
+        RadioListTile<int>(title: Text(names[i]), value: i, groupValue: rp.config.clickImgWay.clamp(0, 4),
           onChanged: (v) { rp.updateConfig((c) => c.clickImgWay = v ?? 0); Navigator.pop(ctx); }),
     ])));
   }
@@ -2771,96 +2939,140 @@ class _ReadingScreenState extends State<ReadingScreen>
   }
 
   List<Widget> _buildSelectMenuChildren(dynamic state, Future<String> Function() grab) {
-    final children = <Widget>[];
-    // expandTextMenu：展开全部动作，折叠时仅保留常用 4 项
+    // 对齐 E TextActionMenu:66-67/94-102：expandTextMenu 默认折叠，
+    // 前 5 项常驻，其余进「更多」子面板；展开时显示全部（旧实现只取 4 项）。
+    const visibleCount = 5;
     final order = _expandTextMenu
         ? _selectMenuOrder
-        : _selectMenuOrder.take(4).toList();
-    for (final key in order) {
-      switch (key) {
-        case 'copy':
-          children.add(InkWell(onTap: () {
-            // 长按选择文本抓取：copySelection 是当前 Flutter 唯一可同步取到所选文本的入口，
-            // 官方替代 contextMenuBuilder 无法在无用户点击时取文本，故保留并定向抑制该弃用告警。
-            // ignore: deprecated_member_use
-            state.copySelection(SelectionChangedCause.toolbar);
-            Navigator.pop(context);
-            ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('已复制'), duration: Duration(seconds: 1)));
-          }, child: const Padding(padding: EdgeInsets.all(AppSpacing.m), child: Text('复制'))));
-          break;
-        case 'marking':
-          children.add(InkWell(onTap: () async {
-            final text = await grab();
-            if (mounted && context.mounted) Navigator.pop(context);
-            _addMarking(text);
-          }, child: const Padding(padding: EdgeInsets.all(AppSpacing.m), child: Text('划线'))));
-          break;
-        case 'dict':
-          children.add(InkWell(onTap: () async {
-            final w = await grab();
-            if (mounted && context.mounted) Navigator.pop(context);
-            _dictLookup(w);
-          }, child: const Padding(padding: EdgeInsets.all(AppSpacing.m), child: Text('查词'))));
-          break;
-        case 'translate':
-          children.add(InkWell(onTap: () async {
-            final w = await grab();
-            if (mounted && context.mounted) Navigator.pop(context);
-            _translateSelection(w);
-          }, child: const Padding(padding: EdgeInsets.all(AppSpacing.m), child: Text('翻译'))));
-          break;
-        case 'bookmark':
-          children.add(InkWell(onTap: () async {
-            final w = await grab();
-            if (mounted && context.mounted) Navigator.pop(context);
-            _addBookmark(note: w);
-          }, child: const Padding(padding: EdgeInsets.all(AppSpacing.m), child: Text('加书签'))));
-          break;
-        case 'tts':
-          children.add(InkWell(onTap: () async {
-            final w = await grab();
-            if (mounted && context.mounted) Navigator.pop(context);
-            if (w.trim().isNotEmpty) _speakSelection(w);
-          }, child: const Padding(padding: EdgeInsets.all(AppSpacing.m), child: Text('朗读'))));
-          break;
-        case 'search':
-          children.add(InkWell(onTap: () async {
-            final w = await grab();
-            if (mounted && context.mounted) Navigator.pop(context);
-            _showSearchInBook(initialKeyword: w.trim());
-          }, child: const Padding(padding: EdgeInsets.all(AppSpacing.m), child: Text('搜索正文'))));
-          break;
-        case 'browser':
-          children.add(InkWell(onTap: () async {
-            final w = await grab();
-            if (mounted && context.mounted) Navigator.pop(context);
-            _openInBrowser(w.trim());
-          }, child: const Padding(padding: EdgeInsets.all(AppSpacing.m), child: Text('浏览器'))));
-          break;
-        case 'share':
-          children.add(InkWell(onTap: () async {
-            final w = await grab();
-            if (mounted && context.mounted) Navigator.pop(context);
-            _shareSelection(w);
-          }, child: const Padding(padding: EdgeInsets.all(AppSpacing.m), child: Text('分享'))));
-          break;
-        case 'replace':
-          children.add(InkWell(onTap: () async {
-            final w = await grab();
-            if (mounted && context.mounted) Navigator.pop(context);
-            _previewReplace(w);
-          }, child: const Padding(padding: EdgeInsets.all(AppSpacing.m), child: Text('替换'))));
-          break;
-      }
+        : _selectMenuOrder.take(visibleCount).toList();
+    final children = order
+        .map((key) => _buildSelectMenuTile(key, state, grab))
+        .toList();
+    if (!_expandTextMenu && _selectMenuOrder.length > visibleCount) {
+      final rest = _selectMenuOrder.skip(visibleCount).toList();
+      children.add(InkWell(
+        onTap: () => _showMoreSelectMenu(state, grab, rest),
+        child: const Padding(
+            padding: EdgeInsets.all(AppSpacing.m), child: Text('更多')),
+      ));
     }
     return children;
   }
 
-  /// 朗读选中文本（用当前 TTS 服务合成单段）
+  /// 折叠时把第 6 项起的动作展开到「更多」底部面板（对齐 E ivMenuMore）。
+  void _showMoreSelectMenu(
+      dynamic state, Future<String> Function() grab, List<String> keys) {
+    showModalBottomSheet(
+      context: context,
+      builder: (ctx) => SafeArea(
+        child: Wrap(
+          children: keys
+              .map((key) => _buildSelectMenuTile(key, state, grab))
+              .toList(),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSelectMenuTile(
+      String key, dynamic state, Future<String> Function() grab) {
+    switch (key) {
+      case 'copy':
+        return InkWell(onTap: () {
+          // 长按选择文本抓取：copySelection 是当前 Flutter 唯一可同步取到所选文本的入口，
+          // 官方替代 contextMenuBuilder 无法在无用户点击时取文本，故保留并定向抑制该弃用告警。
+          // ignore: deprecated_member_use
+          state.copySelection(SelectionChangedCause.toolbar);
+          Navigator.pop(context);
+          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('已复制'), duration: Duration(seconds: 1)));
+        }, child: const Padding(padding: EdgeInsets.all(AppSpacing.m), child: Text('复制')));
+      case 'marking':
+        return InkWell(onTap: () async {
+          final text = await grab();
+          if (mounted && context.mounted) Navigator.pop(context);
+          _addMarking(text);
+        }, child: const Padding(padding: EdgeInsets.all(AppSpacing.m), child: Text('划线')));
+      case 'dict':
+        return InkWell(onTap: () async {
+          final w = await grab();
+          if (mounted && context.mounted) Navigator.pop(context);
+          _dictLookup(w);
+        }, child: const Padding(padding: EdgeInsets.all(AppSpacing.m), child: Text('查词')));
+      case 'translate':
+        return InkWell(onTap: () async {
+          final w = await grab();
+          if (mounted && context.mounted) Navigator.pop(context);
+          _translateSelection(w);
+        }, child: const Padding(padding: EdgeInsets.all(AppSpacing.m), child: Text('翻译')));
+      case 'bookmark':
+        return InkWell(onTap: () async {
+          final w = await grab();
+          if (mounted && context.mounted) Navigator.pop(context);
+          _addBookmark(note: w);
+        }, child: const Padding(padding: EdgeInsets.all(AppSpacing.m), child: Text('加书签')));
+      case 'tts':
+        return InkWell(
+          onTap: () async {
+            final w = await grab();
+            if (mounted && context.mounted) Navigator.pop(context);
+            if (w.trim().isNotEmpty) _speakSelection(w);
+          },
+          // 对齐 E TextActionMenu:200-209：长按「朗读」项本身切换朗读模式，
+          // 0=朗读选择内容 / 1=从选择处一直朗读，并 SnackBar 反馈（不收起菜单）。
+          onLongPress: () {
+            final rp = context.read<ReadProvider>();
+            final next = rp.config.contentSelectSpeakMod == 0 ? 1 : 0;
+            rp.updateConfig((c) => c.contentSelectSpeakMod = next);
+            ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+              content: Text(next == 0
+                  ? '切换为朗读选择内容'
+                  : '切换为从选择的地方开始一直朗读'),
+              duration: const Duration(seconds: 1),
+            ));
+          },
+          child: const Padding(padding: EdgeInsets.all(AppSpacing.m), child: Text('朗读')),
+        );
+      case 'search':
+        return InkWell(onTap: () async {
+          final w = await grab();
+          if (mounted && context.mounted) Navigator.pop(context);
+          _showSearchInBook(initialKeyword: w.trim());
+        }, child: const Padding(padding: EdgeInsets.all(AppSpacing.m), child: Text('搜索正文')));
+      case 'browser':
+        return InkWell(onTap: () async {
+          final w = await grab();
+          if (mounted && context.mounted) Navigator.pop(context);
+          _openInBrowser(w.trim());
+        }, child: const Padding(padding: EdgeInsets.all(AppSpacing.m), child: Text('浏览器')));
+      case 'share':
+        return InkWell(onTap: () async {
+          final w = await grab();
+          if (mounted && context.mounted) Navigator.pop(context);
+          _shareSelection(w);
+        }, child: const Padding(padding: EdgeInsets.all(AppSpacing.m), child: Text('分享')));
+      case 'replace':
+        return InkWell(onTap: () async {
+          final w = await grab();
+          if (mounted && context.mounted) Navigator.pop(context);
+          _previewReplace(w);
+        }, child: const Padding(padding: EdgeInsets.all(AppSpacing.m), child: Text('替换')));
+      default:
+        return const SizedBox.shrink();
+    }
+  }
+
+  /// 朗读选中文本：contentSelectSpeakMod=0 读选中片段；1 从选中处往后读到章末
+  /// （对齐 E TextActionMenu 的 contentSelectSpeakMod 两种朗读模式）。
   Future<void> _speakSelection(String text) async {
     if (text.trim().isEmpty) return;
     try {
-      await _ttsService.speakOnce(text);
+      var toSpeak = text;
+      if (context.read<ReadProvider>().config.contentSelectSpeakMod == 1) {
+        final c = _content ?? '';
+        final i = c.indexOf(text);
+        if (i >= 0) toSpeak = c.substring(i);
+      }
+      await _ttsService.speakOnce(toSpeak);
     } catch (_) {
       if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('朗读失败，请检查 TTS 引擎设置')));
     }
@@ -3169,9 +3381,12 @@ class _ReadingScreenState extends State<ReadingScreen>
             return RadioListTile<int>(
               title: Text(anims[index]),
               value: index,
-              groupValue: readProvider.config.pageAnim,
+              // 批次 3：墨水屏模式下编辑的是 pageAnimEInk（对齐 E setCurPageAnim）。
+              groupValue: readProvider.config.curPageAnim,
               onChanged: (value) {
-                if (value != null) readProvider.setPageAnim(value);
+                if (value != null) {
+                  readProvider.updateConfig((c) => c.setCurPageAnim(value));
+                }
                 Navigator.pop(context);
               },
             );
@@ -3196,9 +3411,10 @@ class _ReadingScreenState extends State<ReadingScreen>
             onChanged: (value) {
               dragging = value;
               setState(() {});
-              // 跟随系统亮度时实时写真实背光（不画假遮罩）
+              // 跟随系统亮度时实时写真实背光（不画假遮罩）；
+              // 仍保留 0.004 最小背光，避免拖动到 0 时屏幕全黑。
               if (_followSystemBrightness) {
-                NativeBridge.instance.setWindowBrightness(value);
+                NativeBridge.instance.setWindowBrightness(minBacklight(value));
               }
             },
             // 松手才持久化并通知阅读界面生效（真实亮度由原生通道落地）

@@ -29,6 +29,9 @@ import 'package:legado_md3/ui/main/bookshelf/bookshelf_manage_screen.dart';
 import 'package:legado_md3/ui/main/bookshelf/group_manage_screen.dart';
 import 'package:legado_md3/ui/widgets/app_widgets.dart';
 import 'package:legado_md3/help/net/network_monitor.dart';
+import 'package:legado_md3/help/config/app_config.dart';
+import 'package:legado_md3/ui/book/detail/parts/delete_book_helper.dart';
+import 'package:legado_md3/ui/main/bookshelf/parts/update_error_store.dart';
 
 part 'parts/cover_cfg.dart';
 part 'parts/bookshelf_screen.dart';

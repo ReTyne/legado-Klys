@@ -38,9 +38,13 @@ class _RssArticlesScreenState extends State<RssArticlesScreen> {
   bool _sortDesc = true;
   bool _recordEnabled = true;
 
-  /// 文章列表布局：false 列表 / true 网格（对齐 menu_switch_layout，按源持久化）。
-  bool _gridLayout = false;
+  /// 文章列表布局 0..4（对齐 legado-E RssSource.articleStyle 与
+  /// RssSortViewModel.switchLayout 的五档循环），按源持久化。
+  int _articleStyle = 0;
   static const _layoutKeyPrefix = 'rss_articles_layout_';
+  static const List<String> layoutNames = [
+    '标准列表', '紧凑列表', '双列网格', '瀑布流', '大图卡片',
+  ];
 
   @override
   void initState() {
@@ -55,19 +59,22 @@ class _RssArticlesScreenState extends State<RssArticlesScreen> {
   Future<void> _loadLayout() async {
     try {
       final prefs = await SharedPreferences.getInstance();
-      final v = prefs.getInt('$_layoutKeyPrefix${source.sourceUrl}') ?? 0;
-      if (mounted) setState(() => _gridLayout = v == 1);
+      final v = prefs.getInt('$_layoutKeyPrefix${source.sourceUrl}') ??
+          source.articleStyle ?? 0;
+      if (mounted) setState(() => _articleStyle = v.clamp(0, 4));
     } catch (_) {}
   }
 
-  /// 切换列表 / 网格布局并真实持久化（对齐 Sigma 的 RssSortViewModel.switchLayout）。
+  /// 五档布局循环 0→1→2→3→4→0，同时写 SharedPreferences 与 rss_sources 表，
+  /// 与上游 RssSortViewModel.switchLayout / RssSource.articleStyle 对齐。
   Future<void> _switchLayout() async {
-    final next = !_gridLayout;
-    setState(() => _gridLayout = next);
+    final next = (_articleStyle + 1) % 5;
+    setState(() => _articleStyle = next);
+    source.articleStyle = next;
     try {
       final prefs = await SharedPreferences.getInstance();
-      await prefs.setInt(
-          '$_layoutKeyPrefix${source.sourceUrl}', next ? 1 : 0);
+      await prefs.setInt('$_layoutKeyPrefix${source.sourceUrl}', next);
+      await _db.updateRssSource(source);
     } catch (_) {}
   }
 
@@ -492,10 +499,10 @@ class _RssArticlesScreenState extends State<RssArticlesScreen> {
             onPressed: _searchArticles,
           ),
           IconButton(
-            tooltip: _gridLayout ? '切换为列表布局' : '切换为网格布局',
-            icon: Icon(_gridLayout
-                ? Icons.view_list_outlined
-                : Icons.grid_view_outlined),
+            tooltip: '切换布局（当前：${layoutNames[_articleStyle]}）',
+            icon: Icon(_articleStyle == 2 || _articleStyle == 3
+                ? Icons.grid_view_outlined
+                : Icons.view_list_outlined),
             onPressed: _switchLayout,
           ),
           IconButton(
@@ -555,10 +562,8 @@ class _RssArticlesScreenState extends State<RssArticlesScreen> {
                 value: 'switch_layout',
                 child: ListTile(
                   dense: true,
-                  leading: Icon(_gridLayout
-                      ? Icons.view_list_outlined
-                      : Icons.grid_view_outlined),
-                  title: Text(_gridLayout ? '切换为列表布局' : '切换为网格布局'),
+                  leading: const Icon(Icons.dashboard_outlined),
+                  title: Text('切换布局（当前：${layoutNames[_articleStyle]}）'),
                 ),
               ),
               const PopupMenuItem<String>(
@@ -609,10 +614,50 @@ class _RssArticlesScreenState extends State<RssArticlesScreen> {
                   ? _empty()
                   : RefreshIndicator(
                       onRefresh: _load,
-                      child: _gridLayout ? _buildGrid() : _buildList(),
+                      child: _buildBody(),
                     ),
     );
   }
+
+  /// 按 articleStyle 分派五种布局（对齐上游 RssArticlesFragment 的 5 个 Adapter）。
+  Widget _buildBody() {
+    switch (_articleStyle) {
+      case 1:
+        return _buildCompactList();
+      case 2:
+        return _buildGrid(columns: 2);
+      case 3:
+        // 上游 style=3 为瀑布流，横屏三列、竖屏两列。
+        return _buildGrid(
+          columns: MediaQuery.orientationOf(context) == Orientation.landscape
+              ? 3
+              : 2,
+          aspect: 0.70,
+        );
+      case 4:
+        return _buildLargeCardList();
+      default:
+        return _buildList();
+    }
+  }
+
+  /// 紧凑列表：无分隔线、更小留白。
+  Widget _buildCompactList() => ListView.builder(
+        padding: const EdgeInsets.symmetric(vertical: AppSpacing.s),
+        itemCount: _articles.length,
+        itemBuilder: (c, i) => _tile(_articles[i]),
+      );
+
+  /// 大图卡片列表：复用网格卡片但每项固定高度，突出封面。
+  Widget _buildLargeCardList() => ListView.separated(
+        padding: const EdgeInsets.all(AppSpacing.m),
+        itemCount: _articles.length,
+        separatorBuilder: (_, __) => const SizedBox(height: AppSpacing.m),
+        itemBuilder: (c, i) => SizedBox(
+          height: 220,
+          child: _gridTile(_articles[i]),
+        ),
+      );
 
   Widget _buildList() => ListView.separated(
         itemCount: _articles.length,
@@ -620,13 +665,14 @@ class _RssArticlesScreenState extends State<RssArticlesScreen> {
         itemBuilder: (c, i) => _tile(_articles[i]),
       );
 
-  Widget _buildGrid() => GridView.builder(
+  Widget _buildGrid({int columns = 2, double aspect = 0.82}) =>
+      GridView.builder(
         padding: const EdgeInsets.all(AppSpacing.m),
-        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-          crossAxisCount: 2,
-          mainAxisSpacing: 8,
-          crossAxisSpacing: 8,
-          childAspectRatio: 0.82,
+        gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: columns,
+          mainAxisSpacing: AppSpacing.s,
+          crossAxisSpacing: AppSpacing.s,
+          childAspectRatio: aspect,
         ),
         itemCount: _articles.length,
         itemBuilder: (c, i) => _gridTile(_articles[i]),

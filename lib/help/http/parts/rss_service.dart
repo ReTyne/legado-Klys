@@ -472,34 +472,9 @@ class RssService {
     }
   }
 
-  String _decode(List<int> bytes, Map<String, List<String>> headers) {
-    var cs = '';
-    final ct = (headers['content-type'] ?? headers['Content-Type'] ?? []).join(';').toLowerCase();
-    final m = RegExp(r'charset=([a-z0-9\-]+)').firstMatch(ct);
-    if (m != null) cs = m.group(1)!;
-    if (cs.isEmpty) {
-      final head = String.fromCharCodes(bytes.take(2048).map((b) => b & 0xff)).toLowerCase();
-      final mm = RegExp(r'''charset=["']?([a-z0-9\-]+)''').firstMatch(head);
-      if (mm != null) cs = mm.group(1)!;
-    }
-    cs = cs.toLowerCase();
-    try {
-      if (cs == 'gbk' || cs == 'gb2312' || cs == 'gb18030') return const GbkCodec().decode(bytes);
-      if (cs == 'big5') return const Big5Codec().decode(bytes);
-      if (cs == 'latin1' || cs == 'iso-8859-1') return latin1.decode(bytes);
-      return utf8.decode(bytes, allowMalformed: false);
-    } catch (_) {
-      try {
-        return utf8.decode(bytes, allowMalformed: true);
-      } catch (_) {
-        try {
-          return const GbkCodec().decode(bytes);
-        } catch (_) {
-          return latin1.decode(bytes);
-        }
-      }
-    }
-  }
+  /// 委托共享解码器：透明解压 + 去 BOM + 编码优先级（含 HTML meta 与统计探测）
+  String _decode(List<int> bytes, Map<String, List<String>> headers) =>
+      HttpResponseDecoder.decode(bytes, headers: headers);
 
   /// 依据用户自定义规则抓取文章列表（支持 ruleNextPage 翻页，最多 5 页）
   /// [startUrl] 起始页实际地址（startJs 可能改写），默认取 source.url

@@ -99,11 +99,16 @@ const String legadoBridgeJsPart08 = r'''    androidId: function () { return __st
       } catch (e) { return data; }
     },
 
-    // 字体替换（占位）
+    // 字体替换（降级标注）：上游 JsExtensions.replaceFont(text,
+    // errorQueryTTF, correctQueryTTF, filter) 用两个 QueryTTF 的字体轮廓
+    // 反查「字形相同但码位错乱」的字符再替换，依赖 Android 的 TTF 解析与
+    // 字形轮廓比对；Flutter/JS 桥无等价能力，无法复刻。
+    // 这里保留「显式字符映射表」这一可等价子集：调用方传入 map（或 JSON
+    // 字符串）时按字符逐一替换；传入 QueryTTF 句柄时原样返回文本。
     replaceFont: function (text, font) {
       try {
         var map = (typeof font === "string") ? JSON.parse(font) : font;
-        if (!map) return text;
+        if (!map || typeof map !== "object" || typeof map.length === "number") return text;
         var s = String(text == null ? "" : text);
         var out = "";
         for (var i = 0; i < s.length; i++) {
@@ -129,7 +134,23 @@ const String legadoBridgeJsPart08 = r'''    androidId: function () { return __st
     encodeURI: function (str, enc) {
       try { return encodeURIComponent(String(str)).replace(/%20/g, "+"); } catch (e) { return ""; }
     },
-    htmlFormat: function (str) { return String(str == null ? "" : str).replace(/<[^>]+>/g, ""); },
+    // 对齐 E JsExtensions.htmlFormat = HtmlFormatter.formatKeepImg(str)：
+    // 保留 <img>（含懒加载 data-src）、块级标签转换行、段首两个全角空格缩进、
+    // 去注释与空格实体。真实语义转交 Dart 侧 JsTextUtils.htmlFormat，避免
+    // 过去「一刀切去所有标签」把正文图片也丢掉的假实现。
+    htmlFormat: function (str) {
+      try {
+        return __doXhr("legado://charset?op=htmlFormat", {
+          method: "POST", body: String(str == null ? "" : str)
+        });
+      } catch (e) {
+        // 降级路径同样保留 <img>：只去注释与非 img 标签，不做缩进/实体
+        // 处理（避免引入第二套与 Dart 侧不一致的完整语义），但不丢正文图片。
+        return String(str == null ? "" : str)
+          .replace(/<!--[\s\S]*?-->/g, "")
+          .replace(/<\/?(?!img\b)[a-zA-Z][^>]*>/g, "");
+      }
+    },
     t2s: function (text) { return __convert(text, __T2S); },
     s2t: function (text) { return __convert(text, __S2T); },
 
@@ -147,17 +168,46 @@ const String legadoBridgeJsPart08 = r'''    androidId: function () { return __st
     toURL: function (urlStr, baseUrl) {
       try { return new URL(urlStr, baseUrl || __state.meta.httpUrl); } catch (e) { return null; }
     },
+    // 对齐 E JsExtensions.toNumChapter：`(第)(.+?)(章)` 命中时把中间数字
+    // 用 StringUtils.stringToInt（全角转半角 + 中文数字）转成阿拉伯数字，
+    // 其余原样；上游 `(第)(.+?)(章)` 无 ^$ 锚点，用 find() 取首个匹配。
+    // 旧实现只做「去前导零」，不认「第一百零二章」。
     toNumChapter: function (s) {
-      if (!s) return s;
-      var m = String(s).match(/^(\D*?)(\d+)(\D*)$/);
-      if (m) return m[1] + parseInt(m[2], 10) + m[3];
-      return s;
+      if (s === null || s === undefined) return null;
+      try {
+        return __doXhr("legado://charset?op=toNumChapter", {
+          method: "POST", body: String(s)
+        });
+      } catch (e) { return s; }
     },
+    // 对齐 E JsExtensions.strToBytes(str, charset)：按 Java charset 编码。
+    // V8 的 TextEncoder 只支持 UTF-8，GBK/GB2312/Latin-1 等必须由 Dart 侧
+    // enough_convert 完成；返回字节数组 JSON 由 __doXhr 封送。
     strToBytes: function (str, charset) {
-      return Array.from(new TextEncoder().encode(String(str == null ? "" : str)));
+      try {
+        var res = __doXhr("legado://charset?op=encode&cs=" +
+            encodeURIComponent(charset || "UTF-8"), {
+          method: "POST", body: String(str == null ? "" : str)
+        });
+        return JSON.parse(res);
+      } catch (e) {
+        return Array.from(new TextEncoder().encode(String(str == null ? "" : str)));
+      }
     },
+    // 对齐 E JsExtensions.bytesToStr(bytes, charset)：按 Java charset 解码。
     bytesToStr: function (bytes, charset) {
-      try { return new TextDecoder(charset || "utf-8").decode(Uint8Array.from(bytes || [])); } catch (e) { return ""; }
+      try {
+        var arr = [];
+        var src = bytes || [];
+        for (var i = 0; i < src.length; i++) arr.push(Number(src[i]) & 0xff);
+        return __doXhr("legado://charset?op=decode&cs=" +
+            encodeURIComponent(charset || "UTF-8"), {
+          method: "POST", body: JSON.stringify(arr)
+        });
+      } catch (e) {
+        try { return new TextDecoder(charset || "utf-8").decode(Uint8Array.from(bytes || [])); }
+        catch (e2) { return ""; }
+      }
     },
 
     // 脚本导入 / 文件缓存（走 legado://file 内部协议，原生文件系统实现）

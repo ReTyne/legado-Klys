@@ -9,6 +9,51 @@ extension DatabaseServiceBookDao on DatabaseService {
     return maps.map((m) => Book.fromMap(m)).toList();
   }
 
+  /// 真·位运算 SQL：对 books.type 执行 `type & mask > 0`（对齐上游 BookDao 表达式）。
+  /// 显式标注：本项目 books.type 为顺序枚举(0..4)，仅当数据已按位标志落库
+  /// （如 search_books 表 type 默认 8、或导入的上游备份）时结果才与上游一致。
+  Future<List<Book>> getBooksByTypeBitmask(int mask) async {
+    final db = await database;
+    final maps = await db.rawQuery(
+      'SELECT * FROM books WHERE (type & ?) > 0',
+      <Object?>[mask],
+    );
+    return maps.map((m) => Book.fromMap(m)).toList();
+  }
+
+  /// 虚拟分组按位规则过滤（对齐 legado-E BookDao.flowByGroup，报告 #17）。
+  ///
+  /// 本项目 books.type 存顺序枚举、group_name 存分组名（非位掩码），
+  /// 无法直接对列套用上游 `type & mask` / `sum(groupId) & group` SQL，
+  /// 故采用报告允许的等价方案：把每本书投影成位标志/位掩码，再用
+  /// [BookGroupQuery.matchesGroup] 应用同一套位规则。
+  /// [groupBitsOf] 由调用方把书映射成 group 位掩码（默认 0=未分组）；
+  /// [userGroupsSum] 对应上游 `sum(groupId) where groupId > 0`；
+  /// [netNoneShow] 为 IdNetNone 分组的 show 值。
+  Future<List<Book>> getBooksByVirtualGroup(
+    int groupId, {
+    int userGroupsSum = 0,
+    int netNoneShow = 1,
+    int Function(Book book)? groupBitsOf,
+  }) async {
+    final List<Book> all = await getAllBooks();
+    return all.where((Book b) {
+      final int typeFlags = BookGroupQuery.projectFlutterType(
+        b.type,
+        origin: b.origin,
+        local: b.local,
+      );
+      final int groupBits = groupBitsOf == null ? 0 : groupBitsOf(b);
+      return BookGroupQuery.matchesGroup(
+        typeFlags: typeFlags,
+        groupBits: groupBits,
+        groupId: groupId,
+        userGroupsSum: userGroupsSum,
+        netNoneShow: netNoneShow,
+      );
+    }).toList();
+  }
+
   Future<Book?> getBook(String name, String author) async {
     final db = await database;
     final maps = await db.query('books', where: 'name = ? AND author = ?', whereArgs: [name, author]);

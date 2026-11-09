@@ -29,6 +29,14 @@ class _BookshelfScreenState extends State<BookshelfScreen> {
   Map<String, int>? _waitUpdateCache;
   int _waitUpdateKey = -1;
 
+  // —— 更新目录容错（对齐 E MainViewModel）——
+  /// 待更新队列（E: waitUpTocBooks）。
+  final Set<String> _waitUpTocBooks = <String>{};
+  /// 正在更新集合（E: onUpTocBooks），与待更新队列构成「双集合去重」。
+  final Set<String> _onUpTocBooks = <String>{};
+  /// 更新失败标记集合（E: BookType.updateError），供封面角标与详情开关消费。
+  Set<String> _updateErrorBooks = <String>{};
+
   @override
   void initState() {
     super.initState();
@@ -55,6 +63,8 @@ class _BookshelfScreenState extends State<BookshelfScreen> {
     final wifiOk = coverCfg.onlyWifi
         ? await NetworkMonitor.instance.isWifi
         : false;
+    // 对齐 E BookType.updateError：加载失败标记供封面角标展示。
+    final errorBooks = await loadUpdateErrorBooks();
     if (!mounted) return;
     setState(() {
       _cfg = cfg;
@@ -62,6 +72,7 @@ class _BookshelfScreenState extends State<BookshelfScreen> {
       _wifiOk = wifiOk;
       _sortBy = _ViewCfg.sortMap[cfg.sortType.clamp(0, 4)];
       _sortAsc = cfg.sortAscending;
+      _updateErrorBooks = errorBooks;
       // 配置可能影响过滤条件，作废 _filteredBooks 缓存
       _filteredCache = null;
       _filteredKey = '';
@@ -150,46 +161,133 @@ class _BookshelfScreenState extends State<BookshelfScreen> {
     return books;
   }
 
+  /// 更新目录（对齐 E MainViewModel.upToc / addToWaitUp / startUpTocJob /
+  /// updateToc / addDownload 的容错体系）：
+  ///  - 双集合去重：waitUpTocBooks + onUpTocBooks；
+  ///  - onlyUpdateRead：跳过未读完的书；
+  ///  - updateError：书源缺失 / 抓取失败标红，成功清除；
+  ///  - preDownloadNum：所有目录更新完才启动后续 N 章预下载；
+  ///  - threadCount：并发池替代串行 for。
   Future<void> _updateAllBooks() async {
     setState(() => _isUpdating = true);
     final provider = Provider.of<BookProvider>(context, listen: false);
+    final prefs = await SharedPreferences.getInstance();
+    final onlyUpdateRead = prefs.getBool('only_update_read') ?? false;
+
     var toUpdate = provider.books
         .where((b) =>
-            !b.local &&
-            b.canUpdate &&
-            b.origin != null &&
-            b.noteUrl != null)
+            !b.local && b.canUpdate && b.origin != null && b.noteUrl != null)
         .toList();
     if (_cfg.updateLimit > 0 && toUpdate.length > _cfg.updateLimit) {
       toUpdate = toUpdate.sublist(0, _cfg.updateLimit);
     }
+
+    // 对齐 E addToWaitUp：onlyUpdateRead 跳过未读完 + 双集合去重。
+    final queue = <Book>[];
+    String keyOf(Book b) => (b.bookUrl ?? '').isNotEmpty
+        ? b.bookUrl!
+        : '${b.name}::${b.author}';
+    for (final b in toUpdate) {
+      if (onlyUpdateRead && _unread(b) > 0) continue;
+      final key = keyOf(b);
+      if (_waitUpTocBooks.contains(key) || _onUpTocBooks.contains(key)) {
+        continue;
+      }
+      _waitUpTocBooks.add(key);
+      queue.add(b);
+    }
+
     final sources = await _db.getAllSources(enabled: true);
     final sourceMap = {for (var s in sources) s.bookSourceUrl: s};
+    // 目录更新完才预下载（E: onCompletion「所有目录更新完再开始缓存章节」）。
+    final preTargets = <({Book book, BookSource source})>[];
     int updated = 0;
-    for (final book in toUpdate) {
-      final source = sourceMap[book.origin];
-      if (source == null) continue;
+
+    // 并发池：poolSize = min(threadCount, MAX_THREAD)（E: upPool）。
+    final poolSize = AppPrefs.threadCount.clamp(1, 32);
+    int cursor = 0;
+    Future<void> worker() async {
+      while (true) {
+        final i = cursor++;
+        if (i >= queue.length) return;
+        final book = queue[i];
+        final key = keyOf(book);
+        _onUpTocBooks.add(key);
+        try {
+          final source = sourceMap[book.origin];
+          if (source == null) {
+            // E: source == null → addType(BookType.updateError)
+            await markUpdateError(book);
+            continue;
+          }
+          final newChapters = await _engine.getToc(source, book.noteUrl!,
+              bookInfo: book.jsContext());
+          final oldChapters = await _db.getChapters(book.name, book.author);
+          if (newChapters.length > oldChapters.length) {
+            await _db.saveChapters(book.name, book.author, newChapters);
+            book.lastChapter = newChapters.last.title;
+            book.lastChapterIndex = newChapters.length - 1;
+            book.latestChapterTime = DateTime.now().millisecondsSinceEpoch;
+            book.lastCheckTime = DateTime.now().millisecondsSinceEpoch;
+            await _db.updateBook(book);
+            updated++;
+            preTargets.add((book: book, source: source));
+          }
+          // E: 成功 → removeType(BookType.updateError)
+          await clearUpdateError(book);
+        } catch (_) {
+          // E: onFailure → 重新取书后 addType(BookType.updateError)
+          await markUpdateError(book);
+        } finally {
+          _onUpTocBooks.remove(key);
+          _waitUpTocBooks.remove(key);
+        }
+      }
+    }
+    await Future.wait(List.generate(
+        poolSize.clamp(1, queue.isEmpty ? 1 : queue.length), (_) => worker()));
+
+    // E addDownload：preDownloadNum == 0 时不预下载；区间
+    // [durChapterIndex, min(total-1, durChapterIndex + preDownloadNum)]。
+    final preNum = AppPrefs.preDownloadNum;
+    if (preNum > 0) {
+      for (final t in preTargets) {
+        await _preDownload(t.book, t.source, preNum);
+      }
+    }
+
+    _updateErrorBooks = await loadUpdateErrorBooks();
+    await provider.loadBooks();
+    if (!mounted) return;
+    setState(() {
+      _isUpdating = false;
+      _filteredCache = null;
+      _filteredKey = '';
+    });
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text(
+            '更新完成，共检查 ${queue.length} 本，$updated 本有新章节')));
+  }
+
+  /// 对齐 E MainViewModel.addDownload：只缓存 durChapterIndex 起后续
+  /// preDownloadNum 章（不缓存整本），且跳过卷标 / 已缓存章节。
+  Future<void> _preDownload(Book book, BookSource source, int num) async {
+    final chapters = await _db.getChapters(book.name, book.author);
+    if (chapters.isEmpty) return;
+    final start = book.durChapterIndex.clamp(0, chapters.length - 1);
+    final end = (book.durChapterIndex + num).clamp(0, chapters.length - 1);
+    for (var i = start; i <= end; i++) {
+      final ch = chapters[i];
+      if (ch.isVolume || (ch.content ?? '').isNotEmpty) continue;
       try {
-        final newChapters = await _engine.getToc(source, book.noteUrl!,
-            bookInfo: book.jsContext());
-        final oldChapters = await _db.getChapters(book.name, book.author);
-        if (newChapters.length > oldChapters.length) {
-          await _db.saveChapters(book.name, book.author, newChapters);
-          book.lastChapter = newChapters.last.title;
-          book.lastChapterIndex = newChapters.length - 1;
-          book.latestChapterTime = DateTime.now().millisecondsSinceEpoch;
-          book.lastCheckTime = DateTime.now().millisecondsSinceEpoch;
-          await _db.updateBook(book);
-          updated++;
+        final content = await _engine.getContent(source, ch.url,
+            bookInfo: book.jsContext(), chapter: ch.jsContext(book.bookUrl));
+        if (content != null && content.isNotEmpty) {
+          await _db.updateChapterContent(
+              book.name, book.author, ch.index, content);
         }
       } catch (_) {}
     }
-    await provider.loadBooks();
-    if (!mounted) return;
-    setState(() => _isUpdating = false);
-    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-        content: Text(
-            '更新完成，共检查 ${toUpdate.length} 本，$updated 本有新章节')));
   }
 
   /// 书架更多菜单 —— 项与顺序对齐 legado-E `res/menu/main_bookshelf.xml`：
@@ -1046,16 +1144,19 @@ class _BookshelfScreenState extends State<BookshelfScreen> {
               const Divider(),
               ListTile(leading: Icon(Icons.delete_outline, color: cs.error), title: Text('删除', style: TextStyle(color: cs.error)), onTap: () async {
                 Navigator.pop(context);
-                final confirmed = await showAppConfirmDialog(
+                // 对齐 E BookshelfManageActivity 批量删除：本地书带「同时删除
+                // 源文件」复选框（deleteBookOriginal 持久化）。
+                final choice = await showDeleteBookConfirm(
                   context,
+                  book: book,
                   title: '删除《${book.name}》',
-                  content: '确定要删除这本书吗？将同时删除已缓存章节。',
+                  message: '确定要删除这本书吗？将同时删除已缓存章节。',
                   confirmText: '删除',
-                  danger: true,
                 );
-                if (confirmed) {
-                  await _db.deleteBook(book.name, book.author);
-                  if (mounted && context.mounted) await Provider.of<BookProvider>(context, listen: false).loadBooks();
+                await applyDeleteBookChoice(
+                    book, choice, () => _db.deleteBook(book.name, book.author));
+                if (choice.confirmed && mounted && context.mounted) {
+                  await Provider.of<BookProvider>(context, listen: false).loadBooks();
                 }
               }),
             ]),
@@ -1902,6 +2003,31 @@ class _BookshelfScreenState extends State<BookshelfScreen> {
         _cfg.showUnreadNew &&
         unread > 0;
     if (showDot) cover = _withUnreadDot(cover, width, height);
+
+    // 对齐 E BookType.updateError：更新目录失败的书在封面左上角标红「!」，
+    // 是该标记的真实视觉消费点（标记由 _updateAllBooks 写入）。
+    if (_updateErrorBooks.contains(updateErrorBookKey(book))) {
+      final badgeCs = Theme.of(context).colorScheme;
+      cover = Stack(
+        fit: StackFit.expand,
+        children: [
+          cover,
+          Positioned(
+            left: 2,
+            top: 2,
+            child: Container(
+              padding: const EdgeInsets.all(2),
+              decoration: BoxDecoration(
+                color: badgeCs.error,
+                borderRadius: BorderRadius.circular(3),
+              ),
+              child: const Icon(Icons.error_outline,
+                  size: 12, color: Colors.white),
+            ),
+          ),
+        ],
+      );
+    }
 
     // 角标依赖 durChapterIndex（阅读进度），随 readingRevision 局部重建。
     return _revAware(cover);

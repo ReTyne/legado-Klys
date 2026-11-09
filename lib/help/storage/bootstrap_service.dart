@@ -7,6 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:legado_md3/common/app_navigator.dart';
 import 'package:legado_md3/common/deep_link_service.dart';
+import 'package:legado_md3/help/config/app_config.dart';
 import 'package:legado_md3/help/device/native_bridge.dart';
 import 'package:legado_md3/help/net/network_monitor.dart';
 import 'package:legado_md3/help/readaloud/tts_service.dart';
@@ -40,6 +41,14 @@ class BootstrapService {
 
     final nb = NativeBridge.instance;
     await nb.init();
+
+    // 启动期把持久化开关同步进业务消费方，避免只有设置页自读写。
+    TtsService.ignoreAudioFocus = prefs.getBool('ignoreAudioFocus') ?? false;
+    TtsService.stopReadAloudOnExit = prefs.getBool('mediaButtonOnExit') ?? true;
+    AppPrefs.applyBitmapCacheSize();
+    try {
+      WidgetsBinding.instance.addObserver(_ReadAloudExitObserver());
+    } catch (_) {}
 
     _registerArchiveDecoders();
     await _registerShortcuts(nb);
@@ -107,7 +116,17 @@ class BootstrapService {
   /// 耳机/媒体按键 → 朗读控制（对齐 Sigma MediaButton + ReadAloudService）。
   void _bindMediaButtons(NativeBridge nb) {
     nb.mediaButtonEvents.stream.listen((event) async {
+      final prefs = await SharedPreferences.getInstance();
       final tts = TtsService.active ?? sharedTts;
+      // 三个朗读开关的真实消费点：忽略音频焦点 / 退出停朗读 / 媒体键门控。
+      TtsService.ignoreAudioFocus = prefs.getBool('ignoreAudioFocus') ?? false;
+      TtsService.stopReadAloudOnExit =
+          prefs.getBool('mediaButtonOnExit') ?? true;
+      if (!(prefs.getBool('readAloudByMediaButton') ?? false)) {
+        // 上游默认关闭：未开启时媒体键不控制朗读，仅同步通知栏播放状态。
+        await nb.setPlaybackState(playing: tts.isPlaying);
+        return;
+      }
       switch (event['action']?.toString()) {
         case 'play':
           await tts.play();
@@ -165,6 +184,8 @@ class BootstrapService {
           builder: (_) => SearchScreen(initialKeyword: text.trim())));
     }
 
+    // processText 开关真实消费：关闭时不注册系统选中文字入口。
+    if (!AppPrefs.processText) return;
     nb.processTextEvents.stream.listen((t) => route(t));
     nb.getInitialProcessText().then((t) => route(t));
   }
@@ -193,5 +214,16 @@ class BootstrapService {
     } catch (_) {
       // 云端不可用不影响启动
     }
+  }
+}
+
+/// 退出应用时按 mediaButtonOnExit 停止朗读（对齐 legado-E ReadAloudService）。
+class _ReadAloudExitObserver with WidgetsBindingObserver {
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state != AppLifecycleState.detached) return;
+    if (!TtsService.stopReadAloudOnExit) return;
+    final tts = TtsService.active ?? BootstrapService.sharedTts;
+    if (tts.isPlaying) tts.stop();
   }
 }

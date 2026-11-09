@@ -6,6 +6,7 @@ import '../../data/model/rss_source.dart';
 import 'package:legado_md3/data/local/app_database.dart';
 import 'package:legado_md3/help/http/rss_service.dart';
 import 'package:legado_md3/help/source/rule_auto_completer.dart';
+import 'package:legado_md3/help/source/rule_complete.dart';
 import 'package:legado_md3/help/source/js/legado_js_runtime.dart';
 import 'package:legado_md3/ui/widgets/app_widgets.dart';
 

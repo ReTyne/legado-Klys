@@ -33,9 +33,23 @@ void main() {
   }
 
   testWidgets('阅读页可构建且无章节时展示占位内容', (tester) async {
-    final book = Book(name: '十日终焉', author: '杀虫队队员', local: true, origin: '');
+    // 用唯一书名，避免全量测试时前置用例写入的同名章节残留被 _db.getChapters 读到，
+    // 否则会走「正文获取失败」等容错分支而不是无章节占位分支。
+    final book = Book(
+      name: '冒烟占位书_${DateTime.now().microsecondsSinceEpoch}',
+      author: '冒烟作者',
+      local: true,
+      origin: '',
+    );
     await tester.pumpWidget(_wrap(book));
     await pumpFrames(tester);
+
+    // 批次 3 引入 LayoutBuilder 异步重分页后，全量测试下目录加载可能超过固定 8 帧，
+    // 追加有上限的等待直到占位文本出现（不降低断言强度）。
+    for (var i = 0; i < 30 && find.textContaining('暂无内容').evaluate().isEmpty; i++) {
+      await tester.pump(const Duration(milliseconds: 100));
+      await tester.runAsync(() => Future.delayed(const Duration(milliseconds: 30)));
+    }
 
     // 页面构建成功
     expect(find.byType(ReadingScreen), findsOneWidget);

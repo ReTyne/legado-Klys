@@ -21,6 +21,10 @@ import 'package:legado_md3/help/source/source_engine.dart';
 import 'package:legado_md3/help/storage/import_book_service.dart';
 import '../../data/local/app_database.dart';
 import 'web_socket_handlers.dart';
+import 'web_params.dart';
+import 'package:legado_md3/help/device/web_service_boundary.dart';
+import 'package:legado_md3/help/exceptions/app_exceptions.dart';
+import 'package:legado_md3/utils/regex_timeout.dart';
 
 /// Web 远程控制服务（对齐 legado-E 的 HttpServer 26 个路由 + 3 个 WebSocket）。
 ///
@@ -79,6 +83,8 @@ class WebService {
 
   Future<void> start({int port = 1122}) async {
     if (_server != null) return;
+    // 对齐 WebService.kt:185-191：端口须在 1024..65530，越界回退 1122。
+    port = validateWebPort(port);
     this.port = port;
     final router = Router();
 
@@ -165,6 +171,8 @@ class WebService {
     // request.hijack 靠同步抛 HijackException 接管 socket，一旦进入
     // CORS/auth 中间件的 await，就无法完成 101 协议切换。
     FutureOr<Response> rootHandler(Request request) {
+      // 对齐 HttpServer.kt:26 `WebService.serve()`：每次请求续期唤醒锁。
+      unawaited(WebServiceBoundary.instance.onRequestServed());
       if (wsHandlers.shouldHandle(request)) {
         return wsHandlers.dispatch(request)!;
       }
@@ -172,6 +180,11 @@ class WebService {
     }
 
     _server = await shelf_io.serve(rootHandler, InternetAddress.anyIPv4, port);
+    // 对齐 WebService.kt:154-173：启动后按全部网卡地址下发前台通知契约。
+    await WebServiceBoundary.instance.onStarted(
+      addresses: await _getLocalIPs(),
+      port: port,
+    );
   }
 
   /// 访问鉴权中间件：设置了 web_password 时，要求 ?key= 或 Authorization 头匹配
@@ -225,21 +238,31 @@ class WebService {
   Future<void> stop() async {
     await _server?.close(force: true);
     _server = null;
+    await WebServiceBoundary.instance.onStopped();
   }
 
-  Future<String> get address async => 'http://${await _getLocalIP()}:$port';
+  Future<String> get address async =>
+      'http://${(await _getLocalIPs()).first}:$port';
 
-  Future<String> _getLocalIP() async {
+  /// 全部网卡地址（供前台通知「地址看板」使用，对齐 WebService.kt:93-111）。
+  Future<List<String>> get addresses => _getLocalIPs();
+
+  /// 对齐 NetworkUtils.getLocalIPAddress :248-270：遍历全部网卡、排除
+  /// loopback、严格 IPv4 校验、返回**全部**地址（而非首个），空则回退 127.0.0.1。
+  Future<List<String>> _getLocalIPs() async {
+    final result = <String>[];
     try {
       for (final interface in await NetworkInterface.list()) {
         for (final addr in interface.addresses) {
-          if (addr.type == InternetAddressType.IPv4 && !addr.isLoopback) {
-            return addr.address;
+          if (addr.type != InternetAddressType.IPv4 || addr.isLoopback) {
+            continue;
           }
+          final ip = addr.address;
+          if (isStrictIPv4Address(ip)) result.add(ip);
         }
       }
     } catch (_) {}
-    return '127.0.0.1';
+    return result.isEmpty ? <String>['127.0.0.1'] : result;
   }
 
   /// Sigma `HttpServer.kt` 对 `List<*> > 3000` 采用 chunked 分块响应。
@@ -599,8 +622,22 @@ class WebService {
 
   // === 书籍 API（web-yuedu3 契约：以书源书址 url 标识书籍） ===
   Future<Response> _getBookshelf(Request request) async {
-    final books = await _db.getAllBooks();
+    var books = await _db.getAllBooks();
     if (books.isEmpty) return _rdError('还没有添加小说');
+    // 对齐 BookController.kt:53-61：Web 书架顺序跟随排序偏好
+    // （上游键 bookshelfSort；兼容 Flutter 本地键 bs_sortType 映射）。
+    int sortType = 0;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final upstream = prefs.getInt('bookshelfSort');
+      sortType =
+          upstream ?? mapLocalBookshelfSort(prefs.getInt('bs_sortType') ?? 0);
+    } catch (_) {}
+    books = sortBookshelf<Book>(books, sortType,
+        latestChapterTime: (b) => b.latestChapterTime ?? 0,
+        name: (b) => b.name,
+        order: (b) => b.order,
+        durChapterTime: (b) => b.durChapterTime);
     final data = books.map((b) {
       final j = b.toJson();
       // web-yuedu3 以 url 作为书籍唯一标识
@@ -690,12 +727,25 @@ class WebService {
     if (url.isNotEmpty) {
       book = await _findBookByUrl(url);
       if (book == null) return _rdError('未在数据库找到对应书籍，请先添加');
-      chapters = await _db.getChapters(book.name, book.author);
-      if (chapters.isEmpty) {
-        chapters = await _fetchTocFromSource(book) ?? <BookChapter>[];
+      // 对齐 BookController.kt:186-195：目录可能正被其它线程下载入库，
+      // 先尝试一次实时抓目录写库，再最多 30 次 × 1s 轮询等待章节入库。
+      final Book currentBook = book;
+      final cached = await _db.getChapters(currentBook.name, currentBook.author);
+      if (cached.isEmpty) {
+        await _fetchTocFromSource(currentBook);
       }
+      chapters = await pollForValue<List<BookChapter>>(() async {
+        final cs =
+            await _db.getChapters(currentBook.name, currentBook.author);
+        return cs.isEmpty ? null : cs;
+      }) ??
+          <BookChapter>[];
     } else {
-      chapters = await _db.getChapters(name, author);
+      chapters = await pollForValue<List<BookChapter>>(() async {
+        final cs = await _db.getChapters(name, author);
+        return cs.isEmpty ? null : cs;
+      }) ??
+          <BookChapter>[];
     }
     if (index < 0 || index >= chapters.length) {
       return _rdError('未找到对应章节（共 ${chapters.length} 章）');
@@ -1079,9 +1129,19 @@ class WebService {
     }
     if (path.isEmpty) return _rdError('封面地址为空');
     if (path.startsWith('http')) {
-      final bytes = await _fetchBytes(path);
+      // 对齐 BookController.kt:76-93：封面加载 3 秒超时，统一输出 image/png。
+      // 【降级标注】上游 84×112 缩放 + PNG 压缩 + WeakHashMap 默认封面缓存
+      // 依赖 Android Bitmap/Glide，纯 Dart 无图像编解码等价能力（本轮不引入
+      // pubspec 依赖）；这里以 coverLoadTimeout 超时 + 固定 image/png 输出 +
+      // 失败回退 302 原图（由前端按 84×112 做 CSS 尺寸约束）降级。
+      List<int>? bytes;
+      try {
+        bytes = await _fetchBytes(path).timeout(coverLoadTimeout);
+      } catch (_) {
+        bytes = null;
+      }
       if (bytes != null) {
-        return Response.ok(bytes, headers: {'Content-Type': _mime(path)});
+        return Response.ok(bytes, headers: {'Content-Type': 'image/png'});
       }
       return Response(302, headers: {'Location': path});
     }
@@ -1098,9 +1158,19 @@ class WebService {
     final src = _q(request, ['path', 'src', 'url']);
     if (src.isEmpty) return _rdError('图片链接为空');
     if (!src.startsWith('http')) return _rdError('图片链接为空');
+    // 对齐 BookController.kt:99-116：解析 width，缺省/非法回退 640。
+    // 【降级标注】上游 ImageProvider.getImage(book, src, width) 按宽度缩放
+    // Bitmap 并走书源鉴权缓存；Flutter 无 dart 图像编解码等价能力，降级为
+    // 返回原图字节 + 把解析后的宽度经 X-Legado-Image-Width 回传，
+    // 由 Web 前端按该宽度做 CSS 尺寸约束。
+    final width = parseImageWidth(request.url.queryParameters['width']);
+    WebService.logDebug('[image] width=$width src=$src');
     final bytes = await _fetchBytes(src);
     if (bytes == null) return Response(302, headers: {'Location': src});
-    return Response.ok(bytes, headers: {'Content-Type': _mime(src)});
+    return Response.ok(bytes, headers: {
+      'Content-Type': _mime(src),
+      'X-Legado-Image-Width': '$width',
+    });
   }
 
   Future<List<int>?> _fetchBytes(String url) async {
@@ -1303,6 +1373,9 @@ class WebService {
         'isTitle': raw['isTitle'] ?? raw['scopeTitle'],
         'isContent': raw['isContent'] ?? raw['scopeContent'],
         'scope': raw['scope']?.toString(),
+        'excludeScope': raw['excludeScope']?.toString(),
+        'group_name': (raw['group'] ?? raw['group_name'])?.toString(),
+        'timeoutMillisecond': _asInt(raw['timeoutMillisecond']),
         'order_num': _asInt(raw['order_num'] ?? raw['order'] ?? raw['sortOrder']),
       };
 
@@ -1343,14 +1416,19 @@ class WebService {
     final text = (data['text'] ?? '').toString();
     String content;
     try {
-      if (rule.isRegex) {
-        content = text.replaceAll(
-            RegExp(rule.replaceRule), rule.replacement);
-      } else {
-        content = text.replaceAll(rule.replaceRule, rule.replacement);
-      }
+      // 对齐 ReplaceRuleController.kt:79-92：正则替换带
+      // getValidTimeoutMillisecond() 超时保护（防 ReDoS），异常回退 stackTraceStr。
+      content = await replaceRegexWithTimeout(
+        input: text,
+        pattern: rule.replaceRule,
+        replacement: rule.replacement,
+        isRegex: rule.isRegex,
+        timeoutMillisecond: rule.validTimeoutMillisecond,
+        ruleName: rule.replaceSummary,
+      );
     } catch (e) {
-      content = '替换规则执行错误: $e';
+      // 上游 catch 分支返回 `e.stackTraceStr`；此处对齐统一异常文本工具。
+      content = stackTraceStr(e);
     }
     return _rd(content);
   }

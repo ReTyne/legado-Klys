@@ -12,6 +12,7 @@ import 'package:legado_md3/data/model/read_config.dart';
 import 'package:legado_md3/data/model/v14_models.dart';
 import 'package:legado_md3/di/book_provider.dart';
 import 'package:legado_md3/ui/book/read/read_prefs.dart';
+import 'package:legado_md3/ui/book/read/read_detail_utils.dart';
 import 'package:legado_md3/ui/widgets/app_widgets.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -32,10 +33,10 @@ class _ReadingSettingsScreenState extends State<ReadingSettingsScreen>
   late TabController _tabController;
 
   // 第十轮：不落在 ReadConfig 内的额外配置项（ReadPrefs / SharedPreferences）
-  String _progressBarBehavior = 'chapter';
+  String _progressBarBehavior = 'page';
   bool _showBrightnessView = true;
-  bool _expandTextMenu = true;
-  bool _mouseWheelPage = false;
+  bool _expandTextMenu = false;
+  bool _mouseWheelPage = true;
   bool _twoFingerReplacePreview = false;
   bool _followSystemBrightness = false;
   bool _pageEstimateAuto = true;
@@ -53,11 +54,11 @@ class _ReadingSettingsScreenState extends State<ReadingSettingsScreen>
 
   Future<void> _loadExtra() async {
     final behavior = await ReadPrefs.getString(ReadPrefs.kProgressBarBehavior,
-        fallback: 'chapter');
+        fallback: 'page');
     final results = await Future.wait<bool>([
       ReadPrefs.getBool(ReadPrefs.kShowBrightnessView, fallback: true),
-      ReadPrefs.getBool(ReadPrefs.kExpandTextMenu, fallback: true),
-      ReadPrefs.getBool(ReadPrefs.kMouseWheelPage, fallback: false),
+      ReadPrefs.getBool(ReadPrefs.kExpandTextMenu, fallback: false),
+      ReadPrefs.getBool(ReadPrefs.kMouseWheelPage, fallback: true),
       ReadPrefs.getBool(ReadPrefs.kTwoFingerReplacePreview, fallback: false),
       ReadPrefs.getBool(ReadPrefs.kFollowSystemBrightness, fallback: false),
       ReadPrefs.getBool(ReadPrefs.kPageEstimateAuto, fallback: true),
@@ -152,13 +153,28 @@ class _ReadingSettingsScreenState extends State<ReadingSettingsScreen>
         ),
         ListTile(
           title: const Text('文字颜色'),
-          trailing: Icon(Icons.color_lens, color: Color(config.textColor)),
-          onTap: () => _showColorPicker((color) => context.read<ReadProvider>().updateConfig((c) => c.textColor = color.value)),
+          subtitle: Text('按当前模式（${['日间', '夜间', '墨水屏'][config.readThemeMode.clamp(0, 2)]}）独立保存', style: const TextStyle(fontSize: 11)),
+          trailing: Icon(Icons.color_lens, color: Color(config.curTextColor)),
+          // 对齐 E Config.setCurTextColor()：只写当前模式那份，不覆盖其它模式。
+          onTap: () => _showColorPicker((color) => context.read<ReadProvider>().updateConfig((c) => c.setCurTextColor(color.value))),
         ),
         ListTile(
           title: const Text('字体'),
           trailing: const Icon(Icons.chevron_right),
           onTap: () => _showFontPicker(),
+        ),
+        ListTile(
+          title: const Text('系统字体'),
+          subtitle: const Text('未指定自定义字体时生效（对齐 E systemTypefaces）', style: TextStyle(fontSize: 11)),
+          trailing: DropdownButton<int>(
+            value: config.systemTypefaces.clamp(0, 2),
+            items: const [
+              DropdownMenuItem(value: 0, child: Text('无衬线')),
+              DropdownMenuItem(value: 1, child: Text('衬线')),
+              DropdownMenuItem(value: 2, child: Text('等宽')),
+            ],
+            onChanged: (v) => context.read<ReadProvider>().updateConfig((c) => c.systemTypefaces = v ?? 0),
+          ),
         ),
       ],
     );
@@ -396,7 +412,7 @@ class _ReadingSettingsScreenState extends State<ReadingSettingsScreen>
         ListTile(title: const Text('屏幕方向'), trailing: DropdownButton<int>(value: config.screenOrientation, items: const [DropdownMenuItem(value: 0, child: Text('自动')), DropdownMenuItem(value: 1, child: Text('竖屏')), DropdownMenuItem(value: 2, child: Text('横屏'))], onChanged: (v) => rp.updateConfig((c) => c.screenOrientation = v ?? 0))),
         SwitchListTile(title: const Text('护眼模式'), value: config.eyeProtection, onChanged: (v) => rp.updateConfig((c) => c.eyeProtection = v)),
         if (config.eyeProtection) ListTile(title: const Text('护眼强度'), trailing: Slider(value: config.eyeProtectionLevel.toDouble(), min: 0, max: 100, divisions: 20, label: '${config.eyeProtectionLevel}%', onChanged: (v) => rp.updateConfig((c) => c.eyeProtectionLevel = v.toInt()))),
-        ListTile(title: const Text('背景颜色'), trailing: Icon(Icons.color_lens, color: Color(config.bgColor)), onTap: () => _showColorPicker((color) => rp.updateConfig((c) => c.bgColor = color.value))),
+        ListTile(title: const Text('背景颜色'), subtitle: Text('按当前模式（${['日间', '夜间', '墨水屏'][config.readThemeMode.clamp(0, 2)]}）独立保存', style: const TextStyle(fontSize: 11)), trailing: Icon(Icons.color_lens, color: Color(config.curBgColor)), onTap: () => _showColorPicker((color) => rp.updateConfig((c) => c.setCurBgColor(color.value)))),
         ListTile(
           title: const Text('背景图片'),
           subtitle: Text(config.bgImage == null ? '未设置，使用背景颜色' : '已设置自定义背景图'),
@@ -407,8 +423,52 @@ class _ReadingSettingsScreenState extends State<ReadingSettingsScreen>
             if (path != null) rp.updateConfig((c) => c.bgImage = path);
           },
         ),
+        // ===== 批次 3 · 日/夜/墨水屏三套独立配置（对齐 E ReadBookConfig.Config）=====
+        // 切换模式后，上方的「文字颜色 / 背景颜色」写入的是当前模式那份，互不覆盖。
+        const AppSectionHeader('日 / 夜 / 墨水屏 独立配置（已接线）'),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(AppSpacing.l, AppSpacing.s, AppSpacing.l, AppSpacing.s),
+          child: SegmentedButton<int>(
+            segments: const [
+              ButtonSegment(value: 0, label: Text('日间'), icon: Icon(Icons.wb_sunny_outlined)),
+              ButtonSegment(value: 1, label: Text('夜间'), icon: Icon(Icons.nightlight_outlined)),
+              ButtonSegment(value: 2, label: Text('墨水屏'), icon: Icon(Icons.menu_book_outlined)),
+            ],
+            selected: {config.readThemeMode.clamp(0, 2)},
+            onSelectionChanged: (s) => rp.updateConfig((c) => c.readThemeMode = s.first),
+          ),
+        ),
+        ListTile(
+          title: const Text('强调色'),
+          subtitle: const Text('朗读高亮 / 进度强调色，按当前模式独立保存', style: TextStyle(fontSize: 11)),
+          trailing: Icon(Icons.color_lens, color: Color(config.curTextAccentColor)),
+          onTap: () => _showColorPicker((color) => rp.updateConfig((c) => c.setCurTextAccentColor(color.value))),
+        ),
+        SwitchListTile(
+          title: const Text('状态栏暗色图标'),
+          subtitle: const Text('按当前模式独立保存（对齐 E darkStatusIcon*）', style: TextStyle(fontSize: 11)),
+          value: config.curStatusIconDark,
+          onChanged: (v) => rp.updateConfig((c) => c.setCurStatusIconDark(v)),
+        ),
+        // 墨水屏专用翻页动画：仅墨水屏模式生效（默认 4 无动画）。
+        ListTile(
+          title: const Text('墨水屏翻页动画'),
+          subtitle: const Text('仅墨水屏模式生效；切换后由阅读页取用', style: TextStyle(fontSize: 11)),
+          trailing: DropdownButton<int>(
+            value: config.pageAnimEInk.clamp(0, 5),
+            items: const [
+              DropdownMenuItem(value: 0, child: Text('覆盖')),
+              DropdownMenuItem(value: 1, child: Text('仿真')),
+              DropdownMenuItem(value: 2, child: Text('滑动')),
+              DropdownMenuItem(value: 3, child: Text('滚动')),
+              DropdownMenuItem(value: 4, child: Text('无动画')),
+              DropdownMenuItem(value: 5, child: Text('上下')),
+            ],
+            onChanged: (v) => rp.updateConfig((c) => c.pageAnimEInk = v ?? 4),
+          ),
+        ),
         SwitchListTile(title: const Text('标题附加信息'), subtitle: const Text('阅读标题栏显示章节附加信息', style: TextStyle(fontSize: 11)), value: config.showReadTitleAddition, onChanged: (v) => rp.updateConfig((c) => c.showReadTitleAddition = v)),
-        ListTile(title: const Text('图片点击方式'), trailing: DropdownButton<int>(value: config.clickImgWay, items: const [DropdownMenuItem(value: 0, child: Text('无')), DropdownMenuItem(value: 1, child: Text('预览')), DropdownMenuItem(value: 2, child: Text('浏览器'))], onChanged: (v) => rp.updateConfig((c) => c.clickImgWay = v ?? 0))),
+        ListTile(title: const Text('图片点击方式'), trailing: DropdownButton<int>(value: config.clickImgWay.clamp(0, 4), items: [for (var i = 0; i < clickImgWayLabels.length; i++) DropdownMenuItem(value: i, child: Text(clickImgWayLabels[i]))], onChanged: (v) => rp.updateConfig((c) => c.clickImgWay = v ?? 0))),
         // 第十轮：刘海屏 padding（阅读页 SafeArea 之外再扣安全区）恢复 UI
         const AppSectionHeader('显示进阶（已接线）'),
         AppSwitchTile(
@@ -529,9 +589,28 @@ class _ReadingSettingsScreenState extends State<ReadingSettingsScreen>
     final rp = context.read<ReadProvider>();
     return ListView(
       children: [
-        SwitchListTile(title: const Text('保持屏幕常亮'), value: config.keepScreenOn, onChanged: (v) => rp.updateConfig((c) => c.keepScreenOn = v)),
+        ListTile(
+          title: const Text('屏幕超时（keep_light）'),
+          subtitle: const Text('对齐 legado-E：跟随系统 / 1分 / 5分 / 10分 / 常亮', style: TextStyle(fontSize: 11)),
+          trailing: DropdownButton<int>(
+            value: const [0, 60, 300, 600, -1].contains(config.keepLight) ? config.keepLight : 0,
+            items: const [
+              DropdownMenuItem(value: 0, child: Text('跟随系统')),
+              DropdownMenuItem(value: 60, child: Text('1 分钟')),
+              DropdownMenuItem(value: 300, child: Text('5 分钟')),
+              DropdownMenuItem(value: 600, child: Text('10 分钟')),
+              DropdownMenuItem(value: -1, child: Text('常亮')),
+            ],
+            onChanged: (v) => rp.updateConfig((c) {
+              c.keepLight = v ?? 0;
+              // 兼容历史 keepScreenOn 布尔：-1 常亮 / >0 定时亮屏都要先开启
+              c.keepScreenOn = v == -1 || (v != null && v > 0);
+            }),
+          ),
+        ),
         SwitchListTile(title: const Text('点击显示菜单'), value: config.showMenuOnTap, onChanged: (v) => rp.updateConfig((c) => c.showMenuOnTap = v)),
         SwitchListTile(title: const Text('长按选择文字'), value: config.longPressSelect, onChanged: (v) => rp.updateConfig((c) => c.longPressSelect = v)),
+        SwitchListTile(title: const Text('退出未入架书时提示加入书架'), subtitle: const Text('已接线：阅读页返回时按在架状态弹「加入书架」确认', style: TextStyle(fontSize: 11)), value: config.showAddToShelfAlert, onChanged: (v) => rp.updateConfig((c) => c.showAddToShelfAlert = v)),
         ListTile(title: const Text('编码格式'), trailing: Text(config.charset ?? '自动'), onTap: () => _showCharsetPicker()),
         ListTile(title: const Text('预下载章节数'), trailing: DropdownButton<int>(value: config.preDownloadCount, items: List.generate(6, (i) => DropdownMenuItem(value: i, child: Text(i == 0 ? '不预下载' : '$i章'))), onChanged: (v) => rp.updateConfig((c) => c.preDownloadCount = v ?? 0))),
         SwitchListTile(title: const Text('显示时间电量'), value: config.showTimeBattery, onChanged: (v) => rp.updateConfig((c) => c.showTimeBattery = v)),
