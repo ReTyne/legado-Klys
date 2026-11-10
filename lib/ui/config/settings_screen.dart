@@ -8,6 +8,7 @@ import 'package:package_info_plus/package_info_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:legado_md3/common/app_name.dart';
 import 'package:legado_md3/constant/app_theme.dart';
+import 'package:legado_md3/constant/e_placement.dart';
 import 'package:legado_md3/data/local/app_database.dart';
 import 'package:legado_md3/data/model/book.dart';
 import 'package:legado_md3/data/model/read_config.dart';
@@ -324,11 +325,46 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final theme = Provider.of<AppTheme>(context);
     return Scaffold(
       appBar: AppBar(title: const Text('设置')),
       body: ListView(
-        children: [
+        children: _buildEntryPageChildren(context),
+      ),
+    );
+  }
+
+  /// E 主落点：设置多级分类入口页（pref_config_* 子页）。
+  /// K 版旧版单页 17 分区完整设置沉入底部默认折叠的次级分区，功能不删。
+  List<Widget> _buildEntryPageChildren(BuildContext context) {
+    const cats = EPlacement.settingEntryCategories;
+    return [
+      _jump(icon: Icons.backup_outlined, title: cats[0],
+          sub: 'WebDAV 云同步与本地备份', page: const BackupScreen()),
+      _jump(icon: Icons.palette_outlined, title: cats[1],
+          sub: '主题 / 配色 / 封面样式', page: const ThemeManageScreen()),
+      _jump(icon: Icons.settings_outlined, title: cats[2],
+          sub: '语言 / 更新 / 阅读偏好', page: const OtherConfigScreen()),
+      _jump(icon: Icons.menu_book_outlined, title: '阅读设置',
+          sub: '字体 / 间距 / 翻页', page: const ReadingSettingsScreen()),
+      _jump(icon: Icons.photo_outlined, title: '封面配置',
+          sub: '封面规则与默认封面', page: const CoverConfigScreen()),
+      _jump(icon: Icons.waving_hand_outlined, title: '欢迎页设置',
+          sub: '欢迎语 / 背景 / 展示次数', page: const WelcomeConfigScreen()),
+      const Divider(),
+      ExpansionTile(
+        initiallyExpanded: false,
+        leading: const Icon(Icons.tune),
+        title: const Text('完整设置（旧版单页）'),
+        children: _buildAllSettingSections(context),
+      ),
+      const SizedBox(height: AppSpacing.xl),
+    ];
+  }
+
+  /// 旧版单页 17 分区完整 children（原 build() 内容，逐行抽出，未改动）。
+  List<Widget> _buildAllSettingSections(BuildContext context) {
+    final theme = Provider.of<AppTheme>(context);
+    return [
           // 主题设置
           ListTile(
             leading: const Icon(Icons.tune),
@@ -685,9 +721,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             onTap: () => _showAboutDialog(),
           ),
           const SizedBox(height: AppSpacing.xl),
-        ],
-      ),
-    );
+    ];
   }
 
   Widget _buildSectionHeader(String title) => AppSectionHeader(title);

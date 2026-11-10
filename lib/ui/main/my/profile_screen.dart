@@ -1,20 +1,19 @@
 
-import 'dart:io';
-
-import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:legado_md3/common/app_name.dart';
 import 'package:legado_md3/constant/app_theme.dart';
-import 'package:legado_md3/help/storage/crash_log_helper.dart';
+import 'package:legado_md3/constant/e_placement.dart';
 import 'package:legado_md3/help/web/web_service.dart';
 import 'package:legado_md3/help/web/web_tile_channel.dart';
+import 'package:legado_md3/ui/about/about_screen.dart';
 import 'package:legado_md3/ui/backup/backup_screen.dart';
 import 'package:legado_md3/ui/book/source/source_manage_screen.dart';
 import 'package:legado_md3/ui/bookmark/bookmark_screen.dart';
 import 'package:legado_md3/ui/config/dict_rule_screen.dart';
 import 'package:legado_md3/ui/config/replace_rule_screen.dart';
+import 'package:legado_md3/ui/config/other_config_screen.dart';
 import 'package:legado_md3/ui/config/settings_screen.dart';
 import 'package:legado_md3/ui/config/theme_manage_screen.dart';
 import 'package:legado_md3/ui/config/txt_toc_rule_screen.dart';
@@ -30,17 +29,14 @@ import 'package:legado_md3/ui/ai/agent_tool_screen.dart';
 import 'package:legado_md3/ui/welcome/welcome_config_screen.dart';
 import 'package:legado_md3/ui/config/app_icon_screen.dart';
 import 'package:legado_md3/ui/config/video_setting_screen.dart';
+import 'package:legado_md3/ui/widgets/app_widgets.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 
-import 'package:legado_md3/ui/theme/app_design.dart';
 /// 本项目 GitHub 仓库
 const _kRepoUrl = 'https://github.com/ReTyne/legado-Klys';
-/// 最新 release 查询接口（GitHub API）
-const _kReleasesLatestApi =
-    'https://api.github.com/repos/ReTyne/legado-Klys/releases/latest';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -112,20 +108,34 @@ class _ProfileScreenState extends State<ProfileScreen> {
   Widget build(BuildContext context) {
     final cs = Theme.of(context).colorScheme;
     return Scaffold(
-      appBar: AppBar(title: const Text('我的')),
+      appBar: AppBar(
+        title: const Text('我的'),
+        // E 版 main_my.xml 顶部菜单仅「帮助」1 项
+        actions: [
+          EOverflowMenuButton(
+            items: eOverflowItemsFrom(
+              EPlacement.mainMenus['my']!,
+              onTapFor: (_) => () => _showHelp(context),
+            ),
+          ),
+        ],
+      ),
       body: ListView(
         children: [
-          _buildSectionHeader('规则'),
-          _buildMenuItem(context, Icons.menu_book_outlined, '书源管理', '管理网络书源', () => Navigator.push(context, MaterialPageRoute(builder: (_) => const SourceManageScreen()))),
-          _buildMenuItem(context, Icons.list_alt_outlined, 'TXT目录规则', '本地TXT目录识别', () => Navigator.push(context, MaterialPageRoute(builder: (_) => const TxtTocRuleScreen()))),
-          _buildMenuItem(context, Icons.find_replace_outlined, '替换净化', '正文内容替换规则', () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ReplaceRuleScreen()))),
-          _buildMenuItem(context, Icons.translate_outlined, '词典规则', '文字替换字典', () => Navigator.push(context, MaterialPageRoute(builder: (_) => const DictRuleScreen()))),
-          _buildMenuItem(context, Icons.dashboard_customize_outlined, '首页模块', '自定义发现首页的模块与排序', () => Navigator.push(context, MaterialPageRoute(builder: (_) => const HomepageModuleScreen()))),
-          _buildMenuItem(context, Icons.schedule_outlined, '定时任务', '定时刷新书架 / 缓存 / 备份 / 脚本', () => Navigator.push(context, MaterialPageRoute(builder: (_) => const AutoTaskScreen()))),
-          _buildThemeModeTile(context),
+          // ── 顶层 6 项（EPlacement.myTop，无分区标题）──
+          _eTile(EPlacement.myTop[0], Icons.menu_book_outlined, '管理网络书源',
+              () => Navigator.push(context, MaterialPageRoute(builder: (_) => const SourceManageScreen()))),
+          _eTile(EPlacement.myTop[1], Icons.list_alt_outlined, '本地TXT目录识别',
+              () => Navigator.push(context, MaterialPageRoute(builder: (_) => const TxtTocRuleScreen()))),
+          _eTile(EPlacement.myTop[2], Icons.find_replace_outlined, '正文内容替换规则',
+              () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ReplaceRuleScreen()))),
+          _eTile(EPlacement.myTop[3], Icons.translate_outlined, '文字替换字典',
+              () => Navigator.push(context, MaterialPageRoute(builder: (_) => const DictRuleScreen()))),
+          _buildThemeModeTile(context, EPlacement.myTop[4]),
           SwitchListTile(
+            key: Key(EPlacement.myTop[5].key),
             secondary: const Icon(Icons.web_outlined),
-            title: const Text('Web服务'),
+            title: Text(EPlacement.myTop[5].zh),
             subtitle: Text(_webServiceRunning ? '端口: ${_webService.port} (浏览器访问设备IP)' : '通过浏览器管理书架'),
             value: _webServiceRunning,
             onChanged: _toggleWebService,
@@ -136,29 +146,30 @@ class _ProfileScreenState extends State<ProfileScreen> {
               child: Text('在浏览器中打开上述地址即可管理书架、书源、RSS等', style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
             ),
 
-          const Divider(),
+          // ── 分区「设置」（EPlacement.mySettingCategory）──
+          _buildSectionHeader(EPlacement.myCategoryTitles[0]),
+          _eTile(EPlacement.mySettingCategory[0], Icons.backup_outlined, 'WebDAV云同步与本地备份',
+              () => Navigator.push(context, MaterialPageRoute(builder: (_) => const BackupScreen()))),
+          _eTile(EPlacement.mySettingCategory[1], Icons.palette_outlined, '自定义主题',
+              () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ThemeManageScreen()))),
+          _eTile(EPlacement.mySettingCategory[2], Icons.settings_outlined, '应用设置',
+              () => Navigator.push(context, MaterialPageRoute(builder: (_) => const OtherConfigScreen()))),
 
-          _buildSectionHeader('设置'),
-          _buildMenuItem(context, Icons.backup_outlined, '备份与恢复', 'WebDAV云同步与本地备份', () => Navigator.push(context, MaterialPageRoute(builder: (_) => const BackupScreen()))),
-          _buildMenuItem(context, Icons.palette_outlined, '主题设置', '自定义主题', () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ThemeManageScreen()))),
-          _buildMenuItem(context, Icons.settings_outlined, '其他设置', '应用设置', () => Navigator.push(context, MaterialPageRoute(builder: (_) => const SettingsScreen()))),
-          _buildMenuItem(context, Icons.record_voice_over_outlined, '朗读引擎', '云端 / 自定义 HTTP TTS 与语音', () => Navigator.push(context, MaterialPageRoute(builder: (_) => const CloudTtsScreen()))),
-          _buildMenuItem(context, Icons.download_outlined, '下载管理', '离线缓存队列与进度', () => Navigator.push(context, MaterialPageRoute(builder: (_) => const DownloadManageScreen()))),
-          _buildMenuItem(context, Icons.smart_toy_outlined, 'AI 助手', '对话与智能体', () => Navigator.push(context, MaterialPageRoute(builder: (_) => const AiChatScreen()))),
-          _buildMenuItem(context, Icons.build_circle_outlined, '智能体工具', 'AI 工具注册与启停', () => Navigator.push(context, MaterialPageRoute(builder: (_) => const AgentToolScreen()))),
-          _buildMenuItem(context, Icons.waving_hand_outlined, '欢迎页设置', '首次启动引导与展示配置', () => Navigator.push(context, MaterialPageRoute(builder: (_) => const WelcomeConfigScreen()))),
-          _buildMenuItem(context, Icons.apps_outlined, '桌面图标', '切换应用图标样式', () => Navigator.push(context, MaterialPageRoute(builder: (_) => const AppIconScreen()))),
-          _buildMenuItem(context, Icons.video_settings_outlined, '视频设置', '播放、弹幕与画中画', () => Navigator.push(context, MaterialPageRoute(builder: (_) => const VideoSettingScreen()))),
+          // ── 分区「其它」（EPlacement.myOtherCategory）──
+          _buildSectionHeader(EPlacement.myCategoryTitles[1]),
+          _eTile(EPlacement.myOtherCategory[0], Icons.bookmark_border, '所有书签',
+              () => Navigator.push(context, MaterialPageRoute(builder: (_) => const BookmarkScreen()))),
+          _eTile(EPlacement.myOtherCategory[1], Icons.history_outlined, '每本书的阅读明细',
+              () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ReadRecordScreen()))),
+          _eTile(EPlacement.myOtherCategory[2], Icons.folder_outlined, '本地文件',
+              () => Navigator.push(context, MaterialPageRoute(builder: (_) => const FileManageScreen()))),
+          _eTile(EPlacement.myOtherCategory[3], Icons.info_outline, '应用信息',
+              () => Navigator.push(context, MaterialPageRoute(builder: (_) => const AboutScreen()))),
+          _eTile(EPlacement.myOtherCategory[4], Icons.exit_to_app_outlined, '退出应用',
+              () => SystemNavigator.pop()),
 
-          const Divider(),
-
-          _buildSectionHeader('其他'),
-          _buildMenuItem(context, Icons.bookmark_border, '书签', '所有书签', () => Navigator.push(context, MaterialPageRoute(builder: (_) => const BookmarkScreen()))),
-          _buildMenuItem(context, Icons.history_outlined, '阅读记录', '每本书的阅读明细', () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ReadRecordScreen()))),
-          _buildMenuItem(context, Icons.bar_chart_outlined, '阅读统计', '时长与书籍分布', () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ReadingStatsScreen()))),
-          _buildMenuItem(context, Icons.folder_outlined, '文件管理', '本地文件', () => Navigator.push(context, MaterialPageRoute(builder: (_) => const FileManageScreen()))),
-          _buildMenuItem(context, Icons.info_outline, '关于', '应用信息', () => _showAbout(context)),
-          _buildMenuItem(context, Icons.exit_to_app_outlined, '退出', '退出应用', () => SystemNavigator.pop()),
+          // ── K 版独有功能：默认折叠的次级分区（E 主落点优先，功能不删）──
+          _buildMoreFeatures(context),
 
           const SizedBox(height: AppSpacing.xl),
           Center(
@@ -173,13 +184,19 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
+  /// E 主落点列表项：文案 / Key / 顺序全部由 [EPlacement] 常量驱动，
+  /// onTap 沿用原有跳转，tile 结构复用 [_buildMenuItem]。
+  Widget _eTile(EMenuItem e, IconData icon, String subtitle, VoidCallback onTap) =>
+      _buildMenuItem(context, icon, e.zh, subtitle, onTap, key: Key(e.key));
+
   /// 主题模式选择（对齐 legado-E pref_main 的 themeMode NameListPreference）
-  Widget _buildThemeModeTile(BuildContext context) {
+  Widget _buildThemeModeTile(BuildContext context, EMenuItem e) {
     final appTheme = context.watch<AppTheme>();
     const labels = ['跟随系统', '浅色', '深色'];
     return ListTile(
+      key: Key(e.key),
       leading: const Icon(Icons.brightness_6_outlined),
-      title: const Text('主题模式'),
+      title: Text(e.zh),
       subtitle: Text(labels[appTheme.themeMode.index.clamp(0, 2)], style: const TextStyle(fontSize: 12)),
       trailing: const Icon(Icons.chevron_right),
       onTap: () => _showThemeModeDialog(context, appTheme),
@@ -211,115 +228,53 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  Future<void> _checkUpdate() async {
-    final messenger = ScaffoldMessenger.of(context);
-    messenger.showSnackBar(const SnackBar(content: Text('正在检查更新...')));
-    try {
-      // 当前版本用 package_info_plus 动态获取，不再写死
-      final info = await PackageInfo.fromPlatform();
-      final cur = _parseVersion(info.version);
-      final dio = Dio(BaseOptions(connectTimeout: const Duration(seconds: 10), receiveTimeout: const Duration(seconds: 15)));
-      final resp = await dio.get(_kReleasesLatestApi);
-      final tag = (resp.data['tag_name'] ?? '').toString();
-      final body = (resp.data['body'] ?? '').toString();
-      final htmlUrl = (resp.data['html_url'] ?? _kRepoUrl).toString();
-      final latest = _parseVersion(tag);
-      bool hasNew = false;
-      for (var i = 0; i < 3; i++) {
-        final l = i < latest.length ? latest[i] : 0;
-        if (l > cur[i]) { hasNew = true; break; }
-        if (l < cur[i]) break;
-      }
-      if (!mounted) return;
-      if (hasNew) {
-        showDialog(context: context, builder: (d) => AlertDialog(
-          title: Text('发现新版本 $tag'),
-          content: Text(body.isEmpty ? '是否前往下载最新版本？' : body),
-          actions: [
-            TextButton(onPressed: () => Navigator.pop(d), child: const Text('稍后')),
-            FilledButton(onPressed: () { Navigator.pop(d); launchUrl(Uri.parse(htmlUrl), mode: LaunchMode.externalApplication); }, child: const Text('前往下载')),
-          ],
-        ));
-      } else {
-        messenger.showSnackBar(const SnackBar(content: Text('当前已是最新版本')));
-      }
-    } catch (e) {
-      messenger.showSnackBar(SnackBar(content: Text('检查更新失败: $e')));
-    }
-  }
-
-  static List<int> _parseVersion(String v) => v
-      .replaceAll(RegExp(r'[^0-9.]'), '')
-      .split('.')
-      .map((e) => int.tryParse(e) ?? 0)
-      .toList();
-
-  /// 内置更新日志 —— 对齐 legado-E：仅描述 E 具备的功能，
-  /// 不再列 E 没有的入口（首页模块自定义 / 阅读统计 / 书籍标记）。
-  static const _changelog = <String>[
-    '全新 Material 3 界面，书架支持列表/网格/封面流多种布局与封面样式配置',
-    '书架分组管理：分组页签、折叠/平铺分组样式、待更新数量与批量移动分组',
-    'URL 添加书籍：粘贴书籍链接自动匹配书源，抓取详情与目录后加入书架',
-    '书架导入导出：JSON 格式导出/导入书架（含分组、书源、目录与阅读进度）',
-    '书源管理：规则编辑、书源调试、导入导出、OPDS 书源与网络导入',
-    '阅读引擎：JS 规则解析正文，支持替换净化、TXT 目录规则与正文朗读 TTS',
-    '阅读体验：主题管理、阅读页精细设置、书签与章节缓存管理',
-    '发现与 RSS：书源分类发现、RSS 订阅源管理与文章阅读',
-    '备份与同步：WebDAV 云同步、本地备份恢复与 WebDAV 远程书籍导入',
-    '我的：书源/TXT目录/替换净化/词典规则、主题模式与 Web 服务设置',
-  ];
-
-  void _showChangelog() {
-    showDialog(context: context, builder: (context) => AlertDialog(
-      title: const Text('更新日志'),
-      content: SizedBox(
-        width: double.maxFinite,
-        child: SingleChildScrollView(
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              for (var i = 0; i < _changelog.length; i++)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 10),
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text('${i + 1}. ',
-                          style: const TextStyle(fontWeight: FontWeight.bold)),
-                      Expanded(child: Text(_changelog[i])),
-                    ],
-                  ),
-                ),
-            ],
-          ),
+  /// E 版 main_my.xml 顶部菜单仅「帮助」1 项：给出应用用法说明。
+  void _showHelp(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (c) => AlertDialog(
+        title: const Text('帮助'),
+        content: const Text(
+          '使用说明：\n'
+          '· 在「我的」页管理书源、TXT 目录规则、替换净化与字典规则；\n'
+          '· 通过「设置」分区进入备份与恢复、主题设置、其它设置；\n'
+          '· 开启 Web 服务后可在浏览器中管理书架、书源与 RSS；\n'
+          '· 更多增强功能收在页面底部「更多功能」分区中。',
         ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(c), child: const Text('知道了')),
+        ],
       ),
-      actions: [
-        TextButton(onPressed: () => Navigator.pop(context), child: const Text('关闭')),
-      ],
-    ));
+    );
   }
 
-  /// 保存日志：读取崩溃日志并通过 share_plus 分享
-  Future<void> _saveCrashLog() async {
-    final logs = await CrashLogHelper.instance.readLogs();
-    if (!mounted) return;
-    if (logs.trim().isEmpty) {
-      ScaffoldMessenger.of(context)
-          .showSnackBar(const SnackBar(content: Text('暂无崩溃日志')));
-      return;
-    }
-    try {
-      final file = File('${Directory.systemTemp.path}/crash_log.txt');
-      await file.writeAsString(logs, flush: true);
-      await Share.shareXFiles([XFile(file.path)], text: '$appDisplayName 崩溃日志');
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('保存日志失败: $e')));
-      }
-    }
+  /// K 版独有功能（[EPlacement.kSecondary] 的 'profile' 清单）：
+  /// 不删、不建独立扩展页，收在本页底部默认折叠的次级分区，E 主落点优先。
+  /// 原 ListTile + 原跳转 / 回调原样保留，类名仍在本文件中。
+  Widget _buildMoreFeatures(BuildContext context) {
+    return ExpansionTile(
+      key: const Key('profile::more_features'),
+      initiallyExpanded: false,
+      leading: const Icon(Icons.more_horiz),
+      title: const Text('更多功能'),
+      children: [
+        _buildMenuItem(context, Icons.dashboard_customize_outlined, '首页模块', '自定义发现首页的模块与排序', () => Navigator.push(context, MaterialPageRoute(builder: (_) => const HomepageModuleScreen()))),
+        _buildMenuItem(context, Icons.schedule_outlined, '定时任务', '定时刷新书架 / 缓存 / 备份 / 脚本', () => Navigator.push(context, MaterialPageRoute(builder: (_) => const AutoTaskScreen()))),
+        _buildMenuItem(context, Icons.record_voice_over_outlined, '朗读引擎', '云端 / 自定义 HTTP TTS 与语音', () => Navigator.push(context, MaterialPageRoute(builder: (_) => const CloudTtsScreen()))),
+        _buildMenuItem(context, Icons.download_outlined, '下载管理', '离线缓存队列与进度', () => Navigator.push(context, MaterialPageRoute(builder: (_) => const DownloadManageScreen()))),
+        _buildMenuItem(context, Icons.smart_toy_outlined, 'AI 助手', '对话与智能体', () => Navigator.push(context, MaterialPageRoute(builder: (_) => const AiChatScreen()))),
+        _buildMenuItem(context, Icons.build_circle_outlined, '智能体工具', 'AI 工具注册与启停', () => Navigator.push(context, MaterialPageRoute(builder: (_) => const AgentToolScreen()))),
+        _buildMenuItem(context, Icons.waving_hand_outlined, '欢迎页设置', '首次启动引导与展示配置', () => Navigator.push(context, MaterialPageRoute(builder: (_) => const WelcomeConfigScreen()))),
+        _buildMenuItem(context, Icons.apps_outlined, '桌面图标', '切换应用图标样式', () => Navigator.push(context, MaterialPageRoute(builder: (_) => const AppIconScreen()))),
+        _buildMenuItem(context, Icons.video_settings_outlined, '视频设置', '播放、弹幕与画中画', () => Navigator.push(context, MaterialPageRoute(builder: (_) => const VideoSettingScreen()))),
+        _buildMenuItem(context, Icons.bar_chart_outlined, '阅读统计', '时长与书籍分布', () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ReadingStatsScreen()))),
+        _buildMenuItem(context, Icons.tune, '完整设置（旧版单页）', '分类导航页 + 旧版全部设置项', () => Navigator.push(context, MaterialPageRoute(builder: (_) => const SettingsScreen()))),
+        const Divider(),
+        _buildMenuItem(context, Icons.code, 'GitHub项目', '打开项目仓库', () => launchUrl(Uri.parse(_kRepoUrl), mode: LaunchMode.externalApplication)),
+        _buildMenuItem(context, Icons.share, '分享应用', '分享给好友', () => _shareApp()),
+        _buildMenuItem(context, Icons.star_outline, '评分', '前往仓库页评分', () => _rateApp()),
+      ],
+    );
   }
 
   /// 分享应用：应用名 + GitHub 仓库链接
@@ -344,91 +299,18 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
   }
 
-  void _showAbout(BuildContext context) {
-    showDialog(context: context, builder: (context) => AlertDialog(
-      title: const Text('关于'),
-      content: SingleChildScrollView(child: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-        Text(appDisplayName, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-        const SizedBox(height: AppSpacing.s),
-        Text('版本: ${_versionLabel.isEmpty ? '加载中...' : _versionLabel}'),
-        const SizedBox(height: AppSpacing.xs),
-        const Text('基于 legado 的 Material Design 3 跨平台阅读应用，支持Android和iOS'),
-        const Divider(height: 24),
-        ListTile(
-          dense: true, leading: const Icon(Icons.update, size: 20), title: const Text('检查更新'),
-          onTap: () { Navigator.pop(context); _checkUpdate(); },
-        ),
-        ListTile(
-          dense: true, leading: const Icon(Icons.history, size: 20), title: const Text('更新日志'),
-          onTap: () { Navigator.pop(context); _showChangelog(); },
-        ),
-        ListTile(
-          dense: true, leading: const Icon(Icons.code, size: 20), title: const Text('GitHub项目'),
-          onTap: () { Navigator.pop(context); launchUrl(Uri.parse(_kRepoUrl), mode: LaunchMode.externalApplication); },
-        ),
-        ListTile(
-          dense: true, leading: const Icon(Icons.people_outline, size: 20), title: const Text('贡献者'),
-          onTap: () { Navigator.pop(context); showDialog(context: context, builder: (c) => const AlertDialog(title: Text('贡献者'), content: Text('Legado开源社区\n\n感谢所有贡献者的支持'))); },
-        ),
-        ListTile(
-          dense: true, leading: const Icon(Icons.share, size: 20), title: const Text('分享应用'),
-          onTap: () { Navigator.pop(context); _shareApp(); },
-        ),
-        ListTile(
-          dense: true, leading: const Icon(Icons.star_outline, size: 20), title: const Text('评分'),
-          onTap: () { Navigator.pop(context); _rateApp(); },
-        ),
-        ListTile(
-          dense: true, leading: const Icon(Icons.privacy_tip_outlined, size: 20), title: const Text('隐私政策'),
-          onTap: () { Navigator.pop(context); showDialog(context: context, builder: (c) => const AlertDialog(title: Text('隐私政策'), content: Text('本应用不会收集任何个人信息，所有数据均存储在本地设备上。'))); },
-        ),
-        ListTile(
-          dense: true, leading: const Icon(Icons.gavel, size: 20), title: const Text('开源协议'),
-          onTap: () { Navigator.pop(context); showDialog(context: context, builder: (c) => const AlertDialog(title: Text('开源协议'), content: Text('GNU General Public License v3.0'))); },
-        ),
-        ListTile(
-          dense: true, leading: const Icon(Icons.warning_amber_outlined, size: 20), title: const Text('免责声明'),
-          onTap: () { Navigator.pop(context); showDialog(context: context, builder: (c) => const AlertDialog(title: Text('免责声明'), content: Text('本应用仅供学习交流使用，不提供任何书籍内容，所有书源均由用户自行添加。'))); },
-        ),
-        ListTile(
-          dense: true, leading: const Icon(Icons.save_alt, size: 20), title: const Text('保存日志'),
-          onTap: () { Navigator.pop(context); _saveCrashLog(); },
-        ),
-        ListTile(
-          dense: true, leading: const Icon(Icons.bug_report, size: 20), title: const Text('崩溃日志'),
-          onTap: () { Navigator.pop(context); _showCrashLog(); },
-        ),
-      ])),
-      actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('关闭'))],
-    ));
-  }
-
-  Future<void> _showCrashLog() async {
-    final logs = await CrashLogHelper.instance.readLogs();
-    if (!mounted) return;
-    final cs = Theme.of(context).colorScheme;
-    showDialog(context: context, builder: (c) => AlertDialog(
-      title: const Text('崩溃日志'),
-      content: SizedBox(
-        width: double.maxFinite,
-        child: logs.trim().isEmpty
-            ? Text('暂无崩溃日志', style: TextStyle(color: cs.onSurfaceVariant))
-            : SingleChildScrollView(child: SelectableText(logs, style: const TextStyle(fontSize: 11, fontFamily: 'monospace'))),
-      ),
-      actions: [
-        if (logs.trim().isNotEmpty) TextButton(onPressed: () async { await CrashLogHelper.instance.clear(); if (mounted && c.mounted && context.mounted) { Navigator.pop(c); ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('已清空崩溃日志'))); } }, child: const Text('清空')),
-        TextButton(onPressed: () => Navigator.pop(c), child: const Text('关闭')),
-      ],
-    ));
-  }
+  // 关于页 9 项能力已迁至 AboutScreen（lib/ui/about/about_screen.dart）；
+  // 旧 _showAbout 弹窗移除，K 独有的 GitHub 项目 / 分享应用 / 评分入口已迁至
+  // 上方「更多功能」默认折叠分区。
 
   Widget _buildSectionHeader(String title) => Padding(
     padding: const EdgeInsets.fromLTRB(AppSpacing.l, AppSpacing.l, AppSpacing.l, AppSpacing.s),
     child: Text(title, style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Theme.of(context).colorScheme.primary)),
   );
 
-  Widget _buildMenuItem(BuildContext context, IconData icon, String title, String subtitle, VoidCallback onTap) {
+  Widget _buildMenuItem(BuildContext context, IconData icon, String title, String subtitle, VoidCallback onTap, {Key? key}) {
     return ListTile(
+      key: key,
       leading: Icon(icon),
       title: Text(title),
       subtitle: Text(subtitle, style: const TextStyle(fontSize: 12)),
