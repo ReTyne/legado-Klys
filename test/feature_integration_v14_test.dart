@@ -4,6 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:sqflite_common_ffi/sqflite_ffi.dart';
 import 'package:legado_md3/data/local/app_database.dart';
 import 'package:legado_md3/data/model/v14_models.dart';
+import 'package:legado_md3/constant/e_placement.dart';
 
 import 'helpers/lib_source_helper.dart';
 
@@ -225,11 +226,54 @@ void main() {
       expect(src, contains('MainScreenSwitch'));
     });
 
-    test('阅读页接入 BGM 面板与 EPUB 切换', () {
+    test('阅读页 BGM / EPUB 仍在次级区可触达，且不在 E 主落点顺序内', () {
       final src = read('lib/ui/book/read/reading_screen.dart');
-      expect(src, contains('showBgmPanel'));
-      expect(src, contains('useEpubLayoutReader'));
-      expect(src, contains('BGM'));
+      // 能力不删：类名 / 入口 / 文案仍存在于 reading_screen.dart
+      expect(src, contains('showBgmPanel'), reason: 'BGM 面板入口不可删');
+      expect(src, contains('useEpubLayoutReader'), reason: 'EPUB 切换开关不可删');
+      expect(src, contains('BGM'), reason: 'BGM 次级菜单文案不可删');
+      expect(src, contains('切换为 EPUB 保版式阅读'));
+      // 仍可从次级区触达：收在 overflow 末尾「更多功能」子分组
+      expect(src, contains('EOverflowMenuButton'),
+          reason: '次级区经 overflow 末尾子分组触达');
+      expect(src, contains('_kSecondaryItems'));
+      expect(src, contains("id: 'k_bgm'"));
+      expect(src, contains("id: 'k_epub_layout'"));
+      // E 主落点严格由单一真源构造，BGM / EPUB 不得进入主构造
+      expect(src, contains('EPlacement.readOverflow'));
+      expect(src, contains('eOverflowItemsFrom'));
+      final mainStart = src.indexOf('List<EOverflowItem> _eOverflowItems()');
+      final secondaryStart =
+          src.indexOf('List<EOverflowItem> _kSecondaryItems()');
+      expect(mainStart, greaterThanOrEqualTo(0));
+      expect(secondaryStart, greaterThan(mainStart));
+      final mainZone = src.substring(mainStart, secondaryStart);
+      expect(mainZone.contains('showBgmPanel'), isFalse,
+          reason: 'BGM 不得进入 E 主 overflow 构造');
+      expect(mainZone.contains('useEpubLayoutReader'), isFalse,
+          reason: 'EPUB 不得进入 E 主 overflow 构造');
+      final secondaryZone = src.substring(secondaryStart);
+      expect(secondaryZone, contains('showBgmPanel'));
+      expect(secondaryZone, contains('useEpubLayoutReader'));
+      // 底部主按钮恰好 4 个 + 选字默认 8 项（源码契约与单一真源交叉校验）
+      expect(EPlacement.readBottomButtons.length, 4);
+      expect(EPlacement.readBottomButtons.map((e) => e.zh).toList(),
+          ['目录', '朗读', '界面', '设置']);
+      expect(EPlacement.textSelectActions.length, 8);
+      final panelStart = src.indexOf('Widget _buildReadingSettingsPanel()');
+      final panelEnd = src.indexOf('Widget _buildFloatingButtonRow', panelStart);
+      expect(panelStart, greaterThanOrEqualTo(0));
+      expect(panelEnd, greaterThan(panelStart));
+      final panel = src.substring(panelStart, panelEnd);
+      final bottomCount = RegExp(r'_buildBottomAction\(|_buildReadAloudAction\(')
+          .allMatches(panel)
+          .length;
+      expect(bottomCount, 4, reason: '底部主按钮须恰好 4 个');
+      expect(panel.contains("'备忘'"), isFalse,
+          reason: '「备忘」已迁到次级区，不再占主按钮');
+      final menuCfg = read('lib/help/config/read_menu_config.dart');
+      expect(menuCfg, contains('EPlacement.textSelectActions'));
+      expect(menuCfg, contains('可配置能力为 K 独有扩展'));
     });
   });
 }

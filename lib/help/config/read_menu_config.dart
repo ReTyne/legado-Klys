@@ -1,5 +1,7 @@
 import 'package:shared_preferences/shared_preferences.dart';
 
+import 'package:legado_md3/constant/e_placement.dart';
+
 /// 阅读界面可配置菜单（对齐原版：底部工具栏 / 更多菜单 / 文本选择菜单）
 /// 以有序 key 列表记录显示项与顺序。
 class ReadMenuConfig {
@@ -50,7 +52,12 @@ class ReadMenuConfig {
     'share', 'reverse', 'resegment', 'delruby', 'delh', 'chineseconvert', 'charset', 'txttoc', 'debug', 'sourceaction',
   ];
 
-  /// 文本选择菜单（对齐 legado 8 项）
+  // ── 文本选择菜单 ──────────────────────────────────────────────────────
+  // 可配置能力为 K 独有扩展，默认对齐 E：
+  // 生产默认选字菜单固定为 EPlacement.textSelectActions 的 8 项
+  // （替换/拷贝/书签/朗读/字典/全文搜索/浏览器/分享），顺序严格按单一真源；
+  // K 独有的划线/查词/翻译/加书签 等动作保留在下方可选动作池与
+  // configurableSelectMenu 可配置能力里，但不进入默认菜单，E 主落点保持 1:1。
   static const Map<String, String> selectMenuItems = {
     'copy': '复制',
     'marking': '划线',
@@ -63,7 +70,23 @@ class ReadMenuConfig {
     'share': '分享',
     'replace': '替换',
   };
-  static const List<String> defaultSelectMenu = ['copy', 'marking', 'dict', 'translate', 'bookmark', 'search', 'browser', 'share'];
+
+  /// 默认选字菜单：严格派生自 EPlacement.textSelectActions 的 8 项 id，顺序按常量。
+  static List<String> get defaultSelectMenu =>
+      EPlacement.textSelectActions.map((e) => e.id).toList();
+
+  /// K 独有可选动作池（划线 / 查词 / 翻译 / 加书签 等），默认不启用。
+  static const List<String> kExtraSelectActions = [
+    'marking', 'dict', 'translate', 'bookmark',
+  ];
+
+  /// 可配置选字菜单能力（K 独有扩展）：默认仍为 E 的 8 项，可在动作池内调整。
+  static List<String> configurableSelectMenu([List<String>? chosen]) =>
+      chosen == null ? defaultSelectMenu : List.of(chosen);
+
+  /// 全部可选动作（E 8 项 + K 独有），供配置页展示，不改变默认。
+  static List<String> get allSelectActions =>
+      [...defaultSelectMenu, ...kExtraSelectActions];
 
   /// 悬浮快捷栏（阅读时边缘悬浮按钮）
   static const String kFloatingBar = 'read_floatingbar_order';

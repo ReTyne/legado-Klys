@@ -21,6 +21,7 @@ import 'package:legado_md3/di/book_provider.dart';
 import 'package:legado_md3/ui/book/read/text_paginator.dart';
 import 'package:legado_md3/ui/book/read/read_detail_utils.dart';
 import 'package:legado_md3/ui/widgets/app_widgets.dart';
+import 'package:legado_md3/constant/e_placement.dart';
 import 'package:legado_md3/help/storage/backup_service.dart';
 import 'package:legado_md3/help/device/native_bridge.dart';
 import 'package:legado_md3/help/storage/book_progress_sync.dart';
@@ -121,27 +122,13 @@ class _ReadingScreenState extends State<ReadingScreen>
   int? _dragChapterIndex;
   // 正文搜索命中其他章时的章内偏移：章节加载分页完成后按此定位页码
   int? _pendingPosInChapter;
-  // 文本选择菜单沿用可配置顺序（对齐 E TextActionMenu）；其余菜单按 E 的 ReadMenu 硬编码顺序，
-  // 不再使用 Klys 自有的「阅读菜单配置」默认列表（E 无可配置阅读菜单）。
+  // 文本选择菜单默认固定为 EPlacement.textSelectActions 8 项（见 read_menu_config.dart）；
+  // 可配置能力为 K 独有扩展，默认不启用，折叠态沿用 expandTextMenu 前 5 项 + 更多。
   List<String> _selectMenuOrder = List.of(ReadMenuConfig.defaultSelectMenu);
-  // 对齐 E res/menu/book_read.xml 的 overflow 菜单（showAsAction="never"）项与顺序。
-  static const List<String> _eMoreMenuOrder = [
-    'addbookmark',       // 添加书签
-    'contentedit',       // 编辑内容
-    'pageanim',          // 翻页动画
-    'reverse',           // 内容倒序
-    'simulated',         // 模拟阅读（checkable）
-    'replace',           // 启用替换（checkable）
-    'sametitle',         // 同名章节去除（checkable）
-    'resegment',         // 重新分段（checkable）
-    'delruby',           // 删除注音标签（checkable，E epub 组）
-    'delh',              // 删除标题标签（checkable，E epub 组）
-    'imagestyle',        // 图片样式
-    'updatetoc',         // 更新目录
-    'effectivereplace',  // 生效替换
-    'log',               // 日志
-    'help',              // 帮助
-  ];
+  // 阅读页 overflow 主落点不再硬编码顺序：由 _eOverflowItems() 用
+  // EPlacement.readOverflow + eOverflowItemsFrom 严格按单一真源构造（18 项，
+  // 3 个 visibleByDefault=false 默认不渲染 → 可见 15 项），checkable 勾选态
+  // 由 EOverflowItem.checkable/checked 承接；K 独有功能收在 _kSecondaryItems()。
   // 对齐 E book_read.xml 的 checkable 菜单项：持久作用于章节内容后处理（非一次性操作）。
   bool _reSegmentEnabled = false;
   bool _delRubyEnabled = false;
@@ -971,19 +958,6 @@ class _ReadingScreenState extends State<ReadingScreen>
       messenger.showSnackBar(SnackBar(content: Text('覆盖云进度失败：$e')));
     }
   }
-
-  /// 第十轮追加菜单项的统一构建（不触碰 E 固定 overflow 列表）
-  Widget _extraMenuItem(
-          BuildContext ctx, IconData icon, String title, VoidCallback onTap) =>
-      ListTile(
-        dense: true,
-        leading: Icon(icon, size: 20),
-        title: Text(title),
-        onTap: () {
-          Navigator.pop(ctx);
-          onTap();
-        },
-      );
 
   /// 切换 EPUB 阅读方式（文本阅读器 ↔ 保版式 WebView 阅读器），
   /// 持久化到 `ui_epubLayoutReader` 并立即重建阅读页，让路由分流生效。
@@ -2408,22 +2382,32 @@ class _ReadingScreenState extends State<ReadingScreen>
             ],
           ),
         ),
-        // 对齐 E res/menu/book_read.xml：showAsAction="always" 的工具栏项与本地书附加项
+        // 对齐 E res/menu/book_read.xml：showAsAction="always" 常驻项严格由
+        // EPlacement.readAlwaysOnline（在线书 3 项）/ readAlwaysText（本地 TXT，
+        // visibleByDefault=false 降级：本地书条件可见）/ readAlwaysLocal（本地书）驱动。
         actions: [
-          IconButton(tooltip: '换源', icon: const Icon(Icons.swap_horiz), onPressed: _showChangeSourceMenu),
-          IconButton(tooltip: '刷新', icon: const Icon(Icons.refresh), onPressed: _refreshCurrentChapter),
-          IconButton(tooltip: '离线缓存', icon: const Icon(Icons.download), onPressed: _showCacheSheet),
-          // 本地书：TXT目录规则 / 设置编码（对齐 E menu_group_text / menu_group_local）
+          // 在线书：换源 / 刷新 / 离线缓存（EPlacement.readAlwaysOnline 顺序）
+          if (!widget.book.local) ...[
+            IconButton(tooltip: EPlacement.readAlwaysOnline[0].zh, icon: const Icon(Icons.swap_horiz), onPressed: _showChangeSourceMenu),
+            IconButton(tooltip: EPlacement.readAlwaysOnline[1].zh, icon: const Icon(Icons.refresh), onPressed: _refreshCurrentChapter),
+            IconButton(tooltip: EPlacement.readAlwaysOnline[2].zh, icon: const Icon(Icons.download), onPressed: _showCacheSheet),
+          ],
+          // 本地书：TXT目录规则（E visible=false 默认隐藏，此处按本地书条件可见）
+          // / 设置编码（对齐 E menu_group_text / menu_group_local）
           if (widget.book.local) ...[
-            IconButton(tooltip: 'TXT目录规则', icon: const Icon(Icons.list_alt),
+            IconButton(tooltip: EPlacement.readAlwaysText[0].zh, icon: const Icon(Icons.list_alt),
               onPressed: () { _menuController.reverse(); Navigator.push(context, MaterialPageRoute(builder: (_) => const TxtTocRuleScreen())); }),
-            IconButton(tooltip: '设置编码', icon: const Icon(Icons.translate), onPressed: _selectCharset),
+            IconButton(tooltip: EPlacement.readAlwaysLocal[0].zh, icon: const Icon(Icons.translate), onPressed: _selectCharset),
           ],
           // 对齐 E ReadMenu.tvSourceAction：网络书的书源操作菜单
           if (!widget.book.local)
             TextButton(onPressed: _showSourceMenu, child: Text('书源', style: TextStyle(color: barFg))),
-          // 更多菜单（对齐 E overflow showAsAction="never"）
-          IconButton(tooltip: '更多', icon: const Icon(Icons.more_vert), onPressed: _showMoreMenu),
+          // 更多菜单（对齐 E overflow showAsAction="never"）：E 主落点 18 项锚定
+          // 右上角，K 独有功能收在末尾「更多功能」子分组，不占 E 主落点。
+          EOverflowMenuButton(
+            items: _eOverflowItems(),
+            secondary: _kSecondaryItems(),
+          ),
         ],
       ),
     );
@@ -2623,18 +2607,18 @@ class _ReadingScreenState extends State<ReadingScreen>
                 },
               ),
             ),
-            // 对齐 E view_read_menu.xml ll_bottom_bg 的五个主按钮：
-            // 目录 / 朗读 / 界面 / 设置 / 备忘（ll_memo，§3.B3）
+            // 对齐 E view_read_menu.xml ll_bottom_bg：恰好 4 个主按钮，
+            // 顺序严格 EPlacement.readBottomButtons（目录 / 朗读 / 界面 / 设置）。
+            // 朗读长按→朗读设置子菜单保留；「备忘」已迁到 overflow「更多功能」子分组。
             Padding(
               padding: const EdgeInsets.symmetric(vertical: AppSpacing.s),
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                 children: [
-                  _buildBottomAction(Icons.list_alt, '目录', barFg, _showChapterList),
+                  _buildBottomAction(Icons.list_alt, EPlacement.readBottomButtons[0].zh, barFg, _showChapterList),
                   _buildReadAloudAction(barFg),
-                  _buildBottomAction(Icons.text_format, '界面', barFg, _showInterfaceSettings),
-                  _buildBottomAction(Icons.settings, '设置', barFg, _showReadingSettings),
-                  _buildBottomAction(Icons.note_alt_outlined, '备忘', barFg, _showBookMemo),
+                  _buildBottomAction(Icons.text_format, EPlacement.readBottomButtons[2].zh, barFg, _showInterfaceSettings),
+                  _buildBottomAction(Icons.settings, EPlacement.readBottomButtons[3].zh, barFg, _showReadingSettings),
                 ],
               ),
             ),
@@ -2817,125 +2801,141 @@ class _ReadingScreenState extends State<ReadingScreen>
     );
   }
 
-  void _showMoreMenu() {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      builder: (ctx) => SafeArea(
-        child: ConstrainedBox(
-          constraints: BoxConstraints(maxHeight: MediaQuery.of(ctx).size.height * 0.8),
-          child: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                // 严格按 E res/menu/book_read.xml 的 overflow 项与顺序展示
-                for (final key in _eMoreMenuOrder)
-                  if (_moreMenuItem(key, ctx) != null) _moreMenuItem(key, ctx)!,
-                // ===== 第十轮 C 组追加（只追加，不删改 E 固定 overflow 项） =====
-                const Divider(height: 1),
-                _extraMenuItem(ctx, Icons.summarize_outlined, '章节摘要（真实正文）',
-                    _showChapterSummary),
-                _extraMenuItem(ctx, Icons.mode_comment_outlined, '段评 / 本章评论',
-                    _openReviewSheet),
-                _extraMenuItem(ctx, Icons.refresh_outlined, '刷新当前章节',
-                    () => _onRefreshScope(RefreshScope.chapter)),
-                _extraMenuItem(ctx, Icons.auto_stories_outlined,
-                    '刷新全文（当前章及其后）',
-                    () => _onRefreshScope(RefreshScope.all)),
-                _extraMenuItem(ctx, Icons.list_alt_outlined, '刷新目录',
-                    () => _onRefreshScope(RefreshScope.toc)),
-                _extraMenuItem(ctx, Icons.sync_outlined, '刷新与云进度面板',
-                    _openRefreshProgressSheet),
-                _extraMenuItem(ctx, Icons.cloud_download_outlined, '获取云进度',
-                    _pullCloudProgress),
-                _extraMenuItem(ctx, Icons.cloud_upload_outlined, '覆盖云进度',
-                    _pushCloudProgress),
-                _extraMenuItem(ctx, Icons.public_outlined,
-                    '交互网页（登录 / 购买 / 验证码）', _showInteractiveWeb),
-                _extraMenuItem(ctx, Icons.layers_outlined, '阅读设置分区',
-                    _showSettingsSections),
-                _extraMenuItem(ctx, Icons.style_outlined,
-                    '排版预设（保存 / 切换）', _showReadPresets),
-                _extraMenuItem(ctx, Icons.calculate_outlined, '重新估算全书页数',
-                    () async {
-                  final idx = _pageIndex;
-                  if (idx != null) {
-                    await idx.clear();
-                    await _estimateChapterPages(_currentChapterIndex);
-                    if (mounted) setState(() {});
-                  }
-                }),
-                // ===== 第十轮主代理接线：BGM 背景音乐 / EPUB 阅读方式切换 =====
-                _extraMenuItem(ctx, Icons.music_note_outlined, '背景音乐（BGM）',
-                    () => showBgmPanel(context)),
-                if (EpubReaderScreen.canOpen(widget.book))
-                  _extraMenuItem(ctx, Icons.auto_stories_outlined,
-                      useEpubLayoutReader ? '切换为文本阅读' : '切换为 EPUB 保版式阅读',
-                      () => _toggleEpubReaderMode(context)),
-              ],
-            ),
-          ),
-        ),
-      ),
+  /// E 主落点 overflow：严格由单一真源 EPlacement.readOverflow 构造 18 项，
+  /// 3 个 visibleByDefault=false 默认不渲染 → 可见 15 项；不复用旧硬编码顺序。
+  /// checkable 项的勾选态用 overrides 承接当前真实开关（视觉降级、状态语义等价）。
+  List<EOverflowItem> _eOverflowItems() {
+    return eOverflowItemsFrom(
+      EPlacement.readOverflow,
+      onTapFor: _eOverflowActionFor,
+      overrides: <String, ({bool? checked, bool? visible, String? label})>{
+        'menu_enable_replace':
+            (checked: _purifyEnabled, visible: null, label: null),
+        'menu_same_title_removed':
+            (checked: _removeSameTitle, visible: null, label: null),
+        'menu_re_segment':
+            (checked: _reSegmentEnabled, visible: null, label: null),
+        'menu_del_ruby_tag':
+            (checked: _delRubyEnabled, visible: null, label: null),
+        'menu_del_h_tag':
+            (checked: _delHEnabled, visible: null, label: null),
+      },
     );
   }
 
-  /// 更多菜单项（对齐 E book_read.xml 的 showAsAction="never" 项）
-  Widget? _moreMenuItem(String key, BuildContext ctx) {
-    void close() => Navigator.pop(ctx);
-    // checkable 项：右侧勾选框表示当前开关状态（对齐 E 的 android:checkable）
-    Widget checkable(String title, IconData icon, bool value, VoidCallback onTap) => ListTile(
-      leading: Icon(icon),
-      title: Text(title),
-      trailing: Icon(value ? Icons.check_box : Icons.check_box_outline_blank),
-      onTap: () { close(); onTap(); },
-    );
-    final cfg = context.read<ReadProvider>().config;
-    switch (key) {
-      case 'addbookmark':
-        return ListTile(leading: const Icon(Icons.bookmark_border), title: const Text('添加书签'), onTap: () { close(); _addBookmark(); });
-      case 'contentedit':
-        return ListTile(leading: const Icon(Icons.edit_note), title: const Text('编辑内容'), onTap: () { close(); _showContentEditor(); });
-      case 'pageanim':
-        return ListTile(leading: const Icon(Icons.animation), title: const Text('翻页动画'), onTap: () { close(); _showPageAnimPicker(); });
-      case 'reverse':
-        return ListTile(leading: const Icon(Icons.swap_vert), title: const Text('内容倒序'), onTap: () { close(); _reverseContent(); });
-      case 'simulated':
-        return checkable('模拟阅读', Icons.play_circle_outline, cfg.simulatedReading, () {
-          final next = !cfg.simulatedReading;
-          context.read<ReadProvider>().updateConfig((c) => c.simulatedReading = next);
+  /// overflow 项 id → 现有功能回调（复用旧底部 sheet 各 case 的实质逻辑，去掉
+  /// 原 Navigator.pop —— PopupMenu 自动收起）。visible=false 的 3 项也给出等价
+  /// 回调，保证状态语义完整（默认不渲染、条件可见）。
+  VoidCallback _eOverflowActionFor(String id) {
+    switch (id) {
+      case 'menu_add_bookmark':
+        return () => _addBookmark();
+      case 'menu_edit_content':
+        return _showContentEditor;
+      case 'menu_page_anim':
+        return _showPageAnimPicker;
+      case 'menu_get_progress':
+        return _pullCloudProgress;
+      case 'menu_cover_progress':
+        return _pushCloudProgress;
+      case 'menu_reverse_content':
+        return _reverseContent;
+      case 'menu_simulated_reading':
+        return () {
+          final rp = context.read<ReadProvider>();
+          final next = !rp.config.simulatedReading;
+          rp.updateConfig((c) => c.simulatedReading = next);
           if (next && !_autoReadOn) _startAutoRead();
-        });
-      case 'replace':
-        return checkable('启用替换', Icons.find_replace, _purifyEnabled, _togglePurify);
-      case 'sametitle':
-        return checkable('同名章节去除', Icons.playlist_remove, _removeSameTitle,
-          () => _flipContentToggle('read_removeSameTitle', (v) => _removeSameTitle = v, _removeSameTitle));
-      case 'resegment':
-        return checkable('重新分段', Icons.format_align_left, _reSegmentEnabled,
-          () => _flipContentToggle('read_reSegment', (v) => _reSegmentEnabled = v, _reSegmentEnabled));
-      case 'delruby':
-        return checkable('删除注音标签', Icons.text_fields, _delRubyEnabled,
-          () => _flipContentToggle('read_delRuby', (v) => _delRubyEnabled = v, _delRubyEnabled));
-      case 'delh':
-        return checkable('删除标题标签', Icons.title, _delHEnabled,
-          () => _flipContentToggle('read_delH', (v) => _delHEnabled = v, _delHEnabled));
-      case 'imagestyle':
-        return ListTile(leading: const Icon(Icons.image), title: const Text('图片样式'), onTap: () { close(); _showImageStylePicker(); });
-      case 'updatetoc':
-        return ListTile(leading: const Icon(Icons.refresh), title: const Text('更新目录'), onTap: () {
-          close();
+        };
+      case 'menu_enable_replace':
+        return _togglePurify;
+      case 'menu_same_title_removed':
+        return () => _flipContentToggle('read_removeSameTitle',
+            (v) => _removeSameTitle = v, _removeSameTitle);
+      case 'menu_re_segment':
+        return () => _flipContentToggle(
+            'read_reSegment', (v) => _reSegmentEnabled = v, _reSegmentEnabled);
+      case 'menu_enable_review':
+        return _openReviewSheet;
+      case 'menu_del_ruby_tag':
+        return () => _flipContentToggle(
+            'read_delRuby', (v) => _delRubyEnabled = v, _delRubyEnabled);
+      case 'menu_del_h_tag':
+        return () => _flipContentToggle(
+            'read_delH', (v) => _delHEnabled = v, _delHEnabled);
+      case 'menu_image_style':
+        return _showImageStylePicker;
+      case 'menu_update_toc':
+        return () {
           _fetchTocFromNetwork();
-          ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('正在更新目录')));
-        });
-      case 'effectivereplace':
-        return ListTile(leading: const Icon(Icons.rule), title: const Text('生效替换'), onTap: () { close(); _showReplaceRules(); });
-      case 'log':
-        return ListTile(leading: const Icon(Icons.receipt_long), title: const Text('日志'), onTap: () { close(); _showDebugLog(); });
-      case 'help':
-        return ListTile(leading: const Icon(Icons.help_outline), title: const Text('帮助'), onTap: () { close(); _showHelp(); });
-      default: return null;
+          ScaffoldMessenger.of(context)
+              .showSnackBar(const SnackBar(content: Text('正在更新目录')));
+        };
+      case 'menu_effective_replaces':
+        return _showReplaceRules;
+      case 'menu_log':
+        return _showDebugLog;
+      case 'menu_help':
+        return _showHelp;
+      default:
+        return () {};
     }
+  }
+
+  /// K 版独有功能（EPlacement.kSecondary['reading'] + 底部按钮迁移的「备忘」
+  /// = reading_secondary_button）：不删、不建独立扩展页，收在 overflow 末尾
+  /// 「更多功能」子分组（EOverflowMenuButton.secondary 自带分隔线 + 分区标题），
+  /// 与 E 主落点区隔，保证仍可触达。
+  List<EOverflowItem> _kSecondaryItems() {
+    return [
+      EOverflowItem(id: 'k_summary', label: '章节摘要（真实正文）',
+          icon: Icons.summarize_outlined, onTap: _showChapterSummary),
+      EOverflowItem(id: 'k_chapter_review', label: '段评 / 本章评论',
+          icon: Icons.mode_comment_outlined, onTap: _openReviewSheet),
+      EOverflowItem(id: 'k_refresh_chapter', label: '刷新当前章节',
+          icon: Icons.refresh_outlined,
+          onTap: () => _onRefreshScope(RefreshScope.chapter)),
+      EOverflowItem(id: 'k_refresh_all', label: '刷新全文（当前章及其后）',
+          icon: Icons.auto_stories_outlined,
+          onTap: () => _onRefreshScope(RefreshScope.all)),
+      EOverflowItem(id: 'k_refresh_toc', label: '刷新目录',
+          icon: Icons.list_alt_outlined,
+          onTap: () => _onRefreshScope(RefreshScope.toc)),
+      EOverflowItem(id: 'k_progress_panel', label: '刷新与云进度面板',
+          icon: Icons.sync_outlined, onTap: _openRefreshProgressSheet),
+      EOverflowItem(id: 'k_get_progress', label: '获取云进度',
+          icon: Icons.cloud_download_outlined, onTap: _pullCloudProgress),
+      EOverflowItem(id: 'k_cover_progress', label: '覆盖云进度',
+          icon: Icons.cloud_upload_outlined, onTap: _pushCloudProgress),
+      EOverflowItem(id: 'k_interactive_web', label: '交互网页（登录 / 购买 / 验证码）',
+          icon: Icons.public_outlined, onTap: _showInteractiveWeb),
+      EOverflowItem(id: 'k_settings_sections', label: '阅读设置分区',
+          icon: Icons.layers_outlined, onTap: _showSettingsSections),
+      EOverflowItem(id: 'k_read_presets', label: '排版预设（保存 / 切换）',
+          icon: Icons.style_outlined, onTap: _showReadPresets),
+      EOverflowItem(id: 'k_reestimate_pages', label: '重新估算全书页数',
+          icon: Icons.calculate_outlined, onTap: () async {
+            final idx = _pageIndex;
+            if (idx != null) {
+              await idx.clear();
+              await _estimateChapterPages(_currentChapterIndex);
+              if (mounted) setState(() {});
+            }
+          }),
+      EOverflowItem(id: 'k_bgm', label: '背景音乐（BGM）',
+          icon: Icons.music_note_outlined, onTap: () => showBgmPanel(context)),
+      if (EpubReaderScreen.canOpen(widget.book))
+        EOverflowItem(id: 'k_epub_layout',
+            label: useEpubLayoutReader ? '切换为文本阅读' : '切换为 EPUB 保版式阅读',
+            icon: Icons.auto_stories_outlined,
+            onTap: () => _toggleEpubReaderMode(context)),
+      // 底部 5→4 按钮后迁移的「备忘」（EPlacement.kSecondary['reading_secondary_button']）
+      EOverflowItem(id: 'k_memo', label: '备忘',
+          icon: Icons.note_alt_outlined, onTap: _showBookMemo),
+      // 对齐 kSecondary['reading'] 的简繁转换（既有能力，界面子菜单亦可触达）
+      EOverflowItem(id: 'k_chinese_convert', label: '简繁转换',
+          icon: Icons.translate, onTap: _showChineseConverter),
+    ];
   }
 
   List<Widget> _buildSelectMenuChildren(dynamic state, Future<String> Function() grab) {
@@ -2976,7 +2976,19 @@ class _ReadingScreenState extends State<ReadingScreen>
 
   Widget _buildSelectMenuTile(
       String key, dynamic state, Future<String> Function() grab) {
-    switch (key) {
+    // 默认菜单固定为 EPlacement.textSelectActions 的 8 项 id；K 独有可配置动作池
+    // 沿用旧 key。统一归一化到旧 key，复用下方原有 case（两套 key 都不丢）。
+    const normalize = <String, String>{
+      'menu_replace': 'replace',
+      'menu_copy': 'copy',
+      'menu_bookmark': 'bookmark',
+      'menu_aloud': 'tts',
+      'menu_dict': 'dict',
+      'menu_search_content': 'search',
+      'menu_browser': 'browser',
+      'menu_share_str': 'share',
+    };
+    switch (normalize[key] ?? key) {
       case 'copy':
         return InkWell(onTap: () {
           // 长按选择文本抓取：copySelection 是当前 Flutter 唯一可同步取到所选文本的入口，
