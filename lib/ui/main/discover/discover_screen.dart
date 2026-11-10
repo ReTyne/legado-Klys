@@ -21,6 +21,7 @@ import 'package:legado_md3/ui/main/discover/homepage_feed.dart';
 import 'package:legado_md3/ui/main/discover/homepage_module_widgets.dart';
 import 'package:legado_md3/ui/main/discover/opds_catalog_screen.dart';
 import 'package:legado_md3/ui/widgets/app_widgets.dart';
+import 'package:legado_md3/constant/e_placement.dart';
 
 class DiscoverScreen extends StatefulWidget {
   const DiscoverScreen({super.key});
@@ -67,8 +68,9 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
   String _searchQuery = '';
   bool _searching = false;
 
-  /// 默认首页为卡片式模块 Feed（消费 homepage_modules 表）；可切回书源发现列表。
-  bool _showFeed = true;
+  /// 默认视图对齐 legado-E：发现页主体即「书源发现列表」。
+  /// 卡片式首页模块 Feed 为 K 独有，沉到 AppBar「更多功能」次级入口。
+  bool _showFeed = false;
   /// 管理页返回后改变该值以强制重建 Feed（重新读取模块表）。
   int _feedEpoch = 0;
 
@@ -770,57 +772,10 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
                     : const Text('发现')))
             : Text(_titleText(), maxLines: 1, overflow: TextOverflow.ellipsis),
         actions: [
-          // 首页模块 Feed 视图：切换回书源发现 + OPDS 目录
-          if (_view == 'source' && _showFeed) ...[
-            IconButton(
-              icon: const Icon(Icons.explore_outlined),
-              tooltip: '书源发现',
-              onPressed: () => _toggleFeed(false),
-            ),
-            IconButton(
-              icon: const Icon(Icons.rss_feed_outlined),
-              tooltip: 'OPDS 目录',
-              onPressed: () => Navigator.push(
-                context,
-                MaterialPageRoute(builder: (_) => const OpdsCatalogScreen()),
-              ),
-            ),
-          ],
-          if (_view == 'source' && !_showFeed) ...[
-            IconButton(
-              icon: const Icon(Icons.dashboard_customize_outlined),
-              tooltip: '首页模块',
-              onPressed: () => _toggleFeed(true),
-            ),
-            if (_searching)
-              IconButton(
-                icon: const Icon(Icons.clear_outlined),
-                tooltip: '清除搜索',
-                onPressed: () {
-                  _searchController.clear();
-                  setState(() {
-                    _searching = false;
-                    _searchQuery = '';
-                  });
-                },
-              )
-            else
-              IconButton(
-                  icon: const Icon(Icons.search_outlined),
-                  tooltip: '搜索书源',
-                  onPressed: () => setState(() => _searching = true)),
-            // OPDS 目录浏览（接入 OpdsEngine，下载后经 ImportBookService 入书架）
-            IconButton(
-              icon: const Icon(Icons.rss_feed_outlined),
-              tooltip: 'OPDS 目录',
-              onPressed: () => Navigator.push(
-                context,
-                MaterialPageRoute(builder: (_) => const OpdsCatalogScreen()),
-              ),
-            ),
-            // 分组过滤（对齐 E main_explore 的 menu_group）
+          // ── E 主落点：main_explore.xml 工具栏仅「分组」1 项（always，动态子菜单）──
+          if (_view == 'source')
             PopupMenuButton<String>(
-              tooltip: '分组',
+              tooltip: EPlacement.mainMenus['explore']!.first.zh,
               icon: const Icon(Icons.filter_list_outlined),
               initialValue: _groupFilter.isEmpty ? '全部' : _groupFilter,
               onSelected: (v) =>
@@ -829,15 +784,11 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
                   .map((g) => PopupMenuItem(value: g, child: Text(g)))
                   .toList(),
             ),
-          ],
-          if (_view == 'books') ...[
-            IconButton(icon: const Icon(Icons.category_outlined), tooltip: '分类', onPressed: _backToCategory),
-            IconButton(icon: const Icon(Icons.filter_list_outlined), tooltip: '过滤', onPressed: _showFilterDialog),
-            IconButton(icon: const Icon(Icons.sort_outlined), tooltip: '排序', onPressed: _showSortDialog),
-            IconButton(icon: const Icon(Icons.refresh_outlined), tooltip: '刷新', onPressed: _refresh),
-          ],
-          if (_view == 'category')
-            IconButton(icon: const Icon(Icons.tune_outlined), tooltip: '分类管理', onPressed: _showCategoryManager),
+          // ── K 独有功能次级入口（不占 E 主落点）──
+          EOverflowMenuButton(
+            tooltip: '更多功能',
+            items: _secondaryMenuItems(),
+          ),
         ],
       ),
       body: _buildBody(),
@@ -889,6 +840,72 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
         _searchController.clear();
       }
     });
+  }
+
+  /// K 独有功能次级入口 —— E 版发现页工具栏仅「分组」1 项，首页模块 Feed /
+  /// OPDS 目录 / 搜索书源 / 分类管理 / 过滤 / 排序 / 刷新 / 返回分类这些 K 独有
+  /// 视图与动作不删、不占 E 主落点，统一沉到 AppBar 末尾「更多功能」overflow，
+  /// 文案对齐 EPlacement.kSecondary['discover']。
+  List<EOverflowItem> _secondaryMenuItems() {
+    return [
+      EOverflowItem(
+        id: 'k_feed',
+        label: '首页模块 Feed',
+        icon: Icons.dashboard_customize_outlined,
+        onTap: () => _toggleFeed(!_showFeed),
+      ),
+      EOverflowItem(
+        id: 'k_opds',
+        label: 'OPDS 目录',
+        icon: Icons.rss_feed_outlined,
+        onTap: () => Navigator.push(context,
+            MaterialPageRoute(builder: (_) => const OpdsCatalogScreen())),
+      ),
+      EOverflowItem(
+        id: 'k_search_source',
+        label: _searching ? '退出搜索' : '搜索书源',
+        icon: Icons.search_outlined,
+        onTap: () => setState(() {
+          _searching = !_searching;
+          if (!_searching) {
+            _searchController.clear();
+            _searchQuery = '';
+          }
+        }),
+      ),
+      EOverflowItem(
+        id: 'k_back_category',
+        label: '返回分类',
+        icon: Icons.category_outlined,
+        onTap: _backToCategory,
+      ),
+      EOverflowItem(
+        id: 'k_category_mgr',
+        label: '分类管理',
+        icon: Icons.tune_outlined,
+        onTap: _showCategoryManager,
+      ),
+      EOverflowItem(
+        id: 'k_filter',
+        label: '过滤',
+        icon: Icons.filter_list_outlined,
+        onTap: _showFilterDialog,
+      ),
+      EOverflowItem(
+        id: 'k_sort',
+        label: '排序',
+        icon: Icons.sort_outlined,
+        onTap: _showSortDialog,
+      ),
+      EOverflowItem(
+        id: 'k_refresh',
+        label: '刷新',
+        icon: Icons.refresh_outlined,
+        onTap: () {
+          _refresh();
+        },
+      ),
+    ];
   }
 
   /// 首页模块卡片点击动作：真实分发到搜索 / 书籍详情 / 书源发现 / 浏览器。

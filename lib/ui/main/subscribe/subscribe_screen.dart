@@ -15,6 +15,7 @@ import 'package:legado_md3/ui/rss/rss_source_login_screen.dart';
 import 'package:legado_md3/data/local/app_database.dart';
 import 'package:legado_md3/help/http/rss_service.dart';
 import 'package:legado_md3/ui/widgets/app_widgets.dart';
+import 'package:legado_md3/constant/e_placement.dart';
 
 class SubscribeScreen extends StatefulWidget {
   const SubscribeScreen({super.key});
@@ -239,98 +240,21 @@ class _SubscribeScreenState extends State<SubscribeScreen> {
               )
             : const Text('订阅'),
         actions: [
-          if (_searching)
-            IconButton(
-              icon: const Icon(Icons.clear),
-              tooltip: '清除搜索',
-              onPressed: () {
-                _searchController.clear();
-                setState(() {
-                  _searching = false;
-                  _searchQuery = '';
-                });
-              },
-            )
-          else
-            IconButton(
-                icon: const Icon(Icons.search),
-                tooltip: '搜索订阅源',
-                onPressed: () => setState(() => _searching = true)),
-          IconButton(
-            icon: const Icon(Icons.star_border),
-            tooltip: '收藏文章',
-            onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const RssFavoritesScreen())),
-          ),
+          // ── E 主落点：main_rss.xml 的 4 个常驻项（按常量顺序）──
           IconButton(
             icon: const Icon(Icons.history),
-            tooltip: '阅读记录',
-            onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ReadRecordScreen())),
+            tooltip: EPlacement.mainMenus['rss']![0].zh,
+            onPressed: () => Navigator.push(context,
+                MaterialPageRoute(builder: (_) => const ReadRecordScreen())),
           ),
           IconButton(
-            icon: const Icon(Icons.settings_outlined),
-            tooltip: '订阅源管理',
-            onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const RssSourceScreen())),
+            icon: const Icon(Icons.star_border),
+            tooltip: EPlacement.mainMenus['rss']![1].zh,
+            onPressed: () => Navigator.push(context,
+                MaterialPageRoute(builder: (_) => const RssFavoritesScreen())),
           ),
-          IconButton(
-            icon: const Icon(Icons.refresh),
-            tooltip: '刷新全部',
-            onPressed: _refreshAll,
-          ),
-          IconButton(icon: const Icon(Icons.file_download_outlined), tooltip: '导入订阅源', onPressed: _showImportMenu),
-        ],
-      ),
-      body: Column(
-        children: [
-          // 对齐 legado-E RssFragment：RecyclerView 顶部常驻 header「规则订阅」，
-          // 以及 main_rss.xml 的 menu_group 分组过滤，二者不随订阅源空态消失。
-          _buildRssHeader(),
-          const Divider(height: 1),
-          Expanded(
-            child: _isLoading
-                ? const AppLoadingIndicator()
-                : _buildSourcesView(),
-          ),
-        ],
-      ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: _addSource,
-        child: const Icon(Icons.add),
-      ),
-    );
-  }
-
-  /// 订阅页顶部入口 —— 对齐 legado-E `RssFragment.initRecyclerView` 的 header 项
-  /// （「规则订阅」→ RuleSubActivity）与 `main_rss.xml` 的 menu_group（分组过滤）。
-  /// 两个入口都是真实交互：前者跳转规则订阅管理页（增删/更新订阅），
-  /// 后者按 sourceGroup 过滤下方订阅源列表。
-  Widget _buildRssHeader() {
-    return SizedBox(
-      height: 48,
-      child: Row(
-        children: [
-          Expanded(
-            child: InkWell(
-              onTap: () => Navigator.push(
-                context,
-                MaterialPageRoute(
-                    builder: (_) => const RuleSubscriptionScreen()),
-              ),
-              child: const Padding(
-                padding: EdgeInsets.symmetric(horizontal: AppSpacing.m),
-                child: Row(children: [
-                  Icon(Icons.dynamic_feed_outlined, size: 20),
-                  SizedBox(width: 10),
-                  Text('规则订阅',
-                      style: TextStyle(
-                          fontSize: 14, fontWeight: FontWeight.w500)),
-                  Icon(Icons.chevron_right, size: 18),
-                ]),
-              ),
-            ),
-          ),
-          // 对齐 legado-E main_rss.xml 的 menu_group：选中分组后按 group 过滤订阅源
           PopupMenuButton<String>(
-            tooltip: '分组',
+            tooltip: EPlacement.mainMenus['rss']![2].zh,
             icon: const Icon(Icons.filter_list),
             initialValue: _groupFilter.isEmpty ? '全部' : _groupFilter,
             onSelected: (v) =>
@@ -339,50 +263,144 @@ class _SubscribeScreenState extends State<SubscribeScreen> {
                 .map((g) => PopupMenuItem(value: g, child: Text(g)))
                 .toList(),
           ),
-          _buildViewSortMenu(),
+          IconButton(
+            icon: const Icon(Icons.settings_outlined),
+            tooltip: EPlacement.mainMenus['rss']![3].zh,
+            onPressed: () {
+              _showRssSettings();
+            },
+          ),
+          // ── K 独有功能次级入口（不占 E 主落点）──
+          EOverflowMenuButton(
+            tooltip: '更多功能',
+            items: _secondaryMenuItems(),
+          ),
+        ],
+      ),
+      body: _isLoading
+          ? const AppLoadingIndicator()
+          : _buildSourcesView(),
+    );
+  }
+
+  /// E 主落点「设置」（main_rss.xml menu_rss_config）：订阅设置弹窗，
+  /// 选择默认排序并真实持久化（复用 _setSortMode），不伪造空壳。
+  Future<void> _showRssSettings() async {
+    final v = await showAppRadioDialog<int>(
+      context,
+      title: '订阅设置 · 默认排序',
+      groupValue: _sortMode,
+      options: const [
+        AppRadioOption(0, '默认排序'),
+        AppRadioOption(1, '按名称'),
+        AppRadioOption(2, '按分组分区'),
+        AppRadioOption(3, '按最近更新'),
+      ],
+    );
+    if (v != null) await _setSortMode(v);
+  }
+
+  /// K 独有「布局与排序」次级入口：原顶部 header 的 PopupMenuButton 迁移到
+  /// 次级弹窗，布局/排序选项完整保留、真实生效（_setViewMode/_setSortMode）。
+  Future<void> _showViewSortDialog() async {
+    final v = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => SimpleDialog(
+        title: const Text('布局与排序'),
+        children: [
+          _viewSortOption(dialogContext, 'layout_grid', '网格布局', _viewMode == 0),
+          _viewSortOption(dialogContext, 'layout_list', '列表布局', _viewMode == 1),
+          _viewSortOption(dialogContext, 'sort_0', '默认排序', _sortMode == 0),
+          _viewSortOption(dialogContext, 'sort_1', '按名称', _sortMode == 1),
+          _viewSortOption(dialogContext, 'sort_2', '按分组分区', _sortMode == 2),
+          _viewSortOption(dialogContext, 'sort_3', '按最近更新', _sortMode == 3),
         ],
       ),
     );
+    if (v == null) return;
+    if (v.startsWith('layout_')) {
+      await _setViewMode(v == 'layout_list' ? 1 : 0);
+    } else if (v.startsWith('sort_')) {
+      await _setSortMode(int.tryParse(v.substring(5)) ?? 0);
+    }
   }
 
-  /// 布局切换（网格 / 列表）与排序（默认 / 名称 / 分组分区 / 最近更新）。
-  /// 每项选择都真实改变列表并持久化到 SharedPreferences。
-  Widget _buildViewSortMenu() {
-    return PopupMenuButton<String>(
-      tooltip: '布局与排序',
-      icon: const Icon(Icons.view_quilt_outlined),
-      onSelected: (v) {
-        if (v.startsWith('layout_')) {
-          _setViewMode(v == 'layout_list' ? 1 : 0);
-        } else if (v.startsWith('sort_')) {
-          _setSortMode(int.tryParse(v.substring(5)) ?? 0);
-        }
-      },
-      itemBuilder: (context) => [
-        _viewSortItem('layout_grid', '网格布局', _viewMode == 0),
-        _viewSortItem('layout_list', '列表布局', _viewMode == 1),
-        const PopupMenuDivider(),
-        _viewSortItem('sort_0', '默认排序', _sortMode == 0),
-        _viewSortItem('sort_1', '按名称', _sortMode == 1),
-        _viewSortItem('sort_2', '按分组分区', _sortMode == 2),
-        _viewSortItem('sort_3', '按最近更新', _sortMode == 3),
-      ],
-    );
-  }
-
-  PopupMenuItem<String> _viewSortItem(
-          String value, String label, bool checked) =>
-      PopupMenuItem<String>(
-        value: value,
-        child: Row(
-          children: [
-            Expanded(child: Text(label)),
-            if (checked)
-              Icon(Icons.check,
-                  size: 18, color: Theme.of(context).colorScheme.primary),
-          ],
-        ),
+  SimpleDialogOption _viewSortOption(
+          BuildContext dialogContext, String value, String label, bool checked) =>
+      SimpleDialogOption(
+        onPressed: () => Navigator.pop(dialogContext, value),
+        child: Row(children: [
+          Expanded(child: Text(label)),
+          if (checked)
+            Icon(Icons.check,
+                size: 18, color: Theme.of(context).colorScheme.primary),
+        ]),
       );
+
+  /// K 独有功能次级入口 —— E 版订阅工具栏仅 main_rss.xml 的 4 项，规则订阅 /
+  /// 布局与排序 / 新增订阅源 / 刷新全部 / 导入订阅源 / 搜索订阅源 / 订阅源管理
+  /// 这些 K 独有功能不删、不占 E 主落点，统一沉到 AppBar 末尾「更多功能」
+  /// overflow；文案对齐 EPlacement.kSecondary['subscribe']。
+  List<EOverflowItem> _secondaryMenuItems() {
+    return [
+      EOverflowItem(
+        id: 'k_search',
+        label: _searching ? '退出搜索' : '搜索订阅源',
+        icon: Icons.search,
+        onTap: () => setState(() {
+          _searching = !_searching;
+          if (!_searching) {
+            _searchController.clear();
+            _searchQuery = '';
+          }
+        }),
+      ),
+      EOverflowItem(
+        id: 'k_rule_sub',
+        label: '规则订阅',
+        icon: Icons.dynamic_feed_outlined,
+        onTap: () => Navigator.push(context,
+            MaterialPageRoute(builder: (_) => const RuleSubscriptionScreen())),
+      ),
+      EOverflowItem(
+        id: 'k_view_sort',
+        label: '布局与排序',
+        icon: Icons.view_quilt_outlined,
+        onTap: () {
+          _showViewSortDialog();
+        },
+      ),
+      EOverflowItem(
+        id: 'k_add_source',
+        label: '新增订阅源',
+        icon: Icons.add,
+        onTap: () {
+          _addSource();
+        },
+      ),
+      EOverflowItem(
+        id: 'k_refresh_all',
+        label: '刷新全部',
+        icon: Icons.refresh,
+        onTap: () {
+          _refreshAll();
+        },
+      ),
+      EOverflowItem(
+        id: 'k_import',
+        label: '导入订阅源',
+        icon: Icons.file_download_outlined,
+        onTap: _showImportMenu,
+      ),
+      EOverflowItem(
+        id: 'k_source_manage',
+        label: '订阅源管理',
+        icon: Icons.settings_outlined,
+        onTap: () => Navigator.push(context,
+            MaterialPageRoute(builder: (_) => const RssSourceScreen())),
+      ),
+    ];
+  }
 
   /// 订阅源视图 —— 对齐 legado-E `fragment_rss.xml`：分组过滤 + 搜索叠加，
   /// 再按当前排序输出网格（spanCount=4）或列表（按分组时显示分区标题）。
@@ -403,7 +421,7 @@ class _SubscribeScreenState extends State<SubscribeScreen> {
             ? '暂无订阅源'
             : '没有匹配的订阅源',
         message: _searchQuery.isEmpty && _groupFilter.isEmpty
-            ? '点击右下角添加订阅源'
+            ? '在「更多功能」中新增订阅源'
             : null,
       );
     }

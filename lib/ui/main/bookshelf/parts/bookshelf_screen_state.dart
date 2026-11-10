@@ -290,119 +290,70 @@ class _BookshelfScreenState extends State<BookshelfScreen> {
     }
   }
 
-  /// 书架更多菜单 —— 项与顺序对齐 legado-E `res/menu/main_bookshelf.xml`：
-  /// 更新目录 / 添加本地 / 远程书籍 / 添加URL / 书架管理 / 缓存导出 /
-  /// 分组管理 / 书架布局 / 导出书架 / 导入书架 / 日志。
-  /// legado-E 书架没有的入口（首页模块视图、搜索书籍、多选模式、阅读记录、
-  /// 设置、清空书架、排序设置）已移除或迁移：
-  /// - 搜索书籍：顶栏常驻搜索图标（同 E 的 menu_search showAsAction=always）
-  /// - 多选模式 / 清空书架：移入独立的「书架管理」页（同 E 的 BookshelfManageActivity）
-  /// - 阅读记录 / 设置：移至「我的」页（同 E 的 pref_main）
-  /// - 排序设置：并入「书架布局」对话框（同 E 的 dialog_bookshelf_config）
-  void _showMoreMenu() {
-    showModalBottomSheet(
-      context: context,
-      builder: (context) {
-        return SafeArea(
-          child: SingleChildScrollView(
-            child: Column(mainAxisSize: MainAxisSize.min, children: [
-              ListTile(
-                  leading: const Icon(Icons.refresh_outlined),
-                  title: const Text('更新目录'),
-                  onTap: () {
-                    Navigator.pop(context);
-                    _updateAllBooks();
-                  }),
-              const Divider(),
-              ListTile(
-                  leading: const Icon(Icons.folder_open_outlined),
-                  title: const Text('添加本地'),
-                  onTap: () {
-                    Navigator.pop(context);
-                    Navigator.push(context,
-                        MaterialPageRoute(builder: (_) => const LocalImportScreen()));
-                  }),
-              ListTile(
-                  leading: const Icon(Icons.cloud_download_outlined),
-                  title: const Text('远程书籍'),
-                  onTap: () {
-                    Navigator.pop(context);
-                    Navigator.push(context,
-                        MaterialPageRoute(builder: (_) => const RemoteBookScreen()));
-                  }),
-              ListTile(
-                  leading: const Icon(Icons.link_outlined),
-                  title: const Text('添加URL'),
-                  onTap: () {
-                    Navigator.pop(context);
-                    _showAddBookByUrlDialog();
-                  }),
-              const Divider(),
-              ListTile(
-                  leading: const Icon(Icons.select_all_outlined),
-                  title: const Text('书架管理'),
-                  onTap: () async {
-                    Navigator.pop(context);
-                    await Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                            builder: (_) => const BookshelfManageScreen()));
-                    if (mounted && context.mounted) await Provider.of<BookProvider>(context, listen: false).loadBooks();
-                  }),
-              ListTile(
-                  leading: const Icon(Icons.download_outlined),
-                  title: const Text('缓存导出'),
-                  onTap: () {
-                    Navigator.pop(context);
-                    Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                            builder: (_) => const CacheManageScreen()));
-                  }),
-              ListTile(
-                  leading: const Icon(Icons.folder_special_outlined),
-                  title: const Text('分组管理'),
-                  onTap: () async {
-                    Navigator.pop(context);
-                    await Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                            builder: (_) => const GroupManageScreen()));
-                    if (mounted && context.mounted) await Provider.of<BookProvider>(context, listen: false).loadBooks();
-                  }),
-              ListTile(
-                  leading: const Icon(Icons.view_quilt_outlined),
-                  title: const Text('书架布局'),
-                  onTap: () {
-                    Navigator.pop(context);
-                    _showBookshelfConfigDialog();
-                  }),
-              const Divider(),
-              ListTile(
-                  leading: const Icon(Icons.ios_share_outlined),
-                  title: const Text('导出书架'),
-                  onTap: () {
-                    Navigator.pop(context);
-                    _exportBookshelf();
-                  }),
-              ListTile(
-                  leading: const Icon(Icons.file_download_outlined),
-                  title: const Text('导入书架'),
-                  onTap: () {
-                    Navigator.pop(context);
-                    _showImportBookshelfDialog();
-                  }),
-              const Divider(),
-              ListTile(
-                  leading: const Icon(Icons.article_outlined),
-                  title: const Text('日志'),
-                  onTap: () {
-                    Navigator.pop(context);
-                    _showLogDialog();
-                  }),
-            ]),
-          ),
-        );
+  /// 书架 AppBar 右上角 overflow 菜单 —— 项与顺序严格对齐
+  /// legado-E `res/menu/main_bookshelf.xml` 的 11 个 showAsAction="never" 项。
+  /// 由单一真源 EPlacement 生成，回调逐 id 映射原「更多」底部 sheet 的各动作；
+  /// 容器由底部 sheet 改为锚定 AppBar 右上的 EOverflowMenuButton。
+  /// 「搜索」为 always 常驻图标，仍独立渲染在 AppBar。
+  List<EOverflowItem> _bookshelfOverflowItems() {
+    final actions = <String, VoidCallback>{
+      'menu_update_toc': () {
+        _updateAllBooks();
+      },
+      'menu_add_local': () {
+        Navigator.push(context,
+            MaterialPageRoute(builder: (_) => const LocalImportScreen()));
+      },
+      'menu_remote': () {
+        Navigator.push(context,
+            MaterialPageRoute(builder: (_) => const RemoteBookScreen()));
+      },
+      'menu_add_url': _showAddBookByUrlDialog,
+      'menu_bookshelf_manage': () async {
+        await Navigator.push(context,
+            MaterialPageRoute(builder: (_) => const BookshelfManageScreen()));
+        if (mounted) {
+          await Provider.of<BookProvider>(context, listen: false).loadBooks();
+        }
+      },
+      'menu_download': () {
+        Navigator.push(context,
+            MaterialPageRoute(builder: (_) => const CacheManageScreen()));
+      },
+      'menu_group_manage': () async {
+        await Navigator.push(context,
+            MaterialPageRoute(builder: (_) => const GroupManageScreen()));
+        if (mounted) {
+          await Provider.of<BookProvider>(context, listen: false).loadBooks();
+        }
+      },
+      'menu_bookshelf_layout': _showBookshelfConfigDialog,
+      'menu_export_bookshelf': () {
+        _exportBookshelf();
+      },
+      'menu_import_bookshelf': _showImportBookshelfDialog,
+      'menu_log': () {
+        _showLogDialog();
+      },
+    };
+    final overflowMenus = EPlacement.mainMenus['bookshelf']!
+        .where((e) => e.overflow)
+        .toList();
+    return eOverflowItemsFrom(
+      overflowMenus,
+      onTapFor: (id) => actions[id] ?? () {},
+      icons: const {
+        'menu_update_toc': Icons.refresh_outlined,
+        'menu_add_local': Icons.folder_open_outlined,
+        'menu_remote': Icons.cloud_download_outlined,
+        'menu_add_url': Icons.link_outlined,
+        'menu_bookshelf_manage': Icons.select_all_outlined,
+        'menu_download': Icons.download_outlined,
+        'menu_group_manage': Icons.folder_special_outlined,
+        'menu_bookshelf_layout': Icons.view_quilt_outlined,
+        'menu_export_bookshelf': Icons.ios_share_outlined,
+        'menu_import_bookshelf': Icons.file_download_outlined,
+        'menu_log': Icons.article_outlined,
       },
     );
   }
@@ -1503,10 +1454,10 @@ class _BookshelfScreenState extends State<BookshelfScreen> {
                   });
                 }),
           if (!_searching)
-            IconButton(
-                icon: const Icon(Icons.more_vert_outlined),
-                tooltip: '更多',
-                onPressed: _showMoreMenu),
+            EOverflowMenuButton(
+              tooltip: '更多',
+              items: _bookshelfOverflowItems(),
+            ),
         ],
         bottom: _cfg.showTabMenu
             ? PreferredSize(
