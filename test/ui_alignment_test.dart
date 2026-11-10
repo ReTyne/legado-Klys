@@ -1,14 +1,25 @@
+// 功能位置对齐 E 版的「可验收基线」（B5 重写）。
+//
+// 与旧版区别：旧版用「逐项 find.text ... findsOneWidget」的假顺序断言，
+// 只验存在不验顺序、且锁定 K 版旧文案。本版：
+//   - overflow 项用稳定 Key('e_menu::<id>') + getTopLeft().dy 升序做真正严格顺序断言；
+//   - 我的页断言 pref_main 14 项分组树 + 「更多功能」折叠次级隔离（独有项不占主落点、展开后可触达）；
+//   - 断言容器是锚定 AppBar 右上的 overflow（而非底部 sheet）。
+// 所有 expected 均由 lib/constant/e_placement.dart 单一真源驱动，避免文案漂移。
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:legado_md3/constant/app_theme.dart';
+import 'package:legado_md3/constant/e_placement.dart';
 import 'package:legado_md3/data/model/book.dart';
 import 'package:legado_md3/di/book_provider.dart';
 import 'package:legado_md3/ui/main/bookshelf/bookshelf_manage_screen.dart';
 import 'package:legado_md3/ui/main/bookshelf/bookshelf_screen.dart';
 import 'package:legado_md3/ui/main/my/profile_screen.dart';
 import 'package:legado_md3/ui/main/subscribe/subscribe_screen.dart';
+import 'package:legado_md3/ui/widgets/app_widgets.dart';
 
 Widget _wrap(Widget child) => ChangeNotifierProvider<BookProvider>(
       create: (_) => BookProvider(),
@@ -35,38 +46,65 @@ List<Book> _seedBooks() => [
       Book(name: '大主宰', author: '天蚕土豆', group: '玄幻'),
     ];
 
+/// 打开 PopupMenu 后，按稳定 Key 的 y 坐标升序还原 overflow 项的实际渲染顺序。
+List<String> _overflowOrderById(WidgetTester tester, List<String> ids) {
+  final withY = <MapEntry<String, double>>[];
+  for (final id in ids) {
+    final f = find.byKey(Key('e_menu::$id'));
+    if (f.evaluate().isEmpty) continue;
+    withY.add(MapEntry(id, tester.getTopLeft(f).dy));
+  }
+  withY.sort((a, b) => a.value.compareTo(b.value));
+  return withY.map((e) => e.key).toList();
+}
+
+/// 在懒构建 ListView 中向下滚动直到目标可见（有上限，避免死循环）。
+Future<void> _scrollUntilVisible(
+    WidgetTester tester, Finder target, int maxDrag) async {
+  for (var i = 0; i < maxDrag && target.evaluate().isEmpty; i++) {
+    await tester.drag(find.byType(ListView).first, const Offset(0, -120));
+    await tester.pumpAndSettle();
+  }
+}
+
 void main() {
   setUp(() => SharedPreferences.setMockInitialValues({}));
 
-  testWidgets('书架更多菜单与 legado-E main_bookshelf 一致（项与顺序）', (tester) async {
+  testWidgets('书架 overflow 与 E main_bookshelf 严格一致（项集合 + Key 顺序）',
+      (tester) async {
     final p = BookProvider()..debugSeed(_seedBooks());
     await tester.pumpWidget(_withProvider(p, const BookshelfScreen()));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 120));
 
-    // 风格统一：actions 图标一律线框（*_outlined）
+    // 容器必须是锚定 AppBar actions 的 EOverflowMenuButton（不是底部 sheet）。
+    expect(find.byType(EOverflowMenuButton), findsOneWidget);
     await tester.tap(find.byIcon(Icons.more_vert_outlined));
     await tester.pumpAndSettle();
 
-    // legado-E 书架菜单的完整条目
-    const expected = [
-      '更新目录',
-      '添加本地',
-      '远程书籍',
-      '添加URL',
-      '书架管理',
-      '缓存导出',
-      '分组管理',
-      '书架布局',
-      '导出书架',
-      '导入书架',
-      '日志',
-    ];
-    for (final item in expected) {
-      expect(find.text(item), findsOneWidget, reason: '缺少菜单项：$item');
+    final overflow = EPlacement.mainMenus['bookshelf']!
+        .where((e) => e.overflow)
+        .toList();
+    // 每项有稳定 Key 且文案取自单一真源
+    for (final e in overflow) {
+      expect(find.byKey(Key(e.key)), findsOneWidget,
+          reason: '缺少 overflow 项：${e.zh} (${e.id})');
+      expect(find.text(e.zh), findsOneWidget,
+          reason: '缺少 E 权威文案：${e.zh}');
+    }
+    // 真正严格顺序：按渲染 y 坐标升序必须等于单一真源顺序
+    final ids = overflow.map((e) => e.id).toList();
+    expect(_overflowOrderById(tester, ids), ids,
+        reason: '书架 overflow 渲染顺序必须与 E main_bookshelf.xml 一致');
+
+    // K 版旧文案（已被 E 权威文案替换）不应出现在 E 主落点
+    for (final old in const ['添加URL', '缓存导出', '导出书架', '导入书架']) {
+      expect(find.text(old), findsNothing, reason: '应改用 E 权威文案：$old');
     }
     // E 书架没有的入口不应出现
-    for (final absent in const ['首页模块视图', '搜索书籍', '多选模式', '阅读记录', '设置', '清空书架', '排序设置']) {
+    for (final absent in const [
+      '首页模块视图', '搜索书籍', '多选模式', '阅读记录', '清空书架', '排序设置'
+    ]) {
       expect(find.text(absent), findsNothing, reason: '不应存在菜单项：$absent');
     }
   });
@@ -85,14 +123,16 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.text('书架布局'), findsWidgets); // 对话框标题
-    for (final opt in const ['分组样式', '显示未读', '显示上次更新时间', '显示待更新书籍', '快速滚动条', '布局', '排序', '书名']) {
+    for (final opt in const [
+      '分组样式', '显示未读', '显示上次更新时间', '显示待更新书籍', '快速滚动条', '布局', '排序', '书名'
+    ]) {
       expect(find.text(opt), findsWidgets, reason: '缺少布局选项：$opt');
     }
-    // E 的 7 种布局
-    for (final layout in const ['列表', '紧凑列表', '网格2列', '网格3列', '网格4列', '网格5列', '网格6列']) {
+    for (final layout in const [
+      '列表', '紧凑列表', '网格2列', '网格3列', '网格4列', '网格5列', '网格6列'
+    ]) {
       expect(find.text(layout), findsOneWidget, reason: '缺少布局：$layout');
     }
-    // E 的 6 种排序
     for (final sort in const ['最近阅读', '更新时间', '书名', '手动', '综合', '作者']) {
       expect(find.text(sort), findsOneWidget, reason: '缺少排序：$sort');
     }
@@ -105,11 +145,8 @@ void main() {
     await tester.pump(const Duration(milliseconds: 120));
 
     expect(find.text('书架管理'), findsOneWidget);
-    // 统一封面组件 BookCover 的默认占位也会显示书名，故标题文本出现 2 次
     expect(find.text('斗破苍穹'), findsWidgets);
 
-    // 点选一本后出现底部批量操作栏（对齐 E 的 SelectActionBar）。
-    // 用 ListTile 的 ValueKey 精准定位，避免误点封面占位文字。
     await tester.tap(find.byKey(const ValueKey('斗破苍穹::天蚕土豆')));
     await tester.pumpAndSettle();
     expect(find.text('已选 1 本'), findsOneWidget);
@@ -117,35 +154,55 @@ void main() {
       expect(find.text(action), findsOneWidget, reason: '缺少批量操作：$action');
     }
 
-    // 全选
     await tester.tap(find.byTooltip('全选'));
     await tester.pumpAndSettle();
     expect(find.text('已选 2 本'), findsOneWidget);
   });
 
-  testWidgets('我的页包含三个基准项目的全局管理入口，且无越界项', (tester) async {
+  testWidgets('我的页严格对齐 pref_main 14 项分组树 + 折叠次级隔离',
+      (tester) async {
     await tester.pumpWidget(_wrapProfile(const ProfileScreen()));
     await tester.pump();
     await tester.pump(const Duration(milliseconds: 120));
 
-    // 按 UI 自上而下的顺序排列（ListView 懒构建：单调向下滚动逐项校验，
-    // 已滚出屏幕的项不再回查）。除 legado-E pref_main 的原有条目外，
-    // 还包含本轮按三个基准补齐的入口：首页模块(MD3 fork)、定时任务(官方原版
-    // AutoTaskManage)、朗读引擎/下载管理/AI 助手/阅读统计(原版与 fork 共有)。
-    const orderedItems = [
-      '书源管理', 'TXT目录规则', '替换净化', '词典规则', '首页模块', '定时任务',
-      '主题模式', 'Web服务', '备份与恢复', '主题设置', '其他设置', '朗读引擎',
-      '下载管理', 'AI 助手', '书签', '阅读记录', '阅读统计', '文件管理', '关于', '退出',
+    // AppBar「帮助」overflow（main_my.xml 仅 1 项）
+    expect(find.byType(EOverflowMenuButton), findsOneWidget);
+
+    // 按 UI 真实自上而下顺序单调遍历：顶层 6 → 「设置」标题 → 设置 3 →
+    // 「其它」标题 → 其它 5。每项在滚动路径上即时验证，避免懒构建卸载上方项
+    // 后回查不到（这是旧版「逐项 findsOneWidget」假顺序断言的坑）。
+    final orderedFinders = <Finder>[
+      for (final e in EPlacement.myTop) find.byKey(Key(e.key)),
+      find.text(EPlacement.myCategoryTitles[0]),
+      for (final e in EPlacement.mySettingCategory) find.byKey(Key(e.key)),
+      find.text(EPlacement.myCategoryTitles[1]),
+      for (final e in EPlacement.myOtherCategory) find.byKey(Key(e.key)),
     ];
-    for (final item in orderedItems) {
-      for (var i = 0; i < 30 && find.text(item).evaluate().isEmpty; i++) {
-        await tester.drag(find.byType(ListView).first, const Offset(0, -120));
-        await tester.pumpAndSettle();
-      }
-      expect(find.text(item), findsOneWidget, reason: '缺少我的页条目：$item');
+    for (final f in orderedFinders) {
+      await _scrollUntilVisible(tester, f, 30);
+      expect(f, findsWidgets, reason: '缺少 pref_main 结构项：$f');
     }
-    // 三个基准项目都没有的入口不应出现（防止随意乱加页面）
-    for (final absent in const ['OPDS书源', '高亮标签配置', '标签分组规则', 'RSS订阅', '规则订阅', '翻译设置', '实验室', '书籍标记', '缓存管理', '云盘同步']) {
+
+    // K 独有项默认折叠 → 不占 E 主落点（ListView 未展开时不可见）
+    for (final k in const ['AI 助手', '阅读统计', '智能体工具', '首页模块', '定时任务']) {
+      expect(find.text(k), findsNothing,
+          reason: 'K 独有项 $k 不应出现在 E 主落点（应在折叠次级分区）');
+    }
+
+    // 展开「更多功能」后，独有项仍可触达（防止「删功能假装对齐」）
+    await _scrollUntilVisible(
+        tester, find.byKey(const Key('profile::more_features')), 30);
+    await tester.tap(find.byKey(const Key('profile::more_features')));
+    await tester.pumpAndSettle();
+    for (final k in const ['AI 助手', '阅读统计', '智能体工具', '首页模块', '定时任务']) {
+      expect(find.text(k), findsOneWidget, reason: '次级分区应保留可触达功能：$k');
+    }
+
+    // 三个基准都没有的入口不应出现
+    for (final absent in const [
+      'OPDS书源', '高亮标签配置', '标签分组规则', 'RSS订阅', '规则订阅',
+      '翻译设置', '实验室', '书籍标记', '缓存管理', '云盘同步'
+    ]) {
       expect(find.text(absent), findsNothing, reason: '不应存在我的页条目：$absent');
     }
   });
