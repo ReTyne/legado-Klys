@@ -34,7 +34,7 @@ class _SourceDebugScreenState extends State<SourceDebugScreen>
     // 见 BookSourceDebugActivity「binding.textMy.text = ruleSearch?.checkKeyWord」），
     // 回退顶层 checkKeyWord，最后回退「我的」。
     _keywordController.text = _defaultKeyword(widget.source);
-    _tabController = TabController(length: 3, vsync: this);
+    _tabController = TabController(length: 4, vsync: this);
     _initSteps();
   }
 
@@ -110,6 +110,8 @@ class _SourceDebugScreenState extends State<SourceDebugScreen>
       _log('请输入 搜索词 / 详情URL / ++目录URL / --正文URL / 发现::URL', level: _LogLevel.error);
       return;
     }
+    // 每次调试只保留本次产生的请求（含 java.ajax 的原生拦截通道）
+    SourceNetworkLog.instance.clear();
     setState(() {
       _running = true;
       _logs.clear();
@@ -620,6 +622,8 @@ class _SourceDebugScreenState extends State<SourceDebugScreen>
   }
 
   /// 原始源码页签：查看搜索/详情/目录/正文各阶段抓到的原始 HTML/JSON。
+  /// 聚合源的 data: 书址会把「传给 JS 的 hex 中间产物」塞进 lastRawResponse，
+  /// 直接展示就是一串 hex。这里统一解码 + JSON 美化并明确标注来源。
   Widget _buildSourceView() {
     final items = <(String, String?)>[
       ('搜索源码', _searchSrc),
@@ -628,46 +632,190 @@ class _SourceDebugScreenState extends State<SourceDebugScreen>
       ('正文源码', _contentSrc),
     ];
     final any = items.any((e) => e.$2 != null && e.$2!.isNotEmpty);
-    if (!any) {
+    final entries = SourceNetworkLog.instance.entries;
+    if (!any && entries.isEmpty) {
       return const AppEmptyState(
         icon: Icons.code_outlined,
         title: '尚未抓取到源码',
-        message: '执行「一键调试」后，这里会展示各阶段的原始 HTML/JSON。',
+        message: '执行「一键调试」后，这里会展示各阶段原始 HTML/JSON，'
+            '并在「网络请求」页列出真实请求与响应。',
       );
     }
+    final failures = entries.where((e) => !e.ok).length;
     return ListView(
       padding: const EdgeInsets.symmetric(vertical: AppSpacing.s),
       children: [
+        if (entries.isNotEmpty)
+          Card(
+            margin: const EdgeInsets.symmetric(
+                horizontal: AppSpacing.m, vertical: 6),
+            child: ListTile(
+              leading: Icon(Icons.http,
+                  size: 20,
+                  color: failures > 0
+                      ? Theme.of(context).colorScheme.error
+                      : null),
+              title: Text('本次调试共 ${entries.length} 次请求，失败 $failures 次',
+                  style: const TextStyle(fontSize: 13)),
+              subtitle: const Text(
+                  '含书源 JS 内 java.ajax 发出的请求，详见「网络请求」页签',
+                  style: TextStyle(fontSize: 11)),
+            ),
+          ),
         for (final e in items)
           if (e.$2 != null && e.$2!.isNotEmpty)
-            Card(
-              margin: const EdgeInsets.symmetric(horizontal: AppSpacing.m, vertical: 6),
-              clipBehavior: Clip.antiAlias,
-              child: ExpansionTile(
-                leading: const Icon(Icons.code, size: 20),
-                title: Text('${e.$1}（${e.$2!.length} 字符）',
-                    style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
-                children: [
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.all(AppSpacing.s),
-                    color: Theme.of(context).colorScheme.surfaceContainerHighest,
-                    child: SelectableText(
-                      e.$2!.length > 20000
-                          ? '${e.$2!.substring(0, 20000)}\n…（已截断，共 ${e.$2!.length} 字符）'
-                          : e.$2!,
+            Builder(builder: (_) {
+              final view = SourceNetworkLog.readable(e.$2!);
+              final display = view.text.length > 20000
+                  ? '${view.text.substring(0, 20000)}\n…（已截断，共 ${view.text.length} 字符）'
+                  : view.text;
+              return Card(
+                margin: const EdgeInsets.symmetric(
+                    horizontal: AppSpacing.m, vertical: 6),
+                clipBehavior: Clip.antiAlias,
+                child: ExpansionTile(
+                  leading: const Icon(Icons.code, size: 20),
+                  title: Text('${e.$1}（${e.$2!.length} 字符）',
+                      style: const TextStyle(
+                          fontSize: 13, fontWeight: FontWeight.w600)),
+                  subtitle: view.note == null
+                      ? null
+                      : Text(view.note!,
+                          style: TextStyle(
+                              fontSize: 11,
+                              color: Theme.of(context).colorScheme.primary)),
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.only(
+                          right: AppSpacing.s, bottom: AppSpacing.s),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.end,
+                        children: [
+                          TextButton.icon(
+                            icon: const Icon(Icons.copy_all_outlined, size: 16),
+                            label: const Text('复制原文'),
+                            onPressed: () =>
+                                _copyText(e.$2!, '${e.$1}（原始）'),
+                          ),
+                          const SizedBox(width: 6),
+                          TextButton.icon(
+                            icon: const Icon(Icons.copy_outlined, size: 16),
+                            label: const Text('复制可读版'),
+                            onPressed: () => _copyText(view.text, e.$1),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(AppSpacing.s),
+                      color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                      child: SelectableText(
+                        display,
+                        style: TextStyle(
+                            fontSize: 10.5,
+                            height: 1.35,
+                            fontFamily: 'monospace',
+                            color: Theme.of(context).colorScheme.onSurface),
+                      ),
+                    ),
+                  ],
+                ),
+              );
+            }),
+      ],
+    );
+  }
+
+  /// 网络请求页签：把引擎与书源 JS（java.ajax）两条通道的真实请求、
+  /// 状态码、耗时、错误与响应预览一并列出，便于定位登录/调试失败。
+  Widget _buildNetworkView() {
+    final entries = SourceNetworkLog.instance.entries.reversed.toList();
+    if (entries.isEmpty) {
+      return const AppEmptyState(
+        icon: Icons.http_outlined,
+        title: '暂无网络请求',
+        message: '执行「一键调试」后，这里会列出引擎与书源 java.ajax 发出的'
+            '真实请求、状态码、耗时与响应预览。',
+      );
+    }
+    return ListView.builder(
+      padding: const EdgeInsets.symmetric(vertical: AppSpacing.s),
+      itemCount: entries.length,
+      itemBuilder: (_, i) {
+        final e = entries[i];
+        final cs = Theme.of(context).colorScheme;
+        final view = e.responsePreview == null
+            ? null
+            : SourceNetworkLog.readable(e.responsePreview!);
+        final preview = view == null
+            ? null
+            : (view.text.length > 8000
+                ? '${view.text.substring(0, 8000)}\n…（已截断）'
+                : view.text);
+        return Card(
+          margin: const EdgeInsets.symmetric(
+              horizontal: AppSpacing.m, vertical: 4),
+          clipBehavior: Clip.antiAlias,
+          child: ExpansionTile(
+            leading: Icon(
+                e.ok ? Icons.check_circle_outline : Icons.error_outline,
+                size: 20,
+                color: e.ok ? cs.primary : cs.error),
+            title: Text(
+                '${e.clock}  ${e.method}  ${e.statusLabel}  ${e.durationMs}ms',
+                style: const TextStyle(
+                    fontSize: 12, fontFamily: 'monospace')),
+            subtitle: Text(
+                '${e.origin} · ${e.responseBytes} B · ${e.shortUrl}',
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                    fontSize: 10.5, fontFamily: 'monospace')),
+            children: [
+              if (e.error != null)
+                Padding(
+                  padding: const EdgeInsets.all(AppSpacing.s),
+                  child: SelectableText('错误：${e.error}',
+                      style: TextStyle(fontSize: 11.5, color: cs.error)),
+                ),
+              if (preview != null)
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.all(AppSpacing.s),
+                  color: cs.surfaceContainerHighest,
+                  child: SelectableText(preview,
                       style: TextStyle(
                           fontSize: 10.5,
                           height: 1.35,
                           fontFamily: 'monospace',
-                          color: Theme.of(context).colorScheme.onSurface),
-                    ),
+                          color: cs.onSurface)),
+                ),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.end,
+                children: [
+                  TextButton.icon(
+                    icon: const Icon(Icons.link, size: 16),
+                    label: const Text('复制 URL'),
+                    onPressed: () => _copyText(e.url, '请求 URL'),
                   ),
                 ],
               ),
-            ),
-      ],
+            ],
+          ),
+        );
+      },
     );
+  }
+
+  void _copyText(String text, String what) {
+    Clipboard.setData(ClipboardData(text: text));
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+        content: Text('已复制$what'),
+        duration: const Duration(seconds: 2),
+      ));
+    }
   }
 
   /// 步骤详情字段（标签 + 等宽文本）
@@ -744,6 +892,7 @@ class _SourceDebugScreenState extends State<SourceDebugScreen>
                       _bookSrc = null;
                       _tocSrc = null;
                       _contentSrc = null;
+                      SourceNetworkLog.instance.clear();
                     }),
           ),
         ],
@@ -780,13 +929,15 @@ class _SourceDebugScreenState extends State<SourceDebugScreen>
             ),
           ),
           if (_running || _stepRunning) LinearProgressIndicator(value: _progress, minHeight: 2),
-          // 页签：一键调试 / 分步调试
+          // 页签：一键调试 / 分步调试 / 原始源码 / 网络请求
           TabBar(
             controller: _tabController,
+            isScrollable: true,
             tabs: const [
               Tab(text: '一键调试'),
               Tab(text: '分步调试'),
               Tab(text: '原始源码'),
+              Tab(text: '网络请求'),
             ],
           ),
           Expanded(
@@ -826,8 +977,10 @@ class _SourceDebugScreenState extends State<SourceDebugScreen>
                 ),
                 // 分步调试：每步单独执行 + 耗时 + URL/摘要
                 _buildStepView(),
-                // 原始源码：查看各阶段抓到的 HTML/JSON 原文
+                // 原始源码：查看各阶段抓到的 HTML/JSON 原文（hex 自动解码）
                 _buildSourceView(),
+                // 网络请求：引擎 + java.ajax 两条通道的真实请求与响应
+                _buildNetworkView(),
               ],
             ),
           ),

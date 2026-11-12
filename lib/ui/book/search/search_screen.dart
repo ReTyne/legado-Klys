@@ -822,17 +822,16 @@ class _SearchScreenState extends State<SearchScreen>
         ),
       );
 
-  Widget _buildFlatList(List<SearchBook> items, {bool shrinkWrap = false}) => GridView.builder(
+  /// 搜索结果列表：对齐 legado-E SearchActivity 的 LinearLayoutManager +
+  /// item_search.xml —— 单列、每项为「左封面 80x110 + 右侧书名/作者/最新章/简介」
+  /// 的横向列表项，而非网格大封面。
+  Widget _buildFlatList(List<SearchBook> items, {bool shrinkWrap = false}) =>
+      ListView.separated(
         shrinkWrap: shrinkWrap,
         physics: shrinkWrap ? const NeverScrollableScrollPhysics() : null,
-        padding: EdgeInsets.fromLTRB(12, 8, 12, shrinkWrap ? 0 : 12),
-        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-          crossAxisCount: 3,
-          childAspectRatio: 0.62,
-          crossAxisSpacing: 10,
-          mainAxisSpacing: 10,
-        ),
+        padding: EdgeInsets.fromLTRB(12, 4, 12, shrinkWrap ? 0 : 12),
         itemCount: items.length,
+        separatorBuilder: (_, __) => const Divider(height: 1),
         itemBuilder: (c, i) => _buildResultCard(items[i]),
       );
 
@@ -853,58 +852,118 @@ class _SearchScreenState extends State<SearchScreen>
     );
   }
 
-  /// 搜索结果卡片：大封面 + 书名/作者/最新章（对齐阅读 Sigma 搜索页网格布局）。
+  /// 搜索结果列表项：对齐 legado-E item_search.xml 的横向布局 ——
+  /// 左封面固定 80x110（约 3:4），右侧自上而下书名(16)/作者(12)/标签/
+  /// 最新章(12)/简介(12)，右上角来源数角标与「加入书架」按钮。
   Widget _buildResultCard(SearchBook book) {
     final cs = Theme.of(context).colorScheme;
-    final coverW = (MediaQuery.of(context).size.width - 12 * 2 - 10 * 2) / 3;
-    final coverH = coverW / 0.72; // 约 3:4 封面比例
+    const coverW = 80.0;
+    const coverH = 110.0;
+    final author = book.author.trim().isEmpty ? '未知作者' : book.author;
+    final intro = (book.intro ?? '').trim();
+    final kind = (book.kind ?? '').trim();
+    final lastChapter = (book.lastChapter ?? '').trim();
     return InkWell(
-      borderRadius: AppRadius.sAll,
       onTap: () => _openDetail(book),
       onLongPress: () => _showResultMenu(book),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Stack(
-            children: [
-              BookCover(
-                name: book.name,
-                coverUrl: book.coverUrl,
-                width: coverW,
-                height: coverH,
-                radius: 6,
-              ),
-              Positioned(
-                top: 2,
-                right: 2,
-                child: Material(
-                  color: cs.surfaceContainerHighest.withOpacity(0.82),
-                  shape: const CircleBorder(),
-                  child: InkWell(
-                    borderRadius: AppRadius.lAll,
-                    onTap: () => _addToShelf(book),
-                    child: Padding(
-                      padding: const EdgeInsets.all(3),
-                      child: Icon(Icons.add, size: 18, color: cs.primary),
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 8),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // 左：封面（叠加入书架快捷按钮）
+            Stack(
+              children: [
+                BookCover(
+                  name: book.name,
+                  coverUrl: book.coverUrl,
+                  width: coverW,
+                  height: coverH,
+                  radius: 6,
+                ),
+                Positioned(
+                  top: 2,
+                  right: 2,
+                  child: Material(
+                    color: cs.surfaceContainerHighest.withOpacity(0.82),
+                    shape: const CircleBorder(),
+                    child: InkWell(
+                      borderRadius: AppRadius.lAll,
+                      onTap: () => _addToShelf(book),
+                      child: const Padding(
+                        padding: EdgeInsets.all(3),
+                        child: Icon(Icons.add, size: 16),
+                      ),
                     ),
                   ),
                 ),
+              ],
+            ),
+            const SizedBox(width: AppSpacing.m),
+            // 右：文字信息列（高度与封面一致）
+            Expanded(
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(minHeight: coverH),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children: [
+                        Expanded(
+                          child: Text(book.name,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600)),
+                        ),
+                        if (book.origins.length > 1)
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                            decoration: BoxDecoration(
+                              color: cs.tertiaryContainer,
+                              borderRadius: AppRadius.sAll,
+                            ),
+                            child: Text('${book.origins.length}源',
+                                style: TextStyle(fontSize: 10, color: cs.onTertiaryContainer)),
+                          ),
+                      ],
+                    ),
+                    const SizedBox(height: 3),
+                    Text(author,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
+                    if (kind.isNotEmpty)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 2),
+                        child: Text(kind,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(fontSize: 11, color: cs.secondary)),
+                      ),
+                    if (lastChapter.isNotEmpty)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 2),
+                        child: Text(lastChapter,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(fontSize: 12, color: cs.primary)),
+                      ),
+                    if (intro.isNotEmpty)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 3),
+                        child: Text(intro,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
+                      ),
+                  ],
+                ),
               ),
-            ],
-          ),
-          const SizedBox(height: 5),
-          Text(book.name,
-              maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 13, fontWeight: FontWeight.w500)),
-          const SizedBox(height: 1),
-          Text(book.author,
-              maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant)),
-          const SizedBox(height: 1),
-          Text(book.lastChapter ?? '',
-              maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 10, color: cs.primary)),
-          if (book.origins.length > 1)
-            Text('${book.origins.length} 个来源',
-                maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 10, color: cs.tertiary)),
-        ],
+            ),
+          ],
+        ),
       ),
     );
   }

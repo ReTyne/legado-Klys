@@ -19,11 +19,52 @@ class _BrowserScreenState extends State<BrowserScreen> {
   final List<_BrowserTab> _tabs = <_BrowserTab>[];
   int _activeTab = 0;
 
+  /// data: URI 解码得到的 HTML；非空表示这是一个「自包含页面」，
+  /// 需用 loadData 加载（WebUri 会把 base64 里的 + / = 二次编码导致空白页）。
+  String _initialDataHtml = '';
+  /// 地址栏友好显示文本（data: 页不暴露超长 base64）。
+  late final String _displayUrl;
+  /// 防止「完成 / 系统返回」重复触发 pop。
+  bool _exiting = false;
+
   @override
   void initState() {
     super.initState();
-    _tabs.add(_BrowserTab(widget.url, widget.title ?? widget.url));
-    _urlController.text = widget.url;
+    // 书源常用 java.startBrowser('data:text/html;base64,' + base64(html), title)
+    // 展示「使用教程 / 更新书源 / 设置中心」等自包含页面。对齐原版能正常渲染，
+    // 这里在 Dart 侧把 data URI 解码成 HTML，避免 WebUri 破坏 base64。
+    _initialDataHtml = _decodeDataHtml(widget.url) ?? '';
+    final isData = _initialDataHtml.isNotEmpty;
+    _displayUrl = isData
+        ? ((widget.title ?? '').trim().isEmpty ? '书源页面' : widget.title!.trim())
+        : widget.url;
+    _tabs.add(_BrowserTab(_displayUrl, widget.title ?? _displayUrl));
+    _urlController.text = _displayUrl;
+  }
+
+  /// 解析 `data:text/html[;charset=..][;base64],<payload>` 为 HTML 字符串。
+  /// 非 data: 或非 HTML 类型返回 null（交给常规 loadUrl）。
+  static String? _decodeDataHtml(String raw) {
+    if (!raw.toLowerCase().startsWith('data:')) return null;
+    final comma = raw.indexOf(',');
+    if (comma < 0) return null;
+    final header = raw.substring(5, comma).toLowerCase();
+    // 仅处理 text/html（含缺省 mime 的 data:;base64,..），避免误伤普通 data:
+    if (header.contains('/') && !header.startsWith('text/html')) return null;
+    final payload = raw.substring(comma + 1);
+    try {
+      if (header.contains(';base64')) {
+        // 兼容 URL-safe base64 与含换行的编码
+        final normalized = payload.replaceAll('-', '+').replaceAll('_', '/');
+        final padded = normalized.padRight(
+            (normalized.length + 3) ~/ 4 * 4, '=');
+        return utf8.decode(base64Decode(padded), allowMalformed: true);
+      }
+      // 百分号编码：+ 号是空格，需先还原再 decode
+      return Uri.decodeComponent(payload.replaceAll('+', ' '));
+    } catch (_) {
+      return null;
+    }
   }
 
   @override
@@ -35,16 +76,27 @@ class _BrowserScreenState extends State<BrowserScreen> {
   _BrowserTab get _tab => _tabs[_activeTab];
 
   /// 交互登录模式退出：取当前页面 HTML 后带值 pop（供书源 JS 使用）。
+  /// 用超时 + 防重入兜底：data:/空白页或 WebView 未就绪时 getHtml() 可能
+  /// 挂起，导致「完成 / 系统返回」点了没反应、界面出不去。无论取 HTML
+  /// 成功与否，都必须 pop。
   Future<void> _exitCapture() async {
-    var html = '';
-    try {
-      final raw = await _controller?.getHtml();
-      if (raw != null && raw.isNotEmpty) html = raw;
-    } catch (_) {}
+    if (_exiting) return;
+    _exiting = true;
+    var html = _initialDataHtml; // 自包含页面直接回传解码后的原始 HTML
     if (html.isEmpty) {
       try {
         final raw = await _controller
-            ?.evaluateJavascript(source: 'document.documentElement.outerHTML');
+            ?.getHtml()
+            .timeout(const Duration(seconds: 2));
+        if (raw != null && raw.isNotEmpty) html = raw;
+      } catch (_) {}
+    }
+    if (html.isEmpty) {
+      try {
+        final raw = await _controller
+            ?.evaluateJavascript(
+                source: 'document.documentElement.outerHTML')
+            .timeout(const Duration(seconds: 2));
         if (raw != null && raw.isNotEmpty) {
           var s = raw.trim();
           if (s.startsWith('"') && s.endsWith('"')) {
@@ -74,6 +126,19 @@ class _BrowserScreenState extends State<BrowserScreen> {
 
   void _load(String url) {
     if (url.trim().isEmpty) return;
+    // data: 自包含页面：解码后 loadData，绕开 WebUri 对 base64 的二次编码。
+    final dataHtml = _decodeDataHtml(url);
+    if (dataHtml != null) {
+      setState(() {
+        _urlController.text = (widget.title ?? '').trim().isEmpty
+            ? '书源页面'
+            : widget.title!.trim();
+        _sniffResult = null;
+      });
+      _controller?.loadData(
+          data: dataHtml, mimeType: 'text/html', encoding: 'utf-8');
+      return;
+    }
     final target = _normalize(url);
     setState(() {
       _tab.url = target;
@@ -84,6 +149,12 @@ class _BrowserScreenState extends State<BrowserScreen> {
   }
 
   Future<void> _reload() async {
+    // loadData 加载的自包含页面 reload() 常得到空内容，改为重新喂 HTML
+    if (_initialDataHtml.isNotEmpty) {
+      await _controller?.loadData(
+          data: _initialDataHtml, mimeType: 'text/html', encoding: 'utf-8');
+      return;
+    }
     await _controller?.reload();
   }
 
@@ -595,11 +666,53 @@ class _BrowserScreenState extends State<BrowserScreen> {
   }
 
   // ---------- UI ----------
+
+  /// 书源自包含 data: 页面（教程/更新日志/设置中心）的精简标题栏：
+  /// 只读标题 + 完成/返回 + 刷新。对这些页面而言地址栏、前进后退、
+  /// 嗅探、多标签都没有意义，反而暴露超长 base64、显得杂乱（图2）。
+  PreferredSizeWidget _buildDataPageAppBar(BuildContext context, bool capture) {
+    final title = (widget.title ?? '').trim().isEmpty
+        ? '书源页面'
+        : widget.title!.trim();
+    return AppBar(
+      automaticallyImplyLeading: !capture,
+      leading: capture
+          ? IconButton(
+              icon: const Icon(Icons.arrow_back),
+              tooltip: '返回',
+              onPressed: _exitCapture,
+            )
+          : null,
+      title: Text(title, maxLines: 1, overflow: TextOverflow.ellipsis),
+      actions: [
+        if (capture)
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: AppSpacing.s),
+            child: FilledButton.icon(
+              onPressed: _exitCapture,
+              icon: const Icon(Icons.check, size: 18),
+              label: const Text('完成'),
+            ),
+          ),
+        IconButton(
+          tooltip: '刷新',
+          icon: const Icon(Icons.refresh_outlined),
+          onPressed: _reload,
+        ),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final capture = widget.captureHtmlOnExit;
+    final isDataPage = _initialDataHtml.isNotEmpty;
     final scaffold = Scaffold(
-      appBar: AppBar(
+      // 书源自包含 data: 页面（教程/更新/设置中心）：精简标题栏，
+      // 不再显示「前进/后退/嗅探/超长 base64 地址栏」这些无意义且丑的控件。
+      appBar: isDataPage
+          ? _buildDataPageAppBar(context, capture)
+          : AppBar(
         automaticallyImplyLeading: !capture,
         leading: capture
             ? IconButton(
@@ -744,7 +857,19 @@ class _BrowserScreenState extends State<BrowserScreen> {
         if (_sniffing) const LinearProgressIndicator(minHeight: 2),
         Expanded(
           child: InAppWebView(
-            initialUrlRequest: URLRequest(url: WebUri(_normalize(widget.url))),
+            // 自包含 data: 页面用 initialData 直接喂解码后的 HTML；
+            // 否则走常规 URLRequest。两者互斥，避免 WebUri 破坏 base64。
+            initialUrlRequest: _initialDataHtml.isEmpty
+                ? URLRequest(url: WebUri(_normalize(widget.url)))
+                : null,
+            initialData: _initialDataHtml.isEmpty
+                ? null
+                : InAppWebViewInitialData(
+                    data: _initialDataHtml,
+                    mimeType: 'text/html',
+                    encoding: 'utf-8',
+                    baseUrl: WebUri('about:blank'),
+                  ),
             initialSettings: InAppWebViewSettings(
               javaScriptEnabled: true,
               domStorageEnabled: true,
@@ -791,7 +916,10 @@ class _BrowserScreenState extends State<BrowserScreen> {
               setState(() {
                 _canGoBack = back;
                 _canGoForward = fwd;
-                if (current != null) _tab.url = current.toString();
+                // data: 自包含页面保持友好标题，不把超长 base64 写回地址栏
+                if (_initialDataHtml.isEmpty && current != null) {
+                  _tab.url = current.toString();
+                }
               });
               // 自动嗅探（书源 JSON / 书籍详情页）
               await _sniff();

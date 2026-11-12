@@ -565,7 +565,24 @@ class RulePipeline {
 
   /// 解析字段规则为：选择器 / 后处理操作 / 尾部 JS / 是否含 mustache。
   FieldRuleParts parseFieldParts(String rule) {
-    final p = _splitPostProcess(rule.trim());
+    final trimmed = rule.trim();
+    // 整条字段规则就是一个 <js>...</js>（聚合类书源的 bookUrl / 目录 / 正文
+    // 字段极常见，例如「大灰狼聚合」用 JS 把书籍对象打包成 data: 书址）。
+    // 此时绝不能按「尾部 JS」拆开：_splitPostProcess 会把它当成 tailJs 并
+    // 把 selector 清空，引擎随后退化成把节点 toString() 当 result 传给脚本，
+    // 脚本里的 result.book_id / result.source 全部 undefined，典型症状就是
+    // 详情/目录只拿到 {"tab":"小说","url":""} 这类缺字段的默认对象。
+    // 另外 JS 脚本里常含 ## / || 等字符，也不能交给 _splitByHash 切段。
+    // 直接保留为 selector，由引擎的 _leadingJs 分支以真实节点对象注入 result。
+    if (RegExp(r'^<js>[\s\S]*</js>$').hasMatch(trimmed)) {
+      return FieldRuleParts(
+        selector: trimmed,
+        ops: const <FieldOp>[],
+        tailJs: null,
+        hasInterpolation: trimmed.contains('{{'),
+      );
+    }
+    final p = _splitPostProcess(trimmed);
     final ops = <FieldOp>[];
     for (final op in p.ops) {
       switch (op.kind) {

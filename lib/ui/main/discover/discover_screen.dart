@@ -21,6 +21,7 @@ import 'package:legado_md3/ui/main/discover/homepage_feed.dart';
 import 'package:legado_md3/ui/main/discover/homepage_module_widgets.dart';
 import 'package:legado_md3/ui/main/discover/opds_catalog_screen.dart';
 import 'package:legado_md3/ui/widgets/app_widgets.dart';
+import 'package:legado_md3/ui/widgets/flex_fillet.dart';
 import 'package:legado_md3/constant/e_placement.dart';
 
 class DiscoverScreen extends StatefulWidget {
@@ -476,66 +477,68 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
     });
   }
 
-  /// 控件区（text/button/toggle/select），分类页与书籍页顶部共用
+  /// 控件区（text/button/toggle/select）：分类页与书籍页共用。
+  /// 对齐 legado-E ExploreAdapter 的 FlexboxLayout —— 按各控件的
+  /// layout_flexBasisPercent 累加分行、每行铺满（layout_flexGrow=1）；
+  /// 统一 fillet 样式，不再「顺序对却像乱排」。
   Widget _buildControls() {
     final controls = _controlKinds;
     if (controls.isEmpty) return const SizedBox.shrink();
     return Padding(
       padding: const EdgeInsets.fromLTRB(AppSpacing.m, AppSpacing.s, AppSpacing.m, AppSpacing.xs),
-      child: Wrap(
-        spacing: 8,
-        runSpacing: 8,
-        crossAxisAlignment: WrapCrossAlignment.center,
+      child: FlexPercentLayout(
+        percents: controls.map(_flexBasisPercentOf).toList(),
         children: controls.map(_buildControl).toList(),
       ),
     );
   }
 
+  /// 解析控件的 layout_flexBasisPercent（对齐 legado FlexboxLayoutManager）。
+  /// 委托共享实现，登录页与发现页使用同一套分行规则。
+  static double _flexBasisPercentOf(ExploreKind kind) =>
+      flexBasisPercentOf(kind.style);
+
   Widget _buildControl(ExploreKind kind) {
     switch (kind.type) {
       case ExploreKind.typeText:
         final controller = _controllerFor(kind);
-        final flex = (kind.style?['layout_flexBasisPercent'] as num?)?.toDouble();
-        final field = SizedBox(
-          width: flex != null && flex > 0 && flex < 1
-              ? MediaQuery.of(context).size.width * flex
-              : 220,
-          child: TextField(
-            controller: controller,
-            style: const TextStyle(fontSize: 13),
-            decoration: InputDecoration(
-              labelText: kind.title,
-              isDense: true,
-              contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: AppSpacing.s),
-              border: const OutlineInputBorder(borderRadius: AppRadius.mAll),
-            ),
-            onChanged: (v) {
-              _infoMap[kind.title] = v;
-              final source = _currentSource;
-              if (source == null) return;
-              _engine.putExploreInfoMap(source, kind.title, v);
-              final action = kind.action;
-              if (action == null || action.trim().isEmpty) return;
-              // 对齐 legado：内容变化后 600ms 防抖触发动作
-              _textDebounce[kind.title]?.cancel();
-              _textDebounce[kind.title] = Timer(
-                  const Duration(milliseconds: 600), () => _runKindAction(kind));
-            },
+        // 宽度由外层 flexbox 网格按 layout_flexBasisPercent 统一控制，
+        // 这里只返回填满父宽度的输入框。
+        return TextField(
+          controller: controller,
+          style: const TextStyle(fontSize: 13),
+          decoration: InputDecoration(
+            labelText: kind.title,
+            isDense: true,
+            contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: AppSpacing.s),
+            border: const OutlineInputBorder(borderRadius: AppRadius.mAll),
           ),
+          onChanged: (v) {
+            _infoMap[kind.title] = v;
+            final source = _currentSource;
+            if (source == null) return;
+            _engine.putExploreInfoMap(source, kind.title, v);
+            final action = kind.action;
+            if (action == null || action.trim().isEmpty) return;
+            // 对齐 legado：内容变化后 600ms 防抖触发动作
+            _textDebounce[kind.title]?.cancel();
+            _textDebounce[kind.title] = Timer(
+                const Duration(milliseconds: 600), () => _runKindAction(kind));
+          },
         );
-        return field;
       case ExploreKind.typeButton:
         final label = _viewNames[kind.title] ?? kind.title;
-        return FilledButton.tonal(
+        return FilletButton(
+          label: label,
           onPressed: () => _runKindAction(kind),
-          child: Text(label, maxLines: 1, overflow: TextOverflow.ellipsis),
         );
       case ExploreKind.typeToggle:
         final chars = (kind.chars ?? const <String>[]);
         if (chars.isEmpty) return const SizedBox.shrink();
         final current = _infoMap[kind.title] ?? kind.defaultValue ?? chars.first;
         final label = _viewNames[kind.title] ?? kind.title;
-        return OutlinedButton(
+        return FilletButton(
+          label: '$current $label',
           onPressed: () {
             final idx = chars.indexOf(current);
             final next = chars[(idx + 1) % chars.length];
@@ -546,37 +549,34 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
             }
             _runKindAction(kind);
           },
-          child: Text('$current $label', maxLines: 1, overflow: TextOverflow.ellipsis),
         );
       case ExploreKind.typeSelect:
         final chars = kind.chars ?? const <String>[];
         if (chars.isEmpty) return const SizedBox.shrink();
         var current = _infoMap[kind.title] ?? kind.defaultValue ?? chars.first;
         if (!chars.contains(current)) current = chars.first;
-        return SizedBox(
-          width: 150,
-          child: DropdownButtonFormField<String>(
-            value: current,
+        // 宽度由外层 flexbox 网格统一控制，这里只填满父宽度。
+        return DropdownButtonFormField<String>(
+          value: current,
+          isDense: true,
+          decoration: InputDecoration(
+            labelText: kind.title,
             isDense: true,
-            decoration: InputDecoration(
-              labelText: kind.title,
-              isDense: true,
-              contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
-              border: const OutlineInputBorder(borderRadius: AppRadius.mAll),
-            ),
-            items: chars
-                .map((c) => DropdownMenuItem<String>(value: c, child: Text(c, style: const TextStyle(fontSize: 13))))
-                .toList(),
-            onChanged: (v) {
-              if (v == null) return;
-              setState(() => _infoMap[kind.title] = v);
-              final source = _currentSource;
-              if (source != null) {
-                _engine.putExploreInfoMap(source, kind.title, v);
-              }
-              _runKindAction(kind);
-            },
+            contentPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+            border: const OutlineInputBorder(borderRadius: AppRadius.mAll),
           ),
+          items: chars
+              .map((c) => DropdownMenuItem<String>(value: c, child: Text(c, style: const TextStyle(fontSize: 13))))
+              .toList(),
+          onChanged: (v) {
+            if (v == null) return;
+            setState(() => _infoMap[kind.title] = v);
+            final source = _currentSource;
+            if (source != null) {
+              _engine.putExploreInfoMap(source, kind.title, v);
+            }
+            _runKindAction(kind);
+          },
         );
       default:
         return const SizedBox.shrink();

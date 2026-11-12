@@ -121,6 +121,8 @@ class WebViewLegadoJs implements LegadoJs {
         await c.evaluateJavascript(source: lib);
       } catch (e) {
         debugPrint('jsLib 求值失败: $e');
+        SourceNetworkLog.instance
+            .addScriptError('jsLib 加载失败: $e');
       }
     }
     final login = (src.loginUrl ?? '').trim();
@@ -129,6 +131,8 @@ class WebViewLegadoJs implements LegadoJs {
         await c.evaluateJavascript(source: login);
       } catch (e) {
         debugPrint('loginUrl 初始化失败: $e');
+        SourceNetworkLog.instance
+            .addScriptError('loginUrl（登录脚本）加载失败: $e');
       }
     }
     _loadedSourceUrl = src.jsUrl;
@@ -317,6 +321,7 @@ class WebViewLegadoJs implements LegadoJs {
       if (ck != null && ck.isNotEmpty) headers['Cookie'] = ck;
     }
 
+    final sw = Stopwatch()..start();
     try {
       final resp = await _dio.request<List<int>>(
         url,
@@ -326,6 +331,18 @@ class WebViewLegadoJs implements LegadoJs {
           headers: headers,
           responseType: ResponseType.bytes,
         ),
+      );
+      final status = resp.statusCode ?? 200;
+      // 书源 JS 的 java.ajax 走这条拦截通道，不经 BookSourceEngine._fetch。
+      // 记入全局网络日志，调试页/登录页才能看到真实的请求与响应。
+      SourceNetworkLog.instance.record(
+        url: url,
+        method: method,
+        origin: 'js-ajax',
+        statusCode: status,
+        durationMs: sw.elapsedMilliseconds,
+        body: resp.data,
+        error: status >= 400 ? 'HTTP $status' : null,
       );
       final setCookies = resp.headers.map['set-cookie'] ?? const <String>[];
       CookieManager().saveFromResponse(url, setCookies);
@@ -345,21 +362,35 @@ class WebViewLegadoJs implements LegadoJs {
       }
       outHeaders['Content-Type'] = contentType;
       return iw.WebResourceResponse(
-        statusCode: resp.statusCode ?? 200,
-        reasonPhrase: _reason(resp.statusCode ?? 200),
+        statusCode: status,
+        reasonPhrase: _reason(status),
         contentType: contentType,
         contentEncoding: 'utf-8',
         data: Uint8List.fromList(resp.data ?? const <int>[]),
         headers: outHeaders,
       );
     } catch (e) {
+      // 客户端侧的 DNS / 连接 / 超时失败此前一律伪装成 502，用户无从判断
+      // 是服务器挂了还是本机网络问题。保留 502 兼容书源逻辑，但把原始错误
+      // 写进日志与响应头，并在响应体给出可操作说明。
+      final reason = '请求失败: $e';
+      SourceNetworkLog.instance.record(
+        url: url,
+        method: method,
+        origin: 'js-ajax',
+        statusCode: 502,
+        durationMs: sw.elapsedMilliseconds,
+        error: reason,
+      );
+      final outHeaders = _corsHeaders();
+      outHeaders['X-Legado-Error'] = Uri.encodeComponent(reason);
       return iw.WebResourceResponse(
         statusCode: 502,
         reasonPhrase: 'Bad Gateway',
         contentType: 'text/plain; charset=utf-8',
         contentEncoding: 'utf-8',
-        data: Uint8List.fromList(utf8.encode('请求失败: $e')),
-        headers: _corsHeaders(),
+        data: Uint8List.fromList(utf8.encode(reason)),
+        headers: outHeaders,
       );
     }
   }
@@ -382,6 +413,13 @@ class WebViewLegadoJs implements LegadoJs {
           final dir = await ArchiveNative.extractAll(bytes, kind);
           if (dir == null) return _textResponse('$kind 解压失败（原生通道不可用）', 502);
           return _textResponse(dir, 200);
+        }
+        // op=bytes：对齐 E get7z/getRarByteArrayContent，返回原始字节的 base64，
+        // 由 JS 侧 __b64ToBytes 还原为 Uint8Array，避免 utf8 解码破坏二进制。
+        if (op == 'bytes') {
+          final raw = await ArchiveNative.extractEntryBytes(bytes, kind, path);
+          if (raw == null) return _textResponse('$kind 内未找到文件: $path', 404);
+          return _textResponse(base64Encode(raw), 200);
         }
         final content = await ArchiveNative.extractEntry(bytes, kind, path);
         if (content == null) return _textResponse('$kind 内未找到文件: $path', 404);
@@ -409,6 +447,11 @@ class WebViewLegadoJs implements LegadoJs {
           continue;
         }
         final data = f.content;
+        // op=bytes：对齐 E getZipByteArrayContent，返回条目的原始字节 base64。
+        if (op == 'bytes') {
+          final raw = data is String ? utf8.encode(data) : List<int>.from(data as List<int>);
+          return _textResponse(base64Encode(raw), 200);
+        }
         final String content;
         if (data is String) {
           content = data;
@@ -731,8 +774,22 @@ class WebViewLegadoJs implements LegadoJs {
     }
   }
 
+  /// 路径安全解析（对齐 E `JsExtensions.getFile` 的 canonicalPath 白名单）。
+  /// 书源可通过 path 传入 `../` 试图越界读取应用私有数据，这里做归一化后
+  /// 强制落在 legado_files 目录内，越界返回 null。
+  File? _safeFile(Directory base, String path) {
+    if (path.isEmpty) return null;
+    final root = p.normalize(p.absolute(base.path));
+    final target = p.normalize(p.absolute('${base.path}/$path'));
+    if (target != root && !target.startsWith('$root${Platform.pathSeparator}')) {
+      return null;
+    }
+    return File(target);
+  }
+
   /// legado://file 协议：本地文件读写（java.readTxtFile/importScript/cacheFile/deleteFile/
-  /// downloadFile/getTxtInFolder）。路径限定在应用文档目录 legado_files 内。
+  /// downloadFile/getTxtInFolder/readFile/getFile）。路径限定在应用文档目录
+  /// legado_files 内，越界访问被 [_safeFile] 拒绝。
   Future<iw.WebResourceResponse> _handleFile(iw.WebUri uri) async {
     try {
       final op = uri.queryParameters['op'] ?? '';
@@ -741,14 +798,32 @@ class WebViewLegadoJs implements LegadoJs {
       final dir = await getApplicationDocumentsDirectory();
       final base = Directory('${dir.path}/legado_files');
       if (!base.existsSync()) base.createSync(recursive: true);
+      // 字节读 / 文件信息：对齐 E JsExtensions.readFile / getFile。
+      // 返回 base64（字节）或 JSON（元信息），JS 侧还原成 Uint8Array / File 对象。
+      if (op == 'readbytes' || op == 'stat') {
+        final f = _safeFile(base, path);
+        if (f == null) return _textResponse('非法路径', 400);
+        if (op == 'readbytes') {
+          if (!f.existsSync()) return _textResponse('', 200);
+          return _textResponse(base64Encode(f.readAsBytesSync()), 200);
+        }
+        final exists = f.existsSync();
+        return _textResponse(jsonEncode({
+          'path': path,
+          'name': p.basename(path),
+          'absolutePath': f.path,
+          'exists': exists,
+          'length': exists ? f.lengthSync() : 0,
+        }), 200);
+      }
       if (op == 'read') {
-        final f = File('${base.path}/$path');
-        if (!f.existsSync()) return _textResponse('', 200);
+        final f = _safeFile(base, path);
+        if (f == null || !f.existsSync()) return _textResponse('', 200);
         return _textResponse(f.readAsStringSync(), 200);
       }
       if (op == 'delete') {
-        final f = File('${base.path}/$path');
-        if (f.existsSync()) f.deleteSync();
+        final f = _safeFile(base, path);
+        if (f != null && f.existsSync()) f.deleteSync();
         return _textResponse('true', 200);
       }
       if (op == 'cache') {
@@ -977,7 +1052,11 @@ class WebViewLegadoJs implements LegadoJs {
         data: Uint8List.fromList(utf8.encode(msg)),
       );
 
-  Map<String, String> _corsHeaders() => const {
+  // 每次返回「新的可变 map」：调用方会在其上追加 Content-Type /
+  // X-Set-Cookie / X-Legado-Error 等响应头。此处若用 const，赋值会抛
+  // Unsupported operation: Cannot modify unmodifiable map，导致 java.ajax
+  // 请求被伪装成 502「请求失败」，书源的 checkNet() 等按钮随之失效。
+  Map<String, String> _corsHeaders() => <String, String>{
         'Access-Control-Allow-Origin': '*',
         'Access-Control-Allow-Credentials': 'true',
         'Access-Control-Allow-Headers': '*',
@@ -1018,8 +1097,6 @@ class WebViewLegadoJs implements LegadoJs {
     if (req.isUrlRule) {
       script = _urlPlaceholders(script, req.key ?? '', req.page ?? 1);
     }
-    final hasReturn = RegExp(r'(^|[\s;{}])return\s').hasMatch(script);
-
     final args = <String, dynamic>{
       'resultArg': req.result,
       'keyArg': req.key,
@@ -1090,18 +1167,29 @@ class WebViewLegadoJs implements LegadoJs {
       __state.kv = kvArg || {};
       __state.deviceId = deviceIdArg;
       var __ret, __err = null;
+      // 优先用 eval：它会返回脚本「最后一个表达式的值」，正是
+      // 书源末尾裸表达式（如 `data;`）产出结果的标准语义。
+      // 只有当脚本含「顶层 return」时，eval 会在解析期抛 SyntaxError
+      // （此时尚未执行任何副作用），才回退为「脚本当函数体」执行。
+      // 注意：不能用正则 return 预判——嵌套函数里的 return 会被误判，
+      // 导致末尾裸表达式脚本的返回值丢失（正文加载不出的根因）。
       try {
-        if ($hasReturn) {
-          __ret = await (async function() {
-            ${hasReturn ? script : ''}
-          }).call(globalThis);
-        } else {
-          __ret = await (async function() {
-            return eval(scriptArg);
-          }).call(globalThis);
-        }
+        __ret = await (async function() {
+          return eval(scriptArg);
+        }).call(globalThis);
       } catch (e) {
         __err = e;
+        var __msg = String(e && e.message || e);
+        if (/illegal return|return statement outside|return not in function|unexpected token.*return/i.test(__msg)) {
+          __err = null;
+          try {
+            __ret = await (async function() {
+              $script
+            }).call(globalThis);
+          } catch (e2) {
+            __err = e2;
+          }
+        }
       }
       if (__ret === undefined) { try { __ret = globalThis.result; } catch (e1) { __ret = null; } }
       return __envelope(__ret, __err);

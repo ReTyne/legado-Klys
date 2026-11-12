@@ -34,10 +34,13 @@ class ArchiveNative {
     }
   }
 
-  /// 读取压缩包内 [entryPath] 对应文件的文本内容；不存在或平台不支持返回 null。
+  /// 读取压缩包内 [entryPath] 对应文件的**原始字节**；不存在或平台不支持返回 null。
   ///
+  /// 对齐 legado-E `JsExtensions.get7zByteArrayContent` /
+  /// `getRarByteArrayContent`（返回 ByteArray），书源可据此做二进制处理
+  /// （如字体、图片、加密数据），不再被 utf8 解码破坏字节。
   /// [kind] 为 `7z` 或 `rar`。
-  static Future<String?> extractEntry(
+  static Future<Uint8List?> extractEntryBytes(
       Uint8List data, String kind, String entryPath) async {
     if (entryPath.isEmpty) return null;
     try {
@@ -47,10 +50,21 @@ class ArchiveNative {
         'entry': entryPath,
       });
       if (b64 == null || b64.isEmpty) return null;
-      return utf8.decode(base64Decode(b64), allowMalformed: true);
+      return Uint8List.fromList(base64Decode(b64));
     } catch (_) {
       return null;
     }
+  }
+
+  /// 读取压缩包内 [entryPath] 对应文件的文本内容；不存在或平台不支持返回 null。
+  ///
+  /// [kind] 为 `7z` 或 `rar`。文本版本只做一层 utf8 解码，其余语义与
+  /// [extractEntryBytes] 一致（供 java.get7zStringContent/getRarStringContent 使用）。
+  static Future<String?> extractEntry(
+      Uint8List data, String kind, String entryPath) async {
+    final bytes = await extractEntryBytes(data, kind, entryPath);
+    if (bytes == null) return null;
+    return utf8.decode(bytes, allowMalformed: true);
   }
 
   /// 整包解压，返回相对目录名（相对 legado_files）；失败/不支持返回 null。

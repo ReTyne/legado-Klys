@@ -188,10 +188,12 @@ void main() {
       expect(s, contains('showAppConfirmDialog'), reason: '空结果建议弹窗');
     });
 
-    test('保留既有 GridView 大封面契约（不回退其它批次测试）', () {
+    test('搜索页结果为 E 版单列横向列表（对照 E SearchActivity，非网格）', () {
       final s = src('lib/ui/book/search/search_screen.dart');
-      expect(s, contains('GridView.builder'));
-      expect(s, contains('crossAxisCount: 3'));
+      expect(s, contains('ListView.separated'));
+      expect(s.contains('GridView.builder'), isFalse,
+          reason: '对照 E 版搜索页应为单列列表，不再是 3 列网格');
+      expect(s, contains('const coverW = 80.0'));
       expect(s.contains('width: 50,'), isFalse);
     });
 

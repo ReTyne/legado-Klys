@@ -25,6 +25,7 @@ import 'package:legado_md3/ui/book/search/search_screen.dart';
 import 'package:legado_md3/ui/book/source/source_login_screen.dart';
 import 'package:legado_md3/ui/book/source/verification_code_screen.dart';
 import 'package:legado_md3/ui/browser/browser_screen.dart';
+import 'package:legado_md3/help/source/source_network_log.dart';
 import 'legado_bridge_js.dart';
 import 'aes_js_lib.dart';
 import 'headless_webview.dart';

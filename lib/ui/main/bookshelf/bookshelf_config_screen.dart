@@ -20,7 +20,8 @@ class _BookshelfConfigScreenState extends State<BookshelfConfigScreen> {
   int _sortType = 0; // 0: 最近阅读 1: 书名 2: 作者 3: 添加时间 4: 手动
   bool _sortAscending = false;
   // 布局: 0详细列表 1紧凑列表 2三列网格 3四列紧凑网格 4大封面
-  int _layout = 0;
+  // 默认「网格」，与 BookProvider.defaultBookshelfLayout 一致（对齐 E 版书架）
+  int _layout = BookProvider.defaultBookshelfLayout;
   int _columnCount = 3;
   double _coverWidth = 100;
   bool _compactTitle = false;
@@ -63,13 +64,15 @@ class _BookshelfConfigScreenState extends State<BookshelfConfigScreen> {
       _hideEmptyGroups = prefs.getBool('bs_hideEmptyGroups') ?? false;
       _sortType = prefs.getInt('bs_sortType') ?? 0;
       _sortAscending = prefs.getBool('bs_sortAscending') ?? false;
-      // 新布局字段优先；兼容旧的 layoutMode/gridStyle
+      // 新布局字段优先；兼容旧的 layoutMode/gridStyle；无任何偏好时默认网格
       final savedLayout = prefs.getInt('bs_layout');
       if (savedLayout != null) {
         _layout = savedLayout;
-      } else {
+      } else if (prefs.containsKey('bs_layoutMode')) {
         final mode = prefs.getInt('bs_layoutMode') ?? 0;
         _layout = mode == 1 ? ((prefs.getInt('bs_gridStyle') ?? 0) == 1 ? 3 : 2) : 0;
+      } else {
+        _layout = BookProvider.defaultBookshelfLayout;
       }
       _columnCount = prefs.getInt('bs_columnCount') ?? 3;
       _coverWidth = prefs.getDouble('bs_coverWidth') ?? 100;

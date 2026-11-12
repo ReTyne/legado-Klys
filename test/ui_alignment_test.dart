@@ -3,7 +3,7 @@
 // 与旧版区别：旧版用「逐项 find.text ... findsOneWidget」的假顺序断言，
 // 只验存在不验顺序、且锁定 K 版旧文案。本版：
 //   - overflow 项用稳定 Key('e_menu::<id>') + getTopLeft().dy 升序做真正严格顺序断言；
-//   - 我的页断言 pref_main 14 项分组树 + 「更多功能」折叠次级隔离（独有项不占主落点、展开后可触达）；
+//   - 我的页断言 pref_main 14 项分组树 + 独有项按语义平铺归位（E 主落点顺序不变、功能不删、直接可触达）；
 //   - 断言容器是锚定 AppBar 右上的 overflow（而非底部 sheet）。
 // 所有 expected 均由 lib/constant/e_placement.dart 单一真源驱动，避免文案漂移。
 
@@ -134,8 +134,14 @@ void main() {
       expect(find.text(layout), findsOneWidget, reason: '缺少布局：$layout');
     }
     for (final sort in const ['最近阅读', '更新时间', '书名', '手动', '综合', '作者']) {
-      expect(find.text(sort), findsOneWidget, reason: '缺少排序：$sort');
+      // 默认布局为网格后，「书名显示」分区标题也叫「书名」（E 版 book_name_choice
+      // 仅网格可见），会与排序项「书名」重名，故用 findsWidgets。
+      expect(find.text(sort), sort == '书名' ? findsWidgets : findsOneWidget,
+          reason: '缺少排序：$sort');
     }
+    // 默认网格生效：书名显示方式（显示/隐藏/叠加）分区应可见
+    expect(find.text('叠加'), findsWidgets,
+        reason: '默认网格布局下书名显示分区应可见（对齐 E book_name_choice）');
   });
 
   testWidgets('书架管理页可构建、多选与批量操作栏', (tester) async {
@@ -159,7 +165,7 @@ void main() {
     expect(find.text('已选 2 本'), findsOneWidget);
   });
 
-  testWidgets('我的页严格对齐 pref_main 14 项分组树 + 折叠次级隔离',
+  testWidgets('我的页严格对齐 pref_main 14 项分组树 + 独有项语义平铺归位',
       (tester) async {
     await tester.pumpWidget(_wrapProfile(const ProfileScreen()));
     await tester.pump();
@@ -183,19 +189,19 @@ void main() {
       expect(f, findsWidgets, reason: '缺少 pref_main 结构项：$f');
     }
 
-    // K 独有项默认折叠 → 不占 E 主落点（ListView 未展开时不可见）
-    for (final k in const ['AI 助手', '阅读统计', '智能体工具', '首页模块', '定时任务']) {
-      expect(find.text(k), findsNothing,
-          reason: 'K 独有项 $k 不应出现在 E 主落点（应在折叠次级分区）');
-    }
-
-    // 展开「更多功能」后，独有项仍可触达（防止「删功能假装对齐」）
-    await _scrollUntilVisible(
-        tester, find.byKey(const Key('profile::more_features')), 30);
-    await tester.tap(find.byKey(const Key('profile::more_features')));
-    await tester.pumpAndSettle();
-    for (final k in const ['AI 助手', '阅读统计', '智能体工具', '首页模块', '定时任务']) {
-      expect(find.text(k), findsOneWidget, reason: '次级分区应保留可触达功能：$k');
+    // K 独有项已按「相似度」聚合归位到 E 主落点之后的 4 张分区卡片中
+    // （不再藏在单个默认折叠的「更多功能」里，也不把同类功能拆散到不同组）。
+    // 按页面真实自上而下顺序单调遍历验证，避免 ListView 懒构建卸载上方项
+    // 后回查不到（沿用上面的滚动策略）。每项既是「分区存在」也是「功能
+    // 不删、直接可触达」的断言。
+    for (final k in const [
+      '设置与外观', '全部设置（汇总全部分项）', '欢迎页设置', '桌面图标',
+      '阅读与内容', '阅读统计', '首页模块', '定时任务', '下载管理',
+      '视听与 AI', '朗读引擎', '视频设置', 'AI 助手', '智能体工具',
+      '关于与项目', 'GitHub项目', '分享应用', '评分',
+    ]) {
+      await _scrollUntilVisible(tester, find.text(k), 40);
+      expect(find.text(k), findsWidgets, reason: '归位后应可直接触达：$k');
     }
 
     // 三个基准都没有的入口不应出现

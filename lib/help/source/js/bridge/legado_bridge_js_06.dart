@@ -535,7 +535,15 @@ const String legadoBridgeJsPart06 = r'''    var b = bytes.slice();
     if (sc) __ingestSetCookie(cookieUrl || url, sc);
     if (__state.hosts.indexOf(__hostOf(url)) < 0) __state.hosts.push(__hostOf(url));
     if (x.status === 0) throw new Error("网络请求失败: " + url);
-    if (x.status >= 400) throw new Error("HTTP " + x.status + " " + url);
+    if (x.status >= 400) {
+      // 把响应体里的真实原因带进异常，避免登录/调试只看到一句
+      // "HTTP 502 <url>" 而无法区分「服务端真挂了」与「本地 DNS/超时」。
+      var detail = "";
+      try { detail = x.responseText || ""; } catch (e) {}
+      if (detail.length > 300) detail = detail.substring(0, 300);
+      throw new Error("HTTP " + x.status + " " + url +
+        (detail ? " :: " + detail : ""));
+    }
     if (respType === "arraybuffer") return x.response;
     return x.responseText;
   }
@@ -557,6 +565,48 @@ const String legadoBridgeJsPart06 = r'''    var b = bytes.slice();
       raw: function () { return b; },
       isSuccessful: function () { return (code || 200) < 400; },
       toString: function () { return b; }
+    };
+  }
+
+  // ---- 压缩包字节读取 / 本地 File 对象（对齐 E JsExtensions ----
+  // getZip/get7z/getRarByteArrayContent、getFile、readFile）----
+  // 返回 Uint8Array / File-like 对象，供书源做二进制处理与文件判断；
+  // 原生协议统一以 base64 传递字节，此处还原，避免 utf8 解码破坏二进制。
+  function __archiveBytes(url, entry, kind) {
+    try {
+      var b64 = __doXhr("legado://zip?kind=" + encodeURIComponent(kind) +
+          "&op=bytes&url=" + encodeURIComponent(String(url == null ? "" : url)) +
+          "&path=" + encodeURIComponent(String(entry == null ? "" : entry)),
+          { method: "GET" });
+      return b64 ? __b64ToBytes(b64) : null;
+    } catch (e) { return null; }
+  }
+
+  function __makeFile(path) {
+    var p = String(path == null ? "" : path);
+    var info = {};
+    try {
+      var raw = __doXhr("legado://file?op=stat&path=" + encodeURIComponent(p), { method: "GET" });
+      if (raw) info = JSON.parse(raw);
+    } catch (e) {}
+    return {
+      path: p,
+      name: info.name || p.split("/").pop(),
+      exists: function () { return !!info.exists; },
+      length: function () { return info.length || 0; },
+      getAbsolutePath: function () { return info.absolutePath || p; },
+      getName: function () { return info.name || p.split("/").pop(); },
+      toString: function () { return info.absolutePath || p; },
+      readBytes: function () {
+        try {
+          var b64 = __doXhr("legado://file?op=readbytes&path=" + encodeURIComponent(p), { method: "GET" });
+          return b64 ? __b64ToBytes(b64) : null;
+        } catch (e) { return null; }
+      },
+      readText: function () {
+        try { return __doXhr("legado://file?op=read&path=" + encodeURIComponent(p), { method: "GET" }); }
+        catch (e) { return ""; }
+      }
     };
   }
 

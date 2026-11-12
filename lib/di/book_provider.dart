@@ -7,12 +7,17 @@ import 'package:legado_md3/data/model/read_config.dart';
 import '../data/local/app_database.dart';
 
 class BookProvider extends ChangeNotifier {
+  /// 书架默认布局。对齐 legado 原版书架（封面九宫格）：全新安装默认「网格」，
+  /// 而非细长条列表。值语义同 [bookshelfLayout]：0 详细列表 / 1 紧凑列表 /
+  /// 2 三列网格 / 3 紧凑网格 / 4 大封面。
+  static const int defaultBookshelfLayout = 2;
+
   final DatabaseService _db = DatabaseService();
   List<Book> _books = [];
   List<BookGroup> _groupMeta = [];
   bool _isLoading = false;
   // 0:详细列表 1:紧凑列表 2:三列网格 3:四列紧凑网格 4:大封面
-  int _bookshelfLayout = 0;
+  int _bookshelfLayout = defaultBookshelfLayout;
   String _currentGroup = '全部';
 
   List<Book> get books => _books;
@@ -126,7 +131,9 @@ class BookProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// 读取本地持久化的视图偏好（布局、当前分组）
+  /// 读取本地持久化的视图偏好（布局、当前分组）。
+  /// 用户从未保存过布局时（全新安装）默认「网格」，对齐 legado 原版书架；
+  /// 只要显式保存过 [bs_layout] / 旧版 [bs_layoutMode]，就尊重用户选择。
   Future<void> loadViewPrefs() async {
     final prefs = await SharedPreferences.getInstance();
     var layout = prefs.getInt('bs_layout');
@@ -138,9 +145,14 @@ class BookProvider extends ChangeNotifier {
   }
 
   int _migrateLayout(SharedPreferences prefs) {
-    final mode = prefs.getInt('bs_layoutMode') ?? 0;
-    if (mode == 1) return (prefs.getInt('bs_gridStyle') ?? 0) == 1 ? 3 : 2;
-    return 0;
+    // 旧版偏好存在：按旧语义迁移（0 列表 / 1 网格 -> 紧凑或三列）
+    if (prefs.containsKey('bs_layoutMode')) {
+      final mode = prefs.getInt('bs_layoutMode') ?? 0;
+      if (mode == 1) return (prefs.getInt('bs_gridStyle') ?? 0) == 1 ? 3 : 2;
+      return 0;
+    }
+    // 无任何历史偏好：默认网格
+    return defaultBookshelfLayout;
   }
 
   Future<void> addBook(Book book) async {

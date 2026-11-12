@@ -36,6 +36,42 @@ List<Book> _seedBooks() => [
 void main() {
   setUp(() => SharedPreferences.setMockInitialValues({}));
 
+  group('书架默认布局（对齐 E 版封面九宫格）', () {
+    test('全新安装（无任何偏好）默认网格布局', () async {
+      SharedPreferences.setMockInitialValues({});
+      final p = BookProvider();
+      expect(p.bookshelfLayout, BookProvider.defaultBookshelfLayout);
+      expect(BookProvider.defaultBookshelfLayout, 2);
+      await p.loadViewPrefs();
+      expect(p.bookshelfLayout, 2, reason: '全新安装默认应为网格');
+    });
+
+    test('显式保存过的布局仍被尊重（列表/大封面）', () async {
+      SharedPreferences.setMockInitialValues({'bs_layout': 0});
+      final p1 = BookProvider();
+      await p1.loadViewPrefs();
+      expect(p1.bookshelfLayout, 0, reason: '用户显式选列表不应被默认覆盖');
+
+      SharedPreferences.setMockInitialValues({'bs_layout': 4});
+      final p2 = BookProvider();
+      await p2.loadViewPrefs();
+      expect(p2.bookshelfLayout, 4, reason: '用户显式选大封面不应被默认覆盖');
+    });
+
+    test('旧版偏好按旧语义迁移（不误改成默认网格）', () async {
+      SharedPreferences.setMockInitialValues({'bs_layoutMode': 0});
+      final p1 = BookProvider();
+      await p1.loadViewPrefs();
+      expect(p1.bookshelfLayout, 0, reason: '旧版显式列表应迁移为列表');
+
+      SharedPreferences.setMockInitialValues(
+          {'bs_layoutMode': 1, 'bs_gridStyle': 0});
+      final p2 = BookProvider();
+      await p2.loadViewPrefs();
+      expect(p2.bookshelfLayout, 2, reason: '旧版网格应迁移为三列网格');
+    });
+  });
+
   testWidgets('书架空态可正常构建（无 DB 不崩溃）', (tester) async {
     await tester.pumpWidget(_wrap(const BookshelfScreen()));
     await tester.pump();
@@ -62,7 +98,8 @@ void main() {
   });
 
   testWidgets('列表布局渲染书籍与未读角标', (tester) async {
-    SharedPreferences.setMockInitialValues({'bs_showUnread': true});
+    // 显式固定为列表布局（本测试验证列表项的最新章/角标渲染，不受全局默认影响）
+    SharedPreferences.setMockInitialValues({'bs_layout': 0, 'bs_showUnread': true});
     final p = BookProvider()..debugSeed(_seedBooks());
     await tester.pumpWidget(_withProvider(p, const BookshelfScreen()));
     await tester.pump();

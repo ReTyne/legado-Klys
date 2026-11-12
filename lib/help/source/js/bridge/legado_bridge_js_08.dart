@@ -371,6 +371,28 @@ const String legadoBridgeJsPart08 = r'''    androidId: function () { return __st
         return __doXhr("legado://zip?kind=rar&url=" + encodeURIComponent(url) + "&path=" + encodeURIComponent(path || ""), { method: "GET" });
       } catch (e) { return ""; }
     },
+
+    // ---- 字节版压缩包读取（对齐 E JsExtensions.get*ByteArrayContent）----
+    // E 返回 ByteArray；WebView 里等价为 Uint8Array，供书源处理字体/图片/加密数据。
+    getZipByteArrayContent: function (url, path) { return __archiveBytes(url, path, "zip"); },
+    get7zByteArrayContent: function (url, path) { return __archiveBytes(url, path, "7z"); },
+    getRarByteArrayContent: function (url, path) { return __archiveBytes(url, path, "rar"); },
+
+    // ---- 本地文件（对齐 E JsExtensions.getFile / readFile）----
+    // E 返回 java.io.File；这里返回带 exists/length/readBytes/readText/
+    // getAbsolutePath 的 File-like 对象，覆盖书源对 File 的常用调用。
+    getFile: function (path) { return __makeFile(path); },
+    readFile: function (path) {
+      try {
+        var b64 = __doXhr("legado://file?op=readbytes&path=" +
+            encodeURIComponent(String(path == null ? "" : path)), { method: "GET" });
+        return b64 ? __b64ToBytes(b64) : null;
+      } catch (e) { return null; }
+    },
+
+    // E 已标记 @Deprecated 但老书源仍在调用，行为与 E 一致：直接委托 queryTTF。
+    queryBase64TTF: function (data, useCache) { return this.queryTTF(data, useCache); },
+
     unzipFile: function (zipPath) {
       try {
         // 整包解压到 legado_files/unzip/<md5(名)>，返回相对目录（对齐 E：后续配 getTxtInFolder 使用）

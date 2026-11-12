@@ -121,55 +121,74 @@ class _ProfileScreenState extends State<ProfileScreen> {
         ],
       ),
       body: ListView(
+        padding: const EdgeInsets.only(bottom: AppSpacing.xxl),
         children: [
-          // ── 顶层 6 项（EPlacement.myTop，无分区标题）──
-          _eTile(EPlacement.myTop[0], Icons.menu_book_outlined, '管理网络书源',
-              () => Navigator.push(context, MaterialPageRoute(builder: (_) => const SourceManageScreen()))),
-          _eTile(EPlacement.myTop[1], Icons.list_alt_outlined, '本地TXT目录识别',
-              () => Navigator.push(context, MaterialPageRoute(builder: (_) => const TxtTocRuleScreen()))),
-          _eTile(EPlacement.myTop[2], Icons.find_replace_outlined, '正文内容替换规则',
-              () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ReplaceRuleScreen()))),
-          _eTile(EPlacement.myTop[3], Icons.translate_outlined, '文字替换字典',
-              () => Navigator.push(context, MaterialPageRoute(builder: (_) => const DictRuleScreen()))),
-          _buildThemeModeTile(context, EPlacement.myTop[4]),
-          SwitchListTile(
-            key: Key(EPlacement.myTop[5].key),
-            secondary: const Icon(Icons.web_outlined),
-            title: Text(EPlacement.myTop[5].zh),
-            subtitle: Text(_webServiceRunning ? '端口: ${_webService.port} (浏览器访问设备IP)' : '通过浏览器管理书架'),
-            value: _webServiceRunning,
-            onChanged: _toggleWebService,
+          _buildHeader(cs),
+
+          // ── 顶层 6 项（EPlacement.myTop，顺序与 Key 完全不变）──
+          _sectionCard(
+            icon: Icons.library_books_outlined,
+            title: '书源与配置',
+            children: [
+              _eTile(EPlacement.myTop[0], Icons.menu_book_outlined, '管理网络书源',
+                  () => Navigator.push(context, MaterialPageRoute(builder: (_) => const SourceManageScreen()))),
+              _eTile(EPlacement.myTop[1], Icons.list_alt_outlined, '本地TXT目录识别',
+                  () => Navigator.push(context, MaterialPageRoute(builder: (_) => const TxtTocRuleScreen()))),
+              _eTile(EPlacement.myTop[2], Icons.find_replace_outlined, '正文内容替换规则',
+                  () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ReplaceRuleScreen()))),
+              _eTile(EPlacement.myTop[3], Icons.translate_outlined, '文字替换字典',
+                  () => Navigator.push(context, MaterialPageRoute(builder: (_) => const DictRuleScreen()))),
+              _buildThemeModeTile(context, EPlacement.myTop[4]),
+              SwitchListTile(
+                key: Key(EPlacement.myTop[5].key),
+                secondary: _iconBadge(Icons.web_outlined),
+                title: Text(EPlacement.myTop[5].zh),
+                subtitle: Text(_webServiceRunning ? '端口: ${_webService.port} (浏览器访问设备IP)' : '通过浏览器管理书架'),
+                value: _webServiceRunning,
+                onChanged: _toggleWebService,
+              ),
+              if (_webServiceRunning)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(AppSpacing.l, 0, AppSpacing.l, AppSpacing.m),
+                  child: Text('在浏览器中打开上述地址即可管理书架、书源、RSS等', style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
+                ),
+            ],
           ),
-          if (_webServiceRunning)
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: AppSpacing.l),
-              child: Text('在浏览器中打开上述地址即可管理书架、书源、RSS等', style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
-            ),
 
-          // ── 分区「设置」（EPlacement.mySettingCategory）──
-          _buildSectionHeader(EPlacement.myCategoryTitles[0]),
-          _eTile(EPlacement.mySettingCategory[0], Icons.backup_outlined, 'WebDAV云同步与本地备份',
-              () => Navigator.push(context, MaterialPageRoute(builder: (_) => const BackupScreen()))),
-          _eTile(EPlacement.mySettingCategory[1], Icons.palette_outlined, '自定义主题',
-              () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ThemeManageScreen()))),
-          _eTile(EPlacement.mySettingCategory[2], Icons.settings_outlined, '应用设置',
-              () => Navigator.push(context, MaterialPageRoute(builder: (_) => const OtherConfigScreen()))),
+          // ── 分区「设置」（EPlacement.mySettingCategory，标题文本不变）──
+          _sectionCard(
+            icon: Icons.settings_outlined,
+            title: EPlacement.myCategoryTitles[0],
+            children: [
+              _eTile(EPlacement.mySettingCategory[0], Icons.backup_outlined, 'WebDAV云同步与本地备份',
+                  () => Navigator.push(context, MaterialPageRoute(builder: (_) => const BackupScreen()))),
+              _eTile(EPlacement.mySettingCategory[1], Icons.palette_outlined, '自定义主题',
+                  () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ThemeManageScreen()))),
+              _eTile(EPlacement.mySettingCategory[2], Icons.settings_outlined, '应用设置',
+                  () => Navigator.push(context, MaterialPageRoute(builder: (_) => const OtherConfigScreen()))),
+            ],
+          ),
 
-          // ── 分区「其它」（EPlacement.myOtherCategory）──
-          _buildSectionHeader(EPlacement.myCategoryTitles[1]),
-          _eTile(EPlacement.myOtherCategory[0], Icons.bookmark_border, '所有书签',
-              () => Navigator.push(context, MaterialPageRoute(builder: (_) => const BookmarkScreen()))),
-          _eTile(EPlacement.myOtherCategory[1], Icons.history_outlined, '每本书的阅读明细',
-              () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ReadRecordScreen()))),
-          _eTile(EPlacement.myOtherCategory[2], Icons.folder_outlined, '本地文件',
-              () => Navigator.push(context, MaterialPageRoute(builder: (_) => const FileManageScreen()))),
-          _eTile(EPlacement.myOtherCategory[3], Icons.info_outline, '应用信息',
-              () => Navigator.push(context, MaterialPageRoute(builder: (_) => const AboutScreen()))),
-          _eTile(EPlacement.myOtherCategory[4], Icons.exit_to_app_outlined, '退出应用',
-              () => SystemNavigator.pop()),
+          // ── 分区「其它」（EPlacement.myOtherCategory，标题文本不变）──
+          _sectionCard(
+            icon: Icons.widgets_outlined,
+            title: EPlacement.myCategoryTitles[1],
+            children: [
+              _eTile(EPlacement.myOtherCategory[0], Icons.bookmark_border, '所有书签',
+                  () => Navigator.push(context, MaterialPageRoute(builder: (_) => const BookmarkScreen()))),
+              _eTile(EPlacement.myOtherCategory[1], Icons.history_outlined, '每本书的阅读明细',
+                  () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ReadRecordScreen()))),
+              _eTile(EPlacement.myOtherCategory[2], Icons.folder_outlined, '本地文件',
+                  () => Navigator.push(context, MaterialPageRoute(builder: (_) => const FileManageScreen()))),
+              _eTile(EPlacement.myOtherCategory[3], Icons.info_outline, '应用信息',
+                  () => Navigator.push(context, MaterialPageRoute(builder: (_) => const AboutScreen()))),
+              _eTile(EPlacement.myOtherCategory[4], Icons.exit_to_app_outlined, '退出应用',
+                  () => SystemNavigator.pop()),
+            ],
+          ),
 
-          // ── K 版独有功能：默认折叠的次级分区（E 主落点优先，功能不删）──
-          _buildMoreFeatures(context),
+          // ── 增强功能：按语义归位为平铺分区（不再全部塞进一个折叠「更多功能」）──
+          ..._buildFeatureSections(),
 
           const SizedBox(height: AppSpacing.xl),
           Center(
@@ -195,10 +214,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
     const labels = ['跟随系统', '浅色', '深色'];
     return ListTile(
       key: Key(e.key),
-      leading: const Icon(Icons.brightness_6_outlined),
+      leading: _iconBadge(Icons.brightness_6_outlined),
       title: Text(e.zh),
       subtitle: Text(labels[appTheme.themeMode.index.clamp(0, 2)], style: const TextStyle(fontSize: 12)),
-      trailing: const Icon(Icons.chevron_right),
+      trailing: const Icon(Icons.chevron_right, size: 20),
       onTap: () => _showThemeModeDialog(context, appTheme),
     );
   }
@@ -239,7 +258,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
           '· 在「我的」页管理书源、TXT 目录规则、替换净化与字典规则；\n'
           '· 通过「设置」分区进入备份与恢复、主题设置、其它设置；\n'
           '· 开启 Web 服务后可在浏览器中管理书架、书源与 RSS；\n'
-          '· 更多增强功能收在页面底部「更多功能」分区中。',
+          '· 增强功能已按相似度聚合为「设置与外观 / 阅读与内容 / '
+          '视听与 AI / 关于与项目」四组，直接在本页向下滚动即可找到。',
         ),
         actions: [
           TextButton(onPressed: () => Navigator.pop(c), child: const Text('知道了')),
@@ -249,31 +269,148 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   /// K 版独有功能（[EPlacement.kSecondary] 的 'profile' 清单）：
-  /// 不删、不建独立扩展页，收在本页底部默认折叠的次级分区，E 主落点优先。
-  /// 原 ListTile + 原跳转 / 回调原样保留，类名仍在本文件中。
-  Widget _buildMoreFeatures(BuildContext context) {
-    return ExpansionTile(
-      key: const Key('profile::more_features'),
-      initiallyExpanded: false,
-      leading: const Icon(Icons.more_horiz),
-      title: const Text('更多功能'),
-      children: [
-        _buildMenuItem(context, Icons.dashboard_customize_outlined, '首页模块', '自定义发现首页的模块与排序', () => Navigator.push(context, MaterialPageRoute(builder: (_) => const HomepageModuleScreen()))),
-        _buildMenuItem(context, Icons.schedule_outlined, '定时任务', '定时刷新书架 / 缓存 / 备份 / 脚本', () => Navigator.push(context, MaterialPageRoute(builder: (_) => const AutoTaskScreen()))),
-        _buildMenuItem(context, Icons.record_voice_over_outlined, '朗读引擎', '云端 / 自定义 HTTP TTS 与语音', () => Navigator.push(context, MaterialPageRoute(builder: (_) => const CloudTtsScreen()))),
-        _buildMenuItem(context, Icons.download_outlined, '下载管理', '离线缓存队列与进度', () => Navigator.push(context, MaterialPageRoute(builder: (_) => const DownloadManageScreen()))),
-        _buildMenuItem(context, Icons.smart_toy_outlined, 'AI 助手', '对话与智能体', () => Navigator.push(context, MaterialPageRoute(builder: (_) => const AiChatScreen()))),
-        _buildMenuItem(context, Icons.build_circle_outlined, '智能体工具', 'AI 工具注册与启停', () => Navigator.push(context, MaterialPageRoute(builder: (_) => const AgentToolScreen()))),
-        _buildMenuItem(context, Icons.waving_hand_outlined, '欢迎页设置', '首次启动引导与展示配置', () => Navigator.push(context, MaterialPageRoute(builder: (_) => const WelcomeConfigScreen()))),
-        _buildMenuItem(context, Icons.apps_outlined, '桌面图标', '切换应用图标样式', () => Navigator.push(context, MaterialPageRoute(builder: (_) => const AppIconScreen()))),
-        _buildMenuItem(context, Icons.video_settings_outlined, '视频设置', '播放、弹幕与画中画', () => Navigator.push(context, MaterialPageRoute(builder: (_) => const VideoSettingScreen()))),
-        _buildMenuItem(context, Icons.bar_chart_outlined, '阅读统计', '时长与书籍分布', () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ReadingStatsScreen()))),
-        _buildMenuItem(context, Icons.tune, '完整设置（旧版单页）', '分类导航页 + 旧版全部设置项', () => Navigator.push(context, MaterialPageRoute(builder: (_) => const SettingsScreen()))),
-        const Divider(),
-        _buildMenuItem(context, Icons.code, 'GitHub项目', '打开项目仓库', () => launchUrl(Uri.parse(_kRepoUrl), mode: LaunchMode.externalApplication)),
-        _buildMenuItem(context, Icons.share, '分享应用', '分享给好友', () => _shareApp()),
-        _buildMenuItem(context, Icons.star_outline, '评分', '前往仓库页评分', () => _rateApp()),
-      ],
+  /// 功能一项不删、类名与跳转原样保留；按「相似度」聚合归位，避免同类功能
+  /// 被拆散到不同分区、以及重复入口各自为政。E 主落点（顶层6/设置3/其它5）
+  /// 三张卡片顺序与 Key 完全不动，本组全部位于其后。
+  ///
+  /// 聚合依据（用户反馈「调功能位置时，有些功能是很类似的」）：
+  ///  · 设置与外观：汇总设置入口 + 欢迎页 / 桌面图标，与 E「自定义主题」同类；
+  ///    「应用设置」本就是「全部设置」的子集，故用副标题点明包含关系，消除双入口困惑。
+  ///  · 阅读与内容：阅读统计与 E「每本书的阅读明细」同类，副标题互相指引；
+  ///  · 视听与 AI：合并原来两个只有 2 项的小卡，减少碎片；
+  ///  · 关于与项目：评分改为应用内星级反馈，不再与「GitHub项目」重复跳同一 URL。
+  List<Widget> _buildFeatureSections() {
+    return [
+      _sectionCard(
+        key: const Key('profile::more_features'),
+        icon: Icons.tune,
+        title: '设置与外观',
+        children: [
+          _buildMenuItem(context, Icons.tune, '全部设置（汇总全部分项）',
+              '汇总上方「应用设置」及主题、备份、缓存等所有分项',
+              () => Navigator.push(context, MaterialPageRoute(builder: (_) => const SettingsScreen()))),
+          _buildMenuItem(context, Icons.waving_hand_outlined, '欢迎页设置', '首次启动引导与展示配置', () => Navigator.push(context, MaterialPageRoute(builder: (_) => const WelcomeConfigScreen()))),
+          _buildMenuItem(context, Icons.apps_outlined, '桌面图标', '切换应用图标样式', () => Navigator.push(context, MaterialPageRoute(builder: (_) => const AppIconScreen()))),
+        ],
+      ),
+      _sectionCard(
+        icon: Icons.auto_stories_outlined,
+        title: '阅读与内容',
+        children: [
+          _buildMenuItem(context, Icons.bar_chart_outlined, '阅读统计',
+              '时长与书籍分布 · 单本明细见上方「每本书的阅读明细」',
+              () => Navigator.push(context, MaterialPageRoute(builder: (_) => const ReadingStatsScreen()))),
+          _buildMenuItem(context, Icons.dashboard_customize_outlined, '首页模块', '自定义发现首页的模块与排序', () => Navigator.push(context, MaterialPageRoute(builder: (_) => const HomepageModuleScreen()))),
+          _buildMenuItem(context, Icons.schedule_outlined, '定时任务', '定时刷新书架 / 缓存 / 备份 / 脚本', () => Navigator.push(context, MaterialPageRoute(builder: (_) => const AutoTaskScreen()))),
+          _buildMenuItem(context, Icons.download_outlined, '下载管理', '离线缓存队列与进度', () => Navigator.push(context, MaterialPageRoute(builder: (_) => const DownloadManageScreen()))),
+        ],
+      ),
+      _sectionCard(
+        icon: Icons.record_voice_over_outlined,
+        title: '视听与 AI',
+        children: [
+          _buildMenuItem(context, Icons.record_voice_over_outlined, '朗读引擎', '云端 / 自定义 HTTP TTS 与语音', () => Navigator.push(context, MaterialPageRoute(builder: (_) => const CloudTtsScreen()))),
+          _buildMenuItem(context, Icons.video_settings_outlined, '视频设置', '播放、弹幕与画中画', () => Navigator.push(context, MaterialPageRoute(builder: (_) => const VideoSettingScreen()))),
+          _buildMenuItem(context, Icons.smart_toy_outlined, 'AI 助手', '对话与智能体', () => Navigator.push(context, MaterialPageRoute(builder: (_) => const AiChatScreen()))),
+          _buildMenuItem(context, Icons.build_circle_outlined, '智能体工具', 'AI 工具注册与启停', () => Navigator.push(context, MaterialPageRoute(builder: (_) => const AgentToolScreen()))),
+        ],
+      ),
+      _sectionCard(
+        icon: Icons.info_outline,
+        title: '关于与项目',
+        children: [
+          _buildMenuItem(context, Icons.code, 'GitHub项目', '打开项目仓库主页', () => launchUrl(Uri.parse(_kRepoUrl), mode: LaunchMode.externalApplication)),
+          _buildMenuItem(context, Icons.share, '分享应用', '分享给好友', () => _shareApp()),
+          _buildMenuItem(context, Icons.star_outline, '评分', '应用内星级反馈与意见', () => _rateApp()),
+        ],
+      ),
+    ];
+  }
+
+  /// 顶部品牌头：应用图标 + 名称 + 版本，替代原来「一进来就是一列 ListTile」。
+  Widget _buildHeader(ColorScheme cs) {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(AppSpacing.l, AppSpacing.xl, AppSpacing.l, AppSpacing.s),
+      child: Row(
+        children: [
+          Container(
+            width: 56,
+            height: 56,
+            decoration: BoxDecoration(
+              color: cs.primaryContainer,
+              borderRadius: AppRadius.lAll,
+            ),
+            child: Icon(Icons.menu_book_rounded, color: cs.onPrimaryContainer, size: 30),
+          ),
+          const SizedBox(width: AppSpacing.l),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(appDisplayName,
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: cs.onSurface)),
+                const SizedBox(height: 2),
+                Text('让阅读回归纯粹',
+                    style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
+              ],
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// 分区卡片：圆角容器 + 带强调色图标的分区标题 + 若干行，行间细分隔线。
+  Widget _sectionCard({
+    Key? key,
+    required IconData icon,
+    required String title,
+    required List<Widget> children,
+  }) {
+    final cs = Theme.of(context).colorScheme;
+    return Padding(
+      key: key,
+      padding: const EdgeInsets.fromLTRB(AppSpacing.m, AppSpacing.s, AppSpacing.m, 0),
+      child: Card(
+        elevation: 0,
+        color: cs.surfaceContainerLow,
+        clipBehavior: Clip.antiAlias,
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(AppSpacing.l, AppSpacing.m, AppSpacing.l, AppSpacing.xs),
+              child: Row(
+                children: [
+                  Icon(icon, size: 16, color: cs.primary),
+                  const SizedBox(width: AppSpacing.s),
+                  Text(title,
+                      style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: cs.primary)),
+                ],
+              ),
+            ),
+            for (var i = 0; i < children.length; i++) ...[
+              if (i > 0)
+                const Divider(height: 1, indent: AppSpacing.xxl + AppSpacing.l, endIndent: AppSpacing.l),
+              children[i],
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// 列表项前的圆角图标底色，视觉上比裸 Icon 更规整。
+  Widget _iconBadge(IconData icon) {
+    final cs = Theme.of(context).colorScheme;
+    return Container(
+      width: 36,
+      height: 36,
+      decoration: BoxDecoration(
+        color: cs.surfaceContainerHighest,
+        borderRadius: AppRadius.sAll,
+      ),
+      child: Icon(icon, size: 20, color: cs.primary),
     );
   }
 
@@ -283,38 +420,86 @@ class _ProfileScreenState extends State<ProfileScreen> {
         subject: appDisplayName);
   }
 
-  /// 评分：跳转 GitHub 仓库页面
+  /// 评分：应用内星级反馈，与「GitHub项目」动作区分开（二者原先都跳同一个
+  /// 仓库主页，属于重复入口）。评分与意见真实落盘，可选再去仓库提 issue。
   Future<void> _rateApp() async {
-    try {
-      final ok = await launchUrl(Uri.parse(_kRepoUrl), mode: LaunchMode.externalApplication);
-      if (!ok && mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(const SnackBar(content: Text('无法打开页面')));
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context)
-            .showSnackBar(SnackBar(content: Text('打开失败: $e')));
-      }
+    var stars = 5;
+    final feedback = TextEditingController();
+    final prefs = await SharedPreferences.getInstance();
+    final saved = prefs.getInt('app_rating') ?? 0;
+    if (saved > 0) stars = saved;
+    // 回显上次提交的意见，避免 app_feedback 成为「只写不消费」的假设置
+    feedback.text = prefs.getString('app_feedback') ?? '';
+    if (!mounted) {
+      feedback.dispose();
+      return;
     }
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (c) => StatefulBuilder(
+        builder: (c, setLocal) => AlertDialog(
+          title: const Text('给个评分'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(saved > 0 ? '上次评分：$saved 星' : '还没有评过分',
+                  style: const TextStyle(fontSize: 12)),
+              const SizedBox(height: AppSpacing.xs),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: List.generate(5, (i) => IconButton(
+                  icon: Icon(i < stars ? Icons.star : Icons.star_border,
+                      color: Colors.amber),
+                  onPressed: () => setLocal(() => stars = i + 1),
+                )),
+              ),
+              const SizedBox(height: AppSpacing.s),
+              TextField(
+                controller: feedback,
+                maxLines: 3,
+                decoration: const InputDecoration(
+                  labelText: '意见与建议（可选）',
+                  isDense: true,
+                  border: OutlineInputBorder(),
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(c, false),
+                child: const Text('取消')),
+            TextButton(
+              onPressed: () async {
+                await prefs.setInt('app_rating', stars);
+                if (feedback.text.trim().isNotEmpty) {
+                  await prefs.setString('app_feedback', feedback.text.trim());
+                }
+                if (c.mounted) Navigator.pop(c, true);
+              },
+              child: const Text('提交'),
+            ),
+          ],
+        ),
+      ),
+    );
+    feedback.dispose();
+    if (ok != true || !mounted) return;
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text('感谢评分：$stars 星')));
   }
 
   // 关于页 9 项能力已迁至 AboutScreen（lib/ui/about/about_screen.dart）；
   // 旧 _showAbout 弹窗移除，K 独有的 GitHub 项目 / 分享应用 / 评分入口已迁至
-  // 上方「更多功能」默认折叠分区。
-
-  Widget _buildSectionHeader(String title) => Padding(
-    padding: const EdgeInsets.fromLTRB(AppSpacing.l, AppSpacing.l, AppSpacing.l, AppSpacing.s),
-    child: Text(title, style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold, color: Theme.of(context).colorScheme.primary)),
-  );
+  // 下方「关于与项目」分区卡片（原「更多功能」默认折叠分区已按相似度聚合归位）。
 
   Widget _buildMenuItem(BuildContext context, IconData icon, String title, String subtitle, VoidCallback onTap, {Key? key}) {
     return ListTile(
       key: key,
-      leading: Icon(icon),
+      leading: _iconBadge(icon),
       title: Text(title),
       subtitle: Text(subtitle, style: const TextStyle(fontSize: 12)),
-      trailing: const Icon(Icons.chevron_right),
+      trailing: const Icon(Icons.chevron_right, size: 20),
       onTap: onTap,
     );
   }

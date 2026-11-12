@@ -158,8 +158,8 @@ void main() {
     });
   });
 
-  group('K 独有功能「沉次级」隔离（不删、不占 E 主落点）', () {
-    test('profile 保留全部独有类名并收进折叠「更多功能」', () {
+  group('K 独有功能「按语义归位」（不删、E 主落点顺序不变）', () {
+    test('profile 保留全部独有类名并按语义平铺分区归位', () {
       final s = _src('lib/ui/main/my/profile_screen.dart');
       for (final cls in const [
         'AutoTaskScreen', 'HomepageModuleScreen', 'DownloadManageScreen',
@@ -169,8 +169,18 @@ void main() {
       ]) {
         expect(s, contains(cls), reason: '独有功能 $cls 不应被删');
       }
-      expect(s, contains('profile::more_features'));
-      expect(s, contains('initiallyExpanded: false'));
+      // 用户反馈「我的页太丑、把更多功能里的功能调到较适合的位置」：
+      // 由「单个默认折叠的更多功能」改为按语义平铺的分区卡片；再按
+      // 「有些功能很类似」把相似项聚合为 4 组，仍位于 E 主落点之后，功能一项不删。
+      expect(s, contains('_buildFeatureSections'));
+      expect(s, contains('_sectionCard'));
+      for (final t in const [
+        '设置与外观', '阅读与内容', '视听与 AI', '关于与项目',
+      ]) {
+        expect(s, contains(t), reason: '缺少相似度聚合分区 $t');
+      }
+      // 重复入口去重：「GitHub项目」与「评分」不再跳同一个 URL
+      expect(s, contains('app_rating'));
     });
 
     test('EPlacement.kSecondary 覆盖各页独有项且降级清单完整', () {

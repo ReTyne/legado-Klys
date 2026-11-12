@@ -3,6 +3,25 @@
 part of '../source_login_screen.dart';
 
 
+/// 登录 UI 条目类型（对齐 legado loginUi 的 text/password/button/switch/select）。
+enum _LoginItemType { input, button }
+
+/// 单个登录 UI 条目的有序渲染单元：顺序与书源 loginUi 完全一致，
+/// 仅按类型在 [_layoutLoginItems] 中做视觉分组（卡片/网格），不改相对顺序。
+class _LoginItem {
+  const _LoginItem({
+    required this.type,
+    required this.raw,
+    this.widget,
+    this.flexBasisPercent = 0.4,
+  });
+  final _LoginItemType type;
+  final Map<String, dynamic> raw;
+  final Widget? widget;
+  final double flexBasisPercent;
+}
+
+
 class _SourceLoginScreenState extends State<SourceLoginScreen> {
   final DatabaseService _db = DatabaseService();
   final BookSourceEngine _engine = BookSourceEngine();
@@ -13,8 +32,7 @@ class _SourceLoginScreenState extends State<SourceLoginScreen> {
   final Map<String, bool> _switchValues = {};
   // select 下拉控件的选中值（字段名 -> 选项 value）
   final Map<String, String> _selectValues = {};
-  final List<Map<String, dynamic>> _buttons = [];
-  final List<Widget> _fields = [];
+  final List<_LoginItem> _loginItems = [];
   final List<String> _logs = [];
   bool _busy = false;
   // loginCheckJs 登录状态检测：null=未配置/未知，true=已登录，false=未登录
@@ -132,14 +150,30 @@ class _SourceLoginScreenState extends State<SourceLoginScreen> {
   }
 
   void _clearFields() {
-    _fields.clear();
-    _buttons.clear();
+    _loginItems.clear();
     _controllers.clear();
     _switchValues.clear();
     _selectValues.clear();
   }
 
-  /// 依据 loginUi 条目渲染 text/password/button/switch/select 控件
+  /// 单个登录 UI 条目（保留书源 loginUi 的原始顺序，仅按类型分组渲染）。
+  /// - text/password/switch/select 直接携带已构建的控件；
+  /// - button 携带 action 与 flexBasisPercent，由网格布局按原版 Flexbox 规则排布。
+  _LoginItem _mkInput(Map<String, dynamic> item, Widget widget) =>
+      _LoginItem(type: _LoginItemType.input, raw: item, widget: widget);
+
+  _LoginItem _mkButton(Map<String, dynamic> item) => _LoginItem(
+        type: _LoginItemType.button,
+        raw: item,
+        flexBasisPercent: _flexBasisPercentOf(item),
+      );
+
+  /// 解析书源 style.layout_flexBasisPercent（对齐 legado FlexboxLayoutManager）。
+  /// 委托共享实现，登录页与发现页使用同一套分行规则。
+  static double _flexBasisPercentOf(Map<String, dynamic> raw) =>
+      flexBasisPercentOf(raw['style']);
+
+  /// 依据 loginUi 条目构建有序列表（顺序与书源完全一致）。
   void _buildFields(List<dynamic> items) {
     for (final raw in items) {
       if (raw is! Map) continue;
@@ -147,28 +181,29 @@ class _SourceLoginScreenState extends State<SourceLoginScreen> {
       final name = item['name']?.toString() ?? '';
       final type = item['type']?.toString() ?? 'text';
       if (type == 'button') {
-        _buttons.add(item);
+        _loginItems.add(_mkButton(item));
       } else if (type == 'switch') {
-        // switch 开关控件：值以 bool 形式参与表单提交
         final name0 = name.isEmpty ? '开关' : name;
         final value = _switchValues[name0] ?? false;
         _switchValues[name0] = value;
-        _fields.add(SwitchListTile(
-          title: Text(name0),
-          value: value,
-          contentPadding: EdgeInsets.zero,
-          onChanged: (v) => setState(() => _switchValues[name0] = v),
+        _loginItems.add(_mkInput(
+          item,
+          SwitchListTile(
+            title: Text(name0),
+            value: value,
+            contentPadding: EdgeInsets.zero,
+            onChanged: (v) => setState(() => _switchValues[name0] = v),
+          ),
         ));
       } else if (type == 'select') {
-        // select 下拉控件：options 支持字符串数组或 [{name, value}] 对象数组
         final name0 = name.isEmpty ? '请选择' : name;
         final options = _parseSelectOptions(item['options']);
         if (options.isNotEmpty) {
           final current = _selectValues[name0] ?? options.first['value']!;
           _selectValues[name0] = current;
-          _fields.add(Padding(
-            padding: const EdgeInsets.symmetric(vertical: AppSpacing.s),
-            child: DropdownButtonFormField<String>(
+          _loginItems.add(_mkInput(
+            item,
+            DropdownButtonFormField<String>(
               value: current,
               isExpanded: true,
               decoration: InputDecoration(
@@ -192,9 +227,9 @@ class _SourceLoginScreenState extends State<SourceLoginScreen> {
         final c = TextEditingController();
         _controllers[name] = c;
         _allControllers.add(c);
-        _fields.add(Padding(
-          padding: const EdgeInsets.symmetric(vertical: AppSpacing.s),
-          child: TextField(
+        _loginItems.add(_mkInput(
+          item,
+          TextField(
             controller: c,
             obscureText: type == 'password',
             decoration: InputDecoration(
@@ -208,6 +243,127 @@ class _SourceLoginScreenState extends State<SourceLoginScreen> {
         ));
       }
     }
+  }
+
+  /// 把有序条目按「连续同类」分组为区块：
+  /// - 连续的输入框(switch/select/text/password) 收进同一张「账号/自定义设置」卡片；
+  /// - 连续的按钮收进同一张弹性网格（按 flexBasisPercent 排布，还原原版规则排序）。
+  /// 不改变条目相对顺序，仅做视觉分组，避免“顺序对却像乱排”。
+  List<Widget> _layoutLoginItems() {
+    final out = <Widget>[];
+    final inputRun = <_LoginItem>[];
+    final btnRun = <_LoginItem>[];
+    var firstInputRunSeen = false;
+
+    void flushInput() {
+      if (inputRun.isEmpty) return;
+      final label = firstInputRunSeen ? '自定义设置' : '账号信息';
+      // 传副本：_inputCard 同步快照控件，清空本地 run 不影响已构建控件
+      out.add(_inputCard(List<_LoginItem>.from(inputRun), label));
+      firstInputRunSeen = true;
+      inputRun.clear();
+    }
+
+    void flushButtons() {
+      if (btnRun.isEmpty) return;
+      // 传副本！_buttonGrid 用懒执行的 LayoutBuilder，若直接传 btnRun 引用，
+      // 下面的 btnRun.clear() 会在布局时才清空列表，导致按钮全部消失。
+      out.add(_buttonGrid(List<_LoginItem>.from(btnRun)));
+      btnRun.clear();
+    }
+
+    for (final it in _loginItems) {
+      if (it.type == _LoginItemType.button) {
+        flushInput();
+        btnRun.add(it);
+      } else {
+        flushButtons();
+        inputRun.add(it);
+      }
+    }
+    flushInput();
+    flushButtons();
+    return out;
+  }
+
+  /// 账号/自定义设置卡片：连续输入框聚合成一组，带分区标题。
+  Widget _inputCard(List<_LoginItem> run, String label) {
+    final cs = Theme.of(context).colorScheme;
+    return Card(
+      margin: const EdgeInsets.only(bottom: AppSpacing.m),
+      elevation: 0,
+      color: cs.surfaceContainerLow,
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(
+            AppSpacing.l, AppSpacing.m, AppSpacing.l, AppSpacing.m),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(label,
+                style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: cs.primary)),
+            const SizedBox(height: AppSpacing.s),
+            for (final it in run) ...[
+              it.widget!,
+              if (it != run.last) const SizedBox(height: AppSpacing.s),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  /// 弹性按钮网格：对齐 legado FlexboxLayoutManager，按 flexBasisPercent
+  /// 累加分行、每行铺满（layout_flexGrow=1），>=0.95 独占整行。
+  /// 统一 fillet 样式，不再三色分级；每行两侧齐平，中文标签更少被截断。
+  Widget _buttonGrid(List<_LoginItem> run) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: AppSpacing.m),
+      child: FlexPercentLayout(
+        percents: run.map((it) => it.flexBasisPercent).toList(),
+        children: run
+            .map((it) => _LoginButton(
+                  label: it.raw['name']?.toString() ?? '按钮',
+                  busy: _busy,
+                  onPressed: () =>
+                      _runAction(it.raw['action']?.toString() ?? ''),
+                ))
+            .toList(),
+      ),
+    );
+  }
+
+  /// 书源更新日志 / 使用说明：默认折叠，置于底部，不再占据表单顶部。
+  Widget _buildCommentCard() {
+    final cs = Theme.of(context).colorScheme;
+    final comment = (source.bookSourceComment ?? '').trim();
+    if (comment.isEmpty) return const SizedBox.shrink();
+    return Padding(
+      padding: const EdgeInsets.only(top: AppSpacing.m),
+      child: Card(
+        elevation: 0,
+        color: cs.surfaceContainerLow,
+        clipBehavior: Clip.antiAlias,
+        child: ExpansionTile(
+          initiallyExpanded: false,
+          leading: const Icon(Icons.info_outline, size: 20),
+          title: const Text('使用说明 / 更新日志',
+              style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
+          children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(
+                  AppSpacing.l, 0, AppSpacing.l, AppSpacing.m),
+              child: SelectableText(
+                comment,
+                style: const TextStyle(fontSize: 12, height: 1.5),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   /// 表单值：文本框 + switch + select 的当前值，作为 JS action 的 result
@@ -357,11 +513,129 @@ class _SourceLoginScreenState extends State<SourceLoginScreen> {
     );
   }
 
+  /// 诊断书源内置备用服务器，并在默认服务器 502 / 不可用时一键切换。
+  /// 不依赖书源 JS 自身的「切换服务器」按钮，避免服务器挂掉时连诊断都跑不了。
+  Future<void> _showServerDiagnostics() async {
+    final hosts = SourceServerProbe.extractHosts(source);
+    if (hosts.isEmpty) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('该书源未内置备用服务器列表')));
+      }
+      return;
+    }
+    final current = SourceServerProbe.currentServer(source);
+    final future = SourceServerProbe.probeAll(hosts);
+    await showDialog<void>(
+      context: context,
+      builder: (c) {
+        var applying = false;
+        return StatefulBuilder(builder: (ctx, setDialogState) {
+          final cs = Theme.of(context).colorScheme;
+          return AlertDialog(
+            title: const Text('服务器诊断 / 切换'),
+            content: SizedBox(
+              width: double.maxFinite,
+              child: SingleChildScrollView(
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      current.isEmpty ? '当前：书源默认服务器' : '当前：$current',
+                      style: const TextStyle(
+                          fontSize: 12, fontFamily: 'monospace'),
+                    ),
+                    const SizedBox(height: AppSpacing.s),
+                    FutureBuilder<List<ServerProbeResult>>(
+                      future: future,
+                      builder: (_, snap) {
+                        if (snap.connectionState != ConnectionState.done) {
+                          return const AppLoadingIndicator(compact: true);
+                        }
+                        if (snap.hasError) {
+                          return Text('诊断失败：${snap.error}',
+                              style: TextStyle(color: cs.error));
+                        }
+                        final results =
+                            snap.data ?? const <ServerProbeResult>[];
+                        return Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            for (final r in results)
+                              ListTile(
+                                dense: true,
+                                contentPadding: EdgeInsets.zero,
+                                leading: Icon(
+                                  r.unhealthy || !r.reachable
+                                      ? Icons.error_outline
+                                      : Icons.check_circle_outline,
+                                  size: 18,
+                                  color: r.unhealthy || !r.reachable
+                                      ? cs.error
+                                      : cs.primary,
+                                ),
+                                title: Text(r.host,
+                                    style: const TextStyle(
+                                        fontSize: 11.5,
+                                        fontFamily: 'monospace')),
+                                subtitle: Text(
+                                    '${r.label} · ${r.latencyMs}ms'
+                                    '${r.error != null ? '\n${r.error}' : ''}',
+                                    style: const TextStyle(fontSize: 10)),
+                                trailing: TextButton(
+                                  onPressed: applying
+                                      ? null
+                                      : () async {
+                                          setDialogState(
+                                              () => applying = true);
+                                          await SourceServerProbe.applyServer(
+                                              source, r.host, _db);
+                                          if (ctx.mounted) {
+                                            Navigator.of(ctx).pop();
+                                          }
+                                          if (mounted) {
+                                            ScaffoldMessenger.of(context)
+                                                .showSnackBar(SnackBar(
+                                              content: Text(
+                                                  '已切换服务器为 ${r.host}，请重新登录或刷新'),
+                                              duration:
+                                                  const Duration(seconds: 4),
+                                            ));
+                                          }
+                                        },
+                                  child: const Text('使用'),
+                                ),
+                              ),
+                          ],
+                        );
+                      },
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            actions: [
+              TextButton(
+                  onPressed: () => Navigator.of(c).pop(),
+                  child: const Text('关闭')),
+            ],
+          );
+        });
+      },
+    );
+  }
+
   Future<void> _runAction(String action) async {
     final act = action.trim();
     if (act.isEmpty) return;
+    // 只记录本次动作产生的网络请求，避免把上一次的失败带进诊断
+    SourceNetworkLog.instance.clear();
     setState(() => _busy = true);
     _appendLog('执行: $act');
+    for (final e in SourceNetworkLog.instance.scriptErrors) {
+      _appendLog('脚本加载: $e');
+    }
     try {
       final rt = await JsRuntimeManager.instance.forSource(source);
       // 登录按钮以表单对象作为 result
@@ -382,15 +656,28 @@ class _SourceLoginScreenState extends State<SourceLoginScreen> {
       if (res.error != null && res.error!.isNotEmpty) {
         _appendLog('异常: ${res.error!.split('\n').first}');
       }
+      // 把底层真实网络失败写进运行日志：书源常把所有异常都伪装成
+      // "HTTP 502"，这里额外给出请求 URL 与原始错误，便于判断是服务端
+      // 故障还是本机网络问题。
+      final netFail = SourceNetworkLog.instance.lastFailure;
+      if (netFail != null) {
+        _appendLog('网络失败: ${netFail.method} ${netFail.statusLabel} ${netFail.url}');
+        if (netFail.error != null) _appendLog('原因: ${netFail.error}');
+      }
       // variable 在求值过程中可能被 setVariable 更新，落库
       await _db.updateSource(source);
       // 登录动作可能改变登录状态，重新检测 loginCheckJs
       await _checkLoginStatus();
       if (mounted) {
         final lastToast = res.toasts.isNotEmpty ? res.toasts.last : null;
+        final serverDown =
+            netFail != null && (netFail.statusCode ?? 0) >= 500;
+        final hint = serverDown
+            ? '\n服务器返回 ${netFail.statusCode}，点右上角「服务器诊断」切换备用服务器'
+            : '';
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-          content: Text(lastToast ?? '操作已完成'),
-          duration: const Duration(seconds: 2),
+          content: Text('${lastToast ?? '操作已完成'}$hint'),
+          duration: Duration(seconds: serverDown ? 5 : 2),
         ));
       }
     } catch (e) {
@@ -466,6 +753,12 @@ class _SourceLoginScreenState extends State<SourceLoginScreen> {
       appBar: AppBar(
         title: Text('登录 - ${source.bookSourceName}', maxLines: 1, overflow: TextOverflow.ellipsis),
         actions: [
+          // 聚合源备用服务器诊断 / 切换（应对 502 / 服务器不可用）
+          IconButton(
+            tooltip: '服务器诊断 / 切换',
+            icon: const Icon(Icons.dns_outlined),
+            onPressed: _busy ? null : _showServerDiagnostics,
+          ),
           // 有自定义 loginUi 且 loginUrl 为网页时，仍保留 WebView 登录入口
           if (!isWeb && loginUrl.startsWith('http'))
             IconButton(
@@ -502,7 +795,13 @@ class _SourceLoginScreenState extends State<SourceLoginScreen> {
             icon: const Icon(Icons.refresh_outlined),
             onPressed: _busy ? null : () async {
               await JsRuntimeManager.instance.invalidate(source.bookSourceUrl);
-              if (mounted) setState(() => _logs.clear());
+              if (mounted) {
+                setState(() {
+                  _logs.clear();
+                  _clearFields();
+                  _buildUi();
+                });
+              }
             },
           ),
         ],
@@ -534,34 +833,8 @@ class _SourceLoginScreenState extends State<SourceLoginScreen> {
                     children: [
                       // 登录状态检测横幅（loginCheckJs）
                       _loginStatusBanner(),
-                      if ((source.bookSourceComment ?? '').trim().isNotEmpty)
-                        Container(
-                          margin: const EdgeInsets.only(bottom: AppSpacing.m),
-                          padding: const EdgeInsets.all(10),
-                          decoration: BoxDecoration(
-                            color: Theme.of(context).colorScheme.surfaceContainerHighest,
-                            borderRadius: AppRadius.mAll,
-                          ),
-                          child: Text(
-                            source.bookSourceComment!,
-                            style: const TextStyle(fontSize: 12),
-                          ),
-                        ),
-                      ..._fields,
-                      const SizedBox(height: AppSpacing.s),
-                      Wrap(
-                        spacing: 8,
-                        runSpacing: 8,
-                        children: [
-                          for (final b in _buttons)
-                            _LoginButton(
-                              label: b['name']?.toString() ?? '按钮',
-                              busy: _busy,
-                              onPressed: () =>
-                                  _runAction(b['action']?.toString() ?? ''),
-                            ),
-                        ],
-                      ),
+                      // 按书源 loginUi 顺序分组渲染：账号卡片 / 按钮网格 / 自定义设置卡片
+                      ..._layoutLoginItems(),
                       const Divider(height: 32),
                       if (_logs.isNotEmpty) ...[
                         const Text('运行日志', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
@@ -579,6 +852,8 @@ class _SourceLoginScreenState extends State<SourceLoginScreen> {
                           ),
                         ),
                       ],
+                      // 书源更新日志 / 使用说明：默认折叠，置于底部
+                      _buildCommentCard(),
                     ],
                   ),
                 ),

@@ -11,6 +11,7 @@ import 'package:legado_md3/data/model/replace_rule.dart';
 import 'package:legado_md3/help/source/replace_rule_service.dart';
 import 'package:legado_md3/help/source/rule_pipeline.dart';
 import 'package:legado_md3/help/source/url_option.dart';
+import 'package:legado_md3/help/source/source_network_log.dart';
 import 'package:legado_md3/help/source/ttf_parser.dart';
 import 'package:legado_md3/help/source/js/legado_js_runtime.dart';
 import 'package:legado_md3/help/source/js/headless_webview.dart';
@@ -115,7 +116,15 @@ class BookSourceEngine {
       );
       if (rendered.isNotEmpty) {
         lastRawResponse = rendered;
+        lastRawResponseIsHex = false;
         lastRequestUrl = url;
+        SourceNetworkLog.instance.record(
+          url: url,
+          method: 'WEBVIEW',
+          origin: 'engine',
+          statusCode: 200,
+          text: rendered,
+        );
       }
       return rendered.isEmpty ? null : rendered;
     } catch (_) {
@@ -213,6 +222,11 @@ class BookSourceEngine {
   /// 各阶段的原始 HTML/JSON）。每次 [_fetch] / WebView 渲染成功后更新。
   String? lastRawResponse;
 
+  /// 上述「原始源码」是否为 legado `type` 选项 / `data:` 书址产生的 hex
+  /// 中间产物（而非真实网络响应）。调试页据此解码并明确标注，避免把
+  /// 一串 hex 当成服务端返回的真实源码展示给用户。
+  bool lastRawResponseIsHex = false;
+
   /// 最近一次请求的最终 URL（供调试页展示与二次抓取）。
   String? lastRequestUrl;
 
@@ -301,6 +315,7 @@ class BookSourceEngine {
 
   /// 发送HTTP请求，[baseUrl] 用于解析相对地址
   Future<String> _fetch(String url, {Map<String, dynamic>? options, String? body, String? baseUrl}) async {
+    final sw = Stopwatch()..start();
     // URL 里的 `{{...}}` / `,{json}` / `,POST:body` 选项统一由 UrlOptions 解析
     final parsed = UrlOptions.parse(url);
     var finalUrl = parsed.url;
@@ -317,13 +332,29 @@ class BookSourceEngine {
         final hex = _hexEncode(bytes);
         _log('data: 书址解码（type=$typeOpt），hex $hex 长度');
         lastRawResponse = hex;
+        lastRawResponseIsHex = true;
         lastRequestUrl = finalUrl;
+        SourceNetworkLog.instance.record(
+          url: finalUrl,
+          method: 'DATA',
+          origin: 'data',
+          statusCode: 200,
+          text: hex,
+        );
         return hex;
       }
       final decoded = utf8.decode(bytes, allowMalformed: true);
       _log('data: 书址解码，${decoded.length} 字符');
       lastRawResponse = decoded;
+      lastRawResponseIsHex = false;
       lastRequestUrl = finalUrl;
+      SourceNetworkLog.instance.record(
+        url: finalUrl,
+        method: 'DATA',
+        origin: 'data',
+        statusCode: 200,
+        text: decoded,
+      );
       return decoded;
     }
 
@@ -500,6 +531,13 @@ class BookSourceEngine {
           continue;
         }
         _log('请求失败: $e');
+        SourceNetworkLog.instance.record(
+          url: finalUrl,
+          method: method,
+          origin: 'engine',
+          durationMs: sw.elapsedMilliseconds,
+          error: '请求失败: $e',
+        );
         rethrow;
       }
     }
@@ -515,6 +553,16 @@ class BookSourceEngine {
       } catch (_) {}
     }
     _log('响应 ${response.statusCode}, ${(response.data ?? []).length} 字节');
+    final status = response.statusCode ?? 200;
+    SourceNetworkLog.instance.record(
+      url: finalUrl,
+      method: method,
+      origin: 'engine',
+      statusCode: status,
+      durationMs: sw.elapsedMilliseconds,
+      body: response.data,
+      error: status >= 400 ? 'HTTP $status' : null,
+    );
     // URL 选项 type：响应体以字节的小写 hex 编码返回
     // （对齐 legado AnalyzeUrl.getStrResponseAwait -> HexUtil.encodeHexStr）
     final respTypeOpt = (opts['type'] ?? options?['type'])?.toString();
@@ -522,6 +570,7 @@ class BookSourceEngine {
       final hex = _hexEncode(response.data ?? const <int>[]);
       _log('type=$respTypeOpt 选项：响应体以 hex 编码返回，$hex 长度');
       lastRawResponse = hex;
+      lastRawResponseIsHex = true;
       lastRequestUrl = finalUrl;
       return hex;
     }
@@ -538,6 +587,7 @@ class BookSourceEngine {
     forcedCharset = originalForced;
     _log('解码完成，文本 ${text.length} 字符');
     lastRawResponse = text;
+    lastRawResponseIsHex = false;
     lastRequestUrl = finalUrl;
     return text;
   }
@@ -629,8 +679,10 @@ class BookSourceEngine {
 
   // ==================== JS 运行时集成 ====================
 
-  static final RegExp _leadingJs = RegExp(r'^\s*<js>([\s\S]*?)</js>');
-  static final RegExp _wholeJs = RegExp(r'^\s*<js>([\s\S]*?)</js>\s*$');
+  // 贪婪匹配到最后一个 </js>：避免 JS 字符串内出现 </js> 字面量时
+  // 非贪婪捕获在第一个 </js> 提前收尾、把脚本腰斩（正文加载不出的隐患）。
+  static final RegExp _leadingJs = RegExp(r'^\s*<js>([\s\S]*)</js>');
+  static final RegExp _wholeJs = RegExp(r'^\s*<js>([\s\S]*)</js>\s*$');
   static final RegExp _mustache = RegExp(r'\{\{([\s\S]*?)\}\}');
 
   /// 求值一段书源脚本，返回字符串结果（任何异常都安全降级为 null）。
@@ -1593,6 +1645,14 @@ class BookSourceEngine {
     if (resolved.value != null) return resolved.value;
     final r = resolved.rule.trim();
     if (r.isEmpty) return null;
+    // 先匹配「纯整块 <js>…</js>」：带 \s*$ 锚定，能正确捕获脚本内
+    // 含 </js> 字面量的整块规则；只有命中不了（规则以 <js> 开头但带
+    // $.content 等后缀）才落到前置 <js> 分支。
+    final whole = _wholeJs.firstMatch(r);
+    if (whole != null) {
+      return _evalJs(source, whole.group(1)!,
+          result: content, baseUrl: baseUrl, book: book, chapter: chapter);
+    }
     final lead = _leadingJs.firstMatch(r);
     if (lead != null) {
       final v = await _evalJs(source, lead.group(1)!,
@@ -1601,11 +1661,6 @@ class BookSourceEngine {
       if (v == null) return null;
       if (suffix.isEmpty) return v;
       return _fieldFromMixed(v, suffix) ?? v;
-    }
-    final whole = _wholeJs.firstMatch(r);
-    if (whole != null) {
-      return _evalJs(source, whole.group(1)!,
-          result: content, baseUrl: baseUrl, book: book, chapter: chapter);
     }
     return _pipeline.extractStringFromRaw(content, r);
   }
@@ -1849,7 +1904,11 @@ class BookSourceEngine {
     if (source.ruleContent == null) return null;
     try {
       final rule = source.ruleContent!;
-      var raw = await _fetch(contentUrl, baseUrl: source.bookSourceUrl);
+      final chapterBase = chapter?['baseUrl']?.toString();
+      var raw = await _fetch(contentUrl,
+          baseUrl: (chapterBase != null && chapterBase.isNotEmpty)
+              ? chapterBase
+              : source.bookSourceUrl);
       _pipeline.baseUrl = contentUrl;
       final contentRule = (rule['content'] ?? '').toString();
       if (contentRule.isEmpty) return null;

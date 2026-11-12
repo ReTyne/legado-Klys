@@ -138,10 +138,14 @@ void main() {
           reason: 'source 为空时不得再留空白页');
     });
 
-    test('搜索页：结果为网格大封面（不再 50x70 小图）', () {
+    test('搜索页：结果为 E 版单列横向列表（左封面+右信息，非网格）', () {
       final src = _read('lib/ui/book/search/search_screen.dart');
-      expect(src, contains('GridView.builder'));
-      expect(src, contains('crossAxisCount: 3'));
+      expect(src, contains('ListView.separated'),
+          reason: '对照 E SearchActivity 的 LinearLayoutManager，应为单列列表');
+      expect(src.contains('GridView.builder'), isFalse,
+          reason: '搜索页不应是网格布局');
+      expect(src, contains('const coverW = 80.0'),
+          reason: '列表项左封面固定 80dp（对齐 item_search.xml 的 80dp）');
       expect(src.contains('width: 50,'), isFalse,
           reason: '不应再使用 50x70 的 ListTile 小封面');
     });

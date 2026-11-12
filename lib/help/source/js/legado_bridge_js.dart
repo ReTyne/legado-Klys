@@ -12,9 +12,13 @@
 ///   * 编码：base64、hex；时间格式化；deviceID/androidId；UA
 ///   * startBrowser* / showBrowser* / reLoginView —— 走原生可见 WebView 交互登录
 ///   * 文件：readTxtFile / deleteFile / downloadFile（含 hex 兼容签名）/
-///     importScript / cacheFile / getTxtInFolder
+///     importScript / cacheFile / getTxtInFolder / readFile / getFile
+///     （后两者对齐 E JsExtensions，返回 Uint8Array / File-like 对象，
+///      路径经 Dart 侧 canonicalPath 白名单校验）
 ///   * 压缩包：getZipStringContent / get7zStringContent / getRarStringContent /
+///     getZipByteArrayContent / get7zByteArrayContent / getRarByteArrayContent /
 ///     unzipFile / un7zFile / unrarFile / unArchiveFile（7z/rar 走 Android 原生解压）
+///   * 字体反爬：queryTTF / queryBase64TTF（后者为 E 已废弃 API 的兼容委托）
 ///
 /// 该脚本在每个书源的无头 WebView 创建后于「全局作用域」执行一次；
 /// 书源的 jsLib / loginUrl 随后也在全局作用域执行（定义全局函数）。
