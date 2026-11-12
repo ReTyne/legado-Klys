@@ -63,7 +63,7 @@ void main() {
     final url = 'data:;base64,$b64,{"type":"qingtian3"}';
     final text = await engine.getContent(mkSource(), url);
     expect(text, expectHex,
-        reason: 'type 选项应返回 hex 响应体（对齐 legado HexUtil.encodeHexStr）');
+        reason: 'type 选项应返回 hex 响应体');
   });
 
   test('无 type 选项：data: 书址响应体仍为 UTF-8 文本', () async {

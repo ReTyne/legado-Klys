@@ -11,7 +11,7 @@ import 'package:legado_md3/data/model/book_chapter.dart';
 import 'package:legado_md3/data/model/replace_rule.dart';
 import 'package:legado_md3/help/source/replace_rule_service.dart';
 
-/// 书籍导出选项（对齐 legado-E ExportBookService / pref_config_export.xml）
+/// 书籍导出选项
 class ExportOptions {
   /// 导出编码：UTF-8 / GBK
   final String charset;
@@ -30,7 +30,7 @@ class ExportOptions {
   });
 }
 
-/// 书籍导出服务（对齐 legado-E ExportBookService）：导出正文为 txt / epub 文件。
+/// 书籍导出服务：导出正文为 txt / epub 文件。
 class ExportBookService {
   ExportBookService._();
 

@@ -95,7 +95,7 @@ void main() {
     for (final key in book.toMap().keys) {
       expect(names.contains(key), isTrue, reason: 'books 缺列: $key');
     }
-    // 对齐 legado-E：模型不读写的旧 schema 冗余列不再新建
+    // 模型不读写的旧 schema 冗余列不再新建
     for (final dead in const [
       'latestChapterTitle',
       'lastChapterTime',

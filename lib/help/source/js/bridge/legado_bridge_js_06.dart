@@ -108,6 +108,24 @@ const String legadoBridgeJsPart06 = r'''    var b = bytes.slice();
     return s.replace(/^https?:\/\//i, "").replace(/^\/+/, "").split("/")[0].replace(/:\d+$/, "");
   }
 
+  // 注册域：两级公共后缀需多取一段，其余取最后两段。
+  var __twoLevelTld = {
+    "co.uk": 1, "org.uk": 1, "ac.uk": 1, "gov.uk": 1, "me.uk": 1,
+    "com.cn": 1, "net.cn": 1, "org.cn": 1, "gov.cn": 1, "edu.cn": 1, "ac.cn": 1,
+    "com.hk": 1, "com.tw": 1, "com.sg": 1, "com.au": 1, "co.jp": 1,
+    "ne.jp": 1, "or.jp": 1, "co.kr": 1, "co.nz": 1, "com.br": 1,
+    "com.mx": 1, "co.in": 1, "com.tr": 1, "com.ua": 1
+  };
+  function __registrableDomain(host) {
+    if (!host) return "";
+    var h = String(host).toLowerCase().replace(/:\d+$/, "");
+    if (/^\d+\.\d+\.\d+\.\d+$/.test(h) || h.indexOf(":") >= 0 || h === "localhost") return h;
+    var parts = h.split(".");
+    if (parts.length <= 2) return h;
+    var last2 = parts.slice(-2).join(".");
+    return __twoLevelTld[last2] ? parts.slice(-3).join(".") : last2;
+  }
+
   function __matchCookieHost(host) {
     if (!host) return "";
     if (__state.cookies[host]) return host;
@@ -115,6 +133,14 @@ const String legadoBridgeJsPart06 = r'''    var b = bytes.slice();
     for (var i = 0; i < keys.length; i++) {
       var k = keys[i];
       if (host === k || host.endsWith("." + k) || k.endsWith("." + host)) return k;
+    }
+    // 同一注册域下的不同子域共享凭据：按注册域回退匹配。
+    var base = __registrableDomain(host);
+    if (base && base !== host) {
+      for (var j = 0; j < keys.length; j++) {
+        var k2 = keys[j];
+        if (k2 === base || k2.endsWith("." + base) || base.endsWith("." + k2)) return k2;
+      }
     }
     return "";
   }
@@ -275,9 +301,27 @@ const String legadoBridgeJsPart06 = r'''    var b = bytes.slice();
       return true;
     },
     getKey: function (url, name) {
-      var c = this.getCookie(url);
-      var m = String(c).match(new RegExp("(?:^|;\\s*)" + name + "=([^;]*)"));
-      return m ? m[1] : "";
+      var re = new RegExp("(?:^|;\\s*)" + name + "=([^;]*)");
+      var m = String(this.getCookie(url)).match(re);
+      if (m) return m[1];
+      // 书源常以 bookSourceUrl（可能并非 URL）为主键存放登录凭据，
+      // 按该键与同注册域的其它条目兜底查找，避免登录态被误判为未登录。
+      var srcHost = __hostOf(__state.meta.url);
+      if (srcHost) {
+        var m2 = String(__state.cookies[srcHost] || "").match(re);
+        if (m2) return m2[1];
+      }
+      var base = __registrableDomain(__hostOf(url));
+      if (base) {
+        var keys = Object.keys(__state.cookies);
+        for (var i = 0; i < keys.length; i++) {
+          var k = keys[i];
+          if (__registrableDomain(k) !== base) continue;
+          var m3 = String(__state.cookies[k] || "").match(re);
+          if (m3) return m3[1];
+        }
+      }
+      return "";
     },
     replaceCookie: function (url, c) { return this.setCookie(url, c); }
   };
@@ -285,22 +329,50 @@ const String legadoBridgeJsPart06 = r'''    var b = bytes.slice();
 
   // ============================ cache ============================
   var cache = {
-    get: function (key) {
+    get: function (key, onlyDisk) {
+      // onlyDisk=true 时跳过内存态
+      if (!onlyDisk && Object.prototype.hasOwnProperty.call(__state.memory, key)) {
+        return __state.memory[key];
+      }
+      var dl = __state.kvDeadline ? __state.kvDeadline[String(key)] : 0;
+      if (dl && Date.now() > dl) {
+        delete __state.kv[key];
+        delete __state.kvDeadline[String(key)];
+        return null;
+      }
       var v = __state.kv[key];
       if (v === undefined || v === null) return null;
       try { return JSON.parse(v); } catch (e) { return v; }
     },
-    put: function (key, value) {
+    put: function (key, value, saveTime) {
       __state.kv[key] = (typeof value === "string") ? value : JSON.stringify(value);
+      if (saveTime && Number(saveTime) > 0) {
+        __state.kvDeadline[String(key)] = Date.now() + Number(saveTime) * 1000;
+      } else {
+        delete __state.kvDeadline[String(key)];
+      }
       return true;
     },
-    remove: function (key) { delete __state.kv[key]; },
-    // 内存态缓存（对齐 legado CacheManager.putMemory/getFromMemory，7632/7814 段评限流依赖）
+    remove: function (key) { delete __state.kv[key]; delete __state.kvDeadline[String(key)]; },
+    //  CacheManager 用 delete/deleteMemory 命名，书源高频调用；
+    // 旧版只提供 remove/removeMemory，调用直接 TypeError。
+    delete: function (key) { delete __state.kv[key]; delete __state.kvDeadline[String(key)]; },
+    // 类型化 getter
+    getInt: function (key) { var v = this.get(key); var n = parseInt(v, 10); return isNaN(n) ? 0 : n; },
+    getLong: function (key) { return this.getInt(key); },
+    getDouble: function (key) { var v = this.get(key); var n = parseFloat(v); return isNaN(n) ? 0 : n; },
+    getFloat: function (key) { return this.getDouble(key); },
+    getByteArray: function (key) { var v = this.get(key); return v == null ? null : __bsFromUtf8(String(v)); },
+    // 内存态缓存
     putMemory: function (key, value) { __state.memory[key] = value; return true; },
     getFromMemory: function (key) {
       return Object.prototype.hasOwnProperty.call(__state.memory, key) ? __state.memory[key] : null;
     },
-    removeMemory: function (key) { delete __state.memory[key]; }
+    removeMemory: function (key) { delete __state.memory[key]; },
+    deleteMemory: function (key) { delete __state.memory[key]; },
+    // 文件缓存
+    putFile: function (key, value) { return this.put("file_" + key, value); },
+    getFile: function (key) { return this.get("file_" + key); }
   };
   globalThis.cache = cache;
 
@@ -337,8 +409,43 @@ const String legadoBridgeJsPart06 = r'''    var b = bytes.slice();
       return __state.variable;
     },
     getLoginInfo: function () { return __state.loginInfo || ""; },
+    // 登录信息为空时，用登录表单各控件的默认值生成并回填，
+    // 使书源首次执行登录逻辑也能读到表单初始值。
     getLoginInfoMap: function () {
-      try { return JSON.parse(__state.loginInfo || "{}"); } catch (e) { return {}; }
+      var raw = __state.loginInfo || "";
+      if (raw) {
+        try {
+          var o = JSON.parse(raw);
+          return (o && typeof o === "object") ? o : {};
+        } catch (e) { return {}; }
+      }
+      var ui = __state.meta.loginUi || "";
+      if (!ui) return {};
+      try {
+        if (ui.indexOf("@js:") === 0 || ui.indexOf("<js>") === 0) {
+          var expr = ui.indexOf("@js:") === 0
+            ? ui.substring(4)
+            : ui.substring(4, ui.lastIndexOf("<"));
+          var prelude = (__state.meta.jsLib || "") + "\n" + (__state.meta.loginUrl || "") + "\n";
+          try {
+            ui = String(eval(prelude + expr));
+          } catch (e) {
+            ui = String(eval("(function(){" + prelude + "\n" + expr + "\n})()"));
+          }
+        }
+        var arr = JSON.parse(ui);
+        if (!Array.isArray(arr)) return {};
+        var map = {};
+        arr.forEach(function (it) {
+          if (!it || it.type === "button") return;
+          var n = it.name;
+          if (n === undefined || n === null || n === "") return;
+          var d = it["default"];
+          map[String(n)] = (d === undefined || d === null) ? "" : String(d);
+        });
+        if (Object.keys(map).length) __state.loginInfo = JSON.stringify(map);
+        return map;
+      } catch (e) { return {}; }
     },
     setLoginInfo: function (v) {
       __state.loginInfo = (typeof v === "string") ? v : JSON.stringify(v);
@@ -351,18 +458,31 @@ const String legadoBridgeJsPart06 = r'''    var b = bytes.slice();
     getCookie: function (url) { return cookie.getCookie(url); },
     setCookie: function (url, c) { return cookie.setCookie(url, c); },
     removeCookie: function (url) { return cookie.removeCookie(url); },
-    // 移除登录头（清空登录信息与由登录派生的状态）
-    removeLoginHeader: function () {
-      __state.loginInfo = "";
+    getCookieStore: function () { return cookie; },
+    // 登录表单定义：书源可由此读取控件结构
+    loginUi: function () { return __state.meta.loginUi || ""; },
+    // 登录头管理：写入 Cookie 字段时同步进 cookie jar，
+    // 让依赖 cookie.getKey() 判定登录态的书源能立即读到。
+    getLoginHeader: function () { return __state.loginHeader || ""; },
+    putLoginHeader: function (header) {
+      __state.loginHeader = (typeof header === "string") ? header : JSON.stringify(header);
+      try {
+        var m = JSON.parse(__state.loginHeader || "{}") || {};
+        var c = m.Cookie || m.cookie;
+        if (c) {
+          cookie.replaceCookie(__state.meta.url, c);
+          if (__state.meta.httpUrl) cookie.replaceCookie(__state.meta.httpUrl, c);
+        }
+      } catch (e) {}
       return true;
     },
-    getCookieStore: function () { return cookie; },
-    // loginUi：legado 安卓版中为方法，书源常用 typeof source.loginUi == 'function' 判断平台
-    loginUi: function () { return ""; },
-    // 登录头管理
-    getLoginHeader: function () { return __state.loginHeader || ""; },
-    putLoginHeader: function (header) { __state.loginHeader = header; return true; },
-    removeLoginHeader: function () { __state.loginHeader = ""; return true; },
+    // 移除登录头：同时清理由登录头写入 cookie jar 的凭据
+    removeLoginHeader: function () {
+      __state.loginHeader = "";
+      cookie.removeCookie(__state.meta.url);
+      if (__state.meta.httpUrl) cookie.removeCookie(__state.meta.httpUrl);
+      return true;
+    },
     // 变量管理（putVariable 是 setVariable 的别名）
     putVariable: function (v) { this.setVariable(v); return true; },
     removeLoginInfo: function () { __state.loginInfo = ""; return true; },
@@ -509,7 +629,7 @@ const String legadoBridgeJsPart06 = r'''    var b = bytes.slice();
     if (bodyStr !== null && method !== "GET" && method !== "HEAD") {
       headers["X-Legado-Body"] = __b64Unicode(bodyStr);
       if (!__hasHeader(headers, "Content-Type")) {
-        // 对齐 legado AnalyzeUrl.executeStrRequest：body 为 JSON 时走 postJson
+        // body 为 JSON 时走 postJson
         // （application/json），否则按表单编码（postForm）
         var t = bodyStr.trim();
         headers["Content-Type"] = (t.indexOf("{") === 0 || t.indexOf("[") === 0)
@@ -530,9 +650,27 @@ const String legadoBridgeJsPart06 = r'''    var b = bytes.slice();
     x.send(bodyStr);
     var sc = null;
     try { sc = x.getResponseHeader("X-Set-Cookie"); } catch (e) {}
-    // 内部协议（legado://browser 等）需把 Cookie 归属到真实页面 URL，
-    // 由调用方通过 cookieUrl 传入，否则回落请求 URL 自身。
-    if (sc) __ingestSetCookie(cookieUrl || url, sc);
+    // 交互页面的最终地址（含运行期 hash，如 #config=）由原生通过响应头回传，
+    // 让 startBrowserAwait 返回的 StrResponse.url() 反映真实页面地址。
+    var finalUrl = "";
+    try {
+      var fu = x.getResponseHeader("X-Final-Url");
+      if (fu) {
+        try { fu = decodeURIComponent(fu); } catch (e) {}
+        finalUrl = String(fu);
+        globalThis.__lastBrowserUrl = finalUrl;
+      }
+    } catch (e) {}
+    // 内部协议（legado://browser 等）需把 Cookie 归属到真实页面 URL。
+    // 优先用页面最终地址（书源设置页/气泡预览页都在真实服务器域名下），
+    // 否则用调用方传入的 cookieUrl，最后才回落请求 URL 自身。
+    if (sc) {
+      var owner = cookieUrl || url;
+      try {
+        if (finalUrl && /^https?:\/\//i.test(finalUrl)) owner = finalUrl;
+      } catch (e) {}
+      __ingestSetCookie(owner, sc);
+    }
     if (__state.hosts.indexOf(__hostOf(url)) < 0) __state.hosts.push(__hostOf(url));
     if (x.status === 0) throw new Error("网络请求失败: " + url);
     if (x.status >= 400) {
@@ -552,7 +690,7 @@ const String legadoBridgeJsPart06 = r'''    var b = bytes.slice();
     return Object.keys(headers).some(function (k) { return k.toLowerCase() === lk; });
   }
 
-  // ---- StrResponse（对齐 legado io.legado.app.help.http.StrResponse）----
+  // ---- StrResponse----
   // body()/url()/code()/message()/headers() 均为方法；toString() 返回正文。
   function __strResponse(url, body, code, message, headers) {
     var b = (body === null || body === undefined) ? "" : String(body);
@@ -568,7 +706,7 @@ const String legadoBridgeJsPart06 = r'''    var b = bytes.slice();
     };
   }
 
-  // ---- 压缩包字节读取 / 本地 File 对象（对齐 E JsExtensions ----
+  // ---- 压缩包字节读取 / 本地 File 对象（ JsExtensions ----
   // getZip/get7z/getRarByteArrayContent、getFile、readFile）----
   // 返回 Uint8Array / File-like 对象，供书源做二进制处理与文件判断；
   // 原生协议统一以 base64 传递字节，此处还原，避免 utf8 解码破坏二进制。
@@ -610,6 +748,6 @@ const String legadoBridgeJsPart06 = r'''    var b = bytes.slice();
     };
   }
 
-  // ---- Jsoup Connection.Response（对齐 legado java.get/post/head/put/delete）----
+  // ---- Jsoup Connection.Response----
   // body()/statusCode()/statusMessage()/headers()/cookies()/url()/charset()
 ''';

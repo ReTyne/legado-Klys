@@ -1,6 +1,6 @@
 import 'book_type.dart';
 
-/// 逐字对齐 legado-E：
+/// 逐字：
 /// - `data/entities/BookGroup.kt:32-40` 的 7 个内置虚拟分组常量；
 /// - `data/AppDatabase.kt:177-242` `onOpen` 的幂等插入 / 开库脏数据修复 SQL；
 /// - `data/dao/BookDao.kt:21-82` `flowByGroup` 的位运算分组过滤。
@@ -8,7 +8,7 @@ import 'book_type.dart';
 /// 本项目 `book_groups` 表主键是自增 `id`、列为 `groupId/name/"order"/show/cover`
 /// (+ v14 补的 `enableRefresh`)，与上游 `groupId` 主键 / `groupName` 列不同；
 /// 因此 SQL 的**列名按本项目适配**，但 groupId/order/show/enableRefresh 的
-/// **取值逐字对齐上游**。上游用 `where not exists` 保证每次开库幂等。
+/// **取值逐字**。上游用 `where not exists` 保证每次开库幂等。
 
 /// 一个内置虚拟分组行（对齐 AppDatabase.kt onOpen 的 insert 值）。
 class VirtualGroupRow {

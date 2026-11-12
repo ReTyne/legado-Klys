@@ -13,7 +13,7 @@ import 'package:legado_md3/data/model/replace_rule.dart';
 /// * `myBookSource.json`  旧书源（`ruleSearchUrl` 等旧字段名 + 旧规则语法）
 /// * `myBookReplaceRule.json` 旧替换规则
 ///
-/// 规则语法转换（E 的 toNewRule/toNewUrl）：
+/// 规则语法转换（toNewRule/toNewUrl）：
 /// * `#正则#替换` → `##正则##替换`；`|` → `||`；`&` → `&&`
 /// * `searchKey` → `{{key}}`；`searchPage`/`<searchPage±1>` → `{{page}}`/`{{page±1}}`
 /// * `@Header:{...}` → `,{"headers":...}`；`|charset=x` → `,{"charset":"x"}`

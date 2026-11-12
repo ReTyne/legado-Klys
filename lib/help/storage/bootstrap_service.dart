@@ -217,7 +217,7 @@ class BootstrapService {
   }
 }
 
-/// 退出应用时按 mediaButtonOnExit 停止朗读（对齐 legado-E ReadAloudService）。
+/// 退出应用时按 mediaButtonOnExit 停止朗读。
 class _ReadAloudExitObserver with WidgetsBindingObserver {
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {

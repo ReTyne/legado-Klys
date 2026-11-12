@@ -1,4 +1,4 @@
-/// 批次 6 · URL 边界工具（对齐 legado-E `utils/NetworkUtils.kt:59-190`）。
+/// 批次 6 · URL 边界工具。
 ///
 /// 真实消费点：本轮由 `test/detail_batch6_test.dart` 覆盖契约。
 /// 生产接线（JS bridge 的 getAbsoluteURL / HTTP 响应解码链路）不在本轮文件

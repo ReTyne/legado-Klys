@@ -23,7 +23,7 @@ import 'package:legado_md3/ui/widgets/app_widgets.dart';
 part 'qr_scanner_screen.dart';
 
 
-/// 书源导入高级选项（对齐 legado-E `res/menu/import_source.xml` 的 7 项菜单：
+/// 书源导入高级选项（7 项菜单：
 /// menu_new_group / menu_select_new_source / menu_select_update_source /
 /// menu_keep_original_name / menu_keep_group / menu_keep_enable / menu_show_comment）。
 /// 另保留 1 项扩展「导入时自动替换同名」（官方原版能力）。
@@ -104,7 +104,7 @@ class _SourceManageScreenState extends State<SourceManageScreen> {
   bool _isLoading = true;
   final String _searchQuery = '';
   String? _selectedGroup;
-  // 对齐 E BookSourceActivity.upBookSource 的特殊分组过滤
+  // 特殊分组过滤
   // （need_login / 未分组 / 已启用 / 未启用 / 已启用发现）
   String? _specialFilter;
   int _sortBy = 0; // 0=手动 1=权重 2=名称 3=URL 4=更新时间 5=响应时间 6=启用
@@ -148,7 +148,7 @@ class _SourceManageScreenState extends State<SourceManageScreen> {
 
   List<BookSource> get _filteredSources {
     var result = _sources;
-    // 对齐 E upBookSource(searchKey)：need_login 等特殊过滤
+    // need_login 等特殊过滤
     switch (_specialFilter) {
       case 'need_login':
         result = result
@@ -569,7 +569,7 @@ class _SourceManageScreenState extends State<SourceManageScreen> {
     return count;
   }
 
-  /// 网络/在线导入（对齐 legado-E OnLineImportActivity）：打开独立的一键导入
+  /// 网络/在线导入：打开独立的一键导入
   /// 界面，支持 URL / JSON / legado:// 链接与 7 类+readConfig 类型选择；
   /// 返回后刷新书源列表（导入可能新增/更新书源）。
   void _showImportDialog() {
@@ -578,7 +578,7 @@ class _SourceManageScreenState extends State<SourceManageScreen> {
         .then((_) => _loadSources());
   }
 
-  /// 导入高级选项：对齐 legado-E `res/menu/import_source.xml` 的 7 项菜单
+  /// 导入高级选项：7 项菜单
   /// （new_group / select_new_source / select_update_source / keep_original_name /
   /// keep_group / keep_enable / show_comment），另含 1 项扩展「自动替换同名」。
   /// 早期所写「12 项菜单」是官方原版口径，不适用于 Sigma 基准。
@@ -934,7 +934,7 @@ class _SourceManageScreenState extends State<SourceManageScreen> {
                 case 'group_manage':
                   _showGroupManageDialog();
                   break;
-                // 对齐 E BookSourceActivity 的 menu_group_* 特殊分组过滤
+                // menu_group_* 特殊分组过滤
                 case 'filter_need_login':
                 case 'filter_no_group':
                 case 'filter_enabled':
@@ -967,7 +967,7 @@ class _SourceManageScreenState extends State<SourceManageScreen> {
       ),
       body: Column(
         children: [
-          // 对齐 E BookSourceActivity：特殊分组过滤状态条，点了可一键清除
+          // 特殊分组过滤状态条，点了可一键清除
           if (_specialFilter != null)
             Container(
               width: double.infinity,
@@ -1068,7 +1068,7 @@ class _SourceManageScreenState extends State<SourceManageScreen> {
         message: '点击右下角添加或导入书源',
       );
 
-  /// 书源校验（对齐 legado-E CheckSourceService：七项校验 + 失效分组 + 响应时间）
+  /// 书源校验
   Future<void> _validateSources([List<BookSource>? targets]) async {
     final sources = targets ?? await _db.getAllSources();
     if (sources.isEmpty) return;
@@ -1138,7 +1138,7 @@ class _SourceManageScreenState extends State<SourceManageScreen> {
     ));
   }
 
-  /// 校验设置对话框（对齐 legado-E ui/config/CheckSourceConfig.kt）
+  /// 校验设置对话框
   void _showCheckSourceConfigDialog() {
     var timeoutCtrl =
         TextEditingController(text: '${AppPrefs.checkSourceTimeout ~/ 1000}');
@@ -1153,7 +1153,7 @@ class _SourceManageScreenState extends State<SourceManageScreen> {
     showDialog(
       context: context,
       builder: (c) => StatefulBuilder(builder: (c, setS) {
-        // 选项依赖关系（对齐 E 的 enable/disable 联动）
+        // 选项依赖关系
         void onSearchOrDiscoveryChanged() {
           if (!checkSearch && !checkDiscovery) {
             checkInfo = false;

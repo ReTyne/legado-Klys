@@ -12,7 +12,7 @@ import 'package:legado_md3/help/storage/epub_parser.dart';
 import 'package:legado_md3/help/storage/import_book_service.dart';
 import 'package:legado_md3/ui/widgets/app_widgets.dart';
 
-/// 远程书籍导入（WebDAV 书库浏览），对齐原版 import/remote/RemoteBookActivity
+/// 远程书籍导入（WebDAV 书库浏览）
 class RemoteBookScreen extends StatefulWidget {
   const RemoteBookScreen({super.key});
 

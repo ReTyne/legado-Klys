@@ -10,7 +10,7 @@ import 'web_service_contract.dart';
 
 export 'web_service_contract.dart';
 
-/// 批次 6 · Web 服务「原生侧」能力边界（对齐 legado-E `service/WebService.kt`
+/// 批次 6 · Web 服务「原生侧」能力边界（ `service/WebService.kt`
 /// 与 `App.kt` / `constant/NotificationId.kt` / `constant/AppConst.kt`）。
 ///
 /// ==================================================================

@@ -2,7 +2,7 @@ import 'dart:io';
 
 /// 批次 3 · 阅读器细节：可单测的纯函数与状态机。
 ///
-/// 每个函数都标注了对应的 legado-E（Android/Kotlin）证据行号，供
+/// 每个函数都标注了对应的 （Android/Kotlin）证据行号，供
 /// `reading_screen.dart` / `reading_settings_screen.dart` 真实消费，
 /// 避免「只写不读」的假开关。本文件不依赖 Flutter widget，便于单元测试。
 
@@ -27,7 +27,7 @@ class ReadPadding {
   /// 是否触发了「边距设置过大」回退。
   final bool fellBack;
 
-  /// 可视文本宽（已扣左右边距；双页时按上游 `viewWidth / 2`）。
+  /// 可视文本宽。
   final double visibleWidth;
 
   /// 可视文本高（已扣上下边距）。

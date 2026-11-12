@@ -2,7 +2,7 @@ import 'dart:convert';
 
 import 'package:enough_convert/enough_convert.dart';
 
-/// 对齐 legado-E `help/JsExtensions.kt` + `utils/StringUtils.kt` +
+///  `help/JsExtensions.kt` + `utils/StringUtils.kt` +
 /// `utils/HtmlFormatter.kt` 的 JS 扩展函数语义。
 ///
 /// JS 桥（`legado_bridge_js_08.dart`）里这几个函数过去是简化实现：
@@ -147,7 +147,7 @@ class JsTextUtils {
       final i = int.tryParse(m.group(1) ?? '') ?? -1;
       return (i >= 0 && i < images.length) ? images[i] : '';
     });
-    // 缩进与去首尾空白（对齐上游 indent1/indent2/last）
+    // 缩进与去首尾空白
     s = s.replaceAll(RegExp(r'\s*\n+\s*'), '\n　　');
     s = s.replaceAll(RegExp(r'^[\n\s]+'), '　　');
     s = s.replaceAll(RegExp(r'[\n\s]+$'), '');
@@ -157,7 +157,6 @@ class JsTextUtils {
   /// 从 `<img ...>` 中提取 src（支持 `src` / `data-src` / `data-original` /
   /// `data-srcset`），输出规范化的 `<img src="...">`。
   static String _normalizeImg(String tag) {
-    // 对齐上游 `formatImagePattern` 的分支优先级：
     // 1) 带 {..} 书源规则参数的 src；2) data-(src|original|srcset) 懒加载；
     // 3) 普通 src（要求属性名前是空白，避免把 data-src 误当 src）；
     // 4) 任意 data-* 属性兜底。上游把懒加载属性排在普通 src 之前，

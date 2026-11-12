@@ -5,7 +5,7 @@ import 'package:legado_md3/help/translate/manga_translate_overlay.dart';
 import 'package:legado_md3/ui/book/reader_router.dart';
 import 'package:legado_md3/ui/widgets/app_widgets.dart';
 
-/// 漫画阅读配置 - 对齐原版 ReadMangaConfig / Sigma MangaColorFilterConfig。
+/// 漫画阅读配置 -  ReadMangaConfig / Sigma MangaColorFilterConfig。
 ///
 /// Sigma 漫画专属 10 键（全部由 manga_reader_screen 真实消费）：
 /// 1 manga_gray 灰阶  2 manga_threshold 二值化阈值  3 manga_colorFilter 色彩滤镜

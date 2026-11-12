@@ -1,18 +1,18 @@
-// legado-E「功能位置」单一真源（Single Source of Truth）。
+// 「功能位置」单一真源（Single Source of Truth）。
 //
-// 本文件只保存「功能落在哪里」的权威清单，逐项来自上游
-// /workspace/legado-E/legado-E-main/app/src/main/res/{menu,xml,layout}/，
+// 本文件只保存「功能落在哪里」的权威清单，逐项
+// /workspace//-main/app/src/main/res/{menu,xml,layout}/，
 // 生产代码与各对齐测试共同引用，杜绝多处硬编码漂移。
 //
-// 口径（用户拍板）：E 主落点严格 1:1 —— 导航层级、各页 overflow 项集合与顺序、
-// 长按菜单、设置分组与层级、交互触发点、阅读页底部按钮数/序、默认视图全部按 E；
+// 口径（用户拍板）：主界面严格 1:1 —— 导航层级、各页 overflow 项集合与顺序、
+// 长按菜单、设置分组与层级、交互触发点、阅读页底部按钮数/序、默认视图全部；
 // 仅配色/圆角/字体/图标风格等 MD3 纯视觉保留不同。
-// K 版独有功能不删除、不建独立扩展页，沉到所在页内部次级位置（见 kSecondary）。
+// 扩展功能不删除、不建独立扩展页，沉到所在页内部次级位置（见 kSecondary）。
 //
 // 注意：本文件放在 lib/constant/ 而非 lib/ui/，是为了不参与
 // test/ui_refactor_contract_test.dart 的「lib/ui 设计令牌覆盖」扫描分母。
 
-/// 一个 E 版菜单项。`id` 为上游 `android:id="@+id/xxx"` 去掉前缀后的名字，
+/// 一个 菜单项。`id` 为上游 `android:id="@+id/xxx"` 去掉前缀后的名字，
 /// 作为稳定标识（`key`）供顺序断言使用，避免中文文案改动导致误判。
 class EMenuItem {
   const EMenuItem(
@@ -57,7 +57,7 @@ class EPlacement {
   const EPlacement._();
 
   // ── 1. 底部导航（main_bnv.xml）────────────────────────────────────────
-  /// 4 个 tab，顺序固定。E 版无 DrawerLayout。
+  /// 4 个 tab，顺序固定。无 DrawerLayout。
   static const List<EMenuItem> tabs = [
     EMenuItem('menu_bookshelf', '书架', always: true),
     EMenuItem('menu_discovery', '发现', always: true),
@@ -297,9 +297,9 @@ class EPlacement {
     EMenuItem('menu_share_str', '分享'),
   ];
 
-  // ── 6. K 版独有功能 → 所在页内部次级位置（用户拍板「E 主落点优先」）────
-  /// 这些功能 E 版没有，不删除、不建独立扩展页，沉到所在页内部次级位置，
-  /// 且必须不出现在任何 E 主落点（B5 用 absent 断言锁死 + 次级可触达断言）。
+  // ── 6. 扩展功能 → 所在页内部次级位置（用户拍板「主界面优先」）────
+  /// 这些功能 没有，不删除、不建独立扩展页，沉到所在页内部次级位置，
+  /// 且必须不出现在任何 主界面（B5 用 absent 断言锁死 + 次级可触达断言）。
   static const Map<String, List<String>> kSecondary = {
     'profile': [
       'AI 助手', '智能体工具', '阅读统计', '下载管理', '首页模块', '定时任务',
@@ -334,13 +334,13 @@ class EPlacement {
         'Android 专属（HeapDump），Flutter 无等价能力，平台降级不实现',
     'exit(SystemNavigator.pop)': 'iOS 行为差异，平台降级',
     '<menu/> 动态子分组': 'PopupMenuButton 动态 itemBuilder，等价',
-    'DrawerLayout': 'E 版本身为 0 匹配，K 版亦无，无需处理',
+    'DrawerLayout': '本项无匹配项，无需处理',
     'view_read_menu 亮度侧栏/悬浮按钮行/章节进度条':
         '归入「界面/设置」子面板，MD3 表现不同、功能等价',
   };
 
-  /// E 版 XML 源码根路径（供 test/e_placement_baseline_test.dart 交叉校验）。
-  /// CI 上不存在时由测试 `skip` 并显式打印，不静默通过、不伪造。
+  /// 可选的菜单定义源码根路径，供菜单常量交叉校验使用。
+  /// 该目录不存在时由测试 `skip` 并显式打印，不静默通过、不伪造。
   static const String eSourceRoot =
       '/workspace/legado-E/legado-E-main/app/src/main/res';
 }

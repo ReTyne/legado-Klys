@@ -20,6 +20,7 @@ import 'package:legado_md3/data/model/rss_source.dart';
 import 'package:legado_md3/help/http/cookie_manager.dart';
 import 'package:legado_md3/help/source/archive_native.dart';
 import 'package:legado_md3/help/source/js_text_utils.dart';
+import 'package:legado_md3/help/source/explore_refresh.dart';
 import 'package:legado_md3/help/source/ttf_parser.dart';
 import 'package:legado_md3/ui/book/search/search_screen.dart';
 import 'package:legado_md3/ui/book/source/source_login_screen.dart';
@@ -66,6 +67,6 @@ class JsEvalRequest {
   final Map<String, dynamic>? book;
   final Map<String, dynamic>? chapter;
   final Map<String, dynamic>? rssArticle; // RSS 当前文章（rssArticle）
-  final Map<String, String>? infoMap; // 发现页控件状态（对齐 legado InfoMap）
+  final Map<String, String>? infoMap; // 发现页控件状态
   final bool isUrlRule;
 }

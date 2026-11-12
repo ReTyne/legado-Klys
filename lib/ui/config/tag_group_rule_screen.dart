@@ -3,7 +3,7 @@ import 'package:flutter/services.dart';
 import 'package:legado_md3/data/local/app_database.dart';
 import 'package:legado_md3/data/model/db_models.dart';
 import 'package:legado_md3/ui/widgets/app_widgets.dart';
-/// 标签分组规则页面 - 对齐原版TagGroupRuleScreen
+/// 标签分组规则页面 - TagGroupRuleScreen
 class TagGroupRuleScreen extends StatefulWidget {
   const TagGroupRuleScreen({super.key});
 

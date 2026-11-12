@@ -27,7 +27,7 @@ void main() {
   testWidgets('首页模块 Feed 仍可从次级入口「更多功能」触达', (tester) async {
     await tester.pumpWidget(_wrap(const DiscoverScreen()));
     await tester.pumpAndSettle(const Duration(milliseconds: 500));
-    // 主落点收敛为 E 的「分组」，K 独有首页模块 Feed 沉到 AppBar 末尾的
+    // 主落点收敛为 「分组」，扩展首页模块 Feed 沉到 AppBar 末尾的
     // 「更多功能」overflow；从该次级入口切换，验证功能未被删除。
     await tester.tap(find.byIcon(Icons.more_vert_outlined));
     await tester.pumpAndSettle();

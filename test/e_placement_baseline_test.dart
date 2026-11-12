@@ -1,9 +1,8 @@
-// 「真值 → 常量 → UI」三层链路中的第二层：把 E 版 res/*.xml 与
-// lib/constant/e_placement.dart 的单一真源做交叉校验。
+// 菜单常量回归：校验「定义 → 常量 → 界面」链路中的常量层。
 //
 // 两类断言：
-//  A. 常量自检（始终运行，不依赖 E 源）——防止常量被改坏而无人发现；
-//  B. XML 交叉校验（E 源存在时运行；不存在则 skip 并显式打印，不静默通过）。
+//  A. 常量自检（始终运行）——防止菜单常量被改坏而无人发现；
+//  B. XML 定义交叉校验（定义源存在时运行；不存在则 skip 并显式打印，不静默通过）。
 
 import 'dart:io';
 
@@ -141,7 +140,7 @@ void main() {
       }
     });
 
-    test('K 独有功能已登记到次级区，降级清单非空', () {
+    test('扩展功能已登记到次级区，降级清单非空', () {
       expect(EPlacement.kSecondary.containsKey('profile'), isTrue);
       expect(EPlacement.kSecondary.containsKey('reading'), isTrue);
       expect(EPlacement.kSecondary['reading_secondary_button'], ['备忘']);
@@ -159,13 +158,13 @@ void main() {
     });
   });
 
-  // ── B. E 版 XML 交叉校验（源缺失则 skip 并打印）─────────────────────
+  // ── B.  XML 交叉校验（源缺失则 skip 并打印）─────────────────────
   group(
-    'B · 与 legado-E res/*.xml 交叉校验',
+    'B · 菜单定义 XML 交叉校验',
     () {
       setUpAll(() {
         // ignore: avoid_print
-        print('[e_placement] 交叉校验 E 源: ${EPlacement.eSourceRoot}');
+        print('[菜单常量] 定义源: ${EPlacement.eSourceRoot}');
       });
 
       test('main_bnv.xml → tabs', () {
@@ -222,6 +221,6 @@ void main() {
             _ids(EPlacement.textSelectActions));
       });
     },
-    skip: _eAvailable ? false : 'E 源 ${EPlacement.eSourceRoot} 不存在，跳过 XML 交叉校验（不静默通过）',
+    skip: _eAvailable ? false : '定义源 ${EPlacement.eSourceRoot} 不存在，跳过 XML 交叉校验（不静默通过）',
   );
 }

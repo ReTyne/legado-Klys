@@ -7,7 +7,7 @@ import 'package:legado_md3/data/model/read_config.dart';
 import '../data/local/app_database.dart';
 
 class BookProvider extends ChangeNotifier {
-  /// 书架默认布局。对齐 legado 原版书架（封面九宫格）：全新安装默认「网格」，
+  /// 书架默认布局。 原版书架（封面九宫格）：全新安装默认「网格」，
   /// 而非细长条列表。值语义同 [bookshelfLayout]：0 详细列表 / 1 紧凑列表 /
   /// 2 三列网格 / 3 紧凑网格 / 4 大封面。
   static const int defaultBookshelfLayout = 2;
@@ -132,7 +132,7 @@ class BookProvider extends ChangeNotifier {
   }
 
   /// 读取本地持久化的视图偏好（布局、当前分组）。
-  /// 用户从未保存过布局时（全新安装）默认「网格」，对齐 legado 原版书架；
+  /// 用户从未保存过布局时（全新安装）默认「网格」；
   /// 只要显式保存过 [bs_layout] / 旧版 [bs_layoutMode]，就尊重用户选择。
   Future<void> loadViewPrefs() async {
     final prefs = await SharedPreferences.getInstance();

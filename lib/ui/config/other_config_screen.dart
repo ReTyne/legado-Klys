@@ -13,7 +13,7 @@ import 'package:legado_md3/ui/config/video_setting_screen.dart';
 import 'package:legado_md3/ui/widgets/app_widgets.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-/// 其他设置 - 对齐原版OtherConfigScreen
+/// 其他设置 - OtherConfigScreen
 ///
 /// 存储约定：开关类统一使用 oc_ 前缀，与原版预置项对齐的键沿用原版命名
 /// （例如 updateToVariant / mediaButtonOnExit / loadCoverOnlyWifi）。
@@ -176,7 +176,7 @@ class _OtherConfigScreenState extends State<OtherConfigScreen> {
         _section('网络和封面'),
         _sw('仅WiFi下加载封面', 'loadCoverOnlyWifi', 'cover_onlyWifi',
           sub: '移动数据下不加载网络封面（cover_onlyWifi，Android 原生判断）'),
-        _section('网络与存储（对照原版）'),
+        _section('网络与存储'),
         ListTile(
           dense: true,
           title: const Text('全局 User-Agent'),

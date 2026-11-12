@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:legado_md3/help/config/video_play_config.dart';
 import 'package:legado_md3/ui/widgets/app_widgets.dart';
 
-/// 视频播放器设置（对齐 legado-E `pref_config_other.xml` 的 videoSetting 独立入口）。
+/// 视频播放器设置。
 ///
 /// 四项均落到 [VideoPlayConfig] 的持久化键（autoPlay / startFull /
 /// longPressSpeed / fullBottomProgressBar），由 `video_player_screen.dart`

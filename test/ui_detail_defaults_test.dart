@@ -6,7 +6,7 @@ import 'package:legado_md3/data/model/read_config.dart';
 String src(String p) => File(p).readAsStringSync();
 
 void main() {
-  group('keep_light 五档（对齐 legado-E pref_config_read.xml）', () {
+  group('keep_light 五档', () {
     test('默认 0（跟随系统），toJson/fromJson 往返保真', () {
       final c = ReadConfig();
       expect(c.keepLight, 0);

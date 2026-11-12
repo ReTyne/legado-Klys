@@ -12,7 +12,7 @@ import 'package:legado_md3/help/source/json_path.dart';
 /// 直链上传规则（E: DirectLinkUpload.Rule）。
 ///
 /// * [uploadUrl]：上传接口，支持 `url,{"method":"POST","body":{...},"type":"multipart/form-data"}`
-///   形式（`,` 后为 JSON 选项，与 E 的 AnalyzeUrl 一致）；body 中值 `fileRequest`
+///   形式（`,` 后为 JSON 选项，与 AnalyzeUrl 一致）；body 中值 `fileRequest`
 ///   为文件占位符，上传时替换为实际文件。
 /// * [downloadUrlRule]：从上传响应提取下载地址的规则，如 `$.data@js:...`、`$.msg`。
 /// * [compress]：上传前是否压缩为 zip。
@@ -137,7 +137,7 @@ class DirectLinkUploadService {
   ///
   /// [file] 支持 [Uint8List]（字节）、[String]（文本）或 [Map]/[List]（JSON 序列化）。
   /// [contentType] 为文件 MIME（如 `text/plain`、`application/json`）。
-  /// 失败抛异常（信息对齐 E：上传url未配置/下载地址规则未配置/上传失败,<响应>）。
+  /// 失败抛异常。
   static Future<String> upLoad(
     String fileName,
     dynamic file,
@@ -189,7 +189,7 @@ class DirectLinkUploadService {
       }
     });
     if (formMap.isEmpty) {
-      // 无 body 配置时按 E 的 fileRequest 语义直接上传文件
+      // 无 body 配置时fileRequest 语义直接上传文件
       formMap['file'] = MultipartFile.fromBytes(
         bytes,
         filename: mFileName,
@@ -279,7 +279,7 @@ class DirectLinkUploadService {
     return Uint8List.fromList(utf8.encode(jsonEncode(file)));
   }
 
-  /// 把 data 打包为 zip（条目名为 [entryName]，对齐 E 的 ZipUtils.zipByteArray）
+  /// 把 data 打包为 zip
   static Uint8List _zipBytes(Uint8List data, String entryName) {
     final archive = Archive();
     archive.addFile(ArchiveFile(entryName, data.length, data));

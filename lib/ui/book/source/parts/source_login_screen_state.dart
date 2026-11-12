@@ -3,7 +3,7 @@
 part of '../source_login_screen.dart';
 
 
-/// 登录 UI 条目类型（对齐 legado loginUi 的 text/password/button/switch/select）。
+/// 登录 UI 条目类型。
 enum _LoginItemType { input, button }
 
 /// 单个登录 UI 条目的有序渲染单元：顺序与书源 loginUi 完全一致，
@@ -39,17 +39,173 @@ class _SourceLoginScreenState extends State<SourceLoginScreen> {
   bool _checkingLogin = false;
   bool? _loggedIn;
 
+  /// 表单草稿：所有控件（输入框 / 开关 / 下拉）的当前值，供重建表单时回填。
+  /// 刷新、动态 loginUi 重建都不会清空它，因此输入内容得以保留。
+  final Map<String, String> _draftForm = <String, String>{};
+  /// 上一次「保存」落盘的快照，用于判断是否有未保存改动。
+  Map<String, String> _persistedForm = <String, String>{};
+  bool _saving = false;
+
   late BookSource source;
+
+  String get _formKey => 'loginForm_${source.bookSourceUrl}';
+
+  /// 当前全部控件值（字符串化），用于持久化与改动比较。
+  Map<String, String> get _currentForm => <String, String>{
+        for (final e in _controllers.entries) e.key: e.value.text,
+        for (final e in _switchValues.entries) e.key: e.value.toString(),
+        for (final e in _selectValues.entries) e.key: e.value.toString(),
+      };
+
+  bool get _hasUnsavedChanges {
+    final cur = _currentForm;
+    if (cur.length != _persistedForm.length) return true;
+    for (final e in cur.entries) {
+      if (_persistedForm[e.key] != e.value) return true;
+    }
+    return false;
+  }
 
   @override
   void initState() {
     super.initState();
     source = widget.source;
     _buildUi();
-    // 对齐 E SourceLoginDialog：loginUi 为 @js:/<js> 时异步求值后重建表单
-    _maybeLoadDynamicUi();
+    // 恢复上次保存的输入内容（退出再进来仍存在），随后再求值动态 loginUi
+    _restoreForm();
     // 页面加载时检测登录状态（loginCheckJs）
     _checkLoginStatus();
+  }
+
+  /// 从本地存储读回上次保存的表单，并重建控件让保存值显示出来。
+  /// 无论是否读到保存值，最后都触发一次动态 loginUi 求值，保证草稿回填。
+  Future<void> _restoreForm() async {
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(_formKey);
+    if (raw != null && raw.isNotEmpty) {
+      try {
+        final decoded = jsonDecode(raw);
+        if (decoded is Map) {
+          final saved = decoded.map(
+              (k, v) => MapEntry(k.toString(), v?.toString() ?? ''));
+          _draftForm
+            ..clear()
+            ..addAll(saved);
+          _persistedForm = Map<String, String>.from(saved);
+        }
+      } catch (_) {}
+    }
+    if (!mounted) return;
+    // 静态 loginUi 立即可重建；动态 loginUi 交给 _maybeLoadDynamicUi。
+    if (_extractLoginUiJs((source.loginUi ?? '').trim()) == null) {
+      setState(_rebuildFields);
+    }
+    await _maybeLoadDynamicUi();
+  }
+
+  /// 只重建控件列表，不清空草稿（刷新 / 动态表单 / 恢复保存值共用）。
+  /// 新控件的初始值从 [_draftForm] 读取，因此输入内容不会丢失。
+  void _rebuildFields() {
+    _loginItems.clear();
+    _controllers.clear();
+    _switchValues.clear();
+    _selectValues.clear();
+    final items = _loginItemsOriginal.isNotEmpty
+        ? List<dynamic>.from(_loginItemsOriginal)
+        : _fallbackLoginUi;
+    _buildFields(items);
+  }
+
+  /// 保存最近一次成功解析的 loginUi 条目，供重建使用。
+  final List<dynamic> _loginItemsOriginal = <dynamic>[];
+
+  /// 保存表单输入、Cookie 与登录信息，退出再进入仍然存在。
+  Future<void> _saveAll({bool showHint = true}) async {
+    if (_saving) return;
+    _saving = true;
+    try {
+      final cur = _currentForm;
+      _draftForm
+        ..clear()
+        ..addAll(cur);
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_formKey, jsonEncode(cur));
+      _persistedForm = Map<String, String>.from(cur);
+      // 把当前 JS 运行时的 Cookie 与登录信息一并落盘：登录动作写入的
+      // qttoken 等 Cookie 需要跨「保存 / 退出 / 重进」保留。
+      await _flushLoginState();
+      if (mounted) setState(() {});
+      if (showHint && mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+            content: Text('已保存输入内容与登录状态'),
+            duration: Duration(seconds: 2)));
+      }
+    } finally {
+      _saving = false;
+    }
+  }
+
+  /// 刷新页面：重载 JS 运行时并重建表单，但保留当前输入内容。
+  Future<void> _reloadUi() async {
+    await JsRuntimeManager.instance.invalidate(source.bookSourceUrl);
+    if (!mounted) return;
+    final dynamicUi = _extractLoginUiJs((source.loginUi ?? '').trim()) != null;
+    setState(() {
+      _logs.clear();
+      _rebuildFields();
+    });
+    if (dynamicUi) await _maybeLoadDynamicUi();
+    await _checkLoginStatus();
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('已刷新，输入内容已保留'),
+          duration: Duration(seconds: 2)));
+    }
+  }
+
+  /// 让 JS 运行时把当前会话 Cookie / 登录信息回写数据库。
+  /// 走一次轻量求值即可触发桥的 cookie 回收，不执行任何书源动作。
+  Future<void> _flushLoginState() async {
+    try {
+      await JsRuntimeManager.instance.invalidate(source.bookSourceUrl);
+    } catch (_) {}
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final key = source.bookSourceUrl;
+      final loginInfo = prefs.getString('loginInfo_$key');
+      if (loginInfo == null || loginInfo.isEmpty) {
+        // 未显式写入 loginInfo 时，用表单内容作为兜底，保证书源
+        // `source.getLoginInfo()` 能读到用户填的账号信息。
+        await prefs.setString('loginInfo_$key', jsonEncode(_draftForm));
+      }
+    } catch (_) {}
+  }
+
+  /// 返回确认：有未保存改动时询问是否保存。
+  Future<bool> _confirmExit() async {
+    if (!_hasUnsavedChanges) return true;
+    if (!mounted) return true;
+    final choice = await showDialog<String>(
+      context: context,
+      builder: (c) => AlertDialog(
+        title: const Text('保存修改？'),
+        content: const Text('输入内容与登录状态尚未保存，是否保存后返回？'),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(c, 'discard'),
+              child: const Text('不保存')),
+          TextButton(
+              onPressed: () => Navigator.pop(c, 'cancel'),
+              child: const Text('取消')),
+          FilledButton(
+              onPressed: () => Navigator.pop(c, 'save'),
+              child: const Text('保存')),
+        ],
+      ),
+    );
+    if (choice == 'cancel' || choice == null) return false;
+    if (choice == 'save') await _saveAll(showHint: false);
+    return true;
   }
 
   /// 调用书源 loginCheckJs 检测登录状态并刷新界面提示
@@ -69,14 +225,14 @@ class _SourceLoginScreenState extends State<SourceLoginScreen> {
   void _buildUi() {
     final loginUrl = (source.loginUrl ?? '').trim();
     final uiText = (source.loginUi ?? '').trim();
-    // 对齐 E SourceLoginActivity：仅当没有自定义 loginUi 且 loginUrl 为
+    // 仅当没有自定义 loginUi 且 loginUrl 为
     // http(s) 时才自动进入 WebView；有 loginUi 时优先渲染自定义登录表单。
     if (uiText.isEmpty &&
         (loginUrl.startsWith('http://') || loginUrl.startsWith('https://'))) {
       WidgetsBinding.instance.addPostFrameCallback((_) => _openWebLogin(loginUrl));
       return;
     }
-    // 动态 loginUi：先留空，由 _maybeLoadDynamicUi 求值后重建（对齐 E evalUiJs）
+    // 动态 loginUi：先留空，由 _maybeLoadDynamicUi 求值后重建
     if (_extractLoginUiJs(uiText) != null) return;
     List<dynamic> items = [];
     if (uiText.isNotEmpty) {
@@ -100,7 +256,6 @@ class _SourceLoginScreenState extends State<SourceLoginScreen> {
     {'name': '登录', 'type': 'button', 'action': 'login(true)'},
   ];
 
-  /// 对齐 E SourceLoginDialog.handleReUiView / evalUiJs：
   /// loginUi 为 `@js:` / `<js>...</js>` 时先求值生成表单 JSON，再重建控件。
   Future<void> _maybeLoadDynamicUi() async {
     final raw = (source.loginUi ?? '').trim();
@@ -122,7 +277,7 @@ class _SourceLoginScreenState extends State<SourceLoginScreen> {
         // JS 直接返回 RowUi 数组
         items = value;
       } else {
-        // E 的 evalUiJs 用 toString() 得到 JSON 字符串再解析
+        // evalUiJs 用 toString() 得到 JSON 字符串再解析
         final jsonStr = (res.stringValue ?? '').trim();
         if (jsonStr.isNotEmpty) {
           final decoded = jsonDecode(jsonStr);
@@ -139,7 +294,7 @@ class _SourceLoginScreenState extends State<SourceLoginScreen> {
     });
   }
 
-  /// 提取 loginUi 里的 JS（对齐 E SourceLoginDialog 的 @js:/<js> 分支）
+  /// 提取 loginUi 里的 JS
   String? _extractLoginUiJs(String raw) {
     if (raw.startsWith('@js:')) return raw.substring(4);
     if (raw.startsWith('<js>')) {
@@ -158,7 +313,7 @@ class _SourceLoginScreenState extends State<SourceLoginScreen> {
 
   /// 单个登录 UI 条目（保留书源 loginUi 的原始顺序，仅按类型分组渲染）。
   /// - text/password/switch/select 直接携带已构建的控件；
-  /// - button 携带 action 与 flexBasisPercent，由网格布局按原版 Flexbox 规则排布。
+  /// - button 携带 action 与 flexBasisPercent，由网格布局 Flexbox 规则排布。
   _LoginItem _mkInput(Map<String, dynamic> item, Widget widget) =>
       _LoginItem(type: _LoginItemType.input, raw: item, widget: widget);
 
@@ -168,13 +323,16 @@ class _SourceLoginScreenState extends State<SourceLoginScreen> {
         flexBasisPercent: _flexBasisPercentOf(item),
       );
 
-  /// 解析书源 style.layout_flexBasisPercent（对齐 legado FlexboxLayoutManager）。
+  /// 解析书源 style.layout_flexBasisPercent。
   /// 委托共享实现，登录页与发现页使用同一套分行规则。
   static double _flexBasisPercentOf(Map<String, dynamic> raw) =>
       flexBasisPercentOf(raw['style']);
 
   /// 依据 loginUi 条目构建有序列表（顺序与书源完全一致）。
   void _buildFields(List<dynamic> items) {
+    _loginItemsOriginal
+      ..clear()
+      ..addAll(items);
     for (final raw in items) {
       if (raw is! Map) continue;
       final item = Map<String, dynamic>.from(raw);
@@ -184,23 +342,35 @@ class _SourceLoginScreenState extends State<SourceLoginScreen> {
         _loginItems.add(_mkButton(item));
       } else if (type == 'switch') {
         final name0 = name.isEmpty ? '开关' : name;
-        final value = _switchValues[name0] ?? false;
+        final draft = _draftForm[name0];
+        final value = draft != null
+            ? (draft == 'true' || draft == '1')
+            : (_switchValues[name0] ?? false);
         _switchValues[name0] = value;
+        _draftForm[name0] = value.toString();
         _loginItems.add(_mkInput(
           item,
           SwitchListTile(
             title: Text(name0),
             value: value,
             contentPadding: EdgeInsets.zero,
-            onChanged: (v) => setState(() => _switchValues[name0] = v),
+            onChanged: (v) => setState(() {
+              _switchValues[name0] = v;
+              _draftForm[name0] = v.toString();
+            }),
           ),
         ));
       } else if (type == 'select') {
         final name0 = name.isEmpty ? '请选择' : name;
         final options = _parseSelectOptions(item['options']);
         if (options.isNotEmpty) {
-          final current = _selectValues[name0] ?? options.first['value']!;
+          final draft = _draftForm[name0];
+          final valid = options.any((o) => o['value'] == draft);
+          final current = valid
+              ? draft!
+              : (_selectValues[name0] ?? options.first['value']!);
           _selectValues[name0] = current;
+          _draftForm[name0] = current;
           _loginItems.add(_mkInput(
             item,
             DropdownButtonFormField<String>(
@@ -218,13 +388,22 @@ class _SourceLoginScreenState extends State<SourceLoginScreen> {
                       ))
                   .toList(),
               onChanged: (v) {
-                if (v != null) setState(() => _selectValues[name0] = v);
+                if (v != null) {
+                  setState(() {
+                    _selectValues[name0] = v;
+                    _draftForm[name0] = v;
+                  });
+                }
               },
             ),
           ));
         }
       } else if (type == 'text' || type == 'password' || type.isEmpty) {
-        final c = TextEditingController();
+        final c = TextEditingController(text: _draftForm[name] ?? '');
+        _draftForm[name] = c.text;
+        c.addListener(() {
+          _draftForm[name] = c.text;
+        });
         _controllers[name] = c;
         _allControllers.add(c);
         _loginItems.add(_mkInput(
@@ -315,7 +494,7 @@ class _SourceLoginScreenState extends State<SourceLoginScreen> {
     );
   }
 
-  /// 弹性按钮网格：对齐 legado FlexboxLayoutManager，按 flexBasisPercent
+  /// 弹性按钮网格： FlexboxLayoutManager，按 flexBasisPercent
   /// 累加分行、每行铺满（layout_flexGrow=1），>=0.95 独占整行。
   /// 统一 fillet 样式，不再三色分级；每行两侧齐平，中文标签更少被截断。
   Widget _buttonGrid(List<_LoginItem> run) {
@@ -394,7 +573,7 @@ class _SourceLoginScreenState extends State<SourceLoginScreen> {
     return out;
   }
 
-  /// 打开 WebView 登录并打通闭环（对齐 E SourceLoginActivity → WebViewLoginFragment）。
+  /// 打开 WebView 登录并打通闭环。
   /// 新页完成登录时已把 Cookie 回写内存 CookieJar、cookies 表并开启
   /// enabledCookieJar；这里 await 结果后让 JS 运行时重新读取会话 Cookie，
   /// 再刷新 loginCheckJs 状态，网络层下一次请求即自动携带登录 Cookie。
@@ -419,7 +598,7 @@ class _SourceLoginScreenState extends State<SourceLoginScreen> {
     ));
   }
 
-  /// 查看登录头 / 登录信息（对齐 E source_login.xml 的 menu_show_login_header）
+  /// 查看登录头 / 登录信息
   Future<void> _showLoginHeader() async {
     final key = source.bookSourceUrl;
     final prefs = await SharedPreferences.getInstance();
@@ -464,7 +643,7 @@ class _SourceLoginScreenState extends State<SourceLoginScreen> {
     );
   }
 
-  /// 清除登录头 / 登录信息 / Cookie（对齐 E menu_del_login_header / removeLoginHeader）
+  /// 清除登录头 / 登录信息 / Cookie
   Future<void> _clearLoginHeader() async {
     final key = source.bookSourceUrl;
     final prefs = await SharedPreferences.getInstance();
@@ -483,7 +662,7 @@ class _SourceLoginScreenState extends State<SourceLoginScreen> {
     }
   }
 
-  /// 运行日志（对齐 E source_login.xml 的 menu_log / AppLogDialog）
+  /// 运行日志
   void _showLogs() {
     showDialog(
       context: context,
@@ -749,16 +928,19 @@ class _SourceLoginScreenState extends State<SourceLoginScreen> {
     final loginUrl = (source.loginUrl ?? '').trim();
     final isWeb = loginUrl.startsWith('http') &&
         (source.loginUi ?? '').trim().isEmpty;
-    return Scaffold(
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) async {
+        if (didPop) return;
+        final ok = await _confirmExit();
+        if (!ok || !mounted) return;
+        if (!context.mounted) return;
+        Navigator.of(context).pop();
+      },
+      child: Scaffold(
       appBar: AppBar(
         title: Text('登录 - ${source.bookSourceName}', maxLines: 1, overflow: TextOverflow.ellipsis),
         actions: [
-          // 聚合源备用服务器诊断 / 切换（应对 502 / 服务器不可用）
-          IconButton(
-            tooltip: '服务器诊断 / 切换',
-            icon: const Icon(Icons.dns_outlined),
-            onPressed: _busy ? null : _showServerDiagnostics,
-          ),
           // 有自定义 loginUi 且 loginUrl 为网页时，仍保留 WebView 登录入口
           if (!isWeb && loginUrl.startsWith('http'))
             IconButton(
@@ -766,11 +948,20 @@ class _SourceLoginScreenState extends State<SourceLoginScreen> {
               icon: const Icon(Icons.open_in_browser_outlined),
               onPressed: () => _openWebLogin(loginUrl),
             ),
-          // 对齐 E source_login.xml：查看登录头 / 删除登录头 / 日志
+          // 刷新与服务器切换统一收进三点菜单，避免顶栏图标拥挤。
           PopupMenuButton<String>(
-            tooltip: '登录选项',
+            tooltip: '更多功能',
             onSelected: (v) {
               switch (v) {
+                case 'reload':
+                  _reloadUi();
+                  break;
+                case 'server':
+                  _showServerDiagnostics();
+                  break;
+                case 'web_login':
+                  _openWebLogin(loginUrl);
+                  break;
                 case 'show_header':
                   _showLoginHeader();
                   break;
@@ -782,27 +973,27 @@ class _SourceLoginScreenState extends State<SourceLoginScreen> {
                   break;
               }
             },
-            itemBuilder: (_) => const [
-              PopupMenuItem(
+            itemBuilder: (_) => [
+              const PopupMenuItem(
+                  value: 'reload', child: Text('刷新页面（保留输入）')),
+              const PopupMenuItem(
+                  value: 'server', child: Text('切换服务器 / 诊断')),
+              if (!isWeb && loginUrl.startsWith('http'))
+                const PopupMenuItem(
+                    value: 'web_login', child: Text('网页登录')),
+              const PopupMenuDivider(),
+              const PopupMenuItem(
                   value: 'show_header', child: Text('查看登录头 / 登录信息')),
-              PopupMenuItem(
+              const PopupMenuItem(
                   value: 'clear_header', child: Text('清除登录头 / Cookie')),
-              PopupMenuItem(value: 'logs', child: Text('运行日志')),
+              const PopupMenuItem(value: 'logs', child: Text('运行日志')),
             ],
           ),
+          // 原刷新位置改为「保存」：持久化输入内容、Cookie 与登录信息。
           IconButton(
-            tooltip: '重新载入',
-            icon: const Icon(Icons.refresh_outlined),
-            onPressed: _busy ? null : () async {
-              await JsRuntimeManager.instance.invalidate(source.bookSourceUrl);
-              if (mounted) {
-                setState(() {
-                  _logs.clear();
-                  _clearFields();
-                  _buildUi();
-                });
-              }
-            },
+            tooltip: '保存',
+            icon: const Icon(Icons.save_outlined),
+            onPressed: _busy || _saving ? null : () => _saveAll(),
           ),
         ],
       ),
@@ -859,6 +1050,7 @@ class _SourceLoginScreenState extends State<SourceLoginScreen> {
                 ),
               ],
             ),
+      ),
     );
   }
 }

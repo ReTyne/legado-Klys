@@ -3,7 +3,7 @@
 part of '../bookshelf_manage_screen.dart';
 
 
-/// 书架管理内搜索（对齐 E BookshelfManageActivity 的 SearchView）
+/// 书架管理内搜索
 class _BookSearchDelegate extends SearchDelegate<String> {
   final List<Book> books;
   _BookSearchDelegate(this.books);

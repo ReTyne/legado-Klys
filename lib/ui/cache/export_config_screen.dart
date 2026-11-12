@@ -11,7 +11,7 @@ import 'package:legado_md3/help/config/app_config.dart';
 import 'package:legado_md3/help/storage/export_book_service.dart';
 import 'package:legado_md3/help/storage/webdav_service.dart';
 
-/// 缓存 / 导出配置（对齐 legado-E ui/book/cache/CacheActivity + res/menu/book_cache.xml）。
+/// 缓存 / 导出配置。
 ///
 /// 把 AppPrefs 里此前「定义/持久化但零消费方」的导出开关接到真实导出行为：
 /// - exportCharset / exportUseReplace / exportNoChapterName → ExportOptions；
@@ -31,13 +31,13 @@ class _ExportConfigScreenState extends State<ExportConfigScreen> {
   bool _loading = true;
   bool _busy = false;
 
-  // 对齐 E book_cache.xml 的 checkable 项（读取 AppPrefs 持久化值）
+  // checkable 项（读取 AppPrefs 持久化值）
   late String _charset; // menu_export_charset
   late bool _useReplace; // menu_enable_replace
   late bool _noChapterName; // menu_export_no_chapter_name
   late bool _toWebDav; // menu_export_web_dav
   late bool _parallel; // menu_parallel_export
-  int _exportType = 0; // menu_export_type：0=txt 1=epub（对齐 E exportTypes）
+  int _exportType = 0; // menu_export_type：0=txt 1=epub
   bool _customExport = false; // menu_enable_custom_export
   String _fileNameTpl = '{name}'; // menu_export_file_name（ExportBookService 已消费）
   String _exportDir = '';
@@ -114,7 +114,7 @@ class _ExportConfigScreenState extends State<ExportConfigScreen> {
     if (mounted) setState(() => _fileNameTpl = tpl);
   }
 
-  /// 自定义导出章节范围（对齐 E menu_enable_custom_export 的「选择导出章节」）
+  /// 自定义导出章节范围
   Future<(int, int)?> _askRange(int total) async {
     final s = TextEditingController(text: '1');
     final e = TextEditingController(text: '$total');
@@ -142,7 +142,7 @@ class _ExportConfigScreenState extends State<ExportConfigScreen> {
   }
 
   /// 导出单本：读取 AppPrefs 配置构造 ExportOptions，按 exportType 选 txt/epub，
-  /// 导出后按 exportToWebDav 上传（对齐 E CacheActivity.export / startExport）。
+  /// 导出后按 exportToWebDav 上传。
   Future<String?> _exportBook(Book book, {bool showRange = false}) async {
     final all = await _db.getChapters(book.name, book.author);
     if (all.isEmpty) return null;
@@ -171,7 +171,7 @@ class _ExportConfigScreenState extends State<ExportConfigScreen> {
     return path;
   }
 
-  /// 导出到 WebDAV（对齐 E AppConfig.exportToWebDav）：复用详情上传同一 WebDavService
+  /// 导出到 WebDAV：复用详情上传同一 WebDavService
   Future<void> _uploadToWebDav(String path) async {
     if (!_toWebDav) return;
     final p = await SharedPreferences.getInstance();
@@ -210,7 +210,7 @@ class _ExportConfigScreenState extends State<ExportConfigScreen> {
     }
   }
 
-  /// 导出全部（对齐 E menu_export_all）；parallelExportBook 决定并行/串行。
+  /// 导出全部；parallelExportBook 决定并行/串行。
   Future<void> _exportAll() async {
     if (_busy || _books.isEmpty) return;
     setState(() => _busy = true);
@@ -246,7 +246,7 @@ class _ExportConfigScreenState extends State<ExportConfigScreen> {
     }
   }
 
-  /// 日志（对齐 E menu_log / AppLogDialog）：展示导出配置诊断
+  /// 日志：展示导出配置诊断
   void _showLog() {
     showDialog(context: context, builder: (c) => AlertDialog(
       title: const Text('日志'),
@@ -272,7 +272,7 @@ class _ExportConfigScreenState extends State<ExportConfigScreen> {
       appBar: AppBar(
         title: const Text('缓存导出'),
         actions: [
-          // 对齐 E book_cache.xml：menu_export_all / menu_log
+          // menu_export_all / menu_log
           IconButton(icon: const Icon(Icons.receipt_long), tooltip: '日志', onPressed: _showLog),
           if (_books.isNotEmpty)
             TextButton(onPressed: _busy ? null : _exportAll, child: const Text('导出全部')),
@@ -281,7 +281,7 @@ class _ExportConfigScreenState extends State<ExportConfigScreen> {
       body: _loading
           ? const AppLoadingIndicator()
           : ListView(children: [
-              _section('导出选项（对齐 E book_cache.xml）'),
+              _section('导出选项'),
               // menu_export_type：导出类型
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: AppSpacing.l, vertical: AppSpacing.xs),
@@ -364,7 +364,7 @@ class _ExportConfigScreenState extends State<ExportConfigScreen> {
                 trailing: const Icon(Icons.chevron_right),
                 onTap: _setFileNameTpl,
               ),
-              // 对齐 E menu_export_folder：Klys 导出目录固定为应用文档/export，
+              // Klys 导出目录固定为应用文档/export，
               // 未接入系统目录选择（SAF），只读展示实际路径，不放无效开关（避免假完成）。
               ListTile(
                 dense: true,
@@ -372,7 +372,7 @@ class _ExportConfigScreenState extends State<ExportConfigScreen> {
                 title: const Text('导出文件夹'),
                 subtitle: Text(_exportDir, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 11)),
               ),
-              // 对齐 E menu_export_pics_file：Klys 导出引擎仅输出纯文本 TXT/EPUB，
+              // Klys 导出引擎仅输出纯文本 TXT/EPUB，
               // 不生成独立图片文件引用，无法真实接线，按约定从 UI 下架（AppPrefs.exportPictureFile 不暴露开关）。
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: AppSpacing.l, vertical: AppSpacing.s),

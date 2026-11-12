@@ -110,7 +110,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     return Scaffold(
       appBar: AppBar(
         title: const Text('我的'),
-        // E 版 main_my.xml 顶部菜单仅「帮助」1 项
+        // 「我的」页顶部菜单仅「帮助」1 项
         actions: [
           EOverflowMenuButton(
             items: eOverflowItemsFrom(
@@ -203,12 +203,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  /// E 主落点列表项：文案 / Key / 顺序全部由 [EPlacement] 常量驱动，
+  /// 主界面列表项：文案 / Key / 顺序全部由 [EPlacement] 常量驱动，
   /// onTap 沿用原有跳转，tile 结构复用 [_buildMenuItem]。
   Widget _eTile(EMenuItem e, IconData icon, String subtitle, VoidCallback onTap) =>
       _buildMenuItem(context, icon, e.zh, subtitle, onTap, key: Key(e.key));
 
-  /// 主题模式选择（对齐 legado-E pref_main 的 themeMode NameListPreference）
+  /// 主题模式选择
   Widget _buildThemeModeTile(BuildContext context, EMenuItem e) {
     final appTheme = context.watch<AppTheme>();
     const labels = ['跟随系统', '浅色', '深色'];
@@ -247,7 +247,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  /// E 版 main_my.xml 顶部菜单仅「帮助」1 项：给出应用用法说明。
+  /// 「我的」页顶部菜单仅「帮助」1 项：给出应用用法说明。
   void _showHelp(BuildContext context) {
     showDialog(
       context: context,
@@ -268,9 +268,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  /// K 版独有功能（[EPlacement.kSecondary] 的 'profile' 清单）：
+  /// 扩展功能（[EPlacement.kSecondary] 的 'profile' 清单）：
   /// 功能一项不删、类名与跳转原样保留；按「相似度」聚合归位，避免同类功能
-  /// 被拆散到不同分区、以及重复入口各自为政。E 主落点（顶层6/设置3/其它5）
+  /// 被拆散到不同分区、以及重复入口各自为政。主界面（顶层6/设置3/其它5）
   /// 三张卡片顺序与 Key 完全不动，本组全部位于其后。
   ///
   /// 聚合依据（用户反馈「调功能位置时，有些功能是很类似的」）：
@@ -490,7 +490,7 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   // 关于页 9 项能力已迁至 AboutScreen（lib/ui/about/about_screen.dart）；
-  // 旧 _showAbout 弹窗移除，K 独有的 GitHub 项目 / 分享应用 / 评分入口已迁至
+  // 旧 _showAbout 弹窗移除，扩展的 GitHub 项目 / 分享应用 / 评分入口已迁至
   // 下方「关于与项目」分区卡片（原「更多功能」默认折叠分区已按相似度聚合归位）。
 
   Widget _buildMenuItem(BuildContext context, IconData icon, String title, String subtitle, VoidCallback onTap, {Key? key}) {
@@ -505,6 +505,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 }
 
-// 对齐 legado-E pref_main：我的页无「实验室」入口，原 lab_config_screen 合并残留的
-// LabConfigScreen 为全项目无引用的死代码，已移除，避免暴露 E 没有的实验性功能界面。
+// 我的页无「实验室」入口，原 lab_config_screen 合并残留的
+// LabConfigScreen 为全项目无引用的死代码，已移除，避免暴露 不设的实验性功能界面。
 

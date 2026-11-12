@@ -46,7 +46,7 @@ void main() {
       expect(p.extractStringFromRaw(html, 'class.booklist@tag.li.0@tag.h2@text'), '第一本书');
       // !0 排除第一个，剩下第二本
       expect(p.extractStringFromRaw(html, 'class.booklist@tag.li!0@tag.h2@text'), '第二本书');
-      // 命中多个时按 legado AnalyzeByJSoup.getString 语义换行拼接
+      // 命中多个时 AnalyzeByJSoup.getString 语义换行拼接
       expect(p.extractStringFromRaw(html, 'class.author@text'), '张三\n李四');
     });
 

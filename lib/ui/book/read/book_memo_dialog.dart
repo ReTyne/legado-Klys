@@ -3,7 +3,7 @@ import 'package:legado_md3/data/local/app_database.dart';
 import 'package:legado_md3/data/model/book_memo.dart';
 import 'package:legado_md3/ui/widgets/app_widgets.dart';
 
-/// 阅读菜单「备忘」弹窗（对齐原版 view_read_menu.xml ll_memo → BookMemoDialog）。
+/// 阅读菜单「备忘」弹窗。
 ///
 /// 按「书 + 章」编辑备忘，数据落在 DatabaseService 的 book_memos 表：
 /// getBookMemos / upsertBookMemo / deleteBookMemo 三个 DAO 全部真实连通，

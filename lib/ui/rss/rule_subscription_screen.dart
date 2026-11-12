@@ -5,7 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:legado_md3/help/storage/rule_sub_auto_update.dart';
 import 'package:legado_md3/ui/widgets/app_widgets.dart';
 
-/// 规则订阅页面 - 对齐原版RuleSubScreen
+/// 规则订阅页面 - RuleSubScreen
 /// 订阅远程规则URL，可手动/自动更新书源/RSS源/替换规则
 class RuleSubscriptionScreen extends StatefulWidget {
   const RuleSubscriptionScreen({super.key});

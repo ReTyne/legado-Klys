@@ -167,7 +167,7 @@ class TxtParserService {
     return chapters;
   }
 
-  /// 长章节拆分（对齐 legado-E model/localBook/TextFile.kt）：
+  /// 长章节拆分：
   /// 超过 [maxChapterBytes]（E: maxLengthWithToc=102400）的章节按
   /// [chunkBytes]（E: maxLengthWithNoToc=10240）在换行处切分为多个子章节，
   /// 子章节命名为 `原标题(n)`（E 从 1 开始编号），原章节转为卷标（isVolume）。
@@ -271,7 +271,7 @@ class TxtParserService {
     return result;
   }
 
-  /// 目录重排后迁移阅读进度（对齐 E 重新解析目录后的位置保持思路）：
+  /// 目录重排后迁移阅读进度：
   /// 先按标题精确匹配；标题带 `(n)` 后缀的（旧列表已拆分）去掉后缀匹配父章节；
   /// 父章节变为卷标时落到其第一个子章节；都失败回退 0。
   static int remapChapterIndex(

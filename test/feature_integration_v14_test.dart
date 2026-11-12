@@ -8,7 +8,7 @@ import 'package:legado_md3/constant/e_placement.dart';
 
 import 'helpers/lib_source_helper.dart';
 
-/// 第十轮（v14，对齐 Luoyacheng/legado-E 阅读Sigma）回归测试：
+/// 第十轮回归测试：
 /// - 10 张新表在「全新安装」路径下建成（直接执行生产常量 v14TableSqls，零漂移）；
 /// - 主要模型 toMap/fromMap 往返保真；
 /// - 关键调用链用源码契约锁定（原生通道 / Bootstrap 接线 / WebSocket /
@@ -226,7 +226,7 @@ void main() {
       expect(src, contains('MainScreenSwitch'));
     });
 
-    test('阅读页 BGM / EPUB 仍在次级区可触达，且不在 E 主落点顺序内', () {
+    test('阅读页 BGM / EPUB 仍在次级区可触达，且不在 主界面顺序内', () {
       final src = read('lib/ui/book/read/reading_screen.dart');
       // 能力不删：类名 / 入口 / 文案仍存在于 reading_screen.dart
       expect(src, contains('showBgmPanel'), reason: 'BGM 面板入口不可删');
@@ -239,7 +239,7 @@ void main() {
       expect(src, contains('_kSecondaryItems'));
       expect(src, contains("id: 'k_bgm'"));
       expect(src, contains("id: 'k_epub_layout'"));
-      // E 主落点严格由单一真源构造，BGM / EPUB 不得进入主构造
+      // 主界面严格由单一真源构造，BGM / EPUB 不得进入主构造
       expect(src, contains('EPlacement.readOverflow'));
       expect(src, contains('eOverflowItemsFrom'));
       final mainStart = src.indexOf('List<EOverflowItem> _eOverflowItems()');
@@ -273,7 +273,7 @@ void main() {
           reason: '「备忘」已迁到次级区，不再占主按钮');
       final menuCfg = read('lib/help/config/read_menu_config.dart');
       expect(menuCfg, contains('EPlacement.textSelectActions'));
-      expect(menuCfg, contains('可配置能力为 K 独有扩展'));
+      expect(menuCfg, contains('可配置能力为 扩展扩展'));
     });
   });
 }

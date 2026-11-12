@@ -1,4 +1,4 @@
-/// 逐字对齐 legado-E `constant/BookType.kt` / `constant/BookSourceType.kt`
+/// 逐字 `constant/BookType.kt` / `constant/BookSourceType.kt`
 /// 与 `data/DatabaseMigrations.kt` 的 `Migration_54_55`。
 ///
 /// 上游用「2 的幂位」表示书籍类型，一本可叠加多位，DAO 全部依赖
@@ -9,7 +9,7 @@
 /// 因此这里**不改变 `Book.type` 的落库语义**：本文件只提供位标志权威定义、
 /// 与 Flutter 枚举的双向转换，供「备份导入/导出边界」与「DAO 位运算过滤」使用。
 /// 与 Android 备份互通时，位标志值与上游完全一致。
-/// 旧版书源类型（legado-E `constant/BookSourceType.kt:6-12`）。
+/// 旧版书源类型。
 /// v54→55 之前 books.type 存这些值，迁移时重映射为 [BookType] 位标志。
 class BookSourceType {
   BookSourceType._();
@@ -21,7 +21,7 @@ class BookSourceType {
   static const int video = 4;
 }
 
-/// 书籍类型位标志（legado-E `constant/BookType.kt:14-66`）。
+/// 书籍类型位标志。
 /// 每一位代表一个类型，数值为 2 的 n 次方，可叠加；>=8 与老版本类型区分。
 class BookType {
   BookType._();

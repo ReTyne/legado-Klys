@@ -138,7 +138,7 @@ class LocalBookParser {
   }
 
   // ========== MOBI ==========
-  // 补齐 MOBI 元数据（书名/作者/简介/字数/封面，对齐 E 的 MobiFile.upBookInfo / MobiBook.metadata）
+  // 补齐 MOBI 元数据
   static Future<Book?> _parseMobi(String filePath) async {
     try {
       final file = File(filePath);
@@ -178,7 +178,7 @@ class LocalBookParser {
   }
 
   // ========== PDF ==========
-  // 补齐 PDF 元数据（Info 字典 /Title /Author /Subject + 正文流字数，对齐 E 的 PdfFile.upBookInfo）
+  // 补齐 PDF 元数据
   static Future<Book?> _parsePdf(String filePath) async {
     try {
       final file = File(filePath);
@@ -186,7 +186,7 @@ class LocalBookParser {
       final bytes = await file.readAsBytes();
       // 书名/作者/简介优先取 Document Information Dictionary（未压缩对象里的明文）。
       // 现代 PDF 常把 Info 放进压缩对象流，纯 Dart 侧无交叉引用/对象流解码能力
-      // （E 的 PdfFile 走 Android PdfRenderer，同样不读 Info），且不能新增依赖，
+      // （PdfFile 走 Android PdfRenderer，同样不读 Info），且不能新增依赖，
       // 故扫描失败时按约束用「文件名 + 正文流」做可靠兜底。
       final info = _extractPdfInfo(bytes);
       final text = _extractPdfText(bytes);
@@ -220,7 +220,7 @@ class LocalBookParser {
   }
 
   // ========== UMD ==========
-  // 补齐 UMD 元数据（header.title/author/bookType/封面 + 正文字数，对齐 E 的 UmdFile.upBookInfo）
+  // 补齐 UMD 元数据
   static Future<Book?> _parseUmd(String filePath) async {
     try {
       final file = File(filePath);
@@ -228,7 +228,7 @@ class LocalBookParser {
       // 接线复用已有 UmdParser 的 TLV 解析（书名/作者/章节正文），不重复造轮子
       final res = await UmdParser.parse(filePath);
       final bytes = await file.readAsBytes();
-      // 补齐 UmdParser 未覆盖的 bookType(kind) 与 0x82 封面（对齐 E upBookInfo/upBookCover）
+      // 补齐 UmdParser 未覆盖的 bookType(kind) 与 0x82 封面
       final extra = await _readUmdExtra(bytes, filePath);
       final chapters = res?.chapters ?? const <BookChapter>[];
       final text = chapters.map((c) => c.content ?? '').join();
@@ -360,7 +360,7 @@ class LocalBookParser {
   static Future<String?> _readMobiChapter(String filePath) async {
     try {
       final bytes = await File(filePath).readAsBytes();
-      // 补齐 HUFF/CDIC 明确提示（对齐 E 的 MobiReader.readMobiEntryHeaders）：
+      // 补齐 HUFF/CDIC 明确提示：
       // compression=17480(0x4448 'DH') 为 Kindle 高压缩，正文解压暂不支持，
       // 避免笼统报「文件结构无法识别」误导用户；元数据（EXTH）仍可正常提取。
       if (_mobiCompression(bytes) == 17480) {
@@ -410,7 +410,7 @@ class LocalBookParser {
     if (compression == 2) {
       text = _palmDocDecompress(buf);
     } else if (compression == 17480) {
-      // 补齐 HUFF/CDIC 平台边界说明（对齐 E 的 MobiReader.readMobiEntryHeaders / HuffCdicReader）：
+      // 补齐 HUFF/CDIC 平台边界说明：
       // HUFF/CDIC 需按 HUFF 记录的 256 组码长表构建 Huffman 树，再跨多个 CDIC 字典记录按位解码，
       // E 由 lib/mobi 的原生 HuffCdic 实现；archive/纯 Dart 无等价实现，项目亦缺真实 HUFF/CDIC
       // fixture 可验证，故如实标注为平台边界、不做假实现。元数据（EXTH）在 record0 明文仍可读。
@@ -577,7 +577,7 @@ class LocalBookParser {
   static int _be32(List<int> b, int off) =>
       (b[off] << 24) | (b[off + 1] << 16) | (b[off + 2] << 8) | b[off + 3];
 
-  // ========== 元数据补齐：公共工具（对齐 E 的 model/localBook 元数据提取） ==========
+  // ========== 元数据补齐：公共工具 ==========
 
   /// PDB record info list（offset 76 处 2 字节为记录数，78 起每条 8 字节）→ 各记录起始偏移。
   static List<int> _pdbRecordOffsets(List<int> bytes) {
@@ -602,7 +602,7 @@ class LocalBookParser {
   }
 
   /// 解析 MOBI 元数据区：PDB 书名 + MOBI fullName + EXTH 记录 + 首个图片记录封面。
-  /// 对齐 E：MobiReader.readMobiEntryHeaders(EXTH) / MobiBook.metadata / MobiFile.upBookCover。
+  /// MobiReader.readMobiEntryHeaders(EXTH) / MobiBook.metadata / MobiFile.upBookCover。
   static Future<_MobiMetadata> _readMobiMetadata(
       List<int> bytes, String filePath) async {
     final meta = _MobiMetadata();
@@ -631,7 +631,7 @@ class LocalBookParser {
 
     if (r0 + 24 <= bytes.length && _ascii(bytes, r0 + 16, 4) == 'MOBI') {
       final mobiLen = _be32(bytes, r0 + 20);
-      // fullName（书名）：offset/length 相对 record0 起始（对齐 E readMobiHeader @84/@88）
+      // fullName（书名）：offset/length 相对 record0 起始
       if (r0 + 92 <= bytes.length) {
         final tOff = _be32(bytes, r0 + 84);
         final tLen = _be32(bytes, r0 + 88);
@@ -639,7 +639,7 @@ class LocalBookParser {
           fullName = _decodeMobiText(bytes.sublist(r0 + tOff, r0 + tOff + tLen));
         }
       }
-      // firstResourceIndex（首个图片/资源记录）在 record0 @108（对齐 E readUInt32(108)）
+      // firstResourceIndex（首个图片/资源记录）在 record0 @108
       if (r0 + 112 <= bytes.length) {
         final r = _be32(bytes, r0 + 108);
         if (r > 0 && r < offsets.length) coverRecord = r;
@@ -697,7 +697,7 @@ class LocalBookParser {
     meta.author = author;
     meta.intro = _firstNonEmpty([description, subject]);
 
-    // 封面：取图片记录原始字节写入缓存目录（对齐 E upBookCover / EpubParser.getCoverImage）
+    // 封面：取图片记录原始字节写入缓存目录
     if (coverRecord != null && coverRecord < offsets.length) {
       final start = offsets[coverRecord];
       final end = coverRecord + 1 < offsets.length
@@ -727,7 +727,7 @@ class LocalBookParser {
   }
 
   /// 从 PDF 明文扫描 Document Information Dictionary 的 /Title /Author /Subject。
-  /// 支持 (...) 字面量与 <...> 十六进制字符串，及 UTF-16 BOM（对齐 E 的 PdfFile 元数据兜底）。
+  /// 支持 (...) 字面量与 <...> 十六进制字符串，及 UTF-16 BOM。
   static ({String? title, String? author, String? subject}) _extractPdfInfo(
       List<int> bytes) {
     final raw = latin1.decode(bytes);
@@ -837,7 +837,7 @@ class LocalBookParser {
     return latin1.decode(b);
   }
 
-  /// UMD TLV 补扫：0x07 bookType(kind) 与 0x82 封面（对齐 E UmdFile 的 hd.bookType / upBookCover）。
+  /// UMD TLV 补扫：0x07 bookType(kind) 与 0x82 封面。
   static Future<({String? kind, String? coverPath})> _readUmdExtra(
       List<int> bytes, String filePath) async {
     String? kind;
@@ -885,7 +885,7 @@ class LocalBookParser {
     }
   }
 
-  /// 图片记录 / UMD 0x82 块写入系统临时目录，返回本地封面路径（对齐 EpubParser.getCoverImage）。
+  /// 图片记录 / UMD 0x82 块写入系统临时目录，返回本地封面路径。
   /// 用 Directory.systemTemp（纯 dart:io，无插件依赖，离线测试可用），按文件 hash 命名。
   static const List<int> _jpgSig = [0xFF, 0xD8, 0xFF];
   static const List<int> _pngSig = [0x89, 0x50, 0x4E, 0x47];

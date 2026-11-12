@@ -9,7 +9,7 @@ import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 
 /**
- * Web 服务快捷开关磁贴（对齐 legado-E service/WebTileService.kt）。
+ * Web 服务快捷开关磁贴。
  *
  * 磁贴点击经 MethodChannel('legado/web_tile') 转发给 Dart 侧切换 WebService，
  * Dart 切换完成后回传 updateState 刷新激活态。Dart 引擎未就绪时点击无副作用

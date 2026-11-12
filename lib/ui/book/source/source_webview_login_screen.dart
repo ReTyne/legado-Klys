@@ -10,7 +10,7 @@ import 'package:legado_md3/data/model/book_source.dart';
 import 'package:legado_md3/help/http/cookie_manager.dart';
 import 'package:legado_md3/ui/widgets/app_widgets.dart';
 
-/// WebView 登录结果：对齐 E WebViewLoginFragment 回收 Cookie 后回写书源的产物。
+/// WebView 登录结果： WebViewLoginFragment 回收 Cookie 后回写书源的产物。
 class SourceWebLoginResult {
   /// 收集到的 Cookie 头字符串（`k=v; k2=v2`）
   final String cookie;
@@ -28,19 +28,19 @@ class SourceWebLoginResult {
   });
 }
 
-/// 特殊书源 WebView 登录页（对齐 legado-E ui/login/WebViewLoginFragment.kt）。
+/// 特殊书源 WebView 登录页。
 ///
-/// E 的链路：SourceLoginActivity 在 `loginUi` 为空时改用 Fragment →
+/// 链路：SourceLoginActivity 在 `loginUi` 为空时改用 Fragment →
 /// 注入书源 headerMap（含 UA）加载绝对化 loginUrl → WebViewClient 在
 /// onPageStarted/onPageFinished 用 `CookieManager.getCookie(url)` 收 Cookie，
 /// `CookieStore.setCookie(source.getKey(), cookie)` 回写书源 → 网络层与 JS 复用。
 ///
 /// 本页等价落地为：
 ///  1. 用书源 header（含 `loginHeader_$srcUrl`）与 UA 注入 InAppWebView；
-///  2. shouldOverrideUrlLoading 拦截非 http(s) scheme（对齐 E 跳转外部 App 提示）；
+///  2. shouldOverrideUrlLoading 拦截非 http(s) scheme；
 ///  3. onLoadStart/onLoadStop 通过全局 `iw.CookieManager` 收集当前域 + 书源域 Cookie；
 ///  4. 回写三处形成闭环：内存 [CookieManager]（source_engine 立即消费）、
-///     cookies 表按 host 与书源 key 各存一份（跨启动持久化，对齐 E CookieStore）、
+///     cookies 表按 host 与书源 key 各存一份、
 ///     置 `source.enabledCookieJar=true` 让网络层从 DB 恢复会话；
 ///  5. JS 侧由 legado_js_runtime 的 `_collectCookies` 读同一份
 ///     `iw.CookieManager.instance()`，故登录后书源脚本也拿到 Cookie。
@@ -78,7 +78,7 @@ class _SourceWebViewLoginScreenState extends State<SourceWebViewLoginScreen> {
     _headersFuture = _buildHeaders();
   }
 
-  /// 绝对化登录地址：对齐 E NetworkUtils.getAbsoluteURL(source.getKey(), loginUrl)。
+  /// 绝对化登录地址： NetworkUtils.getAbsoluteURL(source.getKey(), loginUrl)。
   String _absoluteLoginUrl() {
     final raw = widget.loginUrl.trim();
     if (raw.startsWith('http://') || raw.startsWith('https://')) return raw;
@@ -89,7 +89,7 @@ class _SourceWebViewLoginScreenState extends State<SourceWebViewLoginScreen> {
     return raw;
   }
 
-  /// 书源请求头 + 登录头：对齐 E SourceLoginViewModel.headerMap =
+  /// 书源请求头 + 登录头： SourceLoginViewModel.headerMap =
   /// `source.getHeaderMap(true)`（hasLoginHeader=true 合并 loginHeader）。
   Future<Map<String, String>> _buildHeaders() async {
     final out = <String, String>{};
@@ -110,7 +110,7 @@ class _SourceWebViewLoginScreenState extends State<SourceWebViewLoginScreen> {
       final prefs = await SharedPreferences.getInstance();
       merge(prefs.getString('loginHeader_${widget.source.bookSourceUrl}'));
     } catch (_) {}
-    // 已保存的会话 Cookie 一并带上（对齐 E WebView 复用 CookieStore）
+    // 已保存的会话 Cookie 一并带上
     final saved = CookieManager().cookieHeader(_currentUrl);
     if (saved != null && saved.isNotEmpty && !out.containsKey('Cookie')) {
       out['Cookie'] = saved;
@@ -119,7 +119,7 @@ class _SourceWebViewLoginScreenState extends State<SourceWebViewLoginScreen> {
   }
 
   /// 从全局 WebView CookieManager 收集当前页 + 书源域的全部 Cookie。
-  /// 对齐 E onPageStarted/onPageFinished 的 `cookieManager.getCookie(url)`，
+  /// `cookieManager.getCookie(url)`，
   /// 这里额外合并书源主域，避免登录回调跳到别的路径时漏 Cookie。
   Future<String> _collectCookies(String url) async {
     final jar = <String, String>{};
@@ -140,14 +140,14 @@ class _SourceWebViewLoginScreenState extends State<SourceWebViewLoginScreen> {
   }
 
   /// 回写登录结果：内存 CookieJar + cookies 表（按 host 与书源 key）+ 开启持久化开关。
-  /// 对齐 E CookieStore.setCookie(source.getKey(), cookie) 与网络层 getHeaderMap。
+  ///  CookieStore.setCookie(source.getKey(), cookie) 与网络层 getHeaderMap。
   Future<void> _persist(String cookieStr, String url) async {
     if (cookieStr.isEmpty) return;
     CookieManager().saveFromResponse(url, [cookieStr]);
     try {
       final host = Uri.tryParse(url)?.host ?? '';
       if (host.isNotEmpty) await _db.saveCookie(host, cookieStr);
-      // 按书源 key 再存一份（对齐 E 按 source.getKey 隔离 Cookie）
+      // 按书源 key 再存一份
       await _db.saveCookie(widget.source.bookSourceUrl, cookieStr);
       if (!widget.source.enabledCookieJar) {
         widget.source.enabledCookieJar = true;
@@ -156,7 +156,7 @@ class _SourceWebViewLoginScreenState extends State<SourceWebViewLoginScreen> {
     } catch (_) {}
   }
 
-  /// 每次页面加载结束都实时回收 Cookie（对齐 E onPageFinished 的 setCookie）。
+  /// 每次页面加载结束都实时回收 Cookie。
   Future<void> _onPageLoaded(String url) async {
     if (url.isEmpty) return;
     final str = await _collectCookies(url);
@@ -200,7 +200,7 @@ class _SourceWebViewLoginScreenState extends State<SourceWebViewLoginScreen> {
               icon: const Icon(Icons.refresh_outlined),
               onPressed: () => _controller?.reload(),
             ),
-            // 对齐 E source_webview_login.xml 的 menu_ok（检查 host Cookie 并结束）
+            // menu_ok（检查 host Cookie 并结束）
             FilledButton.icon(
               onPressed: _finish,
               icon: const Icon(Icons.check, size: 18),
@@ -281,7 +281,7 @@ class _SourceWebViewLoginScreenState extends State<SourceWebViewLoginScreen> {
                       }
                       await _onPageLoaded(u.isNotEmpty ? u : _absoluteLoginUrl());
                     },
-                    // 对齐 E shouldOverrideUrlLoading：http/https 放行，
+                    // http/https 放行，
                     // 其它 scheme 提示用外部 App 打开（拦截跳转）。
                     shouldOverrideUrlLoading: (c, action) async {
                       final uri = action.request.url;

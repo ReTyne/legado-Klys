@@ -8,7 +8,7 @@ import 'package:legado_md3/data/model/rss_source.dart';
 import 'package:legado_md3/ui/rss/rss_source_edit_screen.dart';
 import 'package:legado_md3/ui/widgets/app_widgets.dart';
 
-/// 订阅源管理 —— 对齐 legado-E `ui/rss/source/RssSourceActivity`。
+/// 订阅源管理 ——  `ui/rss/source/RssSourceActivity`。
 ///
 /// 功能位置与 E 一致：
 /// - 列表项：启用开关 + 名称/地址 + 编辑 + 更多菜单（对齐 item_rss_source.xml）

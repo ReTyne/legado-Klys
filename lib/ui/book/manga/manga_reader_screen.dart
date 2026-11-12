@@ -18,12 +18,12 @@ part 'parts/manga_image.dart';
 part 'parts/manga_image_state.dart';
 
 /// 当前翻页模式的总页数：单页=图片数；双页=相邻两页拼一屏（ceil(n/2)）。
-/// 补齐双页拼合（对齐 E 的漫画双页阅读），抽成顶层纯函数便于离线单测。
+/// 补齐双页拼合，抽成顶层纯函数便于离线单测。
 int mangaPageCount(int imageCount, bool doublePage) =>
     doublePage ? (imageCount + 1) ~/ 2 : imageCount;
 
 /// 双页模式第 [pageIndex] 屏对应的图片下标：正常两张 [左, 右]，奇数张时最后一屏仅 [左]。
-/// 补齐双页拼合（对齐 E 的漫画双页阅读），抽成顶层纯函数便于离线单测。
+/// 补齐双页拼合，抽成顶层纯函数便于离线单测。
 List<int> mangaDoublePageIndices(int pageIndex, int imageCount) {
   final left = 2 * pageIndex;
   if (left >= imageCount) return const [];

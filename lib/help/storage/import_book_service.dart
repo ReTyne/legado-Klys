@@ -26,7 +26,6 @@ class ImportResult {
 
 /// 统一的本地书籍导入：按文件路径解析 TXT/EPUB/UMD/MOBI/PDF/ZIP 并入库。
 ///
-/// 对齐 legado-E `LocalBook.importFile/importArchiveFile`：
 /// * PDF 以「单章正文 + fileName」入库，阅读路由据此分流到 PDF 阅读器；
 /// * 压缩包（zip/rar/7z）解压后按 `bookFileRegex`（txt|epub|umd|pdf|mobi|azw3|azw）
 ///   过滤，逐本导入，`origin` 标记为 `local::<压缩包名>`；
@@ -37,12 +36,12 @@ class ImportBookService {
   final DatabaseService _db = DatabaseService();
   final TxtParserService _txt = TxtParserService();
 
-  /// 支持的书籍文件扩展名（对齐 E `AppPattern.bookFileRegex`）
+  /// 支持的书籍文件扩展名
   static const supported = [
     'txt', 'epub', 'umd', 'mobi', 'azw', 'azw3', 'pdf',
   ];
 
-  /// 压缩包扩展名（对齐 E `AppPattern.archiveFileRegex`）
+  /// 压缩包扩展名
   static const archiveExts = ['zip', 'rar', '7z'];
 
   /// 压缩包内参与导入的文件名正则（与 supported 一致）
@@ -250,7 +249,7 @@ class ImportBookService {
     return ImportResult(book, chapters.length);
   }
 
-  /// 用 LocalBookParser.parse 的元数据回填导入 Book（对齐 E 的 LocalBook.upBookInfo）。
+  /// 用 LocalBookParser.parse 的元数据回填导入 Book。
   /// 只补「空 / 未知 / 未统计」字段，避免覆盖各格式解析器已产出的更准信息。
   /// 公开为静态方法便于行为测试验证「解析 → 回填 → 进书架」这条调用链真实成立。
   static Future<void> enrichMetadataFromParser(

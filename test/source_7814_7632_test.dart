@@ -90,7 +90,6 @@ class _FakeJs implements LegadoJs {
       return JsEvalResult(value: '\n\u200b');
     }
     // 7814 intro 尾部 <js>（简化形态）：脚本内的 {{}} 必须已被引擎预先替换
-    // （对齐 legado makeUpRule 对 JS 段同样替换）。
     // 忠实模拟 `result.indexOf(s) >= 0 && d.length > 0 ? "校验通过:"+s+"/"+d : "校验失败"`
     if (s.contains('const s =')) {
       final sv = RegExp(r'const s = "([^"]*)"').firstMatch(s)?.group(1) ?? '';
@@ -230,7 +229,7 @@ void main() {
     test(r'intro 尾部 <js> 内的 {{$.x}} 先替换再执行', () async {
       // 7814 intro 真实形态：字面量 + {{$.source}}/{{"\n"+"​"}}/{{$.desc}} 前缀，
       // 尾部 <js> 脚本内再嵌 {{$.source}}/{{$.desc}}。
-      // 对齐 legado SourceRule.makeUpRule：JS 段的 {{}} 也先按 isRule 消歧替换。
+      // JS 段的 {{}} 也先按 isRule 消歧替换。
       final src = BookSource.fromJson({
         ..._source7814Json,
         'ruleBookInfo': {
@@ -373,7 +372,7 @@ void main() {
     });
   });
 
-  group('infoMap 持久化（对齐 legado InfoMap）', () {
+  group('infoMap 持久化', () {
     late BookSource source;
 
     setUp(() {

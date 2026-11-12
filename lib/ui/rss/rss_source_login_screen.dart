@@ -7,7 +7,7 @@ import 'package:legado_md3/help/source/js/legado_js_runtime.dart';
 import 'package:legado_md3/ui/browser/browser_screen.dart';
 import 'package:legado_md3/ui/widgets/app_widgets.dart';
 
-/// 订阅源登录页：对齐 legado 的 loginUi / loginUrl 机制（与书源登录页一致）。
+/// 订阅源登录页：loginUi / loginUrl 机制（与书源登录页一致）。
 class RssSourceLoginScreen extends StatefulWidget {
   const RssSourceLoginScreen({super.key, required this.source});
   final RssSource source;

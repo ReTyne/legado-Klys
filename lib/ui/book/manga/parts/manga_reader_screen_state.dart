@@ -367,7 +367,7 @@ class _MangaReaderScreenState extends State<MangaReaderScreen> {
         itemBuilder: (context, index) => _buildImage(images[index], BoxFit.fitWidth, true),
       );
     } else {
-      // 补齐双页拼合（manga_scrollMode==2，对齐 E 的漫画双页阅读）：
+      // 补齐双页拼合：
       // 相邻两页并排放进同一屏 Row，页数按 ceil(n/2)；单页模式保持原有 Center 渲染不变。
       final doublePage = _scrollMode == 2;
       return PageView.builder(
@@ -615,7 +615,7 @@ class _MangaReaderScreenState extends State<MangaReaderScreen> {
       _scrollMode = mode;
       _imageIndex = 0;
     });
-    // 补齐双页拼合（对齐 E 的漫画双页阅读）：单页↔双页切换会改变 PageView 页数，
+    // 补齐双页拼合：单页↔双页切换会改变 PageView 页数，
     // 复位到第 0 页避免停留在越界页。
     if (_pageController.hasClients) _pageController.jumpToPage(0);
     try {
@@ -663,7 +663,7 @@ class _MangaReaderScreenState extends State<MangaReaderScreen> {
       _scrollController.animateTo(next,
           duration: const Duration(milliseconds: 300), curve: Curves.easeOut);
     } else {
-      // 补齐双页拼合（对齐 E 的漫画双页阅读）：双页模式下 _imageIndex 是「页对」索引，
+      // 补齐双页拼合：双页模式下 _imageIndex 是「页对」索引，
       // 章末判断改用 _pageCount，避免单页口径导致翻到一半就跳章。
       if (_imageIndex >= mangaPageCount(images.length, _scrollMode == 2) - 1) {
         _nextChapter();
@@ -689,7 +689,7 @@ class _MangaReaderScreenState extends State<MangaReaderScreen> {
       _currentChapter = index;
       _imageIndex = 0;
     });
-    // 补齐双页拼合（对齐 E 的漫画双页阅读）：新章节图片数不同，复位翻页位置避免越界。
+    // 补齐双页拼合：新章节图片数不同，复位翻页位置避免越界。
     if (_pageController.hasClients) _pageController.jumpToPage(0);
     await _ensureImages(index);
     unawaited(_prefetchImages(index));

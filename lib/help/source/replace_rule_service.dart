@@ -5,7 +5,7 @@ import 'package:legado_md3/data/model/replace_rule.dart';
 
 /// 替换净化规则服务。
 ///
-/// 作用域语义对齐 legado-E `data/dao/ReplaceRuleDao.kt:65-78`：
+/// 作用域语义 `data/dao/ReplaceRuleDao.kt:65-78`：
 /// - `scope` 为空 / `all` → 全部生效；否则规则的 scope 需包含书名或书源 origin
 ///   （上游 SQL 是 `scope LIKE '%' || :name || '%' or ...`，方向是「规则含书名」，
 ///   本项目历史实现写成「书名含规则」，方向相反，此处两个方向都兼容）；
@@ -74,7 +74,7 @@ class ReplaceRuleService {
     return _applyOne(text, rule);
   }
 
-  /// 对齐上游 `ReplaceRuleController.testRule` 的 `withTimeout`：把替换放进独立
+  /// 把替换放进独立
   /// isolate，按 `getValidTimeoutMillisecond()` 超时，防止劣质正则卡死主 isolate。
   Future<String> testRuleWithTimeout(String text, ReplaceRule rule) async {
     if (!rule.isValid()) return testRule(text, rule);
@@ -94,7 +94,7 @@ class ReplaceRuleService {
     }
   }
 
-  /// 从 JSON 导入规则，兼容 legado-E 字段名与本项目历史字段名，不丢字段。
+  /// 从 JSON 导入规则，兼容  字段名与本项目历史字段名，不丢字段。
   static List<ReplaceRule> fromJson(List<dynamic> jsonList) => jsonList
       .map((json) => json is Map
           ? ReplaceRule.fromMap(Map<String, dynamic>.from(json))
@@ -102,7 +102,7 @@ class ReplaceRuleService {
       .whereType<ReplaceRule>()
       .toList();
 
-  /// 导出为 legado-E 兼容 JSON（保留 group / excludeScope / timeoutMillisecond）。
+  /// 导出为  兼容 JSON（保留 group / excludeScope / timeoutMillisecond）。
   static List<Map<String, dynamic>> toJson(List<ReplaceRule> rules) =>
       rules.map((r) => r.toLegadoJson()).toList();
 }

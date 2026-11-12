@@ -2,7 +2,7 @@ import 'dart:typed_data';
 
 import 'package:enough_convert/enough_convert.dart';
 
-/// 编码统计探测器（对齐 legado-E utils/EncodingDetect.kt + lib/icu4j/CharsetDetector）。
+/// 编码统计探测器。
 ///
 /// 纯 Dart 实现的简化版 ICU 编码探测：先 BOM / UTF-16 零字节特征 / UTF-8 严格校验，
 /// 再对 GBK 与 Big5 做「解码后可读字符占比」打分，取更优者。

@@ -4,7 +4,7 @@ import 'package:legado_md3/data/model/rss_article.dart';
 import 'package:legado_md3/ui/rss/rss_read_screen.dart';
 import 'package:legado_md3/ui/widgets/app_widgets.dart';
 
-/// RSS收藏文章页面 - 对齐原版RssFavoritesScreen
+/// RSS收藏文章页面 - RssFavoritesScreen
 class RssFavoritesScreen extends StatefulWidget {
   const RssFavoritesScreen({super.key});
 

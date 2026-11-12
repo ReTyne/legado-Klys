@@ -20,7 +20,7 @@ part 'parts/source_edit_screen_state.dart';
 part 'parts/rule_field.dart';
 
 
-/// 书源编辑页 —— 对齐 legado-with-MD3：
+/// 书源编辑页 —— -with-MD3：
 /// 字段以“卡片预览 + 点击弹出底部多行编辑器”呈现，六个分页（基础/搜索/发现/详情/目录/正文），
 /// 顶栏提供 调试 / 更多（登录、保存并搜索、清除 Cookie、规则补全、设置变量、复制、粘贴、分享、帮助）。
 class SourceEditScreen extends StatefulWidget {

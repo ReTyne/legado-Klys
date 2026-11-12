@@ -12,12 +12,15 @@ const String legadoBridgeJsPart08 = r'''    androidId: function () { return __st
     remove: function (k) { cache.remove(k); },
     contains: function (k) { return Object.prototype.hasOwnProperty.call(__state.kv, k); },
 
-    // 书源相关
-    refreshExplore: function () { return true; },
+    // 书源相关：发现页控件改了分类依赖的变量后，通知原生失效分类缓存并重取分类
+    refreshExplore: function () {
+      try { __doXhr("legado://refreshexplore", { method: "GET" }); } catch (e) {}
+      return true;
+    },
     refreshBookToc: function () { return true; },
     refreshBook: function () { return true; },
 
-    // 导航类（对齐 legado RssJsExtensions/SourceLoginJsExtensions，经内部协议转交原生）
+    // 导航类
     // searchBook(key, searchScope)：scope 形如「分组::书源Url」或书源 Url，
     // 用于限定在该书源内搜索（发现页搜索框即此用法）。
     searchBook: function (key, searchScope) {
@@ -47,7 +50,9 @@ const String legadoBridgeJsPart08 = r'''    androidId: function () { return __st
     startBrowser: function (url, title) { __openBrowser(url, title, false); },
     startBrowserDp: function (url, title) { __openBrowser(url, title, false); },
     // 阻塞式：用户关闭网页后返回带 body() 的 StrResponse（正文为关闭时页面 HTML）
-    startBrowserAwait: function (url, title) { return __openBrowserAwaitHtml(url, title); },
+    startBrowserAwait: function (url, title, refetchAfterSuccess, html) {
+      return __openBrowserAwaitHtml(url, title, refetchAfterSuccess, html);
+    },
     showBrowser: function (url, title) { return __openBrowserAwaitHtml(url, title); },
     showReadingBrowser: function (url, title) { return __openBrowserAwaitHtml(url, title); },
     reLoginView: function (url) { return __openBrowserAwaitHtml(url || "", "登录"); },
@@ -134,7 +139,6 @@ const String legadoBridgeJsPart08 = r'''    androidId: function () { return __st
     encodeURI: function (str, enc) {
       try { return encodeURIComponent(String(str)).replace(/%20/g, "+"); } catch (e) { return ""; }
     },
-    // 对齐 E JsExtensions.htmlFormat = HtmlFormatter.formatKeepImg(str)：
     // 保留 <img>（含懒加载 data-src）、块级标签转换行、段首两个全角空格缩进、
     // 去注释与空格实体。真实语义转交 Dart 侧 JsTextUtils.htmlFormat，避免
     // 过去「一刀切去所有标签」把正文图片也丢掉的假实现。
@@ -168,7 +172,7 @@ const String legadoBridgeJsPart08 = r'''    androidId: function () { return __st
     toURL: function (urlStr, baseUrl) {
       try { return new URL(urlStr, baseUrl || __state.meta.httpUrl); } catch (e) { return null; }
     },
-    // 对齐 E JsExtensions.toNumChapter：`(第)(.+?)(章)` 命中时把中间数字
+    // `(第)(.+?)(章)` 命中时把中间数字
     // 用 StringUtils.stringToInt（全角转半角 + 中文数字）转成阿拉伯数字，
     // 其余原样；上游 `(第)(.+?)(章)` 无 ^$ 锚点，用 find() 取首个匹配。
     // 旧实现只做「去前导零」，不认「第一百零二章」。
@@ -180,7 +184,7 @@ const String legadoBridgeJsPart08 = r'''    androidId: function () { return __st
         });
       } catch (e) { return s; }
     },
-    // 对齐 E JsExtensions.strToBytes(str, charset)：按 Java charset 编码。
+    // 按 Java charset 编码。
     // V8 的 TextEncoder 只支持 UTF-8，GBK/GB2312/Latin-1 等必须由 Dart 侧
     // enough_convert 完成；返回字节数组 JSON 由 __doXhr 封送。
     strToBytes: function (str, charset) {
@@ -194,7 +198,7 @@ const String legadoBridgeJsPart08 = r'''    androidId: function () { return __st
         return Array.from(new TextEncoder().encode(String(str == null ? "" : str)));
       }
     },
-    // 对齐 E JsExtensions.bytesToStr(bytes, charset)：按 Java charset 解码。
+    // 按 Java charset 解码。
     bytesToStr: function (bytes, charset) {
       try {
         var arr = [];
@@ -212,8 +216,22 @@ const String legadoBridgeJsPart08 = r'''    androidId: function () { return __st
 
     // 脚本导入 / 文件缓存（走 legado://file 内部协议，原生文件系统实现）
     importScript: function (path) {
-      try { return __doXhr("legado://file?op=read&path=" + encodeURIComponent(path), { method: "GET" }); }
-      catch (e) { return ""; }
+      var p = String(path == null ? "" : path);
+      var result = "";
+      try {
+        //  JsExtensions.importScript：http 脚本走 cacheFile 下载并缓存，
+        // 其余按本地文件读取。
+        if (/^https?:\/\//i.test(p)) {
+          result = __doXhr("legado://file?op=cache&url=" + encodeURIComponent(p), { method: "GET" });
+        } else {
+          result = __doXhr("legado://file?op=read&path=" + encodeURIComponent(p), { method: "GET" });
+        }
+      } catch (e) { result = ""; }
+      // 空内容会抛 NoStackTraceException 让书源感知失败。
+      if (!String(result || "").trim()) {
+        throw new Error(p + " 内容获取失败或者为空");
+      }
+      return result;
     },
     cacheFile: function (urlStr, saveTime) {
       try { return __doXhr("legado://file?op=cache&url=" + encodeURIComponent(urlStr), { method: "GET" }); }
@@ -227,7 +245,7 @@ const String legadoBridgeJsPart08 = r'''    androidId: function () { return __st
       try { __doXhr("legado://file?op=delete&path=" + encodeURIComponent(path), { method: "GET" }); return true; }
       catch (e) { return false; }
     },
-    // 下载文件到缓存目录，返回相对路径（对齐 legado-E JsExtensions.downloadFile）。
+    // 下载文件到缓存目录，返回相对路径。
     // 兼容旧签名 downloadFile(hexContent, url)：第二参存在且首参为合法 hex 时按 hex 写入。
     downloadFile: function (url, url2) {
       try {
@@ -298,7 +316,7 @@ const String legadoBridgeJsPart08 = r'''    androidId: function () { return __st
         return __doXhr("legado://webview?url=" + encodeURIComponent(target), { method: "GET" });
       } catch (e) { return ""; }
     },
-    // WebView 重定向 / 资源嗅探（对齐 legado java.webViewGetOverrideUrl）：
+    // WebView 重定向 / 资源嗅探：
     // 交给真实无头 WebView 加载 url，捕获匹配 overrideUrlRegex 的请求地址，
     // 无命中时返回页面最终落地 URL；不再是「直接返回入参 url」的空实现。
     webViewGetOverrideUrl: function (html, url, js, overrideUrlRegex, cacheFirst, delayTime) {
@@ -317,26 +335,16 @@ const String legadoBridgeJsPart08 = r'''    androidId: function () { return __st
         return result || "";
       } catch (e) { return ""; }
     },
-    // 验证码识别：弹出人工输入界面（对齐 E SourceVerificationHelp.getVerificationResult），
-    // 返回 Promise，用户提交后 resolve 输入的字符；未提交/取消 resolve 空串。
+    // 验证码识别：弹出人工输入界面，阻塞等待用户提交后同步返回输入字符。
+    // 书源普遍写作 var code = java.getVerificationCode(url)，返回 Promise
+    // 会让 code 变成对象而不是字符串，因此这里走同步 XHR 保持 String 语义。
     getVerificationCode: function (imageUrl) {
-      return new Promise(function (resolve) {
-        var id = "v" + Date.now() + Math.floor(Math.random() * 10000);
-        __pendings[id] = resolve;
-        try {
-          if (window.flutter_inappwebview && window.flutter_inappwebview.callHandler) {
-            window.flutter_inappwebview.callHandler("legadoVerification", JSON.stringify({
-              id: id, imageUrl: String(imageUrl == null ? "" : imageUrl)
-            }));
-          } else {
-            delete __pendings[id]; resolve("");
-          }
-        } catch (e) { delete __pendings[id]; resolve(""); }
-        // 5 分钟无输入自动按空处理，避免 Promise 永久挂起
-        setTimeout(function () {
-          if (__pendings[id]) { delete __pendings[id]; resolve(""); }
-        }, 300000);
-      });
+      try {
+        var r = __doXhr("legado://verificationcode?url=" +
+          encodeURIComponent(String(imageUrl == null ? "" : imageUrl)),
+          { method: "GET" });
+        return r == null ? "" : String(r);
+      } catch (e) { return ""; }
     },
 
     // 字体反爬（占位）
@@ -372,13 +380,13 @@ const String legadoBridgeJsPart08 = r'''    androidId: function () { return __st
       } catch (e) { return ""; }
     },
 
-    // ---- 字节版压缩包读取（对齐 E JsExtensions.get*ByteArrayContent）----
+    // ---- 字节版压缩包读取----
     // E 返回 ByteArray；WebView 里等价为 Uint8Array，供书源处理字体/图片/加密数据。
     getZipByteArrayContent: function (url, path) { return __archiveBytes(url, path, "zip"); },
     get7zByteArrayContent: function (url, path) { return __archiveBytes(url, path, "7z"); },
     getRarByteArrayContent: function (url, path) { return __archiveBytes(url, path, "rar"); },
 
-    // ---- 本地文件（对齐 E JsExtensions.getFile / readFile）----
+    // ---- 本地文件----
     // E 返回 java.io.File；这里返回带 exists/length/readBytes/readText/
     // getAbsolutePath 的 File-like 对象，覆盖书源对 File 的常用调用。
     getFile: function (path) { return __makeFile(path); },
@@ -395,7 +403,7 @@ const String legadoBridgeJsPart08 = r'''    androidId: function () { return __st
 
     unzipFile: function (zipPath) {
       try {
-        // 整包解压到 legado_files/unzip/<md5(名)>，返回相对目录（对齐 E：后续配 getTxtInFolder 使用）
+        // 整包解压到 legado_files/unzip/<md5(名)>，返回相对目录
         return __doXhr("legado://zip?op=unarchive&url=" + encodeURIComponent(zipPath), { method: "GET" });
       } catch (e) { return ""; }
     },
@@ -413,7 +421,7 @@ const String legadoBridgeJsPart08 = r'''    androidId: function () { return __st
       } catch (e) { throw new Error("unrarFile 失败: " + e); }
     },
 
-    // ===== 阅读/主题/媒体接口（对齐 legado-E JsExtensions）=====
+    // ===== 阅读/主题/媒体接口=====
     // 无头 WebView 内无法直接读取 App 状态，原生在求值前种子注入
     // __state.readConfig / __state.theme / __state.themeMode；
     // 未注入时回退到与 lib/data/model/read_config.dart、lib/constant/app_theme.dart 一致的默认值。
@@ -447,10 +455,11 @@ const String legadoBridgeJsPart08 = r'''    androidId: function () { return __st
       } catch (e) { return ""; }
     },
     getThemeMode: function () {
-      // 0: 跟随系统 1: 浅色 2: 深色（与 prefs theme_mode 存储一致）
+      //  AppConfig.themeMode 是字符串；书源常写 `== "2"`，
+      // 返回数字会让比较恒为 false。
       var m = __state.themeMode;
-      if (m === 0 || m === 1 || m === 2) return m;
-      return 0;
+      if (m === 0 || m === 1 || m === 2) return String(m);
+      return "0";
     },
     getReadBookConfigMap: function () {
       try { return JSON.parse(java.getReadBookConfig()); } catch (e) { return {}; }
@@ -459,17 +468,19 @@ const String legadoBridgeJsPart08 = r'''    androidId: function () { return __st
       try { return JSON.parse(java.getThemeConfig()); } catch (e) { return {}; }
     },
     getTxtInFolder: function (path) {
-      // 列目录内 .txt 文件；原生 legado://file 暂无 list 能力（未知 op 返回 400），
-      // 失败返回 [] 让书源走回退分支，不抛异常。
+      //  JsExtensions.getTxtInFolder 返回目录内全部文本以 \n 连接的
+      // 单个字符串（读完即删除目录）。原生 op=list 返回内容数组，这里
+      // 拼接成字符串，避免书源对返回值做 indexOf/正则时拿到数组。
       try {
         var resp = __doXhr("legado://file?op=list&path=" + encodeURIComponent(path || ""), { method: "GET" });
         var arr = JSON.parse(resp);
-        return Array.isArray(arr) ? arr : [];
-      } catch (e) { return []; }
+        if (!Array.isArray(arr)) return "";
+        return arr.map(function (s) { return String(s == null ? "" : s); }).join("\n");
+      } catch (e) { return ""; }
     },
     openVideoPlayer: function (url, title) {
       // 经 legado://video 内部协议转交 Dart handler → MethodChannel('legado/video')
-      // → Kotlin 原生视频播放器（对齐 E openVideoPlayer 的完整调用链）。
+      // → Kotlin 原生视频播放器。
       // 同步 XHR 返回 'true'/'false'，供书源判断是否成功拉起播放器。
       try {
         var ok = __doXhr("legado://video?url=" + encodeURIComponent(url || "") + "&title=" + encodeURIComponent(title || ""), { method: "GET" });
@@ -477,7 +488,7 @@ const String legadoBridgeJsPart08 = r'''    androidId: function () { return __st
       } catch (e) { return false; }
     },
 
-    // 对称加密：对齐 legado JsExtensions.createSymmetricCrypto(transformation, key, iv)
+    // 对称加密： JsExtensions.createSymmetricCrypto(transformation, key, iv)
     // 返回 {encrypt, encryptBase64, encryptHex, decrypt, decryptStr}
     createSymmetricCrypto: function (transformation, key, iv) {
       var kb = __aesKeyBytes(key);
@@ -529,7 +540,7 @@ const String legadoBridgeJsPart08 = r'''    androidId: function () { return __st
       };
     },
 
-    // 非对称加密：对齐 legado JsExtensions.createAsymmetricCrypto(transformation)
+    // 非对称加密： JsExtensions.createAsymmetricCrypto(transformation)
     // 返回 {setPublicKey, setPrivateKey, encrypt, encryptBase64, decrypt, decryptStr}
     createAsymmetricCrypto: function (transformation) {
       var pubKey = "", priKey = "";
@@ -555,7 +566,7 @@ const String legadoBridgeJsPart08 = r'''    androidId: function () { return __st
       };
     },
 
-    // 签名：对齐 legado JsExtensions.createSign(algorithm)
+    // 签名： JsExtensions.createSign(algorithm)
     // 返回 {setPublicKey, setPrivateKey, sign, signHex}
     createSign: function (algorithm) {
       var pubKey = "", priKey = "";

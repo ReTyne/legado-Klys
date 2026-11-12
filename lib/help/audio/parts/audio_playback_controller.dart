@@ -3,7 +3,7 @@
 part of '../audio_playback_controller.dart';
 
 
-/// 有声书播放引擎（无 UI），对应原版 legado-E 的 AudioPlayService。
+/// 有声书播放引擎（无 UI）。
 ///
 /// 职责：
 ///  - 持有 [AudioPlayer] 与章节队列，处理切集 / 多片段 / 播放模式 / 跳过片头片尾；
@@ -508,11 +508,11 @@ class AudioPlaybackController {
   // ==================== 地址解析 ====================
 
   /// 音频书章节正文可能直接就是媒体地址；也可能是需要书源规则解析的页面。
-  /// 与 legado-E 一致：解析结果是 "http..." 单地址，或 JSON 数组（多个片段顺序播放）。
+  /// 与  一致：解析结果是 "http..." 单地址，或 JSON 数组（多个片段顺序播放）。
   static List<String> parseUrls(String? raw) {
     final text = raw?.trim() ?? '';
     if (text.isEmpty || LrcParser.looksLikeLrc(text)) return const [];
-    // 1) JSON 数组：legado-E 里 ExoPlayerHelper.getMediaSource 处理的形态
+    // 1) JSON 数组： 里 ExoPlayerHelper.getMediaSource 处理的形态
     if (text.startsWith('[')) {
       try {
         final arr = jsonDecode(text);
@@ -553,7 +553,7 @@ class AudioPlaybackController {
     final fromContent = parseUrls(ch.content);
     if (fromContent.isNotEmpty) return fromContent;
     if (ch.url.startsWith('http') && _audioExt.hasMatch(ch.url)) return [ch.url];
-    // 音频书源：走书源规则解析（等价 legado-E WebBook.getContent）
+    // 音频书源：走书源规则解析
     final book = _book;
     try {
       _source ??= await _db.getSource(book?.origin ?? '');

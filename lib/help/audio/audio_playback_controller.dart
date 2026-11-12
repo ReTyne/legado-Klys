@@ -21,7 +21,7 @@ part 'parts/audio_resume_point.dart';
 part 'parts/audio_playback_controller.dart';
 
 
-/// 播放模式（对齐 legado-E AudioPlay.PlayMode）
+/// 播放模式
 enum AudioPlayMode {
   /// 顺序播放，播完最后一集停止
   sequence,

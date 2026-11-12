@@ -20,7 +20,7 @@ import 'package:legado_md3/ui/book/detail/book_detail_screen.dart';
 import 'package:legado_md3/ui/book/manga/manga_config_screen.dart';
 import 'package:legado_md3/ui/book/read/config/reading_settings_screen.dart';
 import 'package:legado_md3/ui/cache/cache_manage_screen.dart';
-// 对齐 E：E 无「下载管理」独立界面，E 无此功能，入口下架；保留页面文件与 import 避免编译断裂
+// 无「下载管理」独立界面，入口下架；保留页面文件与 import 避免编译断裂
 // ignore: unused_import
 import 'package:legado_md3/ui/cache/download_manage_screen.dart';
 import 'package:legado_md3/ui/config/app_icon_screen.dart';
@@ -31,7 +31,7 @@ import 'package:legado_md3/ui/config/other_config_screen.dart';
 import 'package:legado_md3/ui/config/keyboard_assist_screen.dart';
 import 'package:legado_md3/ui/config/theme_manage_screen.dart';
 import 'package:legado_md3/ui/config/video_setting_screen.dart';
-// 对齐 E：E 无翻译功能，E 无此功能，入口下架；保留页面文件与 import 避免编译断裂
+// 无翻译功能，入口下架；保留页面文件与 import 避免编译断裂
 // ignore: unused_import
 import 'package:legado_md3/ui/config/translation_screen.dart';
 import 'package:legado_md3/ui/main/bookshelf/bookshelf_config_screen.dart';
@@ -67,8 +67,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
   String _exportNameTpl = '{name}';
   bool _tocCountWords = false;
   bool _autoNextPage = false;
-  // 对齐 E：E 无翻译功能，「启用翻译」为切换后无消费方的假开关 → E 无此功能，入口下架，状态字段一并移除
-  // 对齐 E 的 pref_config_read.xml：E 无「实验室/模拟阅读」分区，模拟阅读已在阅读设置页接线 → E 无此功能，入口下架，状态字段一并移除
+  // 无翻译功能，「启用翻译」为切换后无消费方的假开关，入口下架，状态字段一并移除
+  // 无「实验室/模拟阅读」分区，模拟阅读已在阅读设置页接线，入口下架，状态字段一并移除
   bool _boldText = false;
   bool _showStatusBar = true;
   bool _showTitle = true;
@@ -92,7 +92,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool _showRss = true;
   /// 默认首页页签（defaultHomePage：0书架 1发现 2订阅）
   int _defaultHomePage = 0;
-  /// 新加入的书籍默认不更新（bk_bookUpdateDisable，对应 legado-E Book.canUpdate 默认值）
+  /// 新加入的书籍默认不更新
   bool _bookUpdateDisable = false;
 
   // ===== 补齐项：阅读 =====
@@ -187,7 +187,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       _keepScreenOn = cfg.keepScreenOn;
       _showMenuOnTap = cfg.showMenuOnTap;
       _autoNextPage = cfg.autoNextPage;
-      // 对齐 E：translate_enabled / simulatedReading 为 E 外功能，入口下架后不再读取其状态
+      // translate_enabled / simulatedReading 为 E 外功能，入口下架后不再读取其状态
       _boldText = cfg.boldText;
       _showStatusBar = cfg.statusBarVisibility;
       _showTitle = cfg.titleVisibility;
@@ -333,8 +333,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
-  /// E 主落点：设置多级分类入口页（pref_config_* 子页）。
-  /// K 版旧版单页 17 分区完整设置沉入底部默认折叠的次级分区，功能不删。
+  /// 主界面：设置多级分类入口页（pref_config_* 子页）。
+  /// 本项目旧版单页 17 分区完整设置沉入底部默认折叠的次级分区，功能不删。
   List<Widget> _buildEntryPageChildren(BuildContext context) {
     const cats = EPlacement.settingEntryCategories;
     return [
@@ -567,7 +567,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               onChanged: (v) => setState(() { _preDownloadCount = v ?? 5; _updateReadConfig((c) => c.preDownloadCount = _preDownloadCount); }),
             ),
           ),
-          // 对齐 E 的 pref_config_other.xml（其他设置分类：preDownloadNum/bitmapCacheSize/threadCount/userAgent）：
+          // preDownloadNum/bitmapCacheSize/threadCount/userAgent）：
           // 「下载缓存配置」由 E 不存在的「下载缓存」分区归位到网络与更新分区，入口保留。
           ListTile(
             leading: const Icon(Icons.tune),
@@ -649,13 +649,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
           const Divider(),
 
-          // 对齐 E 的 pref_config_aloud.xml（朗读配置）：清理 E 不存在的「TTS设置」「下载缓存」
+          // 清理 E 不存在的「TTS设置」「下载缓存」
           //「翻译设置」「实验室」分区；E 有的 TTS 引擎/语速归位到「朗读配置」分区。
           _buildSectionHeader('朗读配置'),
           ListTile(
             leading: const Icon(Icons.record_voice_over_outlined),
             title: const Text('TTS引擎管理'),
-            subtitle: const Text('系统/云端TTS引擎（对齐 E 的 appTtsEngine / sysTtsConfig）'),
+            subtitle: const Text('系统/云端TTS引擎'),
             trailing: const Icon(Icons.chevron_right),
             onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const CloudTtsScreen())),
           ),
@@ -678,13 +678,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
             },
           ),
 
-          // ===== 对齐 E：以下入口在 legado-E 中无对应功能，已从 UI 下架；页面文件与 import 均保留，避免编译断裂 =====
-          // 对齐 E 的 pref_config_other.xml：E 无独立「下载管理」任务界面 → E 无此功能，入口下架
-          // 对齐 E 的 pref_config_other.xml（cleanCache）：「缓存管理」已归入「数据管理」分区，此处为重复项 → E 无此功能，入口下架
-          // 对齐 E：E 的 pref_config_* 无翻译项，「启用翻译」为切换后无消费方的假开关 → E 无此功能，入口下架
-          // 对齐 E：E 无「翻译引擎」界面（TranslationScreen 为 E 外功能）→ E 无此功能，入口下架
-          // 对齐 E 的 pref_config_read.xml：E 无「实验室」分区，模拟阅读已在阅读设置页接线 → E 无此功能，入口下架
-          // 对齐 E：分区标题「TTS设置」「下载缓存」「翻译设置」「实验室」均为 E 不存在的分区 → E 无此功能，入口下架
+          // ===== 以下入口暂无对应能力，已从界面下架；页面文件与 import 保留，避免编译断裂 =====
+          // 无独立「下载管理」任务界面，入口下架
+          // 「缓存管理」已归入「数据管理」分区，此处为重复项，入口下架
+          // 无翻译设置项，「启用翻译」为切换后无消费方的假开关，入口下架
+          // 无「翻译引擎」界面（TranslationScreen 为 E 外功能），入口下架
+          // 无「实验室」分区，模拟阅读已在阅读设置页接线，入口下架
+          // 分区标题「TTS设置」「下载缓存」「翻译设置」「实验室」均为 E 不存在的分区，入口下架
 
           const Divider(),
 
@@ -702,7 +702,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             subtitle: Text(_webServiceEnabled ? _webAddress() : '未启用'),
             trailing: const Icon(Icons.chevron_right),
             onTap: () => _showWebServiceDialog(),
-            // 对齐 E 的 MyFragment.webService 长按：复制地址 / 浏览器打开
+            // 复制地址 / 浏览器打开
             onLongPress: _showWebAddressActions,
           ),
           ListTile(
@@ -726,7 +726,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   Widget _buildSectionHeader(String title) => AppSectionHeader(title);
 
-  /* ===== 以下为补齐设置项（对齐 legado-E pref_config_other / pref_main） ===== */
+  /* ===== 以下为补齐设置项 ===== */
 
   /// 通用开关项（对接公共组件 AppSwitchTile）
   Widget _sw(String title, bool value, ValueChanged<bool> onChanged, {String? sub}) =>
@@ -757,7 +757,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => page)),
       );
 
-  /// 书籍类设置（对齐 legado-E pref_config_other 的 main_activity 分类）
+  /// 书籍类设置
   List<Widget> _buildBooksSection() => [
     _buildSectionHeader('书架与书籍'),
     _sw('仅更新已读完的书籍', _onlyUpdateRead, (v) {
@@ -845,7 +845,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
         },
       ),
     ),
-    // 对齐 E 的 pref_config_read.xml / 漫画阅读配置（showMangaUi）：
     // 「漫画阅读设置」由 E 不存在的「TTS设置」分区归位到阅读设置分区，入口保留。
     _jump(icon: Icons.photo_library_outlined, title: '漫画阅读设置', sub: '漫画墨水屏/灰度/缩放', page: const MangaConfigScreen()),
     _jump(icon: Icons.menu_book_outlined, title: '完整阅读设置', sub: '字体/间距/页边距/反馈区域', page: const ReadingSettingsScreen()),
@@ -966,7 +965,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         },
       ),
     ),
-    // 对齐 E 的 pref_config_other.xml：缓存路径项补上真实交互（点击查看完整路径），原为无 onTap 的只读项
+    // 缓存路径项补上真实交互（点击查看完整路径），原为无 onTap 的只读项
     ListTile(
       dense: true,
       leading: const Icon(Icons.folder_open_outlined),
@@ -1290,7 +1289,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   String _webAddress() => 'http://$_lanIp:$_webPort';
   String _localWebAddress() => 'http://localhost:$_webPort';
 
-  /// Web 服务地址长按菜单（对齐 E 的 MyFragment.webService：复制地址 / 浏览器打开）。
+  /// Web 服务地址长按菜单。
   Future<void> _showWebAddressActions() async {
     final addr = _webAddress();
     await showAppMenuSheet(

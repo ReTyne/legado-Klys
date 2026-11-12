@@ -26,7 +26,7 @@ import 'package:legado_md3/help/device/web_service_boundary.dart';
 import 'package:legado_md3/help/exceptions/app_exceptions.dart';
 import 'package:legado_md3/utils/regex_timeout.dart';
 
-/// Web 远程控制服务（对齐 legado-E 的 HttpServer 26 个路由 + 3 个 WebSocket）。
+/// Web 远程控制服务。
 ///
 /// * HTTP：shelf + shelf_router，26 个端点全部实现（另多做若干管理端点）；
 /// * WebSocket：/bookSourceDebug、/rssSourceDebug、/searchBook 走标准 RFC6455
@@ -154,7 +154,7 @@ class WebService {
     router.get('/index.html', _serveIndex);
     router.get(r'/<asset|.*>', _serveAsset);
 
-    // 3 个真正的 WebSocket 端点：调试日志复用 SSE 的广播流，消息动作走
+    // 3 个真正的 WebSocket 端点：调试日志复用 SS广播流，消息动作走
     // 真实书源搜索 / 书源校验 / RSS 拉取（见 _handleWsMessage）。
     final wsHandlers = WebSocketHandlers(
       debugStream: _debugController.stream,
@@ -290,7 +290,7 @@ class WebService {
     );
   }
 
-  /// legado-E ReturnData 结构：{isSuccess, errorMsg, data}
+  ///  ReturnData 结构：{isSuccess, errorMsg, data}
   Response _rd(dynamic data) =>
       _jsonResponse({'isSuccess': true, 'errorMsg': '', 'data': data});
 
@@ -1022,7 +1022,7 @@ class WebService {
   }
 
   // === 本地书籍导入 / 下载 ===
-  /// legado-E 用 multipart 上传（/addLocalBook），本项目无 shelf_multipart，
+  ///  用 multipart 上传（/addLocalBook），本项目无 shelf_multipart，
   /// 降级为：query 传 fileName，请求体为文件原始字节。
   Future<Response> _addLocalBook(Request request) async {
     var fileName = _q(request, ['fileName', 'name']);
@@ -1118,7 +1118,7 @@ class WebService {
   }
 
   // === 封面/图片 ===
-  /// legado-E 返回压缩后的 PNG bitmap；此处按 path/url 取真实字节返回，
+  ///  返回压缩后的 PNG bitmap；此处按 path/url 取真实字节返回，
   /// 取不到时再回退 302 到原图地址。
   Future<Response> _getCover(Request request) async {
     var path = _q(request, ['path', 'url', 'coverUrl']);
@@ -1185,7 +1185,7 @@ class WebService {
     }
   }
 
-  // === 阅读配置（legado-E 存 CacheManager，此处落到 SharedPreferences） ===
+  // === 阅读配置 ===
   Future<Response> _getReadConfig(Request request) async {
     final prefs = await SharedPreferences.getInstance();
     final raw = prefs.getString('read_config_json');
@@ -1354,7 +1354,7 @@ class WebService {
     return _rd('');
   }
 
-  /// legado-E 的 ReplaceRule 用 name/pattern/isEnabled/scopeTitle/scopeContent，
+  /// 外部替换规则使用 name/pattern/isEnabled/scopeTitle/scopeContent，
   /// 本项目用 replaceSummary/replaceRule/enable/isTitle/isContent，此处做字段归一。
   Map<String, dynamic> _normalizeRuleMap(Map raw) => <String, dynamic>{
         'id': _asInt(raw['id']),

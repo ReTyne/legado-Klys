@@ -17,7 +17,7 @@ const _kRepoUrl = 'https://github.com/ReTyne/legado-Klys';
 const _kReleasesLatestApi =
     'https://api.github.com/repos/ReTyne/legado-Klys/releases/latest';
 
-/// 关于页（对齐 legado-E xml/about.xml：独立页面 9 项，非弹窗）。
+/// 关于页。
 /// 顶部为应用名 + 版本 + 简介；顶层 3 项 = [EPlacement.aboutTop]；
 /// 分区「其它」6 项 = [EPlacement.aboutOtherCategory]，顺序严格按常量。
 class AboutScreen extends StatefulWidget {
@@ -231,8 +231,8 @@ class _AboutScreenState extends State<AboutScreen> {
       .map((e) => int.tryParse(e) ?? 0)
       .toList();
 
-  /// 内置更新日志 —— 对齐 legado-E：仅描述 E 具备的功能，
-  /// 不再列 E 没有的入口（首页模块自定义 / 阅读统计 / 书籍标记）。
+  /// 内置更新日志 ——：仅描述 E 具备的功能，
+  /// 不再列 已下架的入口（首页模块自定义 / 阅读统计 / 书籍标记）。
   static const _changelog = <String>[
     '全新 Material 3 界面，书架支持列表/网格/封面流多种布局与封面样式配置',
     '书架分组管理：分组页签、折叠/平铺分组样式、待更新数量与批量移动分组',

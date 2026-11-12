@@ -5,7 +5,7 @@ import 'package:connectivity_plus/connectivity_plus.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 
-/// 网络状态监听（事件驱动，对齐 legado-E `NetworkChangedListener` 的
+/// 网络状态监听（事件驱动
 /// ConnectivityManager.NetworkCallback 事件流）。
 ///
 /// 用途同 `NetworkUtils.isAvailable()`：在搜索、书源校验、上传等网络操作前
@@ -142,7 +142,7 @@ class NetworkMonitor {
     return probe();
   }
 
-  /// 当前是否为 WiFi / 以太网（对齐 legado-E NetworkUtils.isWifi）。
+  /// 当前是否为 WiFi / 以太网。
   ///
   /// 走原生 ConnectivityManager（Android）；桌面/测试环境通道不可用时回退
   /// `false`。结果缓存 30 秒，避免书架滚动时对每条封面都发起一次平台调用。

@@ -1,7 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:legado_md3/help/storage/import_old_data.dart';
 
-/// C1 旧版数据迁移：规则语法转换（对齐 E ImportOldData.toNewRule/toNewUrl）。
+/// C1 旧版数据迁移：规则语法转换。
 void main() {
   group('toNewRule（# → ##、| → ||、& → &&）', () {
     test('#正则#替换 → ##正则##替换', () {

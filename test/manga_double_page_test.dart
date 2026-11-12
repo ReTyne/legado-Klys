@@ -6,7 +6,7 @@ import 'package:legado_md3/ui/book/manga/manga_reader_screen.dart';
 import 'helpers/lib_source_helper.dart';
 
 void main() {
-  group('漫画双页页数与页对映射（对齐 E 的漫画双页阅读）', () {
+  group('漫画双页页数与页对映射', () {
     test('单页模式页数 = 图片数', () {
       expect(mangaPageCount(0, false), 0);
       expect(mangaPageCount(1, false), 1);

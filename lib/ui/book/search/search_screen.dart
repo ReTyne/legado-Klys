@@ -22,7 +22,7 @@ class SearchScreen extends StatefulWidget {
   final String? initialKeyword;
 
   /// 初始搜索范围（单书源 `名称::url`，来自书源编辑页的「保存并搜索」等入口；
-  /// 对齐 legado searchScope：「分组::书源Url」或书源 Url，命中后仅搜索该书源）
+  /// 「分组::书源Url」或书源 Url，命中后仅搜索该书源）
   final String? searchScope;
 
   const SearchScreen({super.key, this.initialKeyword, this.searchScope});
@@ -34,7 +34,7 @@ class SearchScreen extends StatefulWidget {
 class _SearchScreenState extends State<SearchScreen>
     with WidgetsBindingObserver {
   final TextEditingController _controller = TextEditingController();
-  /// 输入框焦点：对齐 E `SearchActivity.finish()` 先 clearFocus 再退出。
+  /// 输入框焦点： `SearchActivity.finish()` 先 clearFocus 再退出。
   final FocusNode _searchFocus = FocusNode();
   final DatabaseService _db = DatabaseService();
   final BookSourceEngine _engine = BookSourceEngine();
@@ -48,7 +48,7 @@ class _SearchScreenState extends State<SearchScreen>
   int _totalSources = 0;
   bool _groupBySource = false;
 
-  // —— 搜索分页（对齐 E SearchViewModel / SearchModel）——
+  // —— 搜索分页——
   /// 当前页码：新搜索置 1，每次续页 `search("")` 自增。
   int _searchPage = 1;
   /// 本页是否至少有一个书源返回了结果（E: `hasMore = hasMore || items.isNotEmpty()`）。
@@ -64,11 +64,11 @@ class _SearchScreenState extends State<SearchScreen>
   /// 空结果建议弹窗每轮只弹一次。
   bool _suggestedEmpty = false;
 
-  /// 搜索范围（对齐 legado-E SearchScope：全部 / 分组多选 / 单书源）
+  /// 搜索范围
   late final SearchScope _scope = SearchScope(
       widget.searchScope ?? AppPrefs.searchScope);
 
-  /// 搜索范围：0=全部 1=书名 2=作者（对齐 legado-E SearchScope）
+  /// 搜索范围：0=全部 1=书名 2=作者
   int _searchScope = 0;
 
   /// 精准搜索：结果的书名或作者需完整包含关键词
@@ -92,7 +92,6 @@ class _SearchScreenState extends State<SearchScreen>
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    // 对齐 E `repeatOnLifecycle(RESUMED) { resume(); awaitCancellation(); finally pause() }`：
     // 页面不可见时暂停取源与自动续页，回到前台恢复。
     _paused = state != AppLifecycleState.resumed;
     if (mounted) setState(() {});
@@ -188,7 +187,6 @@ class _SearchScreenState extends State<SearchScreen>
     setState(() => _searchHistory = []);
   }
 
-  /// 对齐 E `SearchViewModel.search(key)`：
   ///  - 非空 key：开启新一轮搜索（新 searchId、清结果、page=1、hasMore=true）；
   ///  - 空 key：沿用当前 searchKey / 书源列表，`searchPage++` 续下一页。
   Future<void> _search(String keyword) async {
@@ -236,7 +234,7 @@ class _SearchScreenState extends State<SearchScreen>
     await _runPage(gen);
   }
 
-  /// 滚到底 / FAB「继续」触发的下一页（对齐 E `search("")` 与
+  /// 滚到底 / FAB「继续」触发的下一页（ `search("")` 与
   /// SearchModel `searchId == mSearchId → searchPage++`）。
   Future<void> _loadMore() async {
     if (_isSearching || !_hasMore || _isManualStop || _paused) return;
@@ -254,7 +252,6 @@ class _SearchScreenState extends State<SearchScreen>
 
   /// 跑当前 `_searchPage`：并发池逐源 `engine.search(source, kw, page: page)`，
   /// 结果累积归并；`hasMore` = 本页是否至少有一个源返回了非空结果
-  /// （对齐 E SearchModel `hasMore = hasMore || items.isNotEmpty()`）。
   Future<void> _runPage(int gen) async {
     final kw = _searchKeyword ?? '';
     final page = _searchPage;
@@ -268,7 +265,7 @@ class _SearchScreenState extends State<SearchScreen>
     Future<void> worker() async {
       while (true) {
         if (_searchCancelled || gen != _searchGeneration) return;
-        // 对齐 E SearchModel `workingState.first { it }`：页面不可见时暂停取源。
+        // 页面不可见时暂停取源。
         while (_paused && !_searchCancelled && gen == _searchGeneration) {
           await Future<void>.delayed(const Duration(milliseconds: 200));
         }
@@ -301,14 +298,14 @@ class _SearchScreenState extends State<SearchScreen>
     await _maybeSuggestEmpty();
   }
 
-  /// 对齐 E SearchActivity.scrollToBottom()：手动停止 / 搜索中 / 后台暂停时不续页。
+  /// 手动停止 / 搜索中 / 后台暂停时不续页。
   void _scrollToBottom() {
     if (_isManualStop || _isSearching || _paused) return;
     if ((_searchKeyword ?? '').isEmpty || !_hasMore) return;
     _loadMore();
   }
 
-  /// 对齐 E `searchFinishLiveData` + `observeLiveBus`：结果为空且范围非全部时，
+  /// 结果为空且范围非全部时，
   /// 给「关闭精准 / 切换到全部分组」的可操作建议（每轮只弹一次）。
   Future<void> _maybeSuggestEmpty() async {
     if (_suggestedEmpty || _isSearching || _isManualStop) return;
@@ -334,7 +331,7 @@ class _SearchScreenState extends State<SearchScreen>
     if (kw != null && kw.isNotEmpty) await _search(kw);
   }
 
-  /// 停止当前搜索（对齐 E FAB：搜索中点击 = 手动停止，保留已到达结果）。
+  /// 停止当前搜索。
   void _stopSearch() {
     _searchCancelled = true;
     _isManualStop = true;
@@ -342,7 +339,7 @@ class _SearchScreenState extends State<SearchScreen>
     if (mounted) setState(() => _isSearching = false);
   }
 
-  /// 对齐 E FAB `fbStartStop`：搜索中=停止(stop)，自然结束且 hasMore=继续(play)，
+  /// 搜索中=停止(stop)，自然结束且 hasMore=继续(play)，
   /// 手动停止后隐藏（searchFinally）。
   Widget? _buildSearchFab() {
     if (_searchKeyword == null) return null;
@@ -364,7 +361,6 @@ class _SearchScreenState extends State<SearchScreen>
   }
 
   /// 合并新到达的搜索结果：同名同作者归并为一条并累计来源
-  /// （对齐 legado-E SearchModel.mergeItems 的 hasSame/addOrigin 逻辑）
   void _mergeResults(List<SearchBook> incoming) {
     for (final nBook in incoming) {
       if (nBook.origin != null && nBook.origin!.isNotEmpty) {
@@ -431,7 +427,7 @@ class _SearchScreenState extends State<SearchScreen>
     }
   }
 
-  /// 搜索范围对话框（对齐 legado-E ui/book/search/SearchScopeDialog.kt）
+  /// 搜索范围对话框
   ///  - 全部书源
   ///  - 按分组（多选，来自启用书源的分组）
   ///  - 按书源（单选，名称::url，不缓存）
@@ -608,7 +604,7 @@ class _SearchScreenState extends State<SearchScreen>
 
   @override
   Widget build(BuildContext context) {
-    // 对齐 E SearchActivity.finish()：返回键在输入框有焦点时先 clearFocus
+    // 返回键在输入框有焦点时先 clearFocus
     // 不退出；无焦点才真正出栈。
     return PopScope<Object?>(
       canPop: false,
@@ -646,7 +642,7 @@ class _SearchScreenState extends State<SearchScreen>
                     })
                   : null,
             ),
-            // 对齐 E onQueryTextSubmit：提交即清焦点并重置手动停止标记。
+            // 提交即清焦点并重置手动停止标记。
             onSubmitted: (v) {
               _searchFocus.unfocus();
               _isManualStop = false;
@@ -669,9 +665,9 @@ class _SearchScreenState extends State<SearchScreen>
             ),
           ],
         ),
-        // 对齐 E fbStartStop：stop / play 两态。
+        // stop / play 两态。
         floatingActionButton: _buildSearchFab(),
-        // 对齐 E RecyclerView.OnScrollListener：滚到底自动续页。
+        // 滚到底自动续页。
         body: NotificationListener<ScrollNotification>(
           onNotification: (n) {
             if (n.metrics.axis == Axis.vertical && n.metrics.extentAfter <= 200) {
@@ -822,7 +818,7 @@ class _SearchScreenState extends State<SearchScreen>
         ),
       );
 
-  /// 搜索结果列表：对齐 legado-E SearchActivity 的 LinearLayoutManager +
+  /// 搜索结果列表：LinearLayoutManager +
   /// item_search.xml —— 单列、每项为「左封面 80x110 + 右侧书名/作者/最新章/简介」
   /// 的横向列表项，而非网格大封面。
   Widget _buildFlatList(List<SearchBook> items, {bool shrinkWrap = false}) =>
@@ -852,7 +848,7 @@ class _SearchScreenState extends State<SearchScreen>
     );
   }
 
-  /// 搜索结果列表项：对齐 legado-E item_search.xml 的横向布局 ——
+  /// 搜索结果列表项：横向布局 ——
   /// 左封面固定 80x110（约 3:4），右侧自上而下书名(16)/作者(12)/标签/
   /// 最新章(12)/简介(12)，右上角来源数角标与「加入书架」按钮。
   Widget _buildResultCard(SearchBook book) {

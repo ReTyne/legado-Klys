@@ -1,4 +1,4 @@
-/// 批次 6 · Cookie 分域（对齐 legado-E `utils/NetworkUtils.kt:212-236`
+/// 批次 6 · Cookie 分域（ `utils/NetworkUtils.kt:212-236`
 /// 与 `help/http/CookieStore.kt:26-35`）：用 eTLD+1 作为 Cookie 的域键，
 /// 避免 `.com.cn` 等多段公共后缀导致跨站串域。
 ///

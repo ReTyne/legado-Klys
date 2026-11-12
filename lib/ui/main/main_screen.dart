@@ -149,7 +149,7 @@ class _MainScreenState extends State<MainScreen> {
       _confirmExit = p.getBool('ui_confirmExit') ?? false;
       _exitClickCount = (p.getInt('ui_exitClickCount') ?? 2) < 2 ? 2 : p.getInt('ui_exitClickCount') ?? 2;
     });
-    // 对齐 legado-E MainActivity 的单个 ViewPager 常驻：页签显隐/默认首页变化只切换当前页，
+    // 页签显隐/默认首页变化只切换当前页，
     // 不再 dispose 仍挂载的 PageController（否则会触发 "used after disposed"）。
     if (_pageController.hasClients && initial < _tabs.length) {
       _pageController.jumpToPage(initial);

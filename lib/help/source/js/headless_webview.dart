@@ -27,7 +27,6 @@ class HeadlessWebViewFetcher {
   static bool _broken = false;
 
   /// 页面加载完成后、取值前的额外等待，给 JS 渲染留时间
-  /// （对齐 legado BackstageWebView 的 delayTime≈900ms）。
   static const Duration _renderDelay = Duration(milliseconds: 800);
 
   static const String _defaultUserAgent =
@@ -197,7 +196,7 @@ class HeadlessWebViewFetcher {
   }
 
   /// 用无头 WebView 加载 [url]，捕获页面导航/资源请求中第一个匹配
-  /// [urlRegex] 的地址（对齐 legado BackstageWebView.SnifferWebClient 的
+  /// [urlRegex] 的地址（
   /// `webViewGetOverrideUrl`）；未匹配则返回页面最终落地 URL（重定向结果）。
   /// 任何失败/超时返回空串，绝不抛异常；与 [fetch] 共用串行队列与熔断。
   static Future<String> fetchOverrideUrl({

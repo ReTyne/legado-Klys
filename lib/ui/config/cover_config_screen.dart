@@ -4,7 +4,7 @@ import 'package:legado_md3/help/config/app_config.dart';
 import 'package:legado_md3/ui/widgets/app_widgets.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-/// 封面配置页面 - 对齐原版 CoverConfigFragment。
+/// 封面配置页面 -  CoverConfigFragment。
 ///
 /// 取舍结论（对照 `pref_config_cover.xml` 的 6 项下线配置）：
 /// 保留 4 项「有真实消费方」的设置（cover_onlyWifi / bs_coverShadow /

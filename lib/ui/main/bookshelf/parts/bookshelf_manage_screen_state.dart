@@ -383,7 +383,7 @@ class _BookshelfManageScreenState extends State<BookshelfManageScreen> {
     }
   }
 
-  // ---------- 手动排序（对齐 E 的 ItemTouchHelper 拖拽排序） ----------
+  // ---------- 手动排序 ----------
 
   Future<void> _onReorder(int oldIndex, int newIndex) async {
     if (newIndex > oldIndex) newIndex -= 1;

@@ -4,7 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:legado_md3/ui/widgets/app_widgets.dart';
 import '../../../di/book_provider.dart';
 
-/// 书架配置页面 - 对齐原版BookshelfConfigSheet
+/// 书架配置页面 - BookshelfConfigSheet
 class BookshelfConfigScreen extends StatefulWidget {
   const BookshelfConfigScreen({super.key});
 
@@ -20,7 +20,7 @@ class _BookshelfConfigScreenState extends State<BookshelfConfigScreen> {
   int _sortType = 0; // 0: 最近阅读 1: 书名 2: 作者 3: 添加时间 4: 手动
   bool _sortAscending = false;
   // 布局: 0详细列表 1紧凑列表 2三列网格 3四列紧凑网格 4大封面
-  // 默认「网格」，与 BookProvider.defaultBookshelfLayout 一致（对齐 E 版书架）
+  // 默认「网格」，与 BookProvider.defaultBookshelfLayout 一致
   int _layout = BookProvider.defaultBookshelfLayout;
   int _columnCount = 3;
   double _coverWidth = 100;

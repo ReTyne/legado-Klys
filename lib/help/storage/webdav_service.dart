@@ -161,7 +161,7 @@ class WebDavService {
     }
   }
 
-  /// 上传书籍文件到远程书库（对齐 E `RemoteBookWebDav.upload`）：
+  /// 上传书籍文件到远程书库：
   /// 目标为 `<baseUrl>/<bookDir>/<fileName>`，先 MKCOL 确保目录存在。
   /// 返回是否上传成功；调用方负责标记 book.origin（`webDav::<putUrl>`）。
   Future<bool> uploadBook(String localPath, {String bookDir = '书籍'}) async {

@@ -3,7 +3,7 @@
 part of 'reading_settings_screen.dart';
 
 
-/// 9 区点击动作配置，对齐原版 ClickActionConfigSheet
+/// 9 区点击动作配置
 /// 屏幕划分为 3x3 九个区域，每个区域可绑定一个动作
 class ClickActionConfigScreen extends StatefulWidget {
   const ClickActionConfigScreen({super.key});
@@ -13,7 +13,7 @@ class ClickActionConfigScreen extends StatefulWidget {
 }
 
 class _ClickActionConfigScreenState extends State<ClickActionConfigScreen> {
-  // 动作（向后兼容 0-5，新增 6-14 对齐 legado 九宫格）
+  // 动作
   // 0无 1上一章 2下一章 3菜单 4上一页 5下一页 6目录 7全文搜索 8朗读 9加书签 10编辑正文 11书签列表 12同步进度 13朗读暂停恢复 14切换净化
   static const actions = ['无动作', '上一章', '下一章', '显示菜单', '上一页', '下一页', '目录', '全文搜索', '朗读', '添加书签', '编辑正文', '书签列表', '同步进度', '朗读暂停/恢复', '切换净化'];
   static const icons = [
@@ -103,5 +103,5 @@ class _ClickActionConfigScreenState extends State<ClickActionConfigScreen> {
   }
 }
 
-// 对齐 E：E 的阅读菜单项与顺序由 XML 固定，没有「阅读菜单配置」界面，
+// 阅读菜单项与顺序由 XML 固定，没有「阅读菜单配置」界面，
 // 原 ReadToolConfigScreen / _Group 已删除；文本选择菜单顺序仍由 ReadMenuConfig 持久化。

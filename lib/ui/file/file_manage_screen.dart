@@ -8,7 +8,7 @@ import 'package:legado_md3/ui/widgets/app_widgets.dart';
 part 'file_helper.dart';
 
 
-/// 文件管理页面 - 对齐原版FileManage
+/// 文件管理页面 - FileManage
 /// 浏览应用数据目录下的书籍、缓存、备份、导出文件；
 /// 文件支持打开（外部应用）/ 分享 / 重命名 / 删除，全部真实生效。
 class FileManageScreen extends StatefulWidget {

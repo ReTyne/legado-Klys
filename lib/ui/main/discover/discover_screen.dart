@@ -9,6 +9,7 @@ import 'package:legado_md3/data/model/book_source.dart';
 import 'package:legado_md3/data/model/explore_kind.dart';
 import 'package:legado_md3/data/model/search_book.dart';
 import 'package:legado_md3/help/source/source_engine.dart';
+import 'package:legado_md3/help/source/explore_refresh.dart';
 import 'package:legado_md3/di/book_provider.dart';
 import 'package:legado_md3/data/local/app_database.dart';
 import 'package:legado_md3/help/source/search_scope.dart';
@@ -44,20 +45,22 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
   /// 'source' | 'category' | 'books'
   String _view = 'source';
 
-  /// 发现分类全量（含控件型，对齐 legado exploreKinds 的 ExploreKind 列表）
+  /// 发现分类全量
   List<ExploreKind> _kinds = [];
   ExploreKind? _currentKind;
   Set<String> _hiddenCategories = {};
 
-  /// 发现页控件状态（对齐 legado InfoMap，按书源持久化）
+  /// 发现页控件状态
   Map<String, String> _infoMap = {};
   /// 控件输入框控制器（按 title 缓存）
   final Map<String, TextEditingController> _textControllers = {};
   /// 控件动态文字缓存（viewName 求值结果，按 title 缓存）
   final Map<String, String> _viewNames = {};
-  /// text 控件动作防抖（对齐 legado 600ms 防抖）
+  /// text 控件动作防抖
   final Map<String, Timer> _textDebounce = {};
   bool _loadingKinds = false;
+  /// 是否正在执行发现页控件动作（动作内部会自行刷新分类，避免并发求值）
+  bool _kindActionRunning = false;
 
   final List<SearchBook> _exploreBooks = [];
   bool _isLoading = false;
@@ -69,17 +72,17 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
   String _searchQuery = '';
   bool _searching = false;
 
-  /// 默认视图对齐 legado-E：发现页主体即「书源发现列表」。
-  /// 卡片式首页模块 Feed 为 K 独有，沉到 AppBar「更多功能」次级入口。
+  /// 默认视图：发现页主体即「书源发现列表」。
+  /// 卡片式首页模块 Feed 为 扩展，沉到 AppBar「更多功能」次级入口。
   bool _showFeed = false;
   /// 管理页返回后改变该值以强制重建 Feed（重新读取模块表）。
   int _feedEpoch = 0;
 
-  /// 各书源的发现分类（对齐 E ExploreAdapter 的 sourceKinds：列表按源聚合展示）
+  /// 各书源的发现分类
   final Map<String, List<ExploreKind>> _sourceKinds = {};
   /// 正在加载分类的书源（bookSourceUrl）
   final Set<String> _kindsLoading = {};
-  /// 书源分组过滤（对齐 E main_explore 的 menu_group）
+  /// 书源分组过滤
   String _groupFilter = '';
   // 0 默认 1 名称 2 作者 3 最新章节
   int _sortMode = 0;
@@ -91,10 +94,12 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
     super.initState();
     _loadSources();
     _scrollController.addListener(_onScroll);
+    exploreRefreshSignal.addListener(_onExploreRefresh);
   }
 
   @override
   void dispose() {
+    exploreRefreshSignal.removeListener(_onExploreRefresh);
     for (final t in _textDebounce.values) {
       t.cancel();
     }
@@ -121,7 +126,7 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
           .toList();
       if (!mounted) return;
       setState(() => _sources = exploreSources);
-      // 按源聚合加载发现分类（对齐 E：发现页直接展示各书源的分类流）
+      // 按源聚合加载发现分类
       _loadAllKinds();
     } catch (_) {
       // 数据库尚未就绪等情况下保持空态，不使页面崩溃
@@ -150,7 +155,29 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
     }
   }
 
-  /// 发现页可用分组（对齐 E 的 menu_group 子菜单）
+  /// 书源脚本调用 refreshExplore() 后重新求值分类。
+  ///
+  /// 控件动作内部触发时，动作结束后本就会重取分类，此时只失效缓存，
+  /// 不再并发发起新的 JS 求值；动作之外触发则立即重取。
+  void _onExploreRefresh() {
+    if (!mounted) return;
+    setState(() {
+      _sourceKinds.clear();
+      _kindsLoading.clear();
+    });
+    if (_kindActionRunning) return;
+    scheduleMicrotask(() {
+      if (!mounted || _kindActionRunning) return;
+      final src = _currentSource;
+      if (src != null) {
+        _loadKinds(src);
+      } else {
+        _loadAllKinds();
+      }
+    });
+  }
+
+  /// 发现页可用分组
   List<String> get _exploreGroups {
     final set = <String>{};
     for (final s in _sources) {
@@ -161,7 +188,7 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
     return ['全部', ...list];
   }
 
-  /// 发现列表数据源：分组过滤 + 搜索（书名/作者/分类标题，对齐 E 的 searchView 过滤）
+  /// 发现列表数据源：分组过滤 + 搜索
   List<BookSource> get _visibleSources {
     final q = _searchQuery.toLowerCase();
     return _sources.where((s) {
@@ -194,7 +221,7 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
   /// 控件型分类（text/button/toggle/select）
   List<ExploreKind> get _controlKinds => _kinds.where((k) => k.isControl).toList();
 
-  /// 加载发现分类：exploreUrl 为 `<js>`/`@js:` 时求值（对齐 legado exploreKinds），
+  /// 加载发现分类：exploreUrl 为 `<js>`/`@js:` 时求值，
   /// 失败时得到 ERROR 占位分类，点击可见错误详情。
   Future<void> _loadKinds(BookSource source) async {
     if (!mounted) return;
@@ -287,6 +314,27 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
     });
   }
 
+  /// 判断地址是否为「整块动作」：`{{java.xxx(...)}}` 一类，点击后执行
+  /// JS 动作而非加载书籍列表。
+  ///
+  /// 只有整个地址被 `{{...}}` 包裹才算动作。普通书籍列表地址里常含
+  /// `{{page}}`、`{{page-1}}` 等分页占位符（大灰狼/书山等聚合源），
+  /// 早期用 `contains('{{')` 判断会把它们一律当动作执行，导致发现页
+  /// 点分类后什么都不加载 —— 这是特殊书源发现页不可用的主要原因。
+  static bool _isWholeAction(String raw) {
+    final s = raw.trim();
+    if (!s.startsWith('{{') || !s.endsWith('}}')) return false;
+    // 排除 `{{page}}` 这类纯占位符；动作体内必须是 JS 调用/语句。
+    final inner = s.substring(2, s.length - 2).trim();
+    if (inner.isEmpty) return false;
+    if (RegExp(r'^\{\{?page\b', caseSensitive: false).hasMatch(s)) return false;
+    // 仅含简单标识符（page / key / 数字表达式）视为占位符。
+    if (RegExp(r'^[A-Za-z_$][\w$]*(\s*[-+*/]\s*\d+)?$').hasMatch(inner)) {
+      return false;
+    }
+    return true;
+  }
+
   /// 从发现列表直接打开某书源的分类（_currentSource/_kinds 先行切换）
   Future<void> _openKindFor(BookSource source, ExploreKind kind) async {
     if (kind.isError) {
@@ -295,9 +343,7 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
     }
     final url = kind.url?.trim() ?? '';
     if (url.isEmpty) return;
-    // `{{java.xxx(...)}}` 型地址是动作而非书籍列表（对齐 legado AnalyzeUrl
-    // 的 {{js}} 内嵌求值）：点击后执行动作（如 startBrowser 打开登录页）。
-    if (url.contains('{{') && url.contains('}}')) {
+    if (_isWholeAction(url)) {
       await _runUrlAction(source, url);
       return;
     }
@@ -328,7 +374,7 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
     }
     final url = kind.url?.trim() ?? '';
     if (url.isEmpty) return; // 占位分类（空地址）不响应点击
-    if (url.contains('{{') && url.contains('}}')) {
+    if (_isWholeAction(url)) {
       final source = _currentSource;
       if (source != null) await _runUrlAction(source, url);
       return;
@@ -347,7 +393,7 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
     await _loadExploreBooks();
   }
 
-  /// 展示 ERROR 占位分类的错误详情（对齐 legado 点击 ERROR 项看堆栈）
+  /// 展示 ERROR 占位分类的错误详情
   void _showKindError(ExploreKind kind) {
     showDialog<void>(
       context: context,
@@ -427,7 +473,7 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
     }
   }
 
-  // ==================== 发现页控件（对齐 legado ExploreAdapter） ====================
+  // ==================== 发现页控件 ====================
 
   /// 执行控件动作（button 点击 / text 防抖后 / toggle 切换后 / select 选择后），
   /// 动作执行完刷新分类（legado 由 java.refreshExplore() 触发，这里统一刷新）。
@@ -436,37 +482,42 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
     if (source == null) return;
     final action = kind.action;
     if (action == null || action.trim().isEmpty) return;
+    _kindActionRunning = true;
     try {
-      await _engine.evalExploreAction(source, action);
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('动作执行失败: $e')));
+      try {
+        await _engine.evalExploreAction(source, action);
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('动作执行失败: $e')));
+        }
+        return;
       }
-      return;
-    }
-    if (!mounted) return;
-    // 刷新分类与控件状态（动作可能改了配置/infoMap，分类列表随之变化）
-    final keepKindTitle = _currentKind?.title;
-    await _loadKinds(source);
-    if (!mounted) return;
-    final stillThere =
-        keepKindTitle != null && _visibleKinds.any((k) => k.title == keepKindTitle);
-    if (_view == 'books') {
-      if (stillThere) {
-        // 对齐 legado：refreshExplore 后重取当前分类书籍
-        setState(() {
-          _exploreBooks.clear();
-          _isLoading = true;
-          _hasMore = true;
-          _currentPage = 1;
-          _error = null;
-        });
-        await _loadExploreBooks();
-      } else {
-        setState(() => _view = _visibleKinds.length <= 1 && _controlKinds.isEmpty
-            ? 'source'
-            : 'category');
+      if (!mounted) return;
+      // 刷新分类与控件状态（动作可能改了配置/infoMap，分类列表随之变化）
+      final keepKindTitle = _currentKind?.title;
+      await _loadKinds(source);
+      if (!mounted) return;
+      final stillThere =
+          keepKindTitle != null && _visibleKinds.any((k) => k.title == keepKindTitle);
+      if (_view == 'books') {
+        if (stillThere) {
+          // refreshExplore 后重取当前分类书籍
+          setState(() {
+            _exploreBooks.clear();
+            _isLoading = true;
+            _hasMore = true;
+            _currentPage = 1;
+            _error = null;
+          });
+          await _loadExploreBooks();
+        } else {
+          setState(() => _view = _visibleKinds.length <= 1 && _controlKinds.isEmpty
+              ? 'source'
+              : 'category');
+        }
       }
+    } finally {
+      _kindActionRunning = false;
     }
   }
 
@@ -478,7 +529,7 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
   }
 
   /// 控件区（text/button/toggle/select）：分类页与书籍页共用。
-  /// 对齐 legado-E ExploreAdapter 的 FlexboxLayout —— 按各控件的
+  /// FlexboxLayout —— 按各控件的
   /// layout_flexBasisPercent 累加分行、每行铺满（layout_flexGrow=1）；
   /// 统一 fillet 样式，不再「顺序对却像乱排」。
   Widget _buildControls() {
@@ -493,7 +544,7 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
     );
   }
 
-  /// 解析控件的 layout_flexBasisPercent（对齐 legado FlexboxLayoutManager）。
+  /// 解析控件的 layout_flexBasisPercent。
   /// 委托共享实现，登录页与发现页使用同一套分行规则。
   static double _flexBasisPercentOf(ExploreKind kind) =>
       flexBasisPercentOf(kind.style);
@@ -520,7 +571,7 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
             _engine.putExploreInfoMap(source, kind.title, v);
             final action = kind.action;
             if (action == null || action.trim().isEmpty) return;
-            // 对齐 legado：内容变化后 600ms 防抖触发动作
+            // 内容变化后 600ms 防抖触发动作
             _textDebounce[kind.title]?.cancel();
             _textDebounce[kind.title] = Timer(
                 const Duration(milliseconds: 600), () => _runKindAction(kind));
@@ -772,7 +823,7 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
                     : const Text('发现')))
             : Text(_titleText(), maxLines: 1, overflow: TextOverflow.ellipsis),
         actions: [
-          // ── E 主落点：main_explore.xml 工具栏仅「分组」1 项（always，动态子菜单）──
+          // ── 主界面：main_explore.xml 工具栏仅「分组」1 项（always，动态子菜单）──
           if (_view == 'source')
             PopupMenuButton<String>(
               tooltip: EPlacement.mainMenus['explore']!.first.zh,
@@ -784,7 +835,7 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
                   .map((g) => PopupMenuItem(value: g, child: Text(g)))
                   .toList(),
             ),
-          // ── K 独有功能次级入口（不占 E 主落点）──
+          // ── 扩展功能次级入口（不占主界面入口）──
           EOverflowMenuButton(
             tooltip: '更多功能',
             items: _secondaryMenuItems(),
@@ -842,10 +893,10 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
     });
   }
 
-  /// K 独有功能次级入口 —— E 版发现页工具栏仅「分组」1 项，首页模块 Feed /
-  /// OPDS 目录 / 搜索书源 / 分类管理 / 过滤 / 排序 / 刷新 / 返回分类这些 K 独有
-  /// 视图与动作不删、不占 E 主落点，统一沉到 AppBar 末尾「更多功能」overflow，
-  /// 文案对齐 EPlacement.kSecondary['discover']。
+  /// 扩展功能次级入口 —— 发现页工具栏仅「分组」1 项，首页模块 Feed /
+  /// OPDS 目录 / 搜索书源 / 分类管理 / 过滤 / 排序 / 刷新 / 返回分类这些 扩展
+  /// 视图与动作不删、不占主界面入口，统一沉到 AppBar 末尾「更多功能」overflow，
+  /// 文案取自 EPlacement.kSecondary['discover']。
   List<EOverflowItem> _secondaryMenuItems() {
     return [
       EOverflowItem(
@@ -994,7 +1045,7 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
     }
   }
 
-  /// 发现页主体 —— 对齐 legado-E `fragment_explore.xml` + `item_find_book.xml`：
+  /// 发现页主体 ——  `fragment_explore.xml` + `item_find_book.xml`：
   /// 每个书源一张卡片，书名下方以流式 chips 展示该源的全部发现分类，
   /// 点击分类直达书籍列表；含控件型分类的源提供「控件」入口。
   Widget _buildExploreList() {
@@ -1099,7 +1150,7 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
     );
   }
 
-  /// 书源卡片长按菜单（对齐 legado-E ExploreAdapter.showMenu / menu explore_item）
+  /// 书源卡片长按菜单
   Future<void> _showSourceMenu(BookSource source) async {
     await showAppMenuSheet(
       context,
@@ -1202,7 +1253,7 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
               padding: EdgeInsets.all(AppSpacing.xl),
               child: AppLoadingIndicator(),
             ),
-          // 控件区（text/button/toggle/select，对齐 legado flexbox 控件）
+          // 控件区
           _buildControls(),
           ...visible.map((c) {
             if (c.isError) {
@@ -1223,7 +1274,7 @@ class _DiscoverScreenState extends State<DiscoverScreen> {
                 leading: Icon(empty ? Icons.check_box_outline_blank : Icons.folder_outlined),
                 title: Text(c.title),
                 trailing: empty ? null : const Icon(Icons.chevron_right),
-                // 对齐 legado-E ExploreAdapter：空地址占位分类不进入书籍列表，
+                // 空地址占位分类不进入书籍列表，
                 // 点击给出明确提示而非静默无响应。
                 onTap: empty
                     ? () => ScaffoldMessenger.of(context).showSnackBar(

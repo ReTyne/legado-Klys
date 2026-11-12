@@ -28,13 +28,13 @@ class JsBridgeCache {
   bool contains(String key) => _disk.containsKey(key);
   void remove(String key) => _disk.remove(key);
 
-  /// 内存态写入：不落盘、不参与 __envelope 回写（对齐 legado putMemory）。
+  /// 内存态写入：不落盘、不参与 __envelope 回写。
   bool putMemory(String key, Object? value) {
     _memory[key] = value;
     return true;
   }
 
-  /// 内存态读取：仅命中本进程内存，缺省返回 null（对齐 legado getFromMemory）。
+  /// 内存态读取：仅命中本进程内存，缺省返回 null。
   Object? getFromMemory(String key) => _memory[key];
   void removeMemory(String key) => _memory.remove(key);
 

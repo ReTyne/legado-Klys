@@ -52,7 +52,7 @@ class DatabaseService {
   /// 全新安装的建表语句（公开，供生产与回归测试共用同一份 SQL，避免两边漂移）。
   /// 列集合必须与 Book.toMap / BookChapter.toMap 写入的键完全一致，否则
   /// 新用户首次写库会抛 "table X has no column named Y"。
-  /// 对齐 legado-E 的 Book / BookChapter 实体，只保留模型真实读写的列。
+  /// Book / BookChapter 实体，只保留模型真实读写的列。
   static const String booksTableSql =
       'CREATE TABLE IF NOT EXISTS books (name TEXT NOT NULL, author TEXT NOT NULL, '
       'coverUrl TEXT, intro TEXT, kind TEXT, lastChapter TEXT, lastChapterIndex INTEGER, '
@@ -86,7 +86,7 @@ class DatabaseService {
     'CREATE TABLE IF NOT EXISTS download_tasks (id INTEGER PRIMARY KEY AUTOINCREMENT, bookName TEXT, author TEXT, startIndex INTEGER DEFAULT 0, endIndex INTEGER DEFAULT -1, currentIndex INTEGER DEFAULT 0, total INTEGER DEFAULT 0, done INTEGER DEFAULT 0, status INTEGER DEFAULT 0, error TEXT, createTime INTEGER)',
   ];
 
-  /// v14（第十轮，对齐 Luoyacheng/legado-E 阅读Sigma）：新增 10 张表，
+  /// v14：新增 10 张表，
   /// 覆盖 SearchBook 换源检索缓存 / 书源检测状态 / PDF 大纲 / 页数估算 /
   /// 通用 KV 缓存 / 段评 / 多套排版预设 / 弹幕缓存 / BGM / AI Agent 工具。
   /// 全部 IF NOT EXISTS，生产与回归测试共用（避免列集合漂移）。
@@ -114,7 +114,7 @@ class DatabaseService {
     final dbPath = await getDatabasesPath();
     final fullPath = path.join(dbPath, 'legado_md3.db');
     // onOpen 在 onCreate/onUpgrade 之后、每次开库都会调用（对齐
-    // legado-E AppDatabase.kt dbCallback.onOpen），用于幂等补插虚拟分组与脏数据修复。
+    // 数据库打开回调，用于幂等补插虚拟分组与脏数据修复。
     return openDatabase(
       fullPath,
       version: _dbVersion,
@@ -124,7 +124,7 @@ class DatabaseService {
     );
   }
 
-  /// 每次开库执行（对齐 legado-E AppDatabase.kt:177-260 onOpen）：
+  /// 每次开库执行：
   /// 1) 7 个内置虚拟分组 `where not exists` 幂等补插；
   /// 2) 开库脏数据修复 SQL（loginUi='null' 转 NULL、concurrentRate 空值补 0）。
   /// 全部 try/catch：旧库缺 groupId/enableRefresh 列时不影响开库。
@@ -232,14 +232,14 @@ class DatabaseService {
       ]);
     }
     if (oldVersion < 12) {
-      // v12：books 补长章节拆分开关列（对齐 E Book.ReadConfig.splitLongChapter，
+      // v12：books 补长章节拆分开关列（ Book.ReadConfig.splitLongChapter，
       // 仅本地 TXT 有意义；旧数据默认 1=开启）。逐列 ADD 可重入。
       await _addColumnsIfMissing(db, 'books', const [
         'splitLongChapter INTEGER DEFAULT 1',
       ]);
     }
     if (oldVersion < 13) {
-      // v13：rule_subs 补自动更新字段（对齐 E ruleSubsUp() 启动期自动更新订阅）。
+      // v13：rule_subs 补自动更新字段。
       await _addColumnsIfMissing(db, 'rule_subs', const [
         'autoUpdate INTEGER DEFAULT 0',
         'updateInterval INTEGER DEFAULT 0',
@@ -324,7 +324,7 @@ class DatabaseService {
     await _addColumnsIfMissing(db, 'replace_rules', const [
       'useTo TEXT', 'scopeTitle INTEGER DEFAULT 0', 'scopeContent INTEGER DEFAULT 1',
     ]);
-    // 细节轮：对齐 legado-E ReplaceRule 实体，补齐排除范围/分组/超时/排序字段。
+    // 细节轮： ReplaceRule 实体，补齐排除范围/分组/超时/排序字段。
     // _onUpgrade 末尾会复用 _onCreate，因此新装与升级路径都会执行，且幂等。
     await _addColumnsIfMissing(db, 'replace_rules', const [
       'excludeScope TEXT',

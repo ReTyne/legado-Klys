@@ -1,4 +1,4 @@
-/// book / source 相关 DAO（由 app_database.dart 拆分，对齐 legado-E data/dao）。
+/// book / source 相关 DAO。
 /// 以 part 归属同一库，可直接访问 DatabaseService 的私有 _db。
 part of '../local/app_database.dart';
 

@@ -4,7 +4,7 @@ import 'package:legado_md3/help/readaloud/reading_record.dart';
 import 'package:legado_md3/ui/config/read_record_config.dart';
 import 'package:legado_md3/ui/widgets/app_widgets.dart';
 
-// 对齐 E：legado-E 无独立「阅读统计」界面，本页为本项目增强页。
+//  无独立「阅读统计」界面，本页为本项目增强页。
 // 主入口在 lib/ui/main/my/profile_screen.dart 的「阅读统计」（我的页），
 // 并非「无任何主入口引用」。统计开关 / 书籍分布明细 / 点击开书为第十轮补齐。
 class ReadingStatsScreen extends StatefulWidget {

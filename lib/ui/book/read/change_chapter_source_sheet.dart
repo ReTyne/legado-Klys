@@ -2,7 +2,7 @@
 /// 以 part 形式归属同一库，私有成员互通，外部 import 路径不变。
 part of 'reading_screen.dart';
 
-/// 章节换源 - 对齐原版ChangeChapterSourceSheet
+/// 章节换源 - ChangeChapterSourceSheet
 /// 列出可用书源，选择后用指定源重新加载章节
 class ChangeChapterSourceSheet extends StatefulWidget {
   final String bookName;

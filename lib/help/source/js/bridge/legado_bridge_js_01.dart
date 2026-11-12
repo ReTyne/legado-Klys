@@ -4,13 +4,15 @@ const String legadoBridgeJsPart01 = r'''(function () {
   globalThis.__legadoBridgeReady = true;
 
   var __state = {
-    meta: { url: "", name: "", httpUrl: "", group: "", comment: "", type: 0, concurrentRate: 0, enabledExplore: false, header: "", loginUrl: "", jsLib: "", bookUrlPattern: "" },
+    meta: { url: "", name: "", httpUrl: "", group: "", comment: "", type: 0, concurrentRate: 0, enabledExplore: false, header: "", loginUrl: "", loginUi: "", jsLib: "", bookUrlPattern: "" },
     variable: "",
     variableComment: "",
     lastUpdateTime: 0,
     loginInfo: "",
     loginHeader: "",
     kv: {},
+    // cache.put(key, value, saveTime) 的过期时间戳（毫秒），0/缺省表示永不过期
+    kvDeadline: {},
     // 内存态缓存（putMemory/getFromMemory）：不落盘、不参与 __envelope 回写
     memory: {},
     infoMap: {},
@@ -25,7 +27,7 @@ const String legadoBridgeJsPart01 = r'''(function () {
   };
   globalThis.__state = __state;
 
-  // 发现页控件状态（对齐 legado InfoMap：支持 infoMap['k'] 读写，写空串归一化）。
+  // 发现页控件状态。
   // 运行时每次求值会用带持久化数据的 Proxy 覆盖此默认值，此处保证
   // jsLib / loginUrl 等加载期脚本引用 infoMap 不会 ReferenceError。
   globalThis.infoMap = new Proxy(__state.infoMap, {

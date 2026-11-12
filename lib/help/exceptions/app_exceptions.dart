@@ -1,4 +1,4 @@
-/// 批次 6 · 基础层异常层次（对齐 legado-E `exception/*.kt` 共 8 类）。
+/// 批次 6 · 基础层异常层次。
 ///
 /// 上游 `NoStackTraceException` 通过覆写 `fillInStackTrace()` 让高频业务异常
 /// 跳过堆栈采集以省开销。Dart 无法覆写该方法，这里以 [StackTrace.empty] 作为

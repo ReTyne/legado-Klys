@@ -1,4 +1,4 @@
-/// 发现分类（对齐 legado `io.legado.app.data.entities.rule.ExploreKind`）。
+/// 发现分类。
 ///
 /// 由 `<js>`/`@js:` 型 exploreUrl 求值得到 JSON 数组解析而来：
 /// ```json

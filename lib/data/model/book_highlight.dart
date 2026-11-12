@@ -1,6 +1,6 @@
 import 'dart:convert';
 
-/// 书籍划线 / 高亮（对齐 legado 官方原版 BookHighlight / HighlightFragment）。
+/// 书籍划线 / 高亮。
 ///
 /// 与书签（bookmarks）分离：记录选中文本范围（start/end）、颜色、批注，
 /// 供目录页第 3 个「高亮」Tab 展示与跳转。

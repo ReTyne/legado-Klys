@@ -80,7 +80,7 @@
                 <category android:name="android.intent.category.BROWSABLE"/>
                 <data android:mimeType="text/plain"/>
             </intent-filter>
-            <!-- 系统文本选择菜单（PROCESS_TEXT，对齐 E process_text 开关） -->
+            <!-- 系统文本选择菜单 -->
             <intent-filter>
                 <action android:name="android.intent.action.PROCESS_TEXT"/>
                 <category android:name="android.intent.category.DEFAULT"/>
@@ -179,7 +179,7 @@
             android:enabled="true"
             android:exported="false"
             android:foregroundServiceType="mediaPlayback" />
-        <!-- Web 服务快捷开关磁贴（下拉通知栏磁贴，对齐 E WebTileService） -->
+        <!-- Web 服务快捷开关磁贴 -->
         <service
             android:name=".WebTileService"
             android:exported="true"

@@ -80,7 +80,7 @@ jobs:
           name: ${{ steps.version.outputs.version }}
           prerelease: true
           body: |
-            界面与 legado-E 全面对齐（书架重构 / 发现 / 订阅 / 我的）。
+            界面与功能调整（书架重构 / 发现 / 订阅 / 我的）。
             iOS 为未签名 IPA，需自行签名或 sideload 后安装。
             详见 CHANGELOG.md。
           files: |
@@ -149,7 +149,7 @@ jobs:
           name: ${{ steps.version.outputs.version }}
           prerelease: true
           body: |
-            界面与 legado-E 全面对齐（书架重构 / 发现 / 订阅 / 我的）。
+            界面与功能调整（书架重构 / 发现 / 订阅 / 我的）。
             iOS 为未签名 IPA，需自行签名或 sideload 后安装。
             详见 CHANGELOG.md。
           files: /tmp/legado-ios-unsigned.ipa

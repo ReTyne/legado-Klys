@@ -12,9 +12,9 @@ import 'package:legado_md3/help/readaloud/lrc_parser.dart';
 import 'package:legado_md3/ui/book/audio/bgm_panel.dart';
 
 import 'package:legado_md3/ui/theme/app_design.dart';
-/// 有声书播放器界面，对齐原版 AudioPlayActivity。
+/// 有声书播放器界面。
 ///
-/// 播放逻辑全部在 [AudioPlaybackController]（对应原版 AudioPlayService）中：
+/// 播放逻辑全部在 [AudioPlaybackController]中：
 /// 本页只负责展示与交互。退出页面时若选择「继续后台播放」，控制器保留会话，
 /// 并由 Android 前台服务 + 媒体通知栏继续控制（见 `audio_notify_service.dart`）。
 class AudioPlayerScreen extends StatefulWidget {
@@ -369,7 +369,7 @@ class _AudioPlayerScreenState extends State<AudioPlayerScreen> {
 
   // ==================== 片头片尾 / 歌词 / 章节 ====================
 
-  /// 跳过片头片尾配置（对齐 legado-E 的 AudioSkipCredits）。
+  /// 跳过片头片尾配置。
   void _showSkipConfig() {
     showModalBottomSheet(
       context: context,

@@ -14,7 +14,7 @@ void main() {
   setUp(() => SharedPreferences.setMockInitialValues({}));
 
   // ——— #13 详情富文本简介：前缀分派 ———
-  group('parseIntro 三前缀分派（对齐 E showBookIntro）', () {
+  group('parseIntro 三前缀分派', () {
     test('普通简介为 plain 且保留原文', () {
       final s = parseIntro('这是一段纯文本简介');
       expect(s.kind, IntroKind.plain);
@@ -53,7 +53,7 @@ void main() {
   });
 
   // ——— #13 scheme 拦截 ———
-  group('简介链接 scheme 分类（对齐 E CustomWebViewClient）', () {
+  group('简介链接 scheme 分类', () {
     test('http/https 放行，legado/yuedu 在线导入，其余外部', () {
       expect(classifyIntroUri(Uri.parse('https://a.com')),
           IntroLinkAction.allow);
@@ -188,11 +188,11 @@ void main() {
       expect(s, contains('showAppConfirmDialog'), reason: '空结果建议弹窗');
     });
 
-    test('搜索页结果为 E 版单列横向列表（对照 E SearchActivity，非网格）', () {
+    test('搜索页结果为 单列横向列表', () {
       final s = src('lib/ui/book/search/search_screen.dart');
       expect(s, contains('ListView.separated'));
       expect(s.contains('GridView.builder'), isFalse,
-          reason: '对照 E 版搜索页应为单列列表，不再是 3 列网格');
+          reason: '搜索页应为单列列表，不再是 3 列网格');
       expect(s, contains('const coverW = 80.0'));
       expect(s.contains('width: 50,'), isFalse);
     });

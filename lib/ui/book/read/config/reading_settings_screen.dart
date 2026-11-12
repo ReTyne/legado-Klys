@@ -155,7 +155,7 @@ class _ReadingSettingsScreenState extends State<ReadingSettingsScreen>
           title: const Text('文字颜色'),
           subtitle: Text('按当前模式（${['日间', '夜间', '墨水屏'][config.readThemeMode.clamp(0, 2)]}）独立保存', style: const TextStyle(fontSize: 11)),
           trailing: Icon(Icons.color_lens, color: Color(config.curTextColor)),
-          // 对齐 E Config.setCurTextColor()：只写当前模式那份，不覆盖其它模式。
+          // 只写当前模式那份，不覆盖其它模式。
           onTap: () => _showColorPicker((color) => context.read<ReadProvider>().updateConfig((c) => c.setCurTextColor(color.value))),
         ),
         ListTile(
@@ -165,7 +165,7 @@ class _ReadingSettingsScreenState extends State<ReadingSettingsScreen>
         ),
         ListTile(
           title: const Text('系统字体'),
-          subtitle: const Text('未指定自定义字体时生效（对齐 E systemTypefaces）', style: TextStyle(fontSize: 11)),
+          subtitle: const Text('未指定自定义字体时生效', style: TextStyle(fontSize: 11)),
           trailing: DropdownButton<int>(
             value: config.systemTypefaces.clamp(0, 2),
             items: const [
@@ -423,7 +423,7 @@ class _ReadingSettingsScreenState extends State<ReadingSettingsScreen>
             if (path != null) rp.updateConfig((c) => c.bgImage = path);
           },
         ),
-        // ===== 批次 3 · 日/夜/墨水屏三套独立配置（对齐 E ReadBookConfig.Config）=====
+        // ===== 批次 3 · 日/夜/墨水屏三套独立配置=====
         // 切换模式后，上方的「文字颜色 / 背景颜色」写入的是当前模式那份，互不覆盖。
         const AppSectionHeader('日 / 夜 / 墨水屏 独立配置（已接线）'),
         Padding(
@@ -446,7 +446,7 @@ class _ReadingSettingsScreenState extends State<ReadingSettingsScreen>
         ),
         SwitchListTile(
           title: const Text('状态栏暗色图标'),
-          subtitle: const Text('按当前模式独立保存（对齐 E darkStatusIcon*）', style: TextStyle(fontSize: 11)),
+          subtitle: const Text('按当前模式独立保存', style: TextStyle(fontSize: 11)),
           value: config.curStatusIconDark,
           onChanged: (v) => rp.updateConfig((c) => c.setCurStatusIconDark(v)),
         ),
@@ -591,7 +591,7 @@ class _ReadingSettingsScreenState extends State<ReadingSettingsScreen>
       children: [
         ListTile(
           title: const Text('屏幕超时（keep_light）'),
-          subtitle: const Text('对齐 legado-E：跟随系统 / 1分 / 5分 / 10分 / 常亮', style: TextStyle(fontSize: 11)),
+          subtitle: const Text('：跟随系统 / 1分 / 5分 / 10分 / 常亮', style: TextStyle(fontSize: 11)),
           trailing: DropdownButton<int>(
             value: const [0, 60, 300, 600, -1].contains(config.keepLight) ? config.keepLight : 0,
             items: const [

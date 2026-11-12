@@ -1,6 +1,6 @@
 import 'package:legado_md3/utils/alphanum_comparator.dart';
 
-/// 批次 6 · Web 端点参数边界（对齐上游 `service/WebService.kt` 与
+/// 批次 6 · Web 端点参数边界（ `service/WebService.kt` 与
 /// `api/controller/BookController.kt`），集中为纯函数以便单元回归。
 
 // ---- 端口（WebService.kt:185-191）----
@@ -34,7 +34,7 @@ const int chapterWaitMaxAttempts = 30;
 const Duration chapterWaitInterval = Duration(seconds: 1);
 
 /// 轮询等待 [probe] 返回非空值：最多 [maxAttempts] 次，每次间隔 [interval]。
-/// 始终为 null 时返回 null。对齐上游「30 次 × 1s 等待章节入库」。
+/// 始终为 null 时返回 null。「30 次 × 1s 等待章节入库」。
 Future<T?> pollForValue<T>(
   Future<T?> Function() probe, {
   int maxAttempts = chapterWaitMaxAttempts,

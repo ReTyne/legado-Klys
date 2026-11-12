@@ -7,7 +7,7 @@ import 'package:legado_md3/ui/book/search/search_screen.dart';
 
 /// 阅读记录 / 阅读统计域的共享配置与「开书」助手。
 ///
-/// `enableReadRecord` 对齐 legado-E `AppConfig.enableReadRecord`：由
+/// `enableReadRecord`  `AppConfig.enableReadRecord`：由
 /// [ReadRecordScreen] 的开关写入，[ReadingStatsScreen] 读取决定是否计入统计，
 /// 记录写入路径（`ReadingRecordService` / `tts_service`）在落库前读取该键。
 /// `enableReadingStats` 控制统计页是否汇总展示。

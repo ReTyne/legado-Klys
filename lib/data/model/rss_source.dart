@@ -1,6 +1,6 @@
 import 'package:legado_md3/help/source/js/js_source.dart';
 
-/// RSS订阅源模型 - 对齐原版RssSource
+/// RSS订阅源模型 - RssSource
 class RssSource implements JsSource {
   int? id;
   String sourceName;
@@ -54,7 +54,7 @@ class RssSource implements JsSource {
   String? variable;
   @override
   bool enabledCookieJar;
-  /// 文章列表布局 0..4（legado-E RssSource.articleStyle，非正文渲染方式）：
+  /// 文章列表布局 0..4，非正文渲染方式：
   /// 0 标准列表 / 1 紧凑列表 / 2 双列网格 / 3 瀑布流 / 4 大图卡片。
   int? articleStyle;
   bool enableJs;

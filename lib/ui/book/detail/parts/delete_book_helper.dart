@@ -8,7 +8,7 @@ import 'package:legado_md3/ui/widgets/app_widgets.dart';
 
 /// 删除书籍「同时删除源文件」相关实现。
 ///
-/// 对齐 legado-E `ui/book/info/BookInfoActivity.kt:954` `deleteBook()`：
+/// 954` `deleteBook()`：
 ///  - 仅本地书（`book.isLocal`）出现「删除源文件」复选框
 ///    （`R.string.delete_book_file`，strings.xml:680）；
 ///  - 复选框初值来自 `LocalConfig.deleteBookOriginal`，
@@ -18,7 +18,7 @@ import 'package:legado_md3/ui/widgets/app_widgets.dart';
 /// 批量删除（`BookshelfManageActivity.kt:327-344`）同样带该复选框，故抽成
 /// 公共助手供详情页与书架长按菜单共用。
 
-/// 对齐 E `LocalConfig.deleteBookOriginal` 的持久化键。
+/// 持久化键。
 const String kDeleteBookOriginalPref = 'deleteBookOriginal';
 
 /// 解析本地书籍源文件路径（纯函数，便于回归）。
@@ -76,7 +76,7 @@ class DeleteBookChoice {
 }
 
 /// 删除确认框。本地书额外带「同时删除源文件」复选框，
-/// 确认后把选择持久化到 [kDeleteBookOriginalPref]（仅本地书，对齐 E）。
+/// 确认后把选择持久化到 [kDeleteBookOriginalPref]。
 Future<DeleteBookChoice> showDeleteBookConfirm(
   BuildContext context, {
   required Book book,

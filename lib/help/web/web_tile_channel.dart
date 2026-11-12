@@ -3,7 +3,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:legado_md3/help/web/web_service.dart';
 
-/// Web 服务快捷磁贴（Quick Settings Tile，D3，对齐 E service/WebTileService.kt）。
+/// Web 服务快捷磁贴。
 ///
 /// 链路：磁贴点击（原生）→ `legado/web_tile` 的 `toggle` → Dart 切换
 /// [WebService] 并回传 `updateState` → 原生刷新磁贴激活态。

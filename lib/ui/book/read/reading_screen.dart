@@ -114,7 +114,7 @@ class _ReadingScreenState extends State<ReadingScreen>
   Timer? _keepLightTimer;
   int? _appliedKeepLight;
   // ===== 批次 3 状态 =====
-  Timer? _autoBackupTimer; // 阅读会话 5 分钟定时自动备份（对齐 E startBackupJob）
+  Timer? _autoBackupTimer; // 阅读会话 5 分钟定时自动备份
   String? _paddingFallbackKey; // 边距回退 Toast 去重
   bool? _inBookshelf; // null=未知/在架，false=未入架，true=在架
   final ClickTracker _clickTracker = ClickTracker(); // 单击 300ms 防抖 + 双击状态机
@@ -123,13 +123,13 @@ class _ReadingScreenState extends State<ReadingScreen>
   // 正文搜索命中其他章时的章内偏移：章节加载分页完成后按此定位页码
   int? _pendingPosInChapter;
   // 文本选择菜单默认固定为 EPlacement.textSelectActions 8 项（见 read_menu_config.dart）；
-  // 可配置能力为 K 独有扩展，默认不启用，折叠态沿用 expandTextMenu 前 5 项 + 更多。
+  // 可配置能力为 扩展扩展，默认不启用，折叠态沿用 expandTextMenu 前 5 项 + 更多。
   List<String> _selectMenuOrder = List.of(ReadMenuConfig.defaultSelectMenu);
   // 阅读页 overflow 主落点不再硬编码顺序：由 _eOverflowItems() 用
   // EPlacement.readOverflow + eOverflowItemsFrom 严格按单一真源构造（18 项，
   // 3 个 visibleByDefault=false 默认不渲染 → 可见 15 项），checkable 勾选态
-  // 由 EOverflowItem.checkable/checked 承接；K 独有功能收在 _kSecondaryItems()。
-  // 对齐 E book_read.xml 的 checkable 菜单项：持久作用于章节内容后处理（非一次性操作）。
+  // 由 EOverflowItem.checkable/checked 承接；扩展功能收在 _kSecondaryItems()。
+  // 持久作用于章节内容后处理（非一次性操作）。
   bool _reSegmentEnabled = false;
   bool _delRubyEnabled = false;
   bool _delHEnabled = false;
@@ -149,7 +149,7 @@ class _ReadingScreenState extends State<ReadingScreen>
   int _preDownload = 5;
   // 正在预缓存的章节下标，避免重复请求
   final Set<int> _prefetching = {};
-  // 当前书籍来源书源（对齐 E ReadMenu.tvSourceAction：网络书显示「书源」操作菜单）
+  // 当前书籍来源书源
   BookSource? _currentBookSource;
 
   /* ===== 第十轮 C 组：新增真实消费状态（全部只追加，不改动上方既有字段） ===== */
@@ -169,7 +169,7 @@ class _ReadingScreenState extends State<ReadingScreen>
   // 自定义翻页按键：{'prev': [...], 'next': [...]}，来自 ReadConfig.customPageKey JSON
   Map<String, List<String>> _customPageKeys = {};
   String? _customPageKeysRaw; // 上次解析的 customPageKey 原文，用于配置热更新
-  int _lastKeyActionAt = 0; // 按键防抖（对齐 E keyPageOnLongPress 防抖）
+  int _lastKeyActionAt = 0; // 按键防抖
 
   // 段评气泡计数 / 全书页数索引
   int _chapterReviewCount = 0;
@@ -196,7 +196,7 @@ class _ReadingScreenState extends State<ReadingScreen>
     } catch (_) {}
   }
 
-  /// 书源操作菜单（对齐 E res/menu/book_read_source.xml：登录 / 章节购买 / 编辑书源 / 禁用书源）
+  /// 书源操作菜单
   void _showSourceMenu() {
     final source = _currentBookSource;
     if (source == null) {
@@ -227,7 +227,7 @@ class _ReadingScreenState extends State<ReadingScreen>
             ListTile(leading: const Icon(Icons.block), title: const Text('禁用书源'),
               onTap: () async {
                 Navigator.pop(ctx);
-                source.enabled = false; // 对齐 E menu_disable_source：禁用当前书源
+                source.enabled = false; //  menu_disable_source：禁用当前书源
                 await _db.updateSource(source);
                 if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('已禁用书源「${source.bookSourceName}」')));
               }),
@@ -304,13 +304,13 @@ class _ReadingScreenState extends State<ReadingScreen>
   }
 
   Future<void> _loadMenuConfig() async {
-    // 对齐 E：只保留文本选择菜单（TextActionMenu）的可配置顺序；其余菜单硬编码为 E 的顺序。
+    // 只保留文本选择菜单（TextActionMenu）的可配置顺序；其余菜单硬编码为 顺序。
     final sm = await ReadMenuConfig.load(ReadMenuConfig.kSelectMenu, ReadMenuConfig.defaultSelectMenu);
     final p = await SharedPreferences.getInstance();
     if (mounted) {
       setState(() {
         _selectMenuOrder = sm;
-        // 对齐 E book_read.xml checkable 菜单项：读取持久化的内容处理开关
+        // 读取持久化的内容处理开关
         _reSegmentEnabled = p.getBool('read_reSegment') ?? false;
         _delRubyEnabled = p.getBool('read_delRuby') ?? false;
         _delHEnabled = p.getBool('read_delH') ?? false;
@@ -366,7 +366,7 @@ class _ReadingScreenState extends State<ReadingScreen>
     });
   }
 
-  /// 对齐 E ChapterProvider.getTypeface().getOrElse：自定义字体坏路径时
+  /// 自定义字体坏路径时
   /// 清空 fontFamily、落盘并回退系统字体（避免每次启动都失败）。
   void _validateFontFamily(ReadConfig cfg) {
     final ff = cfg.fontFamily;
@@ -380,7 +380,7 @@ class _ReadingScreenState extends State<ReadingScreen>
     }
   }
 
-  /// 对齐 E ReadBookActivity.startBackupJob()（1667-1678）：进入/翻页后
+  /// 进入/翻页后
   /// 5 分钟（300000ms）静默上传进度 + 保存 + 自动备份；再次触发先 cancel 上一个。
   void _startAutoBackupJob() {
     _autoBackupTimer?.cancel();
@@ -456,7 +456,7 @@ class _ReadingScreenState extends State<ReadingScreen>
   /// 真实亮度写入：跟随系统时调 setSystemBrightness / setWindowBrightness，
   /// 否则沿用阅读页的遮罩亮度（ReadProvider.brightness）。
   Future<void> _applyBrightness(double value, {bool system = false}) async {
-    // 对齐 E ReadMenu.setScreenBrightness()：0 亮度仍保留 0.004 最小背光，
+    // 0 亮度仍保留 0.004 最小背光，
     // 避免把屏幕调到全黑不可读（见 read_detail_utils.minBacklight）。
     final v = minBacklight(value.clamp(0.0, 1.0));
     context.read<ReadProvider>().setBrightness(v);
@@ -1208,7 +1208,7 @@ class _ReadingScreenState extends State<ReadingScreen>
     );
   }
 
-  /// 对齐 legado-E `ReadBookActivity.upScreenTimeOut`：keep_light 为
+  /// keep_light 为
   /// 0=跟随系统、60/300/600=保持亮屏 N 秒、-1=常亮。
   /// Flutter 无系统 SCREEN_OFF_TIMEOUT 写权限，用 wakelock + Timer 等价实现。
   void _applyKeepLight(int seconds) {
@@ -1237,7 +1237,6 @@ class _ReadingScreenState extends State<ReadingScreen>
     } catch (_) {}
   }
 
-  /// 对齐 E ReadBookActivity.finish() 的 `ReadBook.inBookshelf` 判定：
   /// 书架里存在同名同作者的书即视为在架。
   Future<void> _checkInShelf() async {
     try {
@@ -1404,7 +1403,7 @@ class _ReadingScreenState extends State<ReadingScreen>
       }
     }
 
-    // 对齐 E res/menu/book_read.xml 的 checkable 菜单项：这些开关持久作用于正文后处理，
+    // 这些开关持久作用于正文后处理，
     // 而非一次性文本操作；切换后重新加载当前章即可生效。
     if (_content != null && _content!.isNotEmpty) {
       var text = _content!;
@@ -1420,7 +1419,7 @@ class _ReadingScreenState extends State<ReadingScreen>
             .replaceAll(RegExp(r'</h[1-6]>'), '');
       }
       if (_removeSameTitle && index < _chapters.length) {
-        // 同名章节去除：正文首行与章节标题重复时去掉该行（对齐 E same_title_removed）
+        // 同名章节去除：正文首行与章节标题重复时去掉该行
         final title = _chapters[index].title.trim();
         final lines = text.split('\n');
         if (title.isNotEmpty && lines.isNotEmpty && lines.first.trim() == title) {
@@ -1606,7 +1605,7 @@ class _ReadingScreenState extends State<ReadingScreen>
 
   void _nextPage() {
     final config = context.read<ReadProvider>().config;
-    // noAnimScrollPage：滚动模式下代码跳页也不做动画（对齐 E）
+    // noAnimScrollPage：滚动模式下代码跳页也不做动画
     final noAnim =
         config.curPageAnim == 4 || (config.curPageAnim == 3 && config.noAnimScrollPage);
     if (_currentPage < _pages.length - 1) {
@@ -1625,7 +1624,7 @@ class _ReadingScreenState extends State<ReadingScreen>
 
   void _prevPage() {
     final config = context.read<ReadProvider>().config;
-    // noAnimScrollPage：滚动模式下代码跳页也不做动画（对齐 E）
+    // noAnimScrollPage：滚动模式下代码跳页也不做动画
     final noAnim =
         config.curPageAnim == 4 || (config.curPageAnim == 3 && config.noAnimScrollPage);
     if (_currentPage > 0) {
@@ -1734,10 +1733,9 @@ class _ReadingScreenState extends State<ReadingScreen>
   Widget build(BuildContext context) {
     final readProvider = context.watch<ReadProvider>();
     final config = readProvider.config;
-    // 屏幕超时档位变化时实时生效（对齐 legado-E upScreenTimeOut）
+    // 屏幕超时档位变化时实时生效
     _applyKeepLight(config.keepLight);
 
-    // 对齐 E pref_config_read.disableReturnKey + ReadBookActivity.finish()->showAddToShelfAlert：
     // 由 PopScope 拦截系统返回。canPop=false 只门控 Navigator.maybePop，
     // 直接 Navigator.pop（文本选择菜单等内部弹层）不受影响。
     return PopScope(
@@ -1747,7 +1745,7 @@ class _ReadingScreenState extends State<ReadingScreen>
         if (config.disableReturnKey) return; // 禁用返回键：直接吞掉
         // 先取 NavigatorState，避免异步间隙后跨 BuildContext 使用。
         final navigator = Navigator.of(context);
-        // 退出未入架的书时弹「加入书架」确认（对齐 E showAddToShelfAlert，默认 true）。
+        // 退出未入架的书时弹「加入书架」确认。
         if (_inBookshelf == false && config.showAddToShelfAlert) {
           final choice = await showDialog<String>(
             context: context,
@@ -1765,7 +1763,7 @@ class _ReadingScreenState extends State<ReadingScreen>
             try {
               await _db.insertBook(widget.book);
             } catch (_) {}
-            _inBookshelf = true; // 对齐 E okButton：加入书架后留在阅读页，不 finish
+            _inBookshelf = true; //  okButton：加入书架后留在阅读页，不 finish
             return;
           }
         }
@@ -1779,7 +1777,7 @@ class _ReadingScreenState extends State<ReadingScreen>
         value: SystemUiOverlayStyle(
           // 批次 3：三套独立配置——背景色、状态栏图标、强调色、翻页动画按当前模式取。
           statusBarColor: Color(config.curBgColor),
-          // 对齐 E darkStatusIcon*：true=暗色图标（浅背景），false=亮色图标（深背景）。
+          // true=暗色图标（浅背景），false=亮色图标（深背景）。
           statusBarIconBrightness: config.curStatusIconDark ? Brightness.dark : Brightness.light,
         ),
         child: Scaffold(
@@ -1798,7 +1796,7 @@ class _ReadingScreenState extends State<ReadingScreen>
                     final col = details.globalPosition.dx < size.width / 3 ? 0 : (details.globalPosition.dx > size.width * 2 / 3 ? 2 : 1);
                     final row = details.globalPosition.dy < size.height / 3 ? 0 : (details.globalPosition.dy > size.height * 2 / 3 ? 2 : 1);
                     final action = _clickActions[row * 3 + col];
-                    // 批次 3 · 单击 300ms 防抖 + 双击状态机（对齐 E
+                    // 批次 3 · 单击 300ms 防抖 + 双击状态机（
                     // ContentTextView.click():245-253 与 clickImgWay:267-308 的 5 档）。
                     // 上游 doubleClick 仅驱动 inline ImageColumn；Flutter 正文为整页
                     // 单个 Text、无 inline 图片命中（Flutter 无等价能力），故降级为把
@@ -1892,8 +1890,8 @@ class _ReadingScreenState extends State<ReadingScreen>
                             ),
                           ),
                         ),
-                      // 对齐 E view_read_menu.xml ll_floating_button：水平悬浮按钮行已并入底部设置面板；
-                      // E 没有 Klys 的右侧竖排悬浮栏，故此处不再放置。
+                      // 水平悬浮按钮行已并入底部设置面板；
+                      // 不设 本项目的右侧竖排悬浮栏，故此处不再放置。
                     ],
                   ),
                 ),
@@ -1940,12 +1938,12 @@ class _ReadingScreenState extends State<ReadingScreen>
       height: config.lineSpacing * 0.5 + 1.0,
       letterSpacing: config.letterSpacing,
       wordSpacing: config.wordSpacing,
-      // 对齐 E TextFontWeightConverter：字重设置真实作用于正文（粗体开关优先）
+      // 字重设置真实作用于正文（粗体开关优先）
       fontWeight: config.boldText
           ? FontWeight.bold
           : FontWeight.values[((config.fontWeight ~/ 100) - 1).clamp(0, FontWeight.values.length - 1)],
       // 批次 3：未指定自定义字体时按 systemTypefaces 选系统衬线/等宽/无衬线
-      // （对齐 E ChapterProvider.getTypeface），坏路径由 _validateFontFamily 清空。
+      //，坏路径由 _validateFontFamily 清空。
       fontFamily: config.fontFamily ?? systemFontFamily(config.systemTypefaces),
       shadows: config.shadowLevel > 0
           ? [
@@ -1999,7 +1997,7 @@ class _ReadingScreenState extends State<ReadingScreen>
 
     // 用 LayoutBuilder 测量可用文本区域，尺寸变化时重新真实分页
     return LayoutBuilder(builder: (ctx, constraints) {
-      // 批次 3：边距过大回退（对齐 E ChapterProvider.setFallbackLayout，避免
+      // 批次 3：边距过大回退（ ChapterProvider.setFallbackLayout，避免
       // 可视宽为负导致 TextPainter 白屏/除零）。
       final pad = resolveReadPadding(
         viewWidth: constraints.maxWidth,
@@ -2020,7 +2018,7 @@ class _ReadingScreenState extends State<ReadingScreen>
     });
   }
 
-  /// 边距回退时提示一次（对齐 E `AppLog.put("边距设置过大", toast=true)`）。
+  /// 边距回退时提示一次。
   /// build 期间不能弹 SnackBar，延到帧后；同一组坏边距不重复弹。
   void _notifyPaddingFallback(ReadPadding pad, ReadConfig config) {
     if (!pad.fellBack) {
@@ -2042,7 +2040,7 @@ class _ReadingScreenState extends State<ReadingScreen>
   /// 可用区域变化时重新分页（保持当前阅读锚点）
   void _maybeRepaginate(double w, double h) {
     if (w <= 0 || h <= 0) return;
-    // 对齐 E ChapterProvider.upViewSize()：宽度变化立即重排；仅高度变化
+    // 宽度变化立即重排；仅高度变化
     // （键盘/状态栏/分屏）延迟 300ms 再重排，连续抖动取消上一次；尺寸回到
     // 原值时取消挂起回调，避免每帧重排全书。
     final kind = classifyViewSizeChange(
@@ -2121,7 +2119,7 @@ class _ReadingScreenState extends State<ReadingScreen>
       itemCount: _pages.length,
       onPageChanged: (page) {
         setState(() => _currentPage = page);
-        // 对齐 E pageChanged()->startBackupJob()：翻页重置 5 分钟自动备份计时。
+        // 翻页重置 5 分钟自动备份计时。
         _startAutoBackupJob();
       },
       itemBuilder: (context, index) {
@@ -2336,7 +2334,7 @@ class _ReadingScreenState extends State<ReadingScreen>
 
   Widget _buildTopMenu() {
     final config = context.read<ReadProvider>().config;
-    // 对齐 E ReadMenu.immersiveMenu：阅读栏背景/文字跟随当前页面背景
+    // 阅读栏背景/文字跟随当前页面背景
     final barBg = config.readBarStyleFollowPage ? Color(config.curBgColor) : null;
     final barFg = config.readBarStyleFollowPage ? Color(config.curTextColor) : null;
     return AnimatedBuilder(
@@ -2359,7 +2357,7 @@ class _ReadingScreenState extends State<ReadingScreen>
         backgroundColor: barBg,
         foregroundColor: barFg,
         title: GestureDetector(
-          // 对齐 E ReadMenu：点击标题栏打开书籍详情
+          // 点击标题栏打开书籍详情
           onTap: () {
             _menuController.reverse();
             Navigator.push(context, MaterialPageRoute(builder: (_) => BookDetailScreen(book: widget.book)));
@@ -2369,7 +2367,7 @@ class _ReadingScreenState extends State<ReadingScreen>
             mainAxisSize: MainAxisSize.min,
             children: [
               Text(widget.book.name, maxLines: 1, overflow: TextOverflow.ellipsis),
-              // 对齐 E showReadTitleBarAddition：标题附加区显示章节名 / 书源
+              // 标题附加区显示章节名 / 书源
               if (config.showReadTitleAddition)
                 Text(
                   _chapters.isNotEmpty
@@ -2382,7 +2380,7 @@ class _ReadingScreenState extends State<ReadingScreen>
             ],
           ),
         ),
-        // 对齐 E res/menu/book_read.xml：showAsAction="always" 常驻项严格由
+        // showAsAction="always" 常驻项严格由
         // EPlacement.readAlwaysOnline（在线书 3 项）/ readAlwaysText（本地 TXT，
         // visibleByDefault=false 降级：本地书条件可见）/ readAlwaysLocal（本地书）驱动。
         actions: [
@@ -2393,17 +2391,17 @@ class _ReadingScreenState extends State<ReadingScreen>
             IconButton(tooltip: EPlacement.readAlwaysOnline[2].zh, icon: const Icon(Icons.download), onPressed: _showCacheSheet),
           ],
           // 本地书：TXT目录规则（E visible=false 默认隐藏，此处按本地书条件可见）
-          // / 设置编码（对齐 E menu_group_text / menu_group_local）
+          // / 设置编码
           if (widget.book.local) ...[
             IconButton(tooltip: EPlacement.readAlwaysText[0].zh, icon: const Icon(Icons.list_alt),
               onPressed: () { _menuController.reverse(); Navigator.push(context, MaterialPageRoute(builder: (_) => const TxtTocRuleScreen())); }),
             IconButton(tooltip: EPlacement.readAlwaysLocal[0].zh, icon: const Icon(Icons.translate), onPressed: _selectCharset),
           ],
-          // 对齐 E ReadMenu.tvSourceAction：网络书的书源操作菜单
+          // 网络书的书源操作菜单
           if (!widget.book.local)
             TextButton(onPressed: _showSourceMenu, child: Text('书源', style: TextStyle(color: barFg))),
-          // 更多菜单（对齐 E overflow showAsAction="never"）：E 主落点 18 项锚定
-          // 右上角，K 独有功能收在末尾「更多功能」子分组，不占 E 主落点。
+          // 更多菜单：主界面 18 项锚定
+          // 右上角，扩展功能收在末尾「更多功能」子分组，不占主界面入口。
           EOverflowMenuButton(
             items: _eOverflowItems(),
             secondary: _kSecondaryItems(),
@@ -2442,7 +2440,7 @@ class _ReadingScreenState extends State<ReadingScreen>
     final config = readProvider.config;
     // progressBarBehavior：'page' 章内按页拖动 / 'chapter' 按章拖动
     final pageMode = _progressBarBehavior == 'page';
-    // 对齐 E ReadMenu.immersiveMenu：底部设置栏背景/文字跟随页面背景
+    // 底部设置栏背景/文字跟随页面背景
     final barBg = config.readBarStyleFollowPage
         ? Color(config.curBgColor)
         : Theme.of(context).colorScheme.surface;
@@ -2459,9 +2457,9 @@ class _ReadingScreenState extends State<ReadingScreen>
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            // 对齐 E view_read_menu.xml ll_floating_button：水平悬浮按钮行（搜索/自动翻页/替换/夜间）
+            // 水平悬浮按钮行（搜索/自动翻页/替换/夜间）
             _buildFloatingButtonRow(barFg),
-            // 章节进度行（对齐 E tv_pre / seek_read_page / tv_next）
+            // 章节进度行
             // 接分支：progressBarBehavior='page' 时滑块控制章内页，否则保持原按章行为
             Padding(
               padding: const EdgeInsets.fromLTRB(AppSpacing.l, AppSpacing.s, AppSpacing.l, AppSpacing.s),
@@ -2551,7 +2549,7 @@ class _ReadingScreenState extends State<ReadingScreen>
                 ],
               ),
             ),
-            // 字号 / 行距（对齐 E「界面」ReadStyleDialog 的字号调节，常驻便于快捷调整）
+            // 字号 / 行距
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: AppSpacing.l, vertical: AppSpacing.s),
               child: Row(
@@ -2568,7 +2566,7 @@ class _ReadingScreenState extends State<ReadingScreen>
                 ],
               ),
             ),
-            // 配色预设（对齐 E ReadStyleDialog 的背景选择；不使用「背景」文字标题）
+            // 配色预设
             SizedBox(
               height: 60,
               child: ListView.builder(
@@ -2582,7 +2580,7 @@ class _ReadingScreenState extends State<ReadingScreen>
                   final isSelected = config.curBgColor == bg;
                   return GestureDetector(
                     onTap: () {
-                      // 对齐 E Config.setCurBg()：配色预设写入当前模式那份，不覆盖其它模式。
+                      // 配色预设写入当前模式那份，不覆盖其它模式。
                       readProvider.updateConfig((c) {
                         c.setCurBgColor(bg);
                         c.setCurTextColor(fg);
@@ -2607,7 +2605,7 @@ class _ReadingScreenState extends State<ReadingScreen>
                 },
               ),
             ),
-            // 对齐 E view_read_menu.xml ll_bottom_bg：恰好 4 个主按钮，
+            // 恰好 4 个主按钮，
             // 顺序严格 EPlacement.readBottomButtons（目录 / 朗读 / 界面 / 设置）。
             // 朗读长按→朗读设置子菜单保留；「备忘」已迁到 overflow「更多功能」子分组。
             Padding(
@@ -2632,7 +2630,7 @@ class _ReadingScreenState extends State<ReadingScreen>
     );
   }
 
-  /// 对齐 E view_read_menu.xml ll_floating_button：搜索 / 自动翻页 / 替换 / 夜间 水平行
+  /// 搜索 / 自动翻页 / 替换 / 夜间 水平行
   Widget _buildFloatingButtonRow(Color fg) {
     return Padding(
       padding: const EdgeInsets.symmetric(horizontal: AppSpacing.l, vertical: AppSpacing.xs),
@@ -2652,7 +2650,7 @@ class _ReadingScreenState extends State<ReadingScreen>
     );
   }
 
-  /// 对齐 E fabNightTheme（切 isNightTheme）：在日间/夜间模式间切换。
+  /// 在日间/夜间模式间切换。
   /// 批次 3 起改为切换 readThemeMode，直接取用各自独立持久化的配色/强调色/
   /// 状态栏图标，不再改写白天那份（避免夜间切换覆盖白天设置）。
   void _toggleNightTheme() {
@@ -2660,7 +2658,7 @@ class _ReadingScreenState extends State<ReadingScreen>
     rp.updateConfig((c) => c.readThemeMode = c.isNightMode ? 0 : 1);
   }
 
-  /// 对齐 E llReadAloud：点击朗读、长按弹出朗读配置
+  /// 点击朗读、长按弹出朗读配置
   Widget _buildReadAloudAction(Color fg) {
     return GestureDetector(
       onLongPress: _showReadAloudConfig,
@@ -2668,10 +2666,10 @@ class _ReadingScreenState extends State<ReadingScreen>
     );
   }
 
-  // 对齐 E：删除 Klys 的右侧竖排悬浮栏与可配置工具栏/悬浮栏映射。
-  // E 的浮动按钮为底部栏上方的水平行（_buildFloatingButtonRow），底部按钮固定为四项。
+  // 删除 本项目的右侧竖排悬浮栏与可配置工具栏/悬浮栏映射。
+  // 浮动按钮为底部栏上方的水平行（_buildFloatingButtonRow），底部按钮固定为四项。
 
-  /// 对齐 E menu_change_source：换源（章节换源）
+  /// 换源（章节换源）
   Future<void> _showChangeSourceMenu() async {
     _menuController.reverse();
     final source = await showModalBottomSheet<BookSource>(
@@ -2689,7 +2687,7 @@ class _ReadingScreenState extends State<ReadingScreen>
     ));
   }
 
-  /// 对齐 E menu_refresh：清当前章缓存并强制从网络重新加载正文
+  /// 清当前章缓存并强制从网络重新加载正文
   Future<void> _refreshCurrentChapter() async {
     _menuController.reverse();
     if (_chapters.isEmpty) return;
@@ -2698,7 +2696,7 @@ class _ReadingScreenState extends State<ReadingScreen>
     if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('已刷新当前章节')));
   }
 
-  /// 对齐 E menu_download：离线缓存（选择章节范围）
+  /// 离线缓存（选择章节范围）
   Future<void> _showCacheSheet() async {
     _menuController.reverse();
     final range = await showModalBottomSheet<List<int>>(
@@ -2708,7 +2706,7 @@ class _ReadingScreenState extends State<ReadingScreen>
     if (range != null) _cacheChapters(range[0], range[1]);
   }
 
-  /// 对齐 E llFont（showReadStyle）：界面设置（字体 / 翻页动画 / 亮度 / 简繁）
+  /// 界面设置（字体 / 翻页动画 / 亮度 / 简繁）
   void _showInterfaceSettings() {
     _menuController.reverse();
     showModalBottomSheet(context: context, builder: (ctx) => SafeArea(child: Column(mainAxisSize: MainAxisSize.min, children: [
@@ -2719,7 +2717,7 @@ class _ReadingScreenState extends State<ReadingScreen>
     ])));
   }
 
-  /// 对齐 E llReadAloud 长按（showReadAloudDialog）：朗读配置
+  /// 朗读配置
   void _showReadAloudConfig() {
     _menuController.reverse();
     showModalBottomSheet(context: context, builder: (ctx) => SafeArea(child: Column(mainAxisSize: MainAxisSize.min, children: [
@@ -2729,7 +2727,7 @@ class _ReadingScreenState extends State<ReadingScreen>
     ])));
   }
 
-  /// 切换对齐 E 的内容开关：持久化并重新加载当前章使其生效
+  /// 切换内容开关：持久化并重新加载当前章使其生效
   void _flipContentToggle(String prefKey, void Function(bool) assign, bool current) {
     final next = !current;
     assign(next);
@@ -2738,10 +2736,10 @@ class _ReadingScreenState extends State<ReadingScreen>
     _loadChapterContent(_currentChapterIndex, targetPage: _currentPage);
   }
 
-  /// 对齐 E menu_image_style：图片样式（真实消费 clickImgWay 配置）
+  /// 图片样式（真实消费 clickImgWay 配置）
   void _showImageStylePicker() {
     final rp = context.read<ReadProvider>();
-    // 对齐 E click_image_way 5 档（默认/预览/兼容/关闭/双击），与设置页共用标签。
+    //  click_image_way 5 档（默认/预览/兼容/关闭/双击），与设置页共用标签。
     const names = clickImgWayLabels;
     showModalBottomSheet(context: context, builder: (ctx) => SafeArea(child: Column(mainAxisSize: MainAxisSize.min, children: [
       const Padding(padding: EdgeInsets.all(AppSpacing.l), child: Text('图片样式', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold))),
@@ -2751,7 +2749,7 @@ class _ReadingScreenState extends State<ReadingScreen>
     ])));
   }
 
-  /// 对齐 E menu_help：阅读菜单帮助（点击区域与菜单入口说明）
+  /// 阅读菜单帮助（点击区域与菜单入口说明）
   void _showHelp() {
     showDialog(context: context, builder: (c) => AlertDialog(
       title: const Text('阅读帮助'),
@@ -2785,7 +2783,6 @@ class _ReadingScreenState extends State<ReadingScreen>
     );
   }
 
-  /// 对齐 E view_read_menu.xml ll_memo → BookMemoDialog：
   /// 按「书 + 章」编辑备忘（feature_gap §3.B3）。
   void _showBookMemo() {
     final chapterTitle =
@@ -2801,7 +2798,7 @@ class _ReadingScreenState extends State<ReadingScreen>
     );
   }
 
-  /// E 主落点 overflow：严格由单一真源 EPlacement.readOverflow 构造 18 项，
+  /// 主界面 overflow：严格由单一真源 EPlacement.readOverflow 构造 18 项，
   /// 3 个 visibleByDefault=false 默认不渲染 → 可见 15 项；不复用旧硬编码顺序。
   /// checkable 项的勾选态用 overrides 承接当前真实开关（视觉降级、状态语义等价）。
   List<EOverflowItem> _eOverflowItems() {
@@ -2882,10 +2879,10 @@ class _ReadingScreenState extends State<ReadingScreen>
     }
   }
 
-  /// K 版独有功能（EPlacement.kSecondary['reading'] + 底部按钮迁移的「备忘」
+  /// 扩展功能（EPlacement.kSecondary['reading'] + 底部按钮迁移的「备忘」
   /// = reading_secondary_button）：不删、不建独立扩展页，收在 overflow 末尾
   /// 「更多功能」子分组（EOverflowMenuButton.secondary 自带分隔线 + 分区标题），
-  /// 与 E 主落点区隔，保证仍可触达。
+  /// 与 主界面区隔，保证仍可触达。
   List<EOverflowItem> _kSecondaryItems() {
     return [
       EOverflowItem(id: 'k_summary', label: '章节摘要（真实正文）',
@@ -2939,7 +2936,7 @@ class _ReadingScreenState extends State<ReadingScreen>
   }
 
   List<Widget> _buildSelectMenuChildren(dynamic state, Future<String> Function() grab) {
-    // 对齐 E TextActionMenu:66-67/94-102：expandTextMenu 默认折叠，
+    // 66-67/94-102：expandTextMenu 默认折叠，
     // 前 5 项常驻，其余进「更多」子面板；展开时显示全部（旧实现只取 4 项）。
     const visibleCount = 5;
     final order = _expandTextMenu
@@ -2959,7 +2956,7 @@ class _ReadingScreenState extends State<ReadingScreen>
     return children;
   }
 
-  /// 折叠时把第 6 项起的动作展开到「更多」底部面板（对齐 E ivMenuMore）。
+  /// 折叠时把第 6 项起的动作展开到「更多」底部面板。
   void _showMoreSelectMenu(
       dynamic state, Future<String> Function() grab, List<String> keys) {
     showModalBottomSheet(
@@ -2976,7 +2973,7 @@ class _ReadingScreenState extends State<ReadingScreen>
 
   Widget _buildSelectMenuTile(
       String key, dynamic state, Future<String> Function() grab) {
-    // 默认菜单固定为 EPlacement.textSelectActions 的 8 项 id；K 独有可配置动作池
+    // 默认菜单固定为 EPlacement.textSelectActions 的 8 项 id；扩展可配置动作池
     // 沿用旧 key。统一归一化到旧 key，复用下方原有 case（两套 key 都不丢）。
     const normalize = <String, String>{
       'menu_replace': 'replace',
@@ -3029,7 +3026,7 @@ class _ReadingScreenState extends State<ReadingScreen>
             if (mounted && context.mounted) Navigator.pop(context);
             if (w.trim().isNotEmpty) _speakSelection(w);
           },
-          // 对齐 E TextActionMenu:200-209：长按「朗读」项本身切换朗读模式，
+          // 200-209：长按「朗读」项本身切换朗读模式，
           // 0=朗读选择内容 / 1=从选择处一直朗读，并 SnackBar 反馈（不收起菜单）。
           onLongPress: () {
             final rp = context.read<ReadProvider>();
@@ -3074,7 +3071,6 @@ class _ReadingScreenState extends State<ReadingScreen>
   }
 
   /// 朗读选中文本：contentSelectSpeakMod=0 读选中片段；1 从选中处往后读到章末
-  /// （对齐 E TextActionMenu 的 contentSelectSpeakMod 两种朗读模式）。
   Future<void> _speakSelection(String text) async {
     if (text.trim().isEmpty) return;
     try {
@@ -3166,7 +3162,7 @@ class _ReadingScreenState extends State<ReadingScreen>
     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('已反转内容')));
   }
 
-  // 对齐 E book_read.xml：重新分段 / 删除注音 / 删除标题改为持久开关
+  // 重新分段 / 删除注音 / 删除标题改为持久开关
   // （见 _loadChapterContent 的内容后处理与 _flipContentToggle），故删除原一次性操作方法。
 
   void _selectCharset() {
@@ -3185,7 +3181,7 @@ class _ReadingScreenState extends State<ReadingScreen>
     ])));
   }
 
-  /// 简繁转换（0不转换 1转简体 2转繁体），对齐 legado-E 的 ChineseConverter。
+  /// 简繁转换（0不转换 1转简体 2转繁体）。
   void _showChineseConverter() {
     final current = context.read<ReadProvider>().config.chineseConverter;
     const names = ['不转换', '转为简体', '转为繁体'];
@@ -3393,7 +3389,7 @@ class _ReadingScreenState extends State<ReadingScreen>
             return RadioListTile<int>(
               title: Text(anims[index]),
               value: index,
-              // 批次 3：墨水屏模式下编辑的是 pageAnimEInk（对齐 E setCurPageAnim）。
+              // 批次 3：墨水屏模式下编辑的是 pageAnimEInk。
               groupValue: readProvider.config.curPageAnim,
               onChanged: (value) {
                 if (value != null) {
@@ -3491,7 +3487,7 @@ class _ReadingScreenState extends State<ReadingScreen>
     if (mounted) setState(() {});
   }
 
-  // 对齐 E book_read.xml：更多菜单不含「翻译设置 / 章节摘要」入口，
+  // 更多菜单不含「翻译设置 / 章节摘要」入口，
   // 故移除历史空实现对话框；划词翻译（_translateSelection）仍由文本选择菜单提供。
 
   void _showContentEditor() {

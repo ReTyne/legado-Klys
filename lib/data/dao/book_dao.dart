@@ -1,4 +1,4 @@
-/// book 相关 DAO（由 app_database.dart 拆分，对齐 legado-E data/dao）。
+/// book 相关 DAO。
 /// 以 part 归属同一库，可直接访问 DatabaseService 的私有 _db。
 part of '../local/app_database.dart';
 
@@ -9,7 +9,7 @@ extension DatabaseServiceBookDao on DatabaseService {
     return maps.map((m) => Book.fromMap(m)).toList();
   }
 
-  /// 真·位运算 SQL：对 books.type 执行 `type & mask > 0`（对齐上游 BookDao 表达式）。
+  /// 真·位运算 SQL：对 books.type 执行 `type & mask > 0`。
   /// 显式标注：本项目 books.type 为顺序枚举(0..4)，仅当数据已按位标志落库
   /// （如 search_books 表 type 默认 8、或导入的上游备份）时结果才与上游一致。
   Future<List<Book>> getBooksByTypeBitmask(int mask) async {
@@ -21,14 +21,14 @@ extension DatabaseServiceBookDao on DatabaseService {
     return maps.map((m) => Book.fromMap(m)).toList();
   }
 
-  /// 虚拟分组按位规则过滤（对齐 legado-E BookDao.flowByGroup，报告 #17）。
+  /// 虚拟分组按位规则过滤。
   ///
   /// 本项目 books.type 存顺序枚举、group_name 存分组名（非位掩码），
   /// 无法直接对列套用上游 `type & mask` / `sum(groupId) & group` SQL，
   /// 故采用报告允许的等价方案：把每本书投影成位标志/位掩码，再用
   /// [BookGroupQuery.matchesGroup] 应用同一套位规则。
   /// [groupBitsOf] 由调用方把书映射成 group 位掩码（默认 0=未分组）；
-  /// [userGroupsSum] 对应上游 `sum(groupId) where groupId > 0`；
+  /// [userGroupsSum]  `sum(groupId) where groupId > 0`；
   /// [netNoneShow] 为 IdNetNone 分组的 show 值。
   Future<List<Book>> getBooksByVirtualGroup(
     int groupId, {

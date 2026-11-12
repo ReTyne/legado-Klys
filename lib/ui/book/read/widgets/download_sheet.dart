@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:legado_md3/data/model/book_chapter.dart';
 
 import 'package:legado_md3/ui/theme/app_design.dart';
-/// 离线缓存下载范围选择 - 对齐原版DownloadSheet
+/// 离线缓存下载范围选择 - DownloadSheet
 /// 返回 [startIndex, endIndex]
 class DownloadSheet extends StatefulWidget {
   final List<BookChapter> chapters;

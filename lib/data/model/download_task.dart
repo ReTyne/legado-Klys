@@ -1,4 +1,4 @@
-/// 离线缓存下载任务（对齐 legado 官方原版 Download / DownloadService）。
+/// 离线缓存下载任务。
 ///
 /// 活跃下载队列的实体：一本任务包含若干章节，按 chapterIndex 逐章缓存。
 /// status: 0=等待 1=进行中 2=完成 3=失败 4=已暂停。

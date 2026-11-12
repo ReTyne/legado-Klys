@@ -23,7 +23,7 @@ class _SourceEditScreenState extends State<SourceEditScreen> with SingleTickerPr
   };
   int _sourceType = 0;
   bool _dirty = false;
-  /// 字符串规则补全（对齐上游 menu_auto_complete，默认关，内存态不持久化）：
+  /// 字符串规则补全：
   /// 开启后保存时按字段类型对简写规则补 @text/@href/@src。
   bool _ruleCompleteEnabled = false;
 
@@ -222,7 +222,7 @@ class _SourceEditScreenState extends State<SourceEditScreen> with SingleTickerPr
   int _intField(String k, int fallback) => int.tryParse(_c[k]!.text.trim()) ?? fallback;
 
   /// 收集某个规则组：保留原始未知键，覆盖已知键（空值移除）。
-  /// 开启「字符串规则补全」时，对齐上游 BookSourceEditActivity.save()：
+  /// 开启「字符串规则补全」时
   /// 对每个取值字段按 type 调用 RuleComplete.autoComplete，preRule 取本组
   /// 列表/初始化规则的原文（复杂语法会让整组字段跳过补全）。
   Map<String, dynamic>? _collectRule(String group) {
@@ -387,7 +387,7 @@ class _SourceEditScreenState extends State<SourceEditScreen> with SingleTickerPr
 
   final BookSourceEngine _engine = BookSourceEngine();
 
-  /// 规则补全：联网抓取页面，智能识别重复结构并生成可被引擎消费的规则（对齐 legado autoComplete）。
+  /// 规则补全：联网抓取页面，智能识别重复结构并生成可被引擎消费的规则。
   /// 仅填充当前为空的规则，用户已填写的规则不会被覆盖；断网/动态页时回退到本地占位补全。
   Future<void> _autoComplete() async {
     final tab = _tabController.index;

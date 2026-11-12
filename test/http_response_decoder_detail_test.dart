@@ -6,7 +6,7 @@ import 'package:enough_convert/enough_convert.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:legado_md3/help/http/http_response_decoder.dart';
 
-/// 对照 legado-E `DecompressInterceptor` / `Utf8BomUtils` /
+///  `DecompressInterceptor` / `Utf8BomUtils` /
 /// `ResponseBody.text()` / `EncodingDetect.getHtmlEncode()` 的响应解码细节。
 void main() {
   Map<String, List<String>> h(Map<String, String> src) =>
@@ -164,7 +164,7 @@ void main() {
       );
     });
 
-    test('声明 charset 严格优先（对齐上游 ResponseBody.text，不启发式回退）', () {
+    test('声明 charset 严格优先', () {
       // 上游对已声明的 charset 直接 Charset.forName 解码，不回退到探测；
       // 因此站点错标时按声明解码，这与统计探测结果不同。
       final out = HttpResponseDecoder.decode(utf8.encode('中文'),

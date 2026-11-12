@@ -1,4 +1,4 @@
-/// RSS 阅读记录（对齐 legado 官方原版 / 阅读Sigma 的 RssReadRecord）。
+/// RSS 阅读记录。
 ///
 /// 与 rss_articles.isRead 布尔标记不同：这里记录每篇文章的**滚动位置**与
 /// 阅读进度，用于「续读」和历史列表。以 link 为唯一键。
@@ -22,7 +22,7 @@ class RssReadRecord {
   double durPos;
   int? readTime;
 
-  /// 是否开启记录（对齐原版 ReadRecordDialog 的「开启记录」开关）。
+  /// 是否开启记录。
   int enabled;
 
   Map<String, dynamic> toMap() => {

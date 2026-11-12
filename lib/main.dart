@@ -11,7 +11,7 @@ import 'package:legado_md3/help/storage/auto_sync_service.dart';
 import 'package:legado_md3/help/storage/backup_service.dart';
 import 'package:legado_md3/help/web/web_service.dart';
 import 'package:legado_md3/help/web/web_tile_channel.dart';
-// 对齐 E 的 help/config/AppConfig.kt：全局 AppPrefs 定义，供 main() 启动时一次性加载
+// 全局 AppPrefs 定义，供 main() 启动时一次性加载
 import 'package:legado_md3/help/config/app_config.dart';
 import 'package:legado_md3/data/local/app_database.dart';
 import 'package:legado_md3/common/app_navigator.dart';
@@ -31,7 +31,7 @@ import 'package:legado_md3/ui/book/reader_router.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   final prefs = await SharedPreferences.getInstance();
-  // 对齐 E 的 help/config/AppConfig.kt：启动时一次性把全局配置载入内存（AppPrefs.loadFrom 复用已有 prefs），
+  // 启动时一次性把全局配置载入内存（AppPrefs.loadFrom 复用已有 prefs），
   // 各页（备份/封面/主题/导出配置等）无需再各自 await AppPrefs.load()，消除配置割裂。
   AppPrefs.loadFrom(prefs);
   // 记录日志开关（oc_recordLog）
@@ -61,7 +61,7 @@ void main() async {
     // RAR/7z 归档解码器、动态快捷方式、ACTION_PROCESS_TEXT、剪贴板口令 #L:、
     // 媒体键→朗读、网络变化→Web 服务重绑、云进度拉取。
     BootstrapService.instance.run(prefs);
-    // 定时任务调度（对齐 legado-E AutoTaskScheduler）：应用存活期间按分钟轮询，
+    // 定时任务调度：应用存活期间按分钟轮询，
     // 并注入纯 Dart JS 执行器，让「执行自定义脚本」动作真正跑起来而非空壳。
     AutoTaskService.instance.jsRunner = (code) async {
       final js = MiniLegadoJs();
@@ -77,7 +77,7 @@ void main() async {
       }
     };
     AutoTaskService.instance.start();
-    // 启动期自动更新有「自动更新」标记的规则订阅（对齐 legado-E ruleSubsUp()）。
+    // 启动期自动更新有「自动更新」标记的规则订阅。
     RuleSubAutoUpdate.runDue();
     if (prefs.getBool('oc_autoClearExpired') ?? true) {
       DatabaseService().clearExpiredChapterContent().catchError((_) => 0);

@@ -1,6 +1,6 @@
 import 'dart:convert';
 
-/// 页脚槽位内容枚举（对齐 legado-E 阅读器页脚三槽位能力）
+/// 页脚槽位内容枚举
 enum FooterSlot {
   none,           // 空白
   chapterTitle,   // 章节名
@@ -47,7 +47,7 @@ class ReadConfig {
   int paragraphSpacing;
   double letterSpacing;
   double wordSpacing;
-  // 排版数值换算（对齐 E ChapterProvider.kt:186-199 / ReadStyleDialog.kt:78-85）：
+  // 排版数值换算：
   // 上游存「十分之一单位」整数，绘制前 `lineSpacingExtra / 10f`；字距为 em，
   // 缩进宽按 `'　' * N` 整串测量后除以字符数；滑杆显示带偏移（字号=进度+5、
   // 字距=(进度-50)/100）。Flutter 的 TextStyle.height 是行高倍数、letterSpacing
@@ -109,7 +109,7 @@ class ReadConfig {
 
   // 其他
   bool keepScreenOn;
-  /// 屏幕超时档位：0 跟随系统 / 60 / 300 / 600 秒 / -1 常亮（legado-E keep_light）
+  /// 屏幕超时档位：0 跟随系统 / 60 / 300 / 600 秒 / -1 常亮
   int keepLight;
   bool showMenuOnTap;
   bool longPressSelect;
@@ -120,7 +120,7 @@ class ReadConfig {
   bool customHeaderEnabled;
   bool customFooterEnabled;
 
-  /* ===== 对照 legado-E ReadBookConfig.kt / pref_config_read.xml 补齐 ===== */
+  /* ===== 阅读配置字段补齐 ===== */
   // 标题与阅读栏
   bool showReadTitleAddition;    // 标题附加信息（章节名后附加书名等）
   bool readBarStyleFollowPage;   // 阅读栏样式跟随页面背景
@@ -151,7 +151,7 @@ class ReadConfig {
   bool ttsFlowSys;                       // 朗读语速跟随系统
 
   /* ===== 批次 3 · 日/夜/墨水屏三套独立配置 =====
-     对齐 legado-E help/config/ReadBookConfig.kt:539-723 的 Config：
+      日/夜/墨水屏三套独立配置的默认值：
      白天 bgStr/#EEEEEE、textColor/#3E3D3B、textAccentColor/#E53935、
      darkStatusIcon=true、pageAnim=0；夜间 bgStrNight/#000000、
      textColorNight/#ADADAD、textAccentColorNight/#FE4D55、darkStatusIconNight=false；
@@ -242,7 +242,7 @@ class ReadConfig {
     this.showTimeBattery = true,
     this.customHeaderEnabled = false,
     this.customFooterEnabled = false,
-    // ===== 补齐字段默认值（对齐 legado-E）=====
+    // ===== 补齐字段默认值=====
     this.showReadTitleAddition = true,
     this.readBarStyleFollowPage = false,
     this.autoChangeSource = true,
@@ -264,7 +264,7 @@ class ReadConfig {
     this.streamReadAloudAudio = false,
     this.sysTtsConfig = false,
     this.ttsFlowSys = true,
-    // ===== 批次 3 默认值（对齐上游 ReadBookConfig.Config）=====
+    // ===== 批次 3 默认值=====
     this.readThemeMode = 0,
     this.textAccentColor = 0xFFE53935,
     this.darkStatusIcon = true,
@@ -467,7 +467,7 @@ class ReadConfig {
   }
 
   /* ===== 批次 3 · 三套配置的「当前模式」选择器 =====
-     对齐上游 Config 的 curBgStr()/curTextColor()/curStatusIconDark()/curPageAnim()
+      Config 的 curBgStr()/curTextColor()/curStatusIconDark()/curPageAnim()
      与 setCurBg()/setCurTextColor()/setCurStatusIconDark()/setCurPageAnim()：
      读取时按当前模式选对应那份，写入时只写当前那份，互不覆盖。 */
 

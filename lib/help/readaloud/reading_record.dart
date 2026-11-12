@@ -4,7 +4,7 @@ import 'package:legado_md3/data/local/app_database.dart';
 
 /// 阅读记录服务
 class ReadingRecordService {
-  /// 对齐 legado-E `AppConfig.enableReadRecord`：关闭后不再落库任何阅读/听书
+  /// 关闭后不再落库任何阅读/听书
   /// 时长记录。键名与 `ReadRecordConfig.keyEnableReadRecord` 一致（明文键，
   /// 由「阅读记录」页开关写入；此处不 import ui 层以避免 help→ui 循环依赖）。
   Future<bool> _recordEnabled() async {

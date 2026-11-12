@@ -26,7 +26,7 @@ part 'parts/fullscreen_bottom_progress.dart';
 part 'parts/fullscreen_bottom_progress_state.dart';
 
 
-/// 视频播放器（对齐 legado-E 的视频播放能力，含弹幕三路与画中画）。
+/// 视频播放器。
 ///
 /// 画中画有两条真实通路：`NativeBridge.enterPip` 系统画中画，以及应用内
 /// 可拖拽悬浮小窗（设备不支持系统 PiP 或进入失败时自动回退，二者并存）。

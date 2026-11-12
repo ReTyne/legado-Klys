@@ -19,7 +19,7 @@ import 'package:legado_md3/help/config/theme_share.dart';
 import 'package:legado_md3/help/source/source_engine.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-/// legado:// 深链 / 系统分享文本 的统一接收与导入服务（对齐 legado-E 的 OnLineImportActivity）。
+/// legado:// 深链 / 系统分享文本 的统一接收与导入服务。
 ///
 /// 数据流：
 /// ```text
@@ -76,7 +76,7 @@ class DeepLinkService {
 
   /// 处理一条链接（供订阅 [links] 后调用，也可直接调用）。
   /// 支持：
-  ///  - `legado://import/{path}?src={url}`（对齐 legado-E OnLineImportActivity：
+  ///  - `legado://import/{path}?src={url}`（ OnLineImportActivity：
   ///    bookSource / rssSource / replaceRule / textTocRule / httpTTS / dictRule /
   ///    theme / readConfig / importonline/{type}）
   ///  - `legado://import?url=<编码后的JSON地址>[&type=...]`（本项目早期格式）
@@ -102,12 +102,12 @@ class DeepLinkService {
     }
   }
 
-  /// legado://import：兼容 E 的路径格式与本项目早期的查询参数格式
+  /// legado://import：兼容 路径格式与本项目早期的查询参数格式
   Future<void> _handleLegadoUri(Uri uri) async {
     // ---- E 格式：legado://import/{path}?src={url} ----
     final src = uri.queryParameters['src'] ?? uri.queryParameters['url'];
     final segments = uri.pathSegments;
-    // importonline/{type}（E 的 host 形式：legado://importonline/booksource?src=）
+    // importonline/{type}（host 形式：legado://importonline/booksource?src=）
     if (segments.isNotEmpty && segments.first == 'importonline') {
       final type = segments.length > 1 ? segments[1] : '';
       if (src == null || src.trim().isEmpty) {
@@ -146,7 +146,7 @@ class DeepLinkService {
           // 按书籍地址链接直接加入书架（E: addToBookshelf）：匹配书源 → 抓取详情 → 入库
           await _addToBookshelf(src.trim());
         default:
-          // 未知路径：按内容推断类型（E 的 determineType）
+          // 未知路径：按内容推断类型（determineType）
           await _determineType(src.trim());
       }
       return;
@@ -175,7 +175,7 @@ class DeepLinkService {
     await importRaw(body, type: kind);
   }
 
-  /// 未知类型时按内容推断（对齐 E BaseAssociationViewModel.importJson）：
+  /// 未知类型时按内容推断：
   /// 拉取远端内容，JSON 则按特征键判断类型。
   Future<void> _determineType(String url) async {
     final body = await _fetchText(url);
@@ -370,7 +370,7 @@ class DeepLinkService {
     }
   }
 
-  /// 无显式 type 时按 JSON 结构推断（对齐 E importJson 的特征键顺序）
+  /// 无显式 type 时按 JSON 结构推断
   String? _detectType(dynamic data) {
     final first = data is List && data.isNotEmpty ? data.first : data;
     if (first is Map) {
@@ -440,7 +440,7 @@ class DeepLinkService {
       if (item is! Map) continue;
       try {
         final m = Map<String, dynamic>.from(item);
-        // E 的键名 rule/replacement 映射到 Klys 的 chapterRule/volumeRule
+        // 键名 rule/replacement 映射到 本项目的 chapterRule/volumeRule
         if (m.containsKey('rule') && !m.containsKey('chapterRule')) {
           m['chapterRule'] = m['rule'];
         }
@@ -564,7 +564,7 @@ class DeepLinkService {
   }
 
   /// GET 拉取文本（兼容无 Content-Encoding 头的 gzip 响应）。
-  /// 对齐 E OnLineImportViewModel：URL 以 `#requestWithoutUA` 结尾时去掉后缀并
+  /// URL 以 `#requestWithoutUA` 结尾时去掉后缀并
   /// 以 UA="null" 请求（部分订阅源要求不带浏览器标识）。
   Future<String> _fetchText(String url) async {
     var target = url;

@@ -7,7 +7,7 @@ import 'package:legado_md3/data/model/book.dart';
 import 'package:legado_md3/di/book_provider.dart';
 import 'package:legado_md3/ui/book/read/reading_screen.dart';
 
-/// 阅读页冒烟测试：构建不崩溃、菜单控件齐全（对齐 legado-E view_read_menu）
+/// 阅读页冒烟测试：构建不崩溃、菜单控件齐全
 Widget _wrap(Book book) => MultiProvider(
       providers: [
         ChangeNotifierProvider<BookProvider>(create: (_) => BookProvider()),

@@ -3,7 +3,7 @@
 part of '../rule_auto_completer.dart';
 
 
-/// 规则智能推导（对齐 legado 的 autoComplete）：
+/// 规则智能推导：
 /// 抓取页面后识别“重复结构块”，生成可被 [RulePipeline] 直接消费的 CSS / JSONPath 规则。
 ///
 /// 全部为纯函数（不发网络请求），便于单测；网络编排由编辑页配合 BookSourceEngine 完成。

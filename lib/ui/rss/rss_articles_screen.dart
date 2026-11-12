@@ -12,9 +12,9 @@ import 'package:legado_md3/ui/rss/rss_source_edit_screen.dart';
 import 'package:legado_md3/ui/rss/rss_source_login_screen.dart';
 import 'package:legado_md3/ui/widgets/app_widgets.dart';
 
-/// 订阅源文章列表页：对齐 legado RssArticlesScreen。
+/// 订阅源文章列表页： RssArticlesScreen。
 /// 支持 sortUrl 分类切换、进入即拉取、缩略图、刷新；结果落库。
-/// 顶栏「阅读记录」对齐原版 ReadRecordDialog（清除 / 开启记录 / 点击续读）。
+/// 顶栏「阅读记录」 ReadRecordDialog（清除 / 开启记录 / 点击续读）。
 class RssArticlesScreen extends StatefulWidget {
   const RssArticlesScreen({super.key, required this.source});
   final RssSource source;
@@ -38,7 +38,7 @@ class _RssArticlesScreenState extends State<RssArticlesScreen> {
   bool _sortDesc = true;
   bool _recordEnabled = true;
 
-  /// 文章列表布局 0..4（对齐 legado-E RssSource.articleStyle 与
+  /// 文章列表布局 0..4（ RssSource.articleStyle 与
   /// RssSortViewModel.switchLayout 的五档循环），按源持久化。
   int _articleStyle = 0;
   static const _layoutKeyPrefix = 'rss_articles_layout_';
@@ -339,7 +339,7 @@ class _RssArticlesScreenState extends State<RssArticlesScreen> {
     }
   }
 
-  // ===== 阅读记录（对齐原版 ReadRecordDialog）=====
+  // ===== 阅读记录=====
 
   Future<void> _showReadRecords() async {
     List<RssReadRecord> records;
@@ -619,7 +619,7 @@ class _RssArticlesScreenState extends State<RssArticlesScreen> {
     );
   }
 
-  /// 按 articleStyle 分派五种布局（对齐上游 RssArticlesFragment 的 5 个 Adapter）。
+  /// 按 articleStyle 分派五种布局。
   Widget _buildBody() {
     switch (_articleStyle) {
       case 1:

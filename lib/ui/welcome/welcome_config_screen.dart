@@ -5,7 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:legado_md3/ui/widgets/app_widgets.dart';
 import 'package:legado_md3/ui/welcome/welcome_screen.dart';
 
-/// 自定义欢迎页配置数据（对齐 legado-E `pref_config_welcome.xml` 全部 8 项，
+/// 自定义欢迎页配置数据（ `pref_config_welcome.xml` 全部 8 项，
 /// 并补齐按钮文案 / 展示次数 / 隐私政策 / 夜间独立背景，共 12 项）。
 ///
 /// 所有键均为 SharedPreferences 明文；[WelcomeScreen] 启动 / 预览时读取并真实渲染。

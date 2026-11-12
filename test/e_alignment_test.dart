@@ -1,8 +1,8 @@
 // 「真值 → 常量 → UI」三层链路的第三层：源码契约级分组基线。
 //
-// B0 的 e_placement_baseline_test.dart 校验「E 版 XML → 常量」；
+// B0 的 e_placement_baseline_test.dart 校验「 XML → 常量」；
 // 本文件校验「常量 → 生产 UI」：各页必须由单一真源驱动、菜单锚定右上、
-// 阅读页 4 按钮 / 选字 8 项、设置多级分类、发现默认视图、K 独有项隔离。
+// 阅读页 4 按钮 / 选字 8 项、设置多级分类、发现默认视图、扩展项隔离。
 // 覆盖不便用 widget 稳定渲染的重页面（reading_screen 需 DB/章节上下文）。
 
 import 'dart:io';
@@ -59,13 +59,13 @@ void main() {
       expect(s, contains("EPlacement.mainMenus['my']"));
     });
 
-    test('阅读页 overflow 由 readOverflow 构造、K 独有项沉 secondary', () {
+    test('阅读页 overflow 由 readOverflow 构造、扩展项沉 secondary', () {
       final s = _src('lib/ui/book/read/reading_screen.dart');
       expect(s, contains('EPlacement.readOverflow'));
       expect(s, contains('eOverflowItemsFrom('));
       expect(s, contains('EOverflowMenuButton('));
       expect(s, contains('secondary:'),
-          reason: 'K 独有扩展项应收进「更多功能」子分组');
+          reason: '扩展扩展项应收进「更多功能」子分组');
       // 旧硬编码顺序已移除
       expect(s.contains('const _eMoreMenuOrder'), isFalse,
           reason: '不应再复用旧 15 项硬编码顺序');
@@ -97,7 +97,7 @@ void main() {
       expect(
           s.contains('kExtraSelectActions') || s.contains('allSelectActions'),
           isTrue,
-          reason: 'K 独有选字动作应保留在可选池，不删功能');
+          reason: '扩展选字动作应保留在可选池，不删功能');
       expect(EPlacement.textSelectActions.length, 8);
     });
 
@@ -118,7 +118,7 @@ void main() {
       expect(s, contains('_buildAllSettingSections'),
           reason: '原全部设置项应保留可触达');
       expect(s, contains('initiallyExpanded: false'),
-          reason: '次级分区应默认折叠，不占 E 主落点');
+          reason: '次级分区应默认折叠，不占主界面入口');
     });
 
     test('关于页为独立页面（about.xml 9 项），非弹窗', () {
@@ -158,7 +158,7 @@ void main() {
     });
   });
 
-  group('K 独有功能「按语义归位」（不删、E 主落点顺序不变）', () {
+  group('扩展功能「按语义归位」（不删、主界面顺序不变）', () {
     test('profile 保留全部独有类名并按语义平铺分区归位', () {
       final s = _src('lib/ui/main/my/profile_screen.dart');
       for (final cls in const [
@@ -171,7 +171,7 @@ void main() {
       }
       // 用户反馈「我的页太丑、把更多功能里的功能调到较适合的位置」：
       // 由「单个默认折叠的更多功能」改为按语义平铺的分区卡片；再按
-      // 「有些功能很类似」把相似项聚合为 4 组，仍位于 E 主落点之后，功能一项不删。
+      // 「有些功能很类似」把相似项聚合为 4 组，仍位于 主界面之后，功能一项不删。
       expect(s, contains('_buildFeatureSections'));
       expect(s, contains('_sectionCard'));
       for (final t in const [

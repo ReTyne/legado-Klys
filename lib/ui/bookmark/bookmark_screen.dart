@@ -52,7 +52,7 @@ class _BookmarkScreenState extends State<BookmarkScreen> {
     }
   }
 
-  /// 导出书签（对齐 legado-E TocViewModel.saveBookmark / saveBookmarkMd）：
+  /// 导出书签：
   /// 复用 bookmark_export.dart，与目录页书签 Tab 共用同一导出逻辑。
   Future<void> _exportBookmarks({required bool markdown}) async {
     if (_bookmarks.isEmpty) {

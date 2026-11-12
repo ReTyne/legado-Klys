@@ -74,7 +74,7 @@ class _ReplaceRuleScreenState extends State<ReplaceRuleScreen> {
 
   Future<void> _export() async {
     final file = File('${Directory.systemTemp.path}/replace_rules.json');
-    // 导出用 legado-E 兼容字段（name/pattern/scopeTitle/excludeScope/...），
+    // 导出用  兼容字段（name/pattern/scopeTitle/excludeScope/...），
     // 保证跨端备份与 Web 端导入不丢字段；fromMap 同时兼容本项目历史字段。
     await file.writeAsString(const JsonEncoder.withIndent('  ').convert(_rules.map((e) => e.toLegadoJson()).toList()));
     await Share.shareXFiles([XFile(file.path)], text: '替换规则导出');

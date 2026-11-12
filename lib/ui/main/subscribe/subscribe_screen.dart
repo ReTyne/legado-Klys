@@ -31,7 +31,7 @@ class _SubscribeScreenState extends State<SubscribeScreen> {
   bool _isLoading = true;
   bool _searching = false;
   String _searchQuery = '';
-  /// 订阅源分组过滤（对齐 legado-E main_rss.xml 的 menu_group 子菜单）
+  /// 订阅源分组过滤
   String _groupFilter = '';
   final TextEditingController _searchController = TextEditingController();
 
@@ -165,7 +165,7 @@ class _SubscribeScreenState extends State<SubscribeScreen> {
     if (mounted) setState(() => _isLoading = false);
   }
 
-  /// 订阅源可用分组（对齐 legado-E RssFragment 的 flowEnabledGroups + menu_group）。
+  /// 订阅源可用分组。
   /// 首位为「全部」；当前过滤值在数据变化后仍保留，避免 PopupMenuButton.initialValue 失配。
   List<String> get _rssGroups {
     final set = <String>{};
@@ -240,7 +240,7 @@ class _SubscribeScreenState extends State<SubscribeScreen> {
               )
             : const Text('订阅'),
         actions: [
-          // ── E 主落点：main_rss.xml 的 4 个常驻项（按常量顺序）──
+          // ── 主界面：main_rss.xml 的 4 个常驻项（按常量顺序）──
           IconButton(
             icon: const Icon(Icons.history),
             tooltip: EPlacement.mainMenus['rss']![0].zh,
@@ -270,7 +270,7 @@ class _SubscribeScreenState extends State<SubscribeScreen> {
               _showRssSettings();
             },
           ),
-          // ── K 独有功能次级入口（不占 E 主落点）──
+          // ── 扩展功能次级入口（不占主界面入口）──
           EOverflowMenuButton(
             tooltip: '更多功能',
             items: _secondaryMenuItems(),
@@ -283,7 +283,7 @@ class _SubscribeScreenState extends State<SubscribeScreen> {
     );
   }
 
-  /// E 主落点「设置」（main_rss.xml menu_rss_config）：订阅设置弹窗，
+  /// 主界面「设置」（main_rss.xml menu_rss_config）：订阅设置弹窗，
   /// 选择默认排序并真实持久化（复用 _setSortMode），不伪造空壳。
   Future<void> _showRssSettings() async {
     final v = await showAppRadioDialog<int>(
@@ -300,7 +300,7 @@ class _SubscribeScreenState extends State<SubscribeScreen> {
     if (v != null) await _setSortMode(v);
   }
 
-  /// K 独有「布局与排序」次级入口：原顶部 header 的 PopupMenuButton 迁移到
+  /// 扩展「布局与排序」次级入口：原顶部 header 的 PopupMenuButton 迁移到
   /// 次级弹窗，布局/排序选项完整保留、真实生效（_setViewMode/_setSortMode）。
   Future<void> _showViewSortDialog() async {
     final v = await showDialog<String>(
@@ -337,10 +337,10 @@ class _SubscribeScreenState extends State<SubscribeScreen> {
         ]),
       );
 
-  /// K 独有功能次级入口 —— E 版订阅工具栏仅 main_rss.xml 的 4 项，规则订阅 /
+  /// 扩展功能次级入口 —— 订阅工具栏仅 main_rss.xml 的 4 项，规则订阅 /
   /// 布局与排序 / 新增订阅源 / 刷新全部 / 导入订阅源 / 搜索订阅源 / 订阅源管理
-  /// 这些 K 独有功能不删、不占 E 主落点，统一沉到 AppBar 末尾「更多功能」
-  /// overflow；文案对齐 EPlacement.kSecondary['subscribe']。
+  /// 这些 扩展功能保留，统一沉到 AppBar 末尾「更多功能」
+  /// overflow；文案取自 EPlacement.kSecondary['subscribe']。
   List<EOverflowItem> _secondaryMenuItems() {
     return [
       EOverflowItem(
@@ -402,7 +402,7 @@ class _SubscribeScreenState extends State<SubscribeScreen> {
     ];
   }
 
-  /// 订阅源视图 —— 对齐 legado-E `fragment_rss.xml`：分组过滤 + 搜索叠加，
+  /// 订阅源视图 ——  `fragment_rss.xml`：分组过滤 + 搜索叠加，
   /// 再按当前排序输出网格（spanCount=4）或列表（按分组时显示分区标题）。
   Widget _buildSourcesView() {
     final q = _searchQuery.toLowerCase();

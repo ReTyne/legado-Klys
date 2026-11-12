@@ -3,7 +3,7 @@ import 'dart:isolate';
 
 import 'package:legado_md3/help/exceptions/app_exceptions.dart';
 
-/// 批次 6 · 正则替换超时（对齐 legado-E `utils/RegexExtensions.kt:28-89`
+/// 批次 6 · 正则替换超时（ `utils/RegexExtensions.kt:28-89`
 /// 与 `api/controller/ReplaceRuleController.kt:79-92`），防 ReDoS 卡死 Web 服务。
 
 /// 对齐 `data/entities/ReplaceRule.kt:115-120` 的 getValidTimeoutMillisecond()：

@@ -5,7 +5,7 @@ class SearchBook extends Book {
   int? originOrder;
   bool? addToShelf;
 
-  /// 同名同作者合并后的全部来源（origin 列表），对齐 legado SearchBook.origins
+  /// 同名同作者合并后的全部来源（origin 列表）
   final List<String> origins = [];
 
   SearchBook({

@@ -37,14 +37,14 @@ class AppConstants {
 }
 
 /* ===== 持久化全局配置（SharedPreferences）=====
- * 对照 legado-E help/config/AppConfig.kt 的 PreferKey 逐项补齐。
+ * PreferKey 逐项补齐。
  * 用法：
  *  - 读取：静态 getter（启动时 load 进内存，之后同步读取）；
  *  - 写入：静态 setter（同步改内存 + 异步落盘，UI 可直接赋值后 setState）；
  *  - 启动加载：main() 里已有 SharedPreferences 实例，加一行
  *    `AppConfig.loadFrom(prefs);` 即可；也可随时 `await AppConfig.load();`。
  */
-/// 全局持久化配置（键名与 legado-E PreferKey 保持一致，便于配置互通）
+/// 全局持久化配置
 class AppPrefs {
   AppPrefs._();
 
@@ -64,7 +64,7 @@ class AppPrefs {
   static const String keyExportPictureFile = 'exportPictureFile';
   static const String keyExportToWebDav = 'exportToWebDav';
   static const String keyParallelExportBook = 'parallelExportBook';
-  // 书源校验（legado-E CheckSourceConfig：checkSourceTimeout/wSourceComment/checkDomain/...）
+  // 书源校验
   static const String keyCheckSourceTimeout = 'checkSourceTimeout';
   static const String keyWSourceComment = 'wSourceComment';
   static const String keyCheckDomain = 'checkDomain';
@@ -73,26 +73,26 @@ class AppPrefs {
   static const String keyCheckInfo = 'checkInfo';
   static const String keyCheckCategory = 'checkCategory';
   static const String keyCheckContent = 'checkContent';
-  // 搜索范围（legado-E AppConfig.searchScope / searchGroup）
+  // 搜索范围
   static const String keySearchScope = 'searchScope';
   static const String keySearchGroup = 'searchGroup';
   // 封面（沿用本项目已有键，bookshelf_screen 直接消费，勿改键名）
   static const String keyUseDefaultCover = 'cover_useDefault';
   static const String keyCoverShowName = 'cover_showName';
   static const String keyCoverShowAuthor = 'cover_showAuthor';
-  // 主题外观（legado-E pref_config_theme.xml）
+  // 主题外观
   static const String keyTransparentStatusBar = 'transparentStatusBar';
   static const String keyImmNavigationBar = 'immNavigationBar';
   static const String keyBarElevation = 'barElevation';
   static const String keyBackgroundImage = 'backgroundImage';
   static const String keyColorBottomBackground = 'colorBottomBackground';
-  // 备份（legado-E pref_config_backup.xml）
+  // 备份
   static const String keyWebDavDeviceName = 'webDavDeviceName';
   static const String keyRestoreIgnore = 'restoreIgnore';
   static const String keyOnlyLatestBackup = 'onlyLatestBackup';
   static const String keyAutoCheckNewBackup = 'autoCheckNewBackup';
 
-  /* ---------- 内存缓存（默认值与 legado-E 对齐） ---------- */
+  /* ---------- 内存缓存 ---------- */
   static int _threadCount = 32;
   static int _preDownloadNum = 2;
   static String _userAgent = '';
@@ -264,7 +264,7 @@ class AppPrefs {
     applyBitmapCacheSize();
   }
 
-  /// 对齐 legado-E `ImageProvider.getBitmapCacheSize`：MB → 引擎图片内存缓存上限。
+  /// MB → 引擎图片内存缓存上限。
   /// 设置页拖动滑杆即时生效；启动期由 BootstrapService 再应用一次。
   static void applyBitmapCacheSize() {
     try {

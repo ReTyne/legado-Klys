@@ -1,11 +1,11 @@
 import 'package:flutter/material.dart';
 import 'package:legado_md3/ui/widgets/app_widgets.dart';
 
-/// 图片验证码输入界面（对齐 legado-E ui/association/VerificationCodeDialog.kt）
+/// 图片验证码输入界面
 ///
 /// 由书源 JS 的 `getVerificationCode(imageUrl)` 触发：JS 返回 Promise，
 /// 本界面提交/取消后由 JS 运行时回传结果、resolve 该 Promise。
-/// [headers] 对齐 E 的 `OkHttpModelLoader.sourceOriginOption`：验证码图常需
+/// [headers] `OkHttpModelLoader.sourceOriginOption`：验证码图常需
 /// 带书源 User-Agent / Referer / 登录 Cookie 才能加载，否则反爬会挡掉图片。
 class VerificationCodeScreen extends StatefulWidget {
   final String imageUrl;
@@ -86,7 +86,7 @@ class _VerificationCodeScreenState extends State<VerificationCodeScreen> {
                 child: Image.network(
                   widget.imageUrl,
                   key: _imageKey,
-                  // 对齐 E VerificationCodeDialog 带书源 origin 加载验证码图
+                  //  VerificationCodeDialog 带书源 origin 加载验证码图
                   headers: widget.headers,
                   fit: BoxFit.contain,
                   loadingBuilder: (c, child, progress) =>
@@ -149,7 +149,7 @@ class _VerificationCodeScreenState extends State<VerificationCodeScreen> {
     );
   }
 
-  /// 查看大图（对齐 E 的 PhotoDialog）
+  /// 查看大图
   void _showFullImage(BuildContext context, String url) {
     Navigator.push(
       context,

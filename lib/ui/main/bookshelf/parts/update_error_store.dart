@@ -4,7 +4,7 @@ import 'package:legado_md3/data/model/book.dart';
 
 /// 「更新目录失败」标记存储。
 ///
-/// 对齐 legado-E `ui/main/MainViewModel.kt:176,199,215` 的
+/// 176,199,215` 的
 /// `BookType.updateError` 位标志：书源缺失 / 目录抓取失败时 `addType`，
 /// 成功时 `removeType`，关闭「允许更新」时也会清掉。
 ///
@@ -22,7 +22,7 @@ Future<Set<String>> loadUpdateErrorBooks() async {
   return (p.getStringList(kUpdateErrorBooksPref) ?? const <String>[]).toSet();
 }
 
-/// 对齐 E `book.addType(BookType.updateError)`：幂等加入。
+/// 幂等加入。
 Future<void> markUpdateError(Book book) async {
   final p = await SharedPreferences.getInstance();
   final set = (p.getStringList(kUpdateErrorBooksPref) ?? const <String>[]).toSet();
@@ -31,7 +31,7 @@ Future<void> markUpdateError(Book book) async {
   }
 }
 
-/// 对齐 E `book.removeType(BookType.updateError)`：幂等移除。
+/// 幂等移除。
 Future<void> clearUpdateError(Book book) async {
   final p = await SharedPreferences.getInstance();
   final set = (p.getStringList(kUpdateErrorBooksPref) ?? const <String>[]).toSet();

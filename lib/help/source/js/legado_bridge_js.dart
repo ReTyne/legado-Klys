@@ -1,6 +1,6 @@
 /// 注入到无头 WebView（V8）中的 legado 兼容桥。
 ///
-/// 对齐 legado（legado/app/src/main/java/io/legado/app/help/JsExtensions.kt
+/// （legado/app/src/main/java/io/legado/app/help/JsExtensions.kt
 /// 与 AnalyzeUrl / AnalyzeRule）在书源脚本里使用的运行时环境：
 ///
 ///   * 全局对象：java / cookie / source / book / cache / result / key / page / baseUrl
@@ -13,7 +13,7 @@
 ///   * startBrowser* / showBrowser* / reLoginView —— 走原生可见 WebView 交互登录
 ///   * 文件：readTxtFile / deleteFile / downloadFile（含 hex 兼容签名）/
 ///     importScript / cacheFile / getTxtInFolder / readFile / getFile
-///     （后两者对齐 E JsExtensions，返回 Uint8Array / File-like 对象，
+///     （后两者 JsExtensions，返回 Uint8Array / File-like 对象，
 ///      路径经 Dart 侧 canonicalPath 白名单校验）
 ///   * 压缩包：getZipStringContent / get7zStringContent / getRarStringContent /
 ///     getZipByteArrayContent / get7zByteArrayContent / getRarByteArrayContent /
@@ -56,7 +56,7 @@ class LegadoBridgeJs {
 })();
 ''';
 
-  /// 尝试打开原生视频播放器（对齐 legado-E 视频播放入口）。
+  /// 尝试打开原生视频播放器。
   ///
   /// 走 MethodChannel('legado/video') 的 invokeMethod('open', ...)，由
   /// MainActivity 注册的 Kotlin 原生处理器用系统视频播放器打开（K 风格原生实现）。

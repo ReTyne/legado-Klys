@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:legado_md3/data/model/rss_article.dart';
 import 'package:legado_md3/ui/widgets/app_widgets.dart';
 
-/// RSS 文章内搜索（对齐 legado `rss_articles.xml` 的 `menu_search`）。
+/// RSS 文章内搜索。
 ///
 /// 对当前订阅源已加载的文章按关键词做本地过滤（标题 / 简介 / 作者 / 来源），
 /// 结果可点击直接打开文章；这是真实作用于文章列表的检索，而非占位入口。

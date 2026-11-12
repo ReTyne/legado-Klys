@@ -1,4 +1,4 @@
-/// 对齐 legado-E `help/RuleComplete.kt` 的「规则串智能补全」。
+/// 「规则串智能补全」。
 ///
 /// 书源里的字段规则常常只写了选择器（如 `class.item`），没写取值方式。
 /// 上游在编辑页开启「自动补全」后，会按字段类型补上 getter：
@@ -49,7 +49,7 @@ class RuleComplete {
       r'attr|text|ownText|textNodes|href|content|html|alt|all|value|src';
 
   /// 段末尾是否已经带了 getter（`@text` / `/text()` / 段本身就是 `text`）。
-  /// 对应上游 `(?<!(@|/|^|[|%&]{2})(getter)(\(\))?)` 的语义。
+  ///  `(?<!(@|/|^|[|%&]{2})(getter)(\(\))?)` 的语义。
   static final RegExp _getterSuffix =
       RegExp(r'(?:@|/|^)(?:' + _getterNames + r')(?:\(\))?$');
 
@@ -60,7 +60,7 @@ class RuleComplete {
 
   /// 按字段名返回补全类型；返回 null 表示该字段不是取值规则，不参与补全。
   ///
-  /// 对齐上游 `BookSourceEditActivity` / `RssSourceEditActivity` 保存时对每个
+  ///  `BookSourceEditActivity` / `RssSourceEditActivity` 保存时对每个
   /// 字段调用 `ruleComplete(rule, preRule, type)` 的 type 实参：
   /// 封面/图片 → 3，各类 URL → 2，其余文本 → 1；
   /// 列表规则（bookList / chapterList / ruleArticles）、init、各类 JS 与开关

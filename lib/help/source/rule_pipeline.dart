@@ -16,7 +16,7 @@ enum RuleMode { auto, css, xpath, json, js, regex, defaultRule }
 /// Legado 书源统一规则管线。
 ///
 /// 把项目里已有的 [CssSelector]/[XpathSelector]/[JsonPath]/[RegexParser]/
-/// [JsMiniEvaluator] 组合起来，对齐原版 AnalyzeRule 的常用语法：
+/// [JsMiniEvaluator] 组合起来
 ///
 /// * 组合：`||`(或，取第一个非空)、`&&`(链式)、`%%`(按位交叉)、`@@`(取全部并换行合并)
 /// * 模式前缀：`@css:`、`@xpath:`、`@json:`、`@js:`、`$.`(JSON)、`//`(XPath)、`:`(正则)
@@ -107,7 +107,7 @@ class RulePipeline {
 
   /// 解析 `@put:` 花括号内部的条目。
   ///
-  /// 对齐上游 `AnalyzeRule.splitPutRule`：先用 **标准 JSON** 解析
+  /// 先用 **标准 JSON** 解析
   /// `@put:{"k":"v","k2":"v2"}`（GSONStrict），失败再按宽松
   /// `key:rule,key2:rule2`（对应 GSON 对非标准 JSON 的兼容回退）按第一个
   /// `:` 切分，value 里的 `:`/`,` 不受影响。
@@ -296,7 +296,7 @@ class RulePipeline {
   }
 
   /// 从一整段响应文本按规则取字符串。
-  /// 多个命中按 legado `AnalyzeByJSoup.getString` 语义以换行拼接——
+  /// 多个命中 `AnalyzeByJSoup.getString` 语义以换行拼接——
   /// 正文规则（如 `#honbun@p@html`）命中多段时返回全文而非仅第一段。
   String? extractStringFromRaw(String raw, String rule, {bool forceJson = false}) {
     final list = extractListFromRaw(raw, rule, forceJson: forceJson);
@@ -383,7 +383,7 @@ class RulePipeline {
 
   /// 处理 `%%`（按位交叉）与 `&&`（合并）组合，返回字符串列表。
   ///
-  /// 语义对齐原版 AnalyzeUrl：
+  /// 语义 AnalyzeUrl：
   /// * `%%`：各分支先分别取值，再按位依次取数（列表1[0]、列表2[0]…列表1[1]…）
   /// * `&&`：各分支取值后直接合并拼接
   List<String> _extractCombined(String raw, String rule, bool forceJson,
@@ -470,7 +470,7 @@ class RulePipeline {
   }
 
   /// 相对单个 HTML 元素取字段值。
-  /// 多个命中按 legado `AnalyzeByJSoup.getString` 语义以换行拼接
+  /// 多个命中 `AnalyzeByJSoup.getString` 语义以换行拼接
   /// （如正文规则 `#honbun@p@html` 命中多段时返回全文，而非仅第一段）。
   String? fieldFromElement(dom.Element el, String rule) {
     if (rule.trim().isEmpty) return null;
@@ -660,7 +660,7 @@ class RulePipeline {
     if (steps.isEmpty) return [];
     List<dom.Node> current;
     if (steps.length == 1 && scope != null) {
-      // 无 @ 的裸规则（如 chapterUrl 的 "href"）：对齐 legado 语义 ——
+      // 无 @ 的裸规则（如 chapterUrl 的 "href"）： 语义 ——
       // getResultLast(elements=[当前元素], rule)，即对元素自身按规则取值，
       // 而不是把 outerHtml 重新解析后从 Document 根取（那会什么都取不到）。
       current = [scope];
@@ -683,7 +683,7 @@ class RulePipeline {
   List<dom.Element> _defaultElements(dom.Node scope, String rule) {
     final steps = _splitSteps(rule);
     if (steps.isEmpty) return [];
-    // 对齐 legado getElements：列表规则的每个 @ 段都是元素选择器并逐级下钻
+    // 列表规则的每个 @ 段都是元素选择器并逐级下钻
     // （如 "td@a" 先选 td 再在其内选 a，最终返回 a 元素列表）。
     // 注意不能把最后一段当 getter 剥掉——那正是 "td@a 只返回 td" 的根因。
     List<dom.Node> current = [scope];

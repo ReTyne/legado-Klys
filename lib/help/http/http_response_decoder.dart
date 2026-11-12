@@ -5,7 +5,7 @@ import 'package:archive/archive.dart' as archive;
 import 'package:enough_convert/enough_convert.dart';
 import 'package:legado_md3/utils/encoding_detect.dart';
 
-/// HTTP 响应解码器 —— 对齐 legado-E 的三段细节链：
+/// HTTP 响应解码器 —— 三段细节链：
 ///
 /// 1. `help/http/DecompressInterceptor.kt`：请求未带 `Accept-Encoding` 且未带
 ///    `Range` 时透明解压 `gzip` / `deflate`（含 raw deflate，`Inflater(true)`）；
@@ -24,8 +24,8 @@ class HttpResponseDecoder {
   /// 完整解码入口。
   ///
   /// [headers] 为 Dio 的 `response.headers.map`（键大小写不敏感）。
-  /// [forcedCharset] 对应上游 `ResponseBody.text(encode)` 显式编码，优先级最高。
-  /// [rangeRequested] 对应上游 DecompressInterceptor 的 `Range` 保护。
+  /// [forcedCharset]  `ResponseBody.text(encode)` 显式编码，优先级最高。
+  /// [rangeRequested] `Range` 保护。
   /// [skipDecompress] 用于底层（如 Dio）已处理解压的场景，避免二次解压。
   static String decode(
     List<int> bytes, {
@@ -65,7 +65,6 @@ class HttpResponseDecoder {
   ///
   /// - `Content-Encoding: gzip` 或 gzip 魔数 → GZip 解压；
   /// - `Content-Encoding: deflate` → 先按 zlib 包裹尝试，再按 raw deflate 尝试
-  ///   （对齐上游 `Inflater(true)` 的 nowrap 语义）；
   /// - 无响应头但字节以 gzip / zlib 魔数开头时（Dio 未自动解压）同样兜底解压；
   /// - [rangeRequested] 为 true 时直接返回原字节（206 分片不可解压）；
   /// - 任何解压失败都安全返回原字节，交由后续编码链处理，不抛异常。
@@ -144,7 +143,7 @@ class HttpResponseDecoder {
     return (bytes: bytes, charset: null);
   }
 
-  /// 细节 3：编码判定，严格按上游优先级。
+  /// 细节 3：编码判定，严格优先级。
   /// `forcedCharset > BOM > Content-Type charset > HTML meta charset > 统计探测`。
   static String resolveCharset(
     List<int> bytes, {
@@ -161,7 +160,7 @@ class HttpResponseDecoder {
     final m = RegExp(r'charset\s*=\s*["\x27]?([a-z0-9_\-]+)').firstMatch(ct);
     if (m != null) return _normalize(m.group(1)!);
 
-    // HTML meta：对齐 EncodingDetect.getHtmlEncode，先看 <head> 内，
+    // HTML meta：先看 <head> 内，
     // 支持 <meta charset="gbk"> 与 <meta http-equiv=... content="...;charset=gbk">
     final meta = _metaCharset(bytes);
     if (meta != null) return _normalize(meta);

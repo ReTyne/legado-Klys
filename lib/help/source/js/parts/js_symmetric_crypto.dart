@@ -3,7 +3,7 @@
 part of '../offline_js_bridge.dart';
 
 
-/// createSymmetricCrypto 返回的加解密句柄（对齐 legado JsExtensions）。
+/// createSymmetricCrypto 返回的加解密句柄。
 class JsSymmetricCrypto {
   JsSymmetricCrypto._(this._isAes, this._cbc, this._block, this._iv,
       this._aes, this._des);

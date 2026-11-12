@@ -201,23 +201,23 @@ Future<Color?> showAppColorPicker(
 }
 
 // ───────────────────────────────────────────────────────────────────────────
-// E 版功能位置对齐 · AppBar 右上角 overflow 菜单
+// AppBar 右上角 overflow 菜单
 //
-// 语义：E 版各页 TitleBar 的溢出菜单（showAsAction="never"）是「锚定右上角的
-// 下拉菜单」。K 版此前用 showAppMenuSheet（底部 sheet）承载，属于功能位置不一致。
+// 语义：各页 TitleBar 的溢出菜单（showAsAction="never"）是「锚定右上角的
+// 下拉菜单」。本项目此前用 showAppMenuSheet（底部 sheet）承载，属于功能位置不一致。
 // 这里提供锚定 AppBar actions 的 overflow 组件，替换这些底部 sheet：
 //   - EOverflowMenuButton：放入 AppBar.actions，天然锚定右上角（PopupMenuButton
 //     是 MenuAnchor 的高层封装，本项目已有十余处使用，稳定且风格一致）。
 //   - 每个菜单项带稳定 Key('e_menu::<id>')，供 widget 测试用 getTopLeft(...).dy
 //     做「严格顺序」断言，避免中文文案改动导致误判。
 //   - checkable 项显示 trailing 勾选框（视觉降级、状态语义等价）。
-//   - visibleByDefault=false 的项默认不渲染（对应 E 版 android:visible="false"），
+//   - visibleByDefault=false 的项默认不渲染，
 //     不伪造空壳。
-//   - secondary：K 版独有功能，收在菜单末尾「更多功能」子分组，不占 E 主落点，
+//   - secondary：扩展功能，收在菜单末尾「更多功能」子分组，不占主界面入口，
 //     以分隔线 + 分区标题区隔，保证功能仍可触达。
 //
-// 与 showAppMenuSheet 的分工：E 版「长按列表项」本身就是上下文菜单，这类仍用
-// showAppMenuSheet；只有 E 版明确是 Toolbar overflow 的场景改用本组件。
+// 与 showAppMenuSheet 的分工：「长按列表项」本身就是上下文菜单，这类仍用
+// showAppMenuSheet；只有 明确是 Toolbar overflow 的场景改用本组件。
 // ───────────────────────────────────────────────────────────────────────────
 
 /// 一个 overflow 菜单项。
@@ -233,7 +233,7 @@ class EOverflowItem {
     this.sectionHeader,
   });
 
-  /// 稳定标识（建议用 E 版菜单 id，如 `menu_update_toc`）。
+  /// 稳定标识。
   final String id;
 
   /// 显示文案。
@@ -250,7 +250,7 @@ class EOverflowItem {
   /// checkable 项的当前勾选态。
   final bool checked;
 
-  /// 对应 E 版 android:visible="false"：false 表示默认不渲染，不伪造空壳。
+  /// visible="false"：false 表示默认不渲染，不伪造空壳。
   final bool visibleByDefault;
 
   /// 非 null 时该项渲染为不可点击的分区标题（用于给菜单内部分组）。
@@ -370,13 +370,13 @@ class EOverflowMenuButton extends StatelessWidget {
     this.icon = const Icon(Icons.more_vert_outlined),
   });
 
-  /// E 主落点项（项集合与顺序严格对齐 E 版 XML）。
+  /// 主界面项。
   final List<EOverflowItem> items;
 
   /// 可选统一点击分发（收到 id）；与各项自带 [EOverflowItem.onTap] 二者至少其一。
   final void Function(String id)? onSelected;
 
-  /// K 独有功能次级项，收在末尾子分组，不占 E 主落点。
+  /// 扩展功能次级项，收在末尾子分组，不占主界面入口。
   final List<EOverflowItem>? secondary;
 
   /// 次级分组标题。

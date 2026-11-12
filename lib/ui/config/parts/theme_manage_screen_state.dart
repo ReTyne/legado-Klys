@@ -655,7 +655,7 @@ class _ThemeManageScreenState extends State<ThemeManageScreen> {
     ]);
   }
 
-  /// 书架背景：背景图（本地图片）与底部背景色（对齐原版 backgroundImage / colorBottomBackground）
+  /// 书架背景：背景图（本地图片）与底部背景色
   Widget _buildBookshelfBackgroundSection(ColorScheme cs) {
     final hasImage = AppPrefs.backgroundImage.isNotEmpty;
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [

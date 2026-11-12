@@ -8,7 +8,7 @@ import 'package:path_provider/path_provider.dart';
 
 /// 7z / rar 压缩包原生解压通道（Android）。
 ///
-/// legado-E 通过 libarchive（JNI）支持 7z/rar；Flutter 侧纯 Dart 生态没有
+///  通过 libarchive（JNI）支持 7z/rar；Flutter 侧纯 Dart 生态没有
 /// 7z/rar 解码器，故在 Android 端以 `commons-compress`（7z）+ `junrar`（rar）
 /// 实现，经 MethodChannel('legado/archive') 暴露两个能力：
 ///
@@ -18,7 +18,7 @@ import 'package:path_provider/path_provider.dart';
 ///   （书源 java.un7zFile/unrarFile，配合 java.getTxtInFolder 使用）。
 ///
 /// 非 Android 平台（iOS/桌面/测试）下两个方法返回 null / 抛
-/// [UnsupportedError]，调用方据此降级——与 legado-E 仅在 Android 提供
+/// [UnsupportedError]，调用方据此降级——与  仅在 Android 提供
 /// libarchive 的行为一致。
 class ArchiveNative {
   ArchiveNative._();
@@ -36,7 +36,7 @@ class ArchiveNative {
 
   /// 读取压缩包内 [entryPath] 对应文件的**原始字节**；不存在或平台不支持返回 null。
   ///
-  /// 对齐 legado-E `JsExtensions.get7zByteArrayContent` /
+  ///  `JsExtensions.get7zByteArrayContent` /
   /// `getRarByteArrayContent`（返回 ByteArray），书源可据此做二进制处理
   /// （如字体、图片、加密数据），不再被 utf8 解码破坏字节。
   /// [kind] 为 `7z` 或 `rar`。

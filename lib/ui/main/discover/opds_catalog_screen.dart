@@ -10,7 +10,7 @@ import 'package:legado_md3/ui/widgets/app_widgets.dart';
 /// OPDS 目录浏览页：让 OpdsEngine 的目录 / 搜索 / 下载能力真正接入发现流，
 /// 下载的书籍经 ImportBookService 入库，形成 UI → 引擎 → 书架 的完整闭环。
 ///
-/// 对齐 legado-E 的 OPDS 书源浏览：导航型条目下钻目录，采集团型条目下载导入。
+/// 导航型条目下钻目录，采集团型条目下载导入。
 class OpdsCatalogScreen extends StatefulWidget {
   final String? initialUrl;
   const OpdsCatalogScreen({super.key, this.initialUrl});

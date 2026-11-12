@@ -21,7 +21,7 @@ import 'package:legado_md3/help/http/http_response_decoder.dart';
 import 'package:legado_md3/data/local/app_database.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-/// Legado书源引擎 - 对齐原版规则格式（CSS / XPath / JSONPath / 正则 / JS子集）
+/// Legado书源引擎 - 规则格式（CSS / XPath / JSONPath / 正则 / JS子集）
 class BookSourceEngine {
   final Dio _dio = Dio(BaseOptions(
     connectTimeout: const Duration(seconds: 20),
@@ -234,7 +234,7 @@ class BookSourceEngine {
 
   /// 处理URL中的{{key}}/{{page}}/{{(page-1)*n}}模板（同步快速路径）。
   ///
-  /// 任意 `{{js表达式}}` 需要走 [_processUrlTemplateAsync]（对齐 legado
+  /// 任意 `{{js表达式}}` 需要走 [_processUrlTemplateAsync]（
   /// `AnalyzeUrl.replaceKeyPageJs()`：所有 `{{}}` 块按内联 JS 求值，
   /// 绑定 key/page/baseUrl/source/result/book）。
   String _processUrlTemplate(String url, String keyword, int page) {
@@ -251,7 +251,7 @@ class BookSourceEngine {
 
   /// URL 模板处理（异步完整版）：
   /// 1. 先做固定占位符替换（{{key}}/{{page}}/{{(page-1)*n}}/{{searchKey}}）；
-  /// 2. 剩余的 `{{...}}` 按内联 JS 表达式求值（对齐 legado replaceKeyPageJs，
+  /// 2. 剩余的 `{{...}}` 按内联 JS 表达式求值（ replaceKeyPageJs，
   ///    求值作用域内含 key/page/baseUrl/source/book）。
   ///
   /// 典型场景：书山聚合 searchUrl 的 `<js>` 产出
@@ -564,7 +564,6 @@ class BookSourceEngine {
       error: status >= 400 ? 'HTTP $status' : null,
     );
     // URL 选项 type：响应体以字节的小写 hex 编码返回
-    // （对齐 legado AnalyzeUrl.getStrResponseAwait -> HexUtil.encodeHexStr）
     final respTypeOpt = (opts['type'] ?? options?['type'])?.toString();
     if (respTypeOpt != null && respTypeOpt.isNotEmpty) {
       final hex = _hexEncode(response.data ?? const <int>[]);
@@ -579,7 +578,7 @@ class BookSourceEngine {
     if (optCharset != null && optCharset.isNotEmpty) {
       forcedCharset = optCharset;
     }
-    // Range 请求（206 分片）不透明解压，对齐上游 DecompressInterceptor 的 Range 保护
+    // Range 请求（206 分片）不透明解压
     final rangeRequested =
         headers.keys.any((k) => k.toLowerCase() == 'range');
     final text = _decodeBytes(response.data ?? [], response.headers.map,
@@ -592,7 +591,7 @@ class BookSourceEngine {
     return text;
   }
 
-  /// 按编码解码字节：委托共享解码器，对齐上游
+  /// 按编码解码字节：委托共享解码器
   /// `forcedCharset > Content-Type > HTML meta > 统计探测`，并统一处理
   /// gzip/deflate 透明解压、UTF-8/UTF-16 BOM、Range 保护。
   String _decodeBytes(List<int> bytes, Map<String, List<String>> respHeaders,
@@ -631,7 +630,7 @@ class BookSourceEngine {
     }
   }
 
-  /// data: URI 的字节级解码（对齐 legado AnalyzeUrl.getByteArrayIfDataUri：
+  /// data: URI 的字节级解码（ AnalyzeUrl.getByteArrayIfDataUri：
   /// `^data:.*?;base64,(.*)` 取 base64 载荷，Android Base64 解码遇 `=` 填充即止）。
   /// 兼容书源在 base64 末尾挂载 URL 选项：`data:;base64,<b64>,{"type":"qingtian"}`。
   List<int> _decodeDataUriBytes(String uri) {
@@ -662,7 +661,7 @@ class BookSourceEngine {
     }
   }
 
-  /// 字节的小写 hex 编码（对齐 legado cn.hutool.core.util.HexUtil.encodeHexStr）。
+  /// 字节的小写 hex 编码。
   static String _hexEncode(List<int> bytes) {
     final sb = StringBuffer();
     for (final b in bytes) {
@@ -885,7 +884,7 @@ class BookSourceEngine {
 
   /// 求值字段规则的尾部 JS（`@js:` / `</js>` 尾巴）。
   ///
-  /// 对齐 legado `SourceRule.makeUpRule`：JS 段内的 `{{}}` 内联块也会先按
+  /// JS 段内的 `{{}}` 内联块也会先按
   /// isRule 消歧求值（`$.x` 走规则、其余走 JS）再执行脚本。
   /// [node] 为当前解析节点（JSON Map 或 HTML 字符串），用于 `{{}}` 求值作用域。
   Future<String?> _evalTailJs(
@@ -920,7 +919,7 @@ class BookSourceEngine {
 
   /// 处理 `{{...}}` mustache（内部为 JS，`$`/result 绑定为当前 JSON 节点）。
   ///
-  /// 对齐 legado `SourceRule.makeUpRule` 的 isRule 消歧：内联块以
+  /// 内联块以
   /// `@` / `$.` / `$[` / `//` 开头时按「规则」对当前节点求值
   /// （JSONPath / XPath / 规则链），否则按 JS 执行（`$`/result 绑定为当前节点）。
   /// 典型场景：`https://host/book/{{$.book_id}}` 混合字面量与 JSONPath。
@@ -970,7 +969,7 @@ class BookSourceEngine {
     return sb.toString();
   }
 
-  /// 对齐 legado `SourceRule.isRule`：`{{}}` 内联块以这些前缀开头时
+  /// `{{}}` 内联块以这些前缀开头时
   /// 视为「规则」而非 JS（js 首个字符不可能是 @，除非是装饰器）。
   static bool _isInnerRuleExpr(String expr) =>
       expr.startsWith('@') ||
@@ -1258,10 +1257,10 @@ class BookSourceEngine {
     return _parseExploreKindsText(source.exploreUrl?.trim() ?? '');
   }
 
-  /// 异步版：额外支持 legado-E 的两种动态 exploreUrl 形式
+  /// 异步版：额外支持  的两种动态 exploreUrl 形式
   ///  - `@js:` / `<js>`：执行 JS 生成分类（结果可为文本格式或 JSON 数组）
-  ///  - JSON 数组：`[{"title":"..","url":".."}]`（E 的 ExploreKind 列表）
-  /// 带 SharedPreferences 缓存（对齐 E 的 ACache exploreKindsKey）。
+  ///  - JSON 数组：`[{"title":"..","url":".."}]`（ExploreKind 列表）
+  /// 带 SharedPreferences 缓存。
   Future<List<Map<String, String>>> getExploreKindsAsync(BookSource source) async {
     final raw = source.exploreUrl?.trim() ?? '';
     if (raw.isEmpty) return const [];
@@ -1305,7 +1304,7 @@ class BookSourceEngine {
     return _parseExploreKindsText(raw);
   }
 
-  /// 清理某书源的发现分类缓存（书源刷新发现时调用，对齐 E clearExploreKindsCache）。
+  /// 清理某书源的发现分类缓存。
   Future<void> clearExploreKindsCache(BookSource source) async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove('exploreKinds_${source.bookSourceUrl}');
@@ -1362,9 +1361,9 @@ class BookSourceEngine {
     return kinds;
   }
 
-  // ==================== 发现分类（动态 exploreUrl，对齐 legado exploreKinds） ====================
+  // ==================== 发现分类 ====================
 
-  /// 发现页 infoMap 持久化 key（对齐 legado InfoMap：按书源维度持久化）
+  /// 发现页 infoMap 持久化 key
   static String _infoMapKey(String sourceUrl) => 'exploreInfoMap_$sourceUrl';
 
   /// 读取发现页 infoMap（控件输入/选择状态，跨会话持久化）
@@ -1386,7 +1385,7 @@ class BookSourceEngine {
     } catch (_) {}
   }
 
-  /// 求值发现分类（对齐 legado `BookSource.exploreKinds()`）：
+  /// 求值发现分类：
   /// * exploreUrl 以 `<js>`/`@js:` 开头 → 求值（注入 infoMap），
   ///   结果为 JSON 数组 → 解析为 [ExploreKind]；
   /// * 否则按旧文本格式（`(&&|\n)+` 分割、`::` 切分）解析；
@@ -1462,7 +1461,7 @@ class BookSourceEngine {
     return t.startsWith('[') && t.endsWith(']');
   }
 
-  /// 求值发现页控件动作（对齐 legado ExploreAdapter.evalButtonClick）：
+  /// 求值发现页控件动作：
   /// 以 infoMap 为绑定执行 action JS，并把 infoMap 的修改持久化。
   /// 返回是否发生刷新请求（legado 由动作内部调用 java.refreshExplore()，
   /// 这里统一由调用方在动作结束后刷新分类）。
@@ -1477,7 +1476,7 @@ class BookSourceEngine {
     await _saveExploreInfoMap(source, merged);
   }
 
-  /// 写入发现页 infoMap 值（text 控件输入时由 UI 调用，对齐 legado
+  /// 写入发现页 infoMap 值（text 控件输入时由 UI 调用
   /// `infoMap[title] = reContent` 后触发 action）。
   Future<void> putExploreInfoMap(BookSource source, String key, String value) async {
     final map = await loadExploreInfoMap(source);
@@ -1485,7 +1484,7 @@ class BookSourceEngine {
     await _saveExploreInfoMap(source, map);
   }
 
-  /// 求值发现页控件的 viewName（对齐 legado ExploreAdapter.evalUiJs）：
+  /// 求值发现页控件的 viewName：
   /// 按钮/开关文字可动态化，失败时回退原 title。
   Future<String> evalExploreViewName(BookSource source, String js) async {
     if (js.trim().isEmpty) return '';
@@ -1751,7 +1750,7 @@ class BookSourceEngine {
                         rule['chapterInfo']?.toString() ?? '',
                     baseUrl: currentUrl, book: seed) ??
                 '';
-            // tag 对齐 E BookChapterList.kt：章节附加信息（更新时间/字数等），
+            // 章节附加信息（更新时间/字数等），
             // 默认取 updateTime 规则结果，也允许书源用独立 tag 规则覆写。
             final tag = await _fieldFromJsonAsync(
                     source, item, rule['tag']?.toString() ?? '',

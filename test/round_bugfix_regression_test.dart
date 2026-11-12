@@ -5,7 +5,7 @@
 //    checkNet() 等按钮被伪装成 502 请求失败）；
 //  * 登录页 / 发现页共用 flex_fillet.dart 的规则化布局与统一 fillet 按钮；
 //  * 浏览器对 data: 自包含页面走解码 + loadData，不再让 WebUri 破坏 base64；
-//  * 我的页 14 项 K 独有功能按语义平铺归位、功能一项不删，E 主落点由真源驱动。
+//  * 我的页 14 项 扩展功能按语义平铺归位、功能一项不删，主界面由真源驱动。
 
 import 'dart:io';
 
@@ -42,7 +42,7 @@ void main() {
     });
   });
 
-  group('E 版 flexbox 规则化布局', () {
+  group(' flexbox 规则化布局', () {
     test('flexBasisPercentOf 解析 -1/缺省/0.4/1', () {
       expect(flexBasisPercentOf(null), 0.4);
       expect(flexBasisPercentOf({'layout_flexBasisPercent': -1}), 0.4);
@@ -120,7 +120,7 @@ void main() {
   });
 
   group('我的页：功能归位但不删', () {
-    test('14 项 K 独有功能类名与语义分区都在', () {
+    test('14 项 扩展功能类名与语义分区都在', () {
       final s = _src('lib/ui/main/my/profile_screen.dart');
       for (final cls in const [
         'AutoTaskScreen', 'HomepageModuleScreen', 'DownloadManageScreen',
@@ -143,7 +143,7 @@ void main() {
       expect(s, contains('_buildFeatureSections'));
     });
 
-    test('E 主落点顺序仍由 EPlacement 单一真源驱动', () {
+    test('主界面顺序仍由 EPlacement 单一真源驱动', () {
       final s = _src('lib/ui/main/my/profile_screen.dart');
       expect(s, contains('EPlacement.myTop'));
       expect(s, contains('EPlacement.mySettingCategory'));

@@ -3,7 +3,7 @@ import 'package:legado_md3/data/model/replace_rule.dart';
 import 'package:legado_md3/help/source/replace_rule_service.dart';
 
 void main() {
-  group('替换规则模型对齐 legado-E ReplaceRule.kt', () {
+  group('替换规则模型 ReplaceRule.kt', () {
     test('fromMap 兼容上游字段别名且不丢 group/excludeScope/timeout', () {
       final r = ReplaceRule.fromMap({
         'name': '去广告',

@@ -77,7 +77,7 @@ class RssService {
         ));
         final v = (res.stringValue ?? '').trim();
         if (v.startsWith('http')) {
-          // JS 产出 URL：按该 URL 抓取起始页，并执行 loginCheckJs（对齐 E Rss.kt:57）
+          // JS 产出 URL：按该 URL 抓取起始页，并执行 loginCheckJs
           final header = await _resolveHeader(s);
           var html = await _httpGet(v, header, source: s);
           html = await _applyLoginCheck(s, html, v);
@@ -103,13 +103,13 @@ class RssService {
     var html = baseUrl.startsWith('http')
         ? await _httpGet(baseUrl, await _resolveHeader(s), source: s)
         : '';
-    // 对齐 E Rss.kt getArticlesAwait：响应正文经 loginCheckJs 检测/改写
+    // 响应正文经 loginCheckJs 检测/改写
     html = await _applyLoginCheck(s, html, baseUrl);
     return _StartPage(html, baseUrl);
   }
 
-  /// 执行 loginCheckJs（对齐 E Rss.kt:57 / :108「检测源是否已登录」）。
-  /// JS 可返回改写后的响应正文（E 中以 StrResponse 形式回写），非空则替换原文；
+  /// 执行 loginCheckJs。
+  /// JS 可返回改写后的响应正文（其中以 StrResponse 形式回写），非空则替换原文；
   /// 求值失败一律保留原文、不阻断主链路。
   Future<String> _applyLoginCheck(
       RssSource s, String body, String baseUrl) async {
@@ -128,12 +128,12 @@ class RssService {
     }
   }
 
-  /// 正文规则：对齐 E ContentRule.kt 的 `content` 字段。
+  /// 正文规则：`content` 字段。
   /// 兼容两种写法：JSON 对象 `{"content":...,"nextContentUrl":...}` 或纯规则字符串。
   String _contentRuleOf(RssSource s) =>
       _contentRuleMap(s)['content'] ?? (s.ruleContent ?? '').trim();
 
-  /// 正文下一页规则：对齐 E ContentRule.kt 的 `nextContentUrl` 字段。
+  /// 正文下一页规则：`nextContentUrl` 字段。
   /// 当前主线 RssSource 无独立字段（lib/data 不改动），故从 ruleContent 的
   /// JSON 对象按新结构解析；纯字符串规则则返回空（不启用多页）。
   String _nextContentRuleOf(RssSource s) =>
@@ -152,7 +152,7 @@ class RssService {
     return const {};
   }
 
-  /// 取正文下一页链接（对齐 E BookContent.kt:254 analyzeContentPage）：
+  /// 取正文下一页链接：
   /// sourceType==0 且 nextContentUrl 规则非空时，逐条解析为绝对地址。
   List<String> _nextContentUrls(
       RssSource s, String html, String baseUrl) {
@@ -268,7 +268,7 @@ class RssService {
   }
 
   /// 计算文章正文（ruleContent），返回正文（可能是 HTML）。
-  /// 对齐 E Rss.getContentAwait + BookContent 正文翻页：单条 nextContentUrl
+  /// 单条 nextContentUrl
   /// 串行循环，多条并发取完，各页以 "\n" 拼接后再走白/黑名单过滤。
   Future<String?> fetchArticleContent(RssSource s, RssArticle article) async {
     final rule = _contentRuleOf(s);
@@ -292,7 +292,7 @@ class RssService {
     Future<String> htmlOfPage(String url) async {
       final header = await _resolveHeader(s);
       final html = await _httpGet(url, header, source: s);
-      // 对齐 E Rss.kt:108：正文响应同样经 loginCheckJs 检测/改写
+      // 108：正文响应同样经 loginCheckJs 检测/改写
       return _applyLoginCheck(s, html, url);
     }
 
@@ -440,7 +440,7 @@ class RssService {
       _httpGet(url, header);
 
   /// 抓取原始页面文本。
-  /// [source] 非空且 enabledCookieJar 为真时，按 E AnalyzeUrl 的 cookieJar 语义：
+  /// [source] 非空且 enabledCookieJar 为真时
   /// 请求自动带上已保存 Cookie，并把响应的 Set-Cookie 写回 CookieJar
   /// （与书源网络层共用同一 [CookieManager] 单例，登录后会话互通）。
   Future<String> _httpGet(String url, String? headerJson,
@@ -521,7 +521,7 @@ class RssService {
       _pipeline.baseUrl = currentUrl;
       content = await _httpGet(currentUrl, source.header, source: source);
       if (content.isEmpty) break;
-      // 对齐 E Rss.kt：翻页响应同样经 loginCheckJs
+      // 翻页响应同样经 loginCheckJs
       content = await _applyLoginCheck(source, content, currentUrl);
       if (content.isEmpty) break;
     }

@@ -13,7 +13,7 @@ import 'package:legado_md3/ui/bookmark/bookmark_export.dart';
 import 'package:legado_md3/ui/config/txt_toc_rule_screen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-/// 目录页（对齐 legado-E TocActivity）：「目录 / 书签 / 高亮」三 Tab，
+/// 目录页：「目录 / 书签 / 高亮」三 Tab，
 /// 菜单按当前 Tab 分组切换（E: onMenuOpened 的 menu_group_toc / menu_group_bookmark / menu_group_text）。
 class ChapterListScreen extends StatefulWidget {
   final Book? book;
@@ -42,7 +42,7 @@ class _ChapterListScreenState extends State<ChapterListScreen>
   bool _tocChanged = false; // 本次会话是否重排过目录（通知阅读页重载）
   Map<int, int> _wordCounts = {};
 
-  // 对齐 E menu_use_replace（AppConfig.tocUiUseReplace）：目录标题是否应用替换净化规则
+  // 目录标题是否应用替换净化规则
   bool _tocUseReplace = false;
   List<ReplaceRule> _replaceRules = [];
 
@@ -50,7 +50,7 @@ class _ChapterListScreenState extends State<ChapterListScreen>
   List<Bookmark> _bookmarks = [];
   String _bookmarkQuery = '';
 
-  // 高亮 Tab（对齐原版 TocActivity 的第 3 个 HighlightFragment，§3.B4）
+  // 高亮 Tab
   List<BookHighlight> _highlights = [];
   String _highlightQuery = '';
 
@@ -59,7 +59,7 @@ class _ChapterListScreenState extends State<ChapterListScreen>
     super.initState();
     _tabController = TabController(length: 3, vsync: this)
       ..addListener(() {
-        // 对齐 E：切换 Tab 时菜单分组随之切换；搜索按当前 Tab 分流
+        // 切换 Tab 时菜单分组随之切换；搜索按当前 Tab 分流
         if (!_tabController.indexIsChanging && mounted) {
           setState(() => _tabIndex = _tabController.index);
         }
@@ -165,7 +165,7 @@ class _ChapterListScreenState extends State<ChapterListScreen>
   }
 
   void _onSearchChanged(String query) {
-    // 对齐 E SearchView.onQueryTextChange：按当前 Tab 分流（目录 / 书签 / 高亮）
+    // 按当前 Tab 分流（目录 / 书签 / 高亮）
     if (_tabIndex == 0) {
       _filterChapters(query);
     } else if (_tabIndex == 1) {
@@ -215,7 +215,7 @@ class _ChapterListScreenState extends State<ChapterListScreen>
     if (value) await _loadWordCounts();
   }
 
-  /// 读取并使用「目录标题替换」（对齐 E AppConfig.tocUiUseReplace / menu_use_replace）
+  /// 读取并使用「目录标题替换」
   Future<void> _loadTocUseReplace() async {
     final prefs = await SharedPreferences.getInstance();
     final value = prefs.getBool('tocUiUseReplace') ?? false;
@@ -239,7 +239,7 @@ class _ChapterListScreenState extends State<ChapterListScreen>
     if (mounted) setState(() => _tocUseReplace = next);
   }
 
-  /// 章节标题按替换规则处理（对齐 E clearDisplayTitle / upChapterList）
+  /// 章节标题按替换规则处理
   String _displayTitle(String raw) {
     if (!_tocUseReplace || _replaceRules.isEmpty) return raw;
     // 目录标题走 scopeTitle 通道（上游 ReplaceRuleDao.findEnabledByTitleScope），
@@ -253,7 +253,7 @@ class _ChapterListScreenState extends State<ChapterListScreen>
     );
   }
 
-  /// 是否本地 TXT（长章节拆分仅对此生效，对齐 E isLocalTxt 判断）
+  /// 是否本地 TXT
   bool get _isLocalTxt =>
       widget.book != null &&
       widget.book!.local &&
@@ -293,7 +293,7 @@ class _ChapterListScreenState extends State<ChapterListScreen>
     }
   }
 
-  /// 导出书签（对齐 E menu_export_bookmark / menu_export_md，TocViewModel.saveBookmark/Md）
+  /// 导出书签
   Future<void> _exportBookmarks(bool markdown) async {
     if (_bookmarks.isEmpty) {
       _tip('暂无书签可导出');
@@ -325,7 +325,7 @@ class _ChapterListScreenState extends State<ChapterListScreen>
     await _loadBookmarks();
   }
 
-  /// 日志（对齐 E menu_log / AppLogDialog）：展示本书目录诊断信息
+  /// 日志：展示本书目录诊断信息
   void _showLog() {
     showDialog(context: context, builder: (c) => AlertDialog(
       title: const Text('日志'),
@@ -350,7 +350,7 @@ class _ChapterListScreenState extends State<ChapterListScreen>
     return '$n字';
   }
 
-  /// 菜单项按当前 Tab 分组（对齐 E onMenuOpened 的三组显隐）
+  /// 菜单项按当前 Tab 分组
   List<PopupMenuEntry<String>> _menuItems() {
     if (_tabIndex == 0) {
       // 目录 Tab：menu_group_toc + menu_group_text（本地 TXT） + menu_log
@@ -368,7 +368,7 @@ class _ChapterListScreenState extends State<ChapterListScreen>
         ),
         if (_isLocalTxt) ...[
           const PopupMenuDivider(),
-          // 对齐 E menu_toc_regex（TxtTocRuleDialog）：复用全局 TXT 目录规则页
+          // 复用全局 TXT 目录规则页
           const PopupMenuItem<String>(value: 'tocRegex', child: Text('TXT目录规则')),
           CheckedPopupMenuItem<String>(
             value: 'splitLongChapter',
@@ -381,7 +381,7 @@ class _ChapterListScreenState extends State<ChapterListScreen>
       ];
     }
     if (_tabIndex == 1) {
-      // 书签 Tab：menu_group_bookmark + menu_log（对齐 E）
+      // 书签 Tab：menu_group_bookmark + menu_log
       return <PopupMenuEntry<String>>[
         const PopupMenuItem<String>(value: 'export', child: Text('导出')),
         const PopupMenuItem<String>(value: 'exportMd', child: Text('导出(MD)')),
@@ -447,7 +447,7 @@ class _ChapterListScreenState extends State<ChapterListScreen>
       ),
       body: Column(
         children: [
-          // 搜索框对当前 Tab 生效（对齐 E SearchView，点击时隐藏 TabLayout）
+          // 搜索框对当前 Tab 生效
           Padding(
             padding: const EdgeInsets.fromLTRB(AppSpacing.l, AppSpacing.s, AppSpacing.l, AppSpacing.s),
             child: TextField(
@@ -557,7 +557,7 @@ class _ChapterListScreenState extends State<ChapterListScreen>
             onPressed: () => _deleteBookmark(bm),
           ),
           onTap: () {
-            // 对齐 E 书签点击跳回阅读页：返回书签所在章索引，目录未重排
+            // 返回书签所在章索引，目录未重排
             Navigator.pop(context, (bm.chapterIndex, false));
           },
         );
@@ -565,7 +565,7 @@ class _ChapterListScreenState extends State<ChapterListScreen>
     );
   }
 
-  /// 高亮 Tab（对齐原版 HighlightFragment）：展示划线文本 + 章名，点击跳到该章（§3.B4）。
+  /// 高亮 Tab：展示划线文本 + 章名，点击跳到该章（§3.B4）。
   Widget _buildHighlightTab() {
     final items = _filteredHighlights;
     if (items.isEmpty) {

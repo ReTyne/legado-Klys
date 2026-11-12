@@ -22,7 +22,7 @@ part 'parts/html_body.dart';
 part 'parts/text_body.dart';
 
 
-/// RSS文章阅读页面 - 对齐原版RssReadScreen
+/// RSS文章阅读页面 - RssReadScreen
 /// * ruleContent 为空：以文本展示描述。
 /// * ruleContent 产出 HTML：用 WebView 渲染（适配 articleStyle=2 等特殊源）。
 class RssReadScreen extends StatefulWidget {

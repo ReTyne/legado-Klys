@@ -46,7 +46,7 @@ void main() {
       expect(p.bottom, 5);
     });
 
-    test('双页模式可视宽按上游 viewWidth/2 计算', () {
+    test('双页模式可视宽 viewWidth/2 计算', () {
       final p = resolveReadPadding(
         viewWidth: 800, viewHeight: 600,
         left: 16, top: 8, right: 16, bottom: 8,

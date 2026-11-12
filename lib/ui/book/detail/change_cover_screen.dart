@@ -7,7 +7,7 @@ import 'package:legado_md3/di/book_provider.dart';
 import 'package:legado_md3/help/source/source_engine.dart';
 import 'package:legado_md3/ui/widgets/app_widgets.dart';
 
-/// 换封面（对齐 legado 原版 ChangeCoverDialog）：
+/// 换封面：
 /// 支持自定义 URL、预设封面，以及「按书名从已启用书源搜索封面」的网格选择
 /// （feature_gap §4-5）。书源搜索复用 BookSourceEngine.search，不引新依赖。
 class ChangeCoverScreen extends StatefulWidget {
@@ -164,7 +164,7 @@ class _ChangeCoverScreenState extends State<ChangeCoverScreen> {
             ),
           ]),
           const SizedBox(height: AppSpacing.l),
-          // 对齐原版 ChangeCoverDialog：封面来自书源搜索结果（§4-5）
+          // 封面来自书源搜索结果（§4-5）
           const AppSectionHeader('从书源搜索封面'),
           Row(
             children: [

@@ -3,7 +3,7 @@ import 'package:legado_md3/common/deep_link_service.dart';
 import 'package:legado_md3/data/model/read_config.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-/// 深链导入阅读配置（legado-E OnLineImport readConfig）的回归测试。
+/// 深链导入阅读配置的回归测试。
 /// 重点验证：写入权威键 `read_config_json`（而非旧错键 `web_read_config`），
 /// 与 Web 服务一致，阅读器才能加载到导入的配置。
 void main() {

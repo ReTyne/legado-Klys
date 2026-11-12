@@ -10,7 +10,7 @@ import 'package:legado_md3/data/model/db_models.dart';
 import 'package:legado_md3/data/model/download_task.dart';
 import 'package:legado_md3/help/source/source_engine.dart';
 
-/// 离线缓存下载队列（对齐 legado 官方原版 DownloadService / CacheActivity）。
+/// 离线缓存下载队列。
 ///
 /// 一条 [DownloadTask] 对应一本书的一段章节区间，执行器按队列顺序逐章
 /// 调用 [BookSourceEngine.getContent] 并把正文写入 book_chapters.content

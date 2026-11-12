@@ -9,7 +9,7 @@ import 'package:legado_md3/ui/config/read_record_config.dart';
 import 'package:legado_md3/ui/widgets/app_widgets.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-/// 阅读记录（对齐原版 ui/about/ReadRecordActivity）：
+/// 阅读记录：
 /// 搜索过滤、三种排序、总时长统计、单条/全部删除，
 /// 以及第十轮 4 项增强：
 /// 1. `enableReadRecord` 开关（写 SharedPreferences，供记录写入服务 / 统计页读取）；

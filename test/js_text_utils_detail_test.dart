@@ -3,7 +3,6 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:legado_md3/help/source/js_text_utils.dart';
 
-/// 对照上游 legado-E：
 ///  * `utils/StringUtils.kt`（fullToHalf / stringToInt / chineseNumToInt）
 ///  * `constant/AppPattern.kt` + `help/JsExtensions.kt`（toNumChapter）
 ///  * `utils/HtmlFormatter.kt`（formatKeepImg）

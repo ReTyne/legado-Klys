@@ -1,4 +1,4 @@
-/// 简繁词组转换工具（对齐 legado-E utils/ChineseUtils.kt 的 quick-transfer 词组级转换）。
+/// 简繁词组转换工具。
 ///
 /// 与 lib/help/readaloud/chinese_converter.dart 的单字表不同，本文件实现
 /// **词组优先（最长匹配）+ 单字兜底** 的两级转换：

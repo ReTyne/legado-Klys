@@ -6,7 +6,7 @@ import 'package:legado_md3/help/source/json_path.dart';
 import 'package:legado_md3/help/storage/direct_link_upload.dart';
 
 /// C2 直链上传：规则模型 / 默认规则 / 下载地址规则求值链路。
-/// 对齐 legado-E help/DirectLinkUpload.kt 与 assets/defaultData/directLinkUpload.json。
+/// 直链上传配置来自 assets/defaultData/directLinkUpload.json。
 void main() {
   group('DirectLinkRule 模型', () {
     test('默认规则与 E assets 一致（3 条）', () {

@@ -1,6 +1,6 @@
 import 'dart:convert';
 
-/// Legado 书源 URL 与请求选项解析（对齐原版 `AnalyzeUrl`）。
+/// Legado 书源 URL 与请求选项解析。
 ///
 /// 书源的 URL 字段支持在同一行里附带请求选项，本项目此前只支持
 /// `url,{json}` 与 `url,POST:body` 两种，导致大量使用 legado 标准

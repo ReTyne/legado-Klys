@@ -1,4 +1,4 @@
-/// 纯 Dart 密码学工具库（对齐 legado-E help/JsEncodeUtils.kt + help/crypto/）。
+/// 纯 Dart 密码学工具库。
 ///
 /// 背景：项目未引入 pointycastle（pub cache 中不存在，纪律禁止新增依赖），
 /// 因此本文件以纯 Dart 实现书源脚本所需的全部加解密能力：
@@ -73,7 +73,7 @@ Uint8List? _tryBase64ToBytes(String s) {
   }
 }
 
-/// 按 legado SymmetricCrypto 语义解析 String 数据：优先 hex，否则 base64。
+/// 优先 hex，否则 base64。
 Uint8List _autoDecodeData(String data) {
   if (_looksHex(data)) return _tryHexToBytes(data)!;
   final b64 = _tryBase64ToBytes(data);

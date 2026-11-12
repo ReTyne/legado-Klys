@@ -160,7 +160,7 @@ class AudioNotifyService : Service() {
         if (playing) requestAudioFocus() else abandonAudioFocus()
     }
 
-    /** 被其它音频抢占（来电 / 其它播放器）时暂停，与 legado-E 的 AudioFocusHelper 一致 */
+    /** 被其它音频抢占（来电 / 其它播放器）时暂停。 */
     private fun handleFocusChange(change: Int) {
         when (change) {
             AudioManager.AUDIOFOCUS_LOSS,

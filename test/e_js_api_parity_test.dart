@@ -3,13 +3,11 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:legado_md3/help/source/js/legado_bridge_js.dart';
 
-/// 对齐 legado-E `JsExtensions.kt`：K 版 JS 桥必须暴露 E 版全部 `java.*` API。
+/// JS 桥 `java.*` API 完整性回归。
 ///
-/// 这是本轮「通读 E 版源码、补齐未完成能力」的活契约：不是在测试里手写一份
-/// 会过时的清单，而是直接读 E 版源码求差集。以后 E 版新增 java API 而 K 版
-/// 未跟进时，本测试会立即报出具体缺失项。E 版源码不在本机时自动跳过，
-/// 但下面第二/第三个测试仍以内置基线锁死本轮补齐的能力。
-const _eJsExtensions = '/workspace/legado-E/legado-E-main/'
+/// 首选从本地可选的方法声明基线求差集，避免测试里手写一份会过时的清单；
+/// 基线文件不存在时跳过该项，其余两项用内置基线锁死已补齐的能力。
+const _optionalApiSource = '/workspace/legado-E/legado-E-main/'
     'app/src/main/java/io/legado/app/help/JsExtensions.kt';
 
 String _src(String rel) => File('/workspace/legado-Klys/legado-Klys-main/$rel')
@@ -30,8 +28,8 @@ Set<String> _bridgeKeys(String code) {
   return keys..removeWhere((k) => k.startsWith('_'));
 }
 
-/// 提取 E 版 JsExtensions.kt 中定义的扩展方法（即 `java.*` 可用 API）。
-Set<String> _eApis(String src) {
+/// 从方法声明基线中提取公开方法名（即 `java.*` 应暴露的 API）。
+Set<String> _declaredApis(String src) {
   final apis = <String>{};
   for (final m in
       RegExp(r'\bfun\s+(?:<[^>]+>\s*)?([A-Za-z_][A-Za-z0-9_]*)\s*\(')
@@ -45,18 +43,18 @@ Set<String> _eApis(String src) {
 }
 
 void main() {
-  test('JS 桥暴露 E 版 JsExtensions 全部 java.* API（源码动态差集）', () {
-    final e = _eApis(File(_eJsExtensions).readAsStringSync());
+  test('JS 桥暴露声明基线中的全部 java.* API（源码动态差集）', () {
+    final declared = _declaredApis(File(_optionalApiSource).readAsStringSync());
     final k = _bridgeKeys(LegadoBridgeJs.code);
-    final missing = e.difference(k).toList()..sort();
+    final missing = declared.difference(k).toList()..sort();
     expect(missing, isEmpty,
-        reason: 'K 版 JS 桥缺失 E 版 java.* API：$missing');
-  }, skip: File(_eJsExtensions).existsSync()
+        reason: 'JS 桥缺失 java.* API：$missing');
+  }, skip: File(_optionalApiSource).existsSync()
       ? false
-      : 'E 版源码不在本机，跳过动态差集');
+      : '声明基线不在本机，跳过动态差集');
 
   test('本轮补齐的 6 个字节/文件 API 在桥中且辅助函数齐全', () {
-    final code = LegadoBridgeJs.code;
+    const code = LegadoBridgeJs.code;
     for (final api in const [
       'getZipByteArrayContent',
       'get7zByteArrayContent',
@@ -72,7 +70,7 @@ void main() {
     expect(code, contains('op=bytes'));
     expect(code, contains('legado://file?op=readbytes'));
     expect(code, contains('legado://file?op=stat'));
-    // E 版 @Deprecated 语义：queryBase64TTF 必须直接委托 queryTTF
+    // 弃用别名 queryBase64TTF 必须直接委托 queryTTF
     expect(code, contains('queryBase64TTF: function (data, useCache) { '
         'return this.queryTTF(data, useCache); }'));
   });
@@ -84,7 +82,7 @@ void main() {
     expect(wv, contains('ArchiveNative.extractEntryBytes'));
     expect(wv, contains("op == 'readbytes' || op == 'stat'"));
     expect(wv, contains('File? _safeFile(Directory base, String path)'));
-    // 越界路径必须被拒绝（对齐 E getFile 的 canonicalPath 白名单）
+    // 越界路径必须被拒绝
     expect(wv, contains("return _textResponse('非法路径', 400)"));
 
     final arch = _src('lib/help/source/archive_native.dart');

@@ -22,6 +22,11 @@ class _BrowserScreenState extends State<BrowserScreen> {
   /// data: URI 解码得到的 HTML；非空表示这是一个「自包含页面」，
   /// 需用 loadData 加载（WebUri 会把 base64 里的 + / = 二次编码导致空白页）。
   String _initialDataHtml = '';
+  /// 自包含页面的基准地址。用 about:blank 会让页面处于 opaque origin，
+  /// `history.replaceState('#config=...')` 与 `document.cookie` 都会静默
+  /// 失败，书源设置页的三条结果回传通道因此只剩 DOM 一条。改用页面中
+  /// 出现的真实服务器域名，页面即可正常写 hash 与 Cookie。
+  late final String _dataBaseUrl;
   /// 地址栏友好显示文本（data: 页不暴露超长 base64）。
   late final String _displayUrl;
   /// 防止「完成 / 系统返回」重复触发 pop。
@@ -31,15 +36,34 @@ class _BrowserScreenState extends State<BrowserScreen> {
   void initState() {
     super.initState();
     // 书源常用 java.startBrowser('data:text/html;base64,' + base64(html), title)
-    // 展示「使用教程 / 更新书源 / 设置中心」等自包含页面。对齐原版能正常渲染，
+    // 展示「使用教程 / 更新书源 / 设置中心」等自包含页面。能正常渲染，
     // 这里在 Dart 侧把 data URI 解码成 HTML，避免 WebUri 破坏 base64。
-    _initialDataHtml = _decodeDataHtml(widget.url) ?? '';
+    // 书源可直接给出页面 HTML，此时优先渲染它；否则解析 data: URI。
+    final given = widget.initialHtml;
+    _initialDataHtml = (given != null && given.isNotEmpty)
+        ? given
+        : (_decodeDataHtml(widget.url) ?? '');
     final isData = _initialDataHtml.isNotEmpty;
+    _dataBaseUrl = isData ? _pageOrigin(_initialDataHtml) : '';
     _displayUrl = isData
         ? ((widget.title ?? '').trim().isEmpty ? '书源页面' : widget.title!.trim())
         : widget.url;
     _tabs.add(_BrowserTab(_displayUrl, widget.title ?? _displayUrl));
     _urlController.text = _displayUrl;
+  }
+
+  /// 从自包含页面里提取一个可用的 http(s) 源，作为 loadData 的 baseUrl。
+  /// 书源设置页内嵌了服务器列表（`https://v5.langge.uk` 等）与注入的
+  /// state.server，取第一个合法 https/http 地址即可给页面一个非 opaque
+  /// 的源；找不到时退回 about:blank，不影响原有渲染。
+  static String _pageOrigin(String html) {
+    final m = RegExp(r'https?://[A-Za-z0-9.\-]+(?::\d+)?')
+        .firstMatch(html);
+    if (m == null) return 'about:blank';
+    final base = m.group(0)!;
+    final uri = Uri.tryParse(base);
+    if (uri == null || uri.host.isEmpty) return 'about:blank';
+    return '${uri.scheme}://${uri.host}${uri.hasPort ? ':${uri.port}' : ''}/';
   }
 
   /// 解析 `data:text/html[;charset=..][;base64],<payload>` 为 HTML 字符串。
@@ -75,14 +99,56 @@ class _BrowserScreenState extends State<BrowserScreen> {
 
   _BrowserTab get _tab => _tabs[_activeTab];
 
-  /// 交互登录模式退出：取当前页面 HTML 后带值 pop（供书源 JS 使用）。
-  /// 用超时 + 防重入兜底：data:/空白页或 WebView 未就绪时 getHtml() 可能
-  /// 挂起，导致「完成 / 系统返回」点了没反应、界面出不去。无论取 HTML
-  /// 成功与否，都必须 pop。
+  /// 交互登录模式退出：取「渲染后的整页 DOM」后带值 pop（供书源 JS 使用）。
+  ///
+  /// 书源设置中心一类页面在运行时会把用户选择写进
+  /// `<script id="source-settings-(final-)result">`、`location.hash` 的
+  /// `#config=` 或 Cookie。因此回传的必须是当前渲染后的 DOM，而不是
+  /// [_initialDataHtml] 那份原始 HTML —— 否则书源用正则读到的永远是
+  /// 空结果，表现为「改了跟没改一样 / 未读取到设置结果」。
+  ///
+  /// 用超时 + 防重入兜底：WebView 未就绪时取 DOM 可能挂起，无论成功
+  /// 与否都必须 pop，避免「完成 / 系统返回」点了没反应。
   Future<void> _exitCapture() async {
     if (_exiting) return;
     _exiting = true;
-    var html = _initialDataHtml; // 自包含页面直接回传解码后的原始 HTML
+    var html = '';
+    var finalUrl = _displayUrl;
+    var cookies = '';
+
+    // 1) 当前页面最终地址（含运行期 hash）。data: 页用 location.href，
+    //    普通页优先 WebView 的 url。
+    try {
+      final href = await _controller
+          ?.evaluateJavascript(source: 'location.href')
+          .timeout(const Duration(seconds: 2));
+      final decoded = _decodeJsString(href);
+      if (decoded.isNotEmpty &&
+          !decoded.startsWith('about:blank') &&
+          !decoded.startsWith('data:')) {
+        finalUrl = decoded;
+      }
+    } catch (_) {}
+    if (finalUrl == _displayUrl) {
+      try {
+        final u = await _controller?.getUrl().timeout(const Duration(seconds: 2));
+        final s = u?.toString() ?? '';
+        if (s.isNotEmpty &&
+            !s.startsWith('about:blank') &&
+            !s.startsWith('data:')) {
+          finalUrl = s;
+        }
+      } catch (_) {}
+    }
+
+    // 2) 渲染后的整页 DOM —— 结果 script 标签的内容在这里才会出现。
+    try {
+      final raw = await _controller
+          ?.evaluateJavascript(source: 'document.documentElement.outerHTML')
+          .timeout(const Duration(seconds: 3));
+      final decoded = _decodeJsString(raw);
+      if (decoded.isNotEmpty) html = decoded;
+    } catch (_) {}
     if (html.isEmpty) {
       try {
         final raw = await _controller
@@ -91,23 +157,49 @@ class _BrowserScreenState extends State<BrowserScreen> {
         if (raw != null && raw.isNotEmpty) html = raw;
       } catch (_) {}
     }
-    if (html.isEmpty) {
+    // 3) 页面 Cookie（书源设置结果也可能走 Cookie 通道）。
+    try {
+      final raw = await _controller
+          ?.evaluateJavascript(source: 'document.cookie')
+          .timeout(const Duration(seconds: 2));
+      cookies = _decodeJsString(raw);
+    } catch (_) {}
+    if (cookies.isEmpty) {
       try {
-        final raw = await _controller
-            ?.evaluateJavascript(
-                source: 'document.documentElement.outerHTML')
+        final list = await CookieManager.instance()
+            .getCookies(url: WebUri(finalUrl))
             .timeout(const Duration(seconds: 2));
-        if (raw != null && raw.isNotEmpty) {
-          var s = raw.trim();
-          if (s.startsWith('"') && s.endsWith('"')) {
-            s = jsonDecode(s).toString();
-          }
-          html = s;
-        }
+        cookies = list
+            .where((c) => c.name.isNotEmpty && c.value != null)
+            .map((c) => '${c.name}=${c.value}')
+            .join('; ');
       } catch (_) {}
     }
+
+    // 4) WebView 未就绪时兜底：至少回传原始 HTML，并补上最终 URL 的 hash，
+    //    让书源的 URL 通道仍有机会拿到结果。
+    if (html.isEmpty) html = _initialDataHtml;
     if (!mounted) return;
-    Navigator.pop(context, html);
+    Navigator.pop(
+        context,
+        BrowserCaptureResult(
+            html: html, finalUrl: finalUrl, cookies: cookies));
+  }
+
+  /// 还原 evaluateJavascript 返回的 JSON 字符串（带引号 + 转义）。
+  String _decodeJsString(dynamic raw) {
+    if (raw == null) return '';
+    var s = raw.toString().trim();
+    if (s.isEmpty || s == 'null' || s == 'undefined') return '';
+    if (s.startsWith('"') && s.endsWith('"') && s.length > 1) {
+      try {
+        final v = jsonDecode(s);
+        return v?.toString() ?? '';
+      } catch (_) {
+        return s.substring(1, s.length - 1);
+      }
+    }
+    return s;
   }
 
   // ---------- 基础导航 ----------
@@ -685,6 +777,13 @@ class _BrowserScreenState extends State<BrowserScreen> {
           : null,
       title: Text(title, maxLines: 1, overflow: TextOverflow.ellipsis),
       actions: [
+        // 页面内跳转（气泡预览、教程链接等）后可退回主页面，避免
+        // 「点进去就出不来」；没有历史时按钮禁用。
+        IconButton(
+          tooltip: '返回上一页',
+          icon: const Icon(Icons.arrow_back_ios_new, size: 18),
+          onPressed: _canGoBack ? _goBack : null,
+        ),
         if (capture)
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: AppSpacing.s),
@@ -868,7 +967,9 @@ class _BrowserScreenState extends State<BrowserScreen> {
                     data: _initialDataHtml,
                     mimeType: 'text/html',
                     encoding: 'utf-8',
-                    baseUrl: WebUri('about:blank'),
+                    // 使用页面真实源，保证 location.hash / document.cookie
+                    // 可用（书源设置页的结果回传依赖这两条通道）。
+                    baseUrl: WebUri(_dataBaseUrl),
                   ),
             initialSettings: InAppWebViewSettings(
               javaScriptEnabled: true,
@@ -881,6 +982,41 @@ class _BrowserScreenState extends State<BrowserScreen> {
               loadsImagesAutomatically: !_noImage,
             ),
             onWebViewCreated: (c) => _controller = c,
+            // 页面内跳转：http(s)/data:/about:blank 放行；其它自定义 scheme
+            // （legado://、书源内部协议等）提示用外部应用打开。此前开启了
+            // useShouldOverrideUrlLoading 却未注册回调，页面里的链接点击
+            // 会进入空白页且无法返回。
+            shouldOverrideUrlLoading: (c, action) async {
+              final uri = action.request.url;
+              if (uri == null) return NavigationActionPolicy.CANCEL;
+              final scheme = uri.scheme.toLowerCase();
+              if (scheme == 'http' ||
+                  scheme == 'https' ||
+                  scheme == 'data' ||
+                  scheme == 'about' ||
+                  scheme == 'javascript' ||
+                  scheme == 'file') {
+                return NavigationActionPolicy.ALLOW;
+              }
+              final external = uri.toString();
+              if (mounted) {
+                ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                  content: Text('跳转到其它应用：$external'),
+                  duration: const Duration(seconds: 4),
+                  action: SnackBarAction(
+                    label: '打开',
+                    onPressed: () async {
+                      final u = Uri.tryParse(external);
+                      if (u != null && await canLaunchUrl(u)) {
+                        await launchUrl(u,
+                            mode: LaunchMode.externalApplication);
+                      }
+                    },
+                  ),
+                ));
+              }
+              return NavigationActionPolicy.CANCEL;
+            },
             // 点击 EPUB/PDF/图片/视频等下载链接时，按真实 MIME 拦截并落盘，
             // 随后可打开/分享（走 NativeBridge）。
             onDownloadStartRequest: (c, req) {

@@ -1,4 +1,4 @@
-// 对齐 legado-E 发现/登录控件的「规则化」布局与样式。
+//  发现/登录控件的「规则化」布局与样式。
 //
 // 原版依据：
 //  * app/.../ui/main/explore/ExploreAdapter.kt —— 所有控件放进同一个
@@ -30,7 +30,6 @@ double flexBasisPercentOf(dynamic style) {
   return 0.4;
 }
 
-/// 对齐 E 版 FlexboxLayout 的规则化布局：
 /// 按 [percents] 累加分行（累计 > 1 换行；单项 >= 0.95 独占整行），
 /// 每行用 Row + Expanded 让子项按 flex 权重**铺满整行**（等价于原版
 /// flexWrap=wrap + layout_flexGrow=1 的均分效果）。
@@ -108,7 +107,7 @@ class FlexPercentLayout extends StatelessWidget {
   }
 }
 
-/// 对齐 legado-E `item_fillet_text.xml` 的统一圆角文字按钮。
+/// 统一圆角文字按钮。
 /// 单一浅色容器背景 + 居中文字 + 最多两行，不按按钮名做三色分级：
 /// 书源自带 emoji 已足够区分语义，多套配色反而让列表显得杂乱。
 class FilletButton extends StatelessWidget {

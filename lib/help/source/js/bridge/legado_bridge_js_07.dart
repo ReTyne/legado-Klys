@@ -99,19 +99,34 @@ const String legadoBridgeJsPart07 = r'''  function __jsoupResponse(url, text, co
     if (__pendings[id]) { var r = __pendings[id]; delete __pendings[id]; r(String(code == null ? "" : code)); }
   };
 
-  // 阻塞式浏览器交互（对齐 legado startBrowserAwait/showBrowser/reLoginView）：
+  // 阻塞式浏览器交互：
   // 经「同步 XHR → legado://browser」让原生打开可见 WebView，用户关闭时
-  // 回传页面 HTML，包装为 StrResponse 返回（书源写法 .body() 取正文）。
-  function __openBrowserAwaitHtml(url, title) {
+  // 回传「渲染后的整页 DOM」与页面最终地址，包装为 StrResponse 返回。
+  // 书源设置页会把结果写进 DOM 的 script 标签、location.hash 或 Cookie，
+  // 因此 .body() 必须是运行后的 DOM、.url() 必须是带 hash 的最终地址。
+  function __openBrowserAwaitHtml(url, title, refetchAfterSuccess, customHtml) {
     var resolved = __resolve(url);
     if (!resolved) return __strResponse("", "", 200, "OK", {});
+    globalThis.__lastBrowserUrl = "";
+    var html = "";
+    var finalUrl = resolved;
     try {
-      var html = __doXhr("legado://browser?url=" + encodeURIComponent(resolved) +
-        "&title=" + encodeURIComponent(title || "登录"), { method: "GET" }, null, resolved);
-      return __strResponse(resolved, html, 200, "OK", {});
+      var endpoint = "legado://browser?url=" + encodeURIComponent(resolved) +
+        "&title=" + encodeURIComponent(title || "登录") +
+        "&refetch=" + (refetchAfterSuccess === false ? "0" : "1");
+      var opt = { method: "GET" };
+      if (customHtml != null && String(customHtml).length > 0) {
+        opt = { method: "POST", body: String(customHtml) };
+      }
+      html = __doXhr(endpoint, opt, null, resolved);
     } catch (e) {
-      return __strResponse(resolved, "", 200, "OK", {});
+      html = "";
     }
+    try {
+      if (globalThis.__lastBrowserUrl) finalUrl = String(globalThis.__lastBrowserUrl);
+    } catch (e) {}
+    globalThis.__lastBrowserUrl = "";
+    return __strResponse(finalUrl, html, 200, "OK", {});
   }
 
   // ============================ MD5（纯 JS 实现）============================
@@ -210,7 +225,7 @@ const String legadoBridgeJsPart07 = r'''  function __jsoupResponse(url, text, co
   }
 
   // ============================ 字节级哈希 / HMAC ============================
-  // 对齐 legado JsEncodeUtils 的 digestHex / digestBase64Str / HMacHex / HMacBase64。
+  // digestHex / digestBase64Str / HMacHex / HMacBase64。
   // 书源 JS 的 java.xxx() 是同步调用，不能用异步的 WebCrypto，故这里用纯 JS 实现。
   function __bsFromUtf8(s) {
     return __bytesToStr(new TextEncoder().encode(String(s == null ? "" : s)));
@@ -340,16 +355,24 @@ const String legadoBridgeJsPart07 = r'''  function __jsoupResponse(url, text, co
     }
     return __be32(h0) + __be32(h1) + __be32(h2) + __be32(h3) + __be32(h4) + __be32(h5) + __be32(h6) + __be32(h7);
   }
-  function __digestBs(data, algorithm) {
+  // 归一化 JCE 算法名：剥离 HMAC 前缀与分隔符，映射 SHA-2 家族别名。
+  //  JsEncodeUtils 由 Hutool 按算法名动态构造摘要器，书源常传
+  // "HmacSHA256" / "SHA-512"；早期只认 MD5/SHA1/SHA256，遇到这些名字
+  // 会静默回退 MD5，返回完全错误的签名值。
+  function __digestFn(algorithm) {
     var a = String(algorithm || "MD5").toUpperCase().replace(/[-_]/g, "");
-    var msg = __bsFromUtf8(data);
-    if (a === "SHA1") return __sha1bs(msg);
-    if (a === "SHA256") return __sha256bs(msg);
-    return __md5bs(msg);
+    if (a.indexOf("HMAC") === 0) a = a.substring(4);
+    if (a === "SHA1" || a === "SHA") return __sha1bs;
+    if (a === "SHA256" || a === "SHA2" || a === "SHA256WITHRSA") return __sha256bs;
+    if (a === "MD5") return __md5bs;
+    // 不支持的算法不静默回退，避免书源拿到错误签名还以为成功。
+    throw new Error("不支持的摘要算法: " + algorithm);
+  }
+  function __digestBs(data, algorithm) {
+    return __digestFn(algorithm)(__bsFromUtf8(data));
   }
   function __hmacBs(data, algorithm, key) {
-    var a = String(algorithm || "MD5").toUpperCase().replace(/[-_]/g, "");
-    var fn = a === "SHA1" ? __sha1bs : (a === "SHA256" ? __sha256bs : __md5bs);
+    var fn = __digestFn(algorithm);
     var k = __bsFromUtf8(key);
     if (k.length > 64) k = fn(k);
     var ikey = "", okey = "";
@@ -370,10 +393,12 @@ const String legadoBridgeJsPart07 = r'''  function __jsoupResponse(url, text, co
   }
 
   var java = {
-    // 日志 / 提示
-    log: function () { __state.logs.push(__argString(arguments)); },
-    toast: function (msg) { var s = String(msg == null ? "" : msg); __state.toasts.push(s); __state.logs.push(s); },
-    longToast: function (msg) { var s = String(msg == null ? "" : msg); __state.toasts.push(s); __state.logs.push(s); },
+    // 日志 / 提示：toast 只进提示队列，log 只进日志队列。
+    // 早期版本让 toast 同时写入两处，展示层各遍历一次就会把同一条提示
+    // 打印两遍（书源 login() 的「正在登录中/登录成功」重复即由此而来）。
+    log: function () { var s = __argString(arguments); __state.logs.push(s); return arguments.length ? arguments[0] : undefined; },
+    toast: function (msg) { var s = String(msg == null ? "" : msg); __state.toasts.push(s); },
+    longToast: function (msg) { var s = String(msg == null ? "" : msg); __state.toasts.push(s); },
 
     // 网络
     ajax: function (url, options) {
@@ -408,7 +433,14 @@ const String legadoBridgeJsPart07 = r'''  function __jsoupResponse(url, text, co
     },
     connect: function (url) { return __connect(url); },
     newResponse: function (url) { return __connect(url); },
-    getCookie: function (url) { return cookie.getCookie(url); },
+    //  JsExtensions.getCookie(tag) / getCookie(tag, key)：
+    // 双参按名取单个 cookie 值，书源高频写法；单参返回完整 cookie 串。
+    getCookie: function (url, key) {
+      if (key !== undefined && key !== null && String(key).length > 0) {
+        return cookie.getKey(url, String(key));
+      }
+      return cookie.getCookie(url);
+    },
 
     // 编码
     base64Encode: function (str) { return __b64Unicode(str); },
@@ -450,7 +482,7 @@ const String legadoBridgeJsPart07 = r'''  function __jsoupResponse(url, text, co
     HMacHex: function (data, algorithm, key) { return __bsToHex(__hmacBs(data, algorithm, key)); },
     HMacBase64: function (data, algorithm, key) { return btoa(__hmacBs(data, algorithm, key)); },
 
-    // AES 对称加解密（同步；对齐 legado JsExtensions）
+    // AES 对称加解密
     aesBase64DecodeToString: function (data, key, transformation, iv) {
       return __aesDecryptToString(data, key, transformation, iv);
     },

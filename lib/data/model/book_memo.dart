@@ -1,4 +1,4 @@
-/// 书籍备忘（对齐 legado 官方原版 BookMemo / BookMemoDialog）。
+/// 书籍备忘。
 ///
 /// 阅读菜单「备忘」按钮写入，按书 + 章聚合，可在目录/详情查看。
 class BookMemo {

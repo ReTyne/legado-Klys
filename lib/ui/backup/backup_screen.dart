@@ -48,7 +48,7 @@ class _BackupScreenState extends State<BackupScreen> {
   final _webdavDeviceName = TextEditingController();
   bool _syncProgress = false;
 
-  /// 恢复忽略项可选数据类型（对照原版 restoreIgnore：书架/书源/RSS/替换规则/阅读记录/主题/配置）
+  /// 恢复忽略项可选数据类型
   static const Map<BackupType, String> _restoreIgnoreItems = {
     BackupType.books: '书架',
     BackupType.bookSources: '书源',

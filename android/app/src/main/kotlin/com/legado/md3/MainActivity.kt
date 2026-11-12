@@ -29,7 +29,7 @@ class MainActivity : FlutterActivity() {
     /** legado:// 深链 / 系统分享文本 导入频道 */
     private val deepLinkChannelName = "legado/deep_link"
 
-    /** 书源 java.openVideoPlayer 的原生视频播放频道（对齐 legado-E openVideoPlayer） */
+    /** 书源 java.openVideoPlayer 的原生视频播放频道 */
     private val videoChannelName = "legado/video"
 
     /** 网络类型判断频道：供 cover_onlyWifi 精确区分 WiFi / 移动数据 */
@@ -48,7 +48,7 @@ class MainActivity : FlutterActivity() {
     private val processTextChannelName = "legado/process_text"
     private val safChannelName = "legado/saf"
 
-    /** 判断当前活跃网络是否为 WiFi（对齐 legado-E NetworkUtils.isWifi）。 */
+    /** 判断当前活跃网络是否为 WiFi。 */
     private fun isWifi(): Boolean {
         val cm = getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
             ?: return false
@@ -525,7 +525,7 @@ class MainActivity : FlutterActivity() {
                         "share://text?content=${Uri.encode(text)}"
                     }
                 }
-                // 系统文本选择菜单（选中文本后弹出本应用入口，对齐 E process_text）
+                // 系统文本选择菜单
                 Intent.ACTION_PROCESS_TEXT -> {
                     if (intent.type?.startsWith("text/plain") != true) return null
                     val text = intent.getStringExtra(Intent.EXTRA_PROCESS_TEXT)?.trim()

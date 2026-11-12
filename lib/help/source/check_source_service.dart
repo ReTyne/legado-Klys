@@ -9,7 +9,7 @@ import 'package:legado_md3/help/config/app_config.dart';
 import 'package:legado_md3/help/net/network_monitor.dart';
 import 'package:legado_md3/help/source/source_engine.dart';
 
-/// 目录为空（对照 legado-E exception/TocEmptyException.kt）
+/// 目录为空
 class TocEmptyException implements Exception {
   final String message;
   const TocEmptyException([this.message = '目录为空']);
@@ -17,7 +17,7 @@ class TocEmptyException implements Exception {
   String toString() => 'TocEmptyException: $message';
 }
 
-/// 正文为空（对照 legado-E exception/ContentEmptyException.kt）
+/// 正文为空
 class ContentEmptyException implements Exception {
   final String message;
   const ContentEmptyException([this.message = '正文为空']);
@@ -25,7 +25,7 @@ class ContentEmptyException implements Exception {
   String toString() => 'ContentEmptyException: $message';
 }
 
-/// 书源校验配置（对照 legado-E model/CheckSource.kt，持久化走 AppPrefs）
+/// 书源校验配置
 class CheckSourceConfig {
   CheckSourceConfig._();
 
@@ -73,7 +73,7 @@ class CheckSourceConfig {
     String? pick(String? raw) {
       final t = raw?.trim() ?? '';
       if (t.isEmpty) return null;
-      // E 的判定：含 http / :: / ++ / -- 视为规则片段而非关键字
+      // 判定：含 http /:: / ++ / -- 视为规则片段而非关键字
       if (t.contains('http') || t.contains('::') ||
           t.contains('++') || t.contains('--')) {
         return null;
@@ -89,7 +89,7 @@ class CheckSourceConfig {
   }
 }
 
-/// 书源分组/注释操作（对照 legado-E data/entities/BookSource.kt）
+/// 书源分组/注释操作
 extension BookSourceCheckExt on BookSource {
   static final RegExp _splitRegex = RegExp('[,;，；]');
 
@@ -211,7 +211,7 @@ class CheckSummary {
   });
 }
 
-/// 书源校验服务（对照 legado-E service/CheckSourceService.kt）
+/// 书源校验服务
 ///
 /// 流程（doCheckSource）：
 ///  1. 清除历史失效分组/错误注释
@@ -251,7 +251,7 @@ class CheckSourceService {
     await _progressCtrl.close();
   }
 
-  /// 批量校验（并发 = min(threadCount, 9)，对齐 E 的 MAX_THREAD 上限）
+  /// 批量校验
   /// 离线时快速失败（E: NetworkUtils.isAvailable 守卫），避免逐源干等超时。
   Future<CheckSummary> start(List<BookSource> sources, {int? threadCount}) async {
     if (sources.isEmpty) {
@@ -282,7 +282,7 @@ class CheckSourceService {
         if (_canceled) return;
         final source = sources[cursor++];
         final result = await checkOne(source);
-        // 每完成一本立即落库（对齐 E 的 onEach { update }）
+        // 每完成一本立即落库
         try {
           await _db.updateSource(source);
         } catch (_) {}
@@ -358,7 +358,7 @@ class CheckSourceService {
     );
   }
 
-  /// JS 运行时类错误（Klys 的迷你求值器/无头 WebView 求值失败）
+  /// JS 运行时类错误（本项目的迷你求值器/无头 WebView 求值失败）
   bool _looksJsError(Object e) {
     final s = e.toString();
     return s.contains('JS') ||

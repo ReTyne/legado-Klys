@@ -36,7 +36,7 @@ List<Book> _seedBooks() => [
 void main() {
   setUp(() => SharedPreferences.setMockInitialValues({}));
 
-  group('书架默认布局（对齐 E 版封面九宫格）', () {
+  group('书架默认布局', () {
     test('全新安装（无任何偏好）默认网格布局', () async {
       SharedPreferences.setMockInitialValues({});
       final p = BookProvider();

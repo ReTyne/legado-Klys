@@ -12,7 +12,7 @@ class ContentSearchHit {
   const ContentSearchHit(this.chapterIndex, this.posInChapter);
 }
 
-/// 书内全文搜索 - 对齐原版SearchContentScreen
+/// 书内全文搜索 - SearchContentScreen
 class SearchContentScreen extends StatefulWidget {
   final Book book;
   final String? initialKeyword;

@@ -5,9 +5,9 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:legado_md3/common/deep_link_service.dart';
 import 'package:legado_md3/ui/widgets/app_widgets.dart';
 
-/// 在线导入 / 一键导入界面（对齐 legado-E ui/association/OnLineImportActivity.kt）。
+/// 在线导入 / 一键导入界面。
 ///
-/// E 的 OnLineImportActivity 接收 `legado://import/{path}?src={url}` 深链，
+/// OnLineImportActivity 接收 `legado://import/{path}?src={url}` 深链，
 /// 按 bookSource / rssSource / replaceRule / textTocRule / httpTTS / dictRule /
 /// readConfig 分派到各 ImportXxxDialog。本页提供等价的「输入 URL 一键导入」
 /// 界面：用户可直接粘贴 URL / JSON / legado:// 链接，可选类型或自动识别，
@@ -26,7 +26,7 @@ class OnlineImportScreen extends StatefulWidget {
 }
 
 class _OnlineImportScreenState extends State<OnlineImportScreen> {
-  /// 导入类型：对齐 E OnLineImportActivity 的全部路径名。
+  /// 导入类型：全部路径名。
   static const Map<String, String> _typeLabels = {
     'auto': '自动识别（按内容判断）',
     'bookSource': '书源',
@@ -96,7 +96,7 @@ class _OnlineImportScreenState extends State<OnlineImportScreen> {
   }
 
   /// 一键导入：legado:// / share:// 走深链分派，其余（URL/JSON）走 importRaw。
-  /// 对齐 E OnLineImportActivity 的 determineType + 各 ImportXxxDialog。
+  /// determineType + 各 ImportXxxDialog。
   Future<void> _doImport() async {
     final text = _urlController.text.trim();
     if (text.isEmpty) {
@@ -170,7 +170,7 @@ class _OnlineImportScreenState extends State<OnlineImportScreen> {
       body: ListView(
         padding: const EdgeInsets.all(AppSpacing.l),
         children: [
-          // 说明：对齐 E OnLineImport 支持的 7 类导入
+          // 说明： OnLineImport 支持的 7 类导入
           Container(
             padding: const EdgeInsets.all(AppSpacing.m),
             decoration: BoxDecoration(

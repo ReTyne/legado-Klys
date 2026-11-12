@@ -19,7 +19,7 @@ part 'parts/source_login_screen_state.dart';
 part 'parts/login_button.dart';
 
 
-/// 书源登录页：对齐 legado-E ui/login 的
+/// 书源登录页：
 /// SourceLoginActivity / WebViewLoginFragment / SourceLoginDialog。
 ///
 /// * loginUrl 为 http(s) 且无自定义 loginUi：进入 [SourceWebViewLoginScreen]
@@ -27,10 +27,10 @@ part 'parts/login_button.dart';
 /// * loginUrl 为 <js>/JS：按 loginUi 渲染 text/password/button/switch/select，
 ///   loginUrl 先求值（定义 login()/register() 等全局函数），按钮 action 再求值；
 ///   result 为「字段名 -> 值」的对象，登录信息经 putLoginInfo 持久化。
-/// * loginUi 为 `@js:` / `<js>`：先求值生成表单 JSON（对齐 E evalUiJs/reUiView）。
+/// * loginUi 为 `@js:` / `<js>`：先求值生成表单 JSON。
 /// * 无 loginUi：回退为账号/密码表单，写入书源变量。
 /// * 页面加载时执行书源 loginCheckJs，展示「已登录/未登录」状态；
-///   AppBar 菜单对齐 E source_login.xml（查看/清除登录头、运行日志）。
+///   AppBar 菜单 source_login.xml（查看/清除登录头、运行日志）。
 class SourceLoginScreen extends StatefulWidget {
   const SourceLoginScreen({super.key, required this.source});
   final BookSource source;

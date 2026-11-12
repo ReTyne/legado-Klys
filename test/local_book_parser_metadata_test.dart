@@ -32,7 +32,7 @@ List<int> _exthRecord(int type, List<int> data) =>
 
 /// 最小 PalmDB/MOBI(KF7, 无压缩) fixture：
 /// record0=PalmDOC+MOBI+EXTH，record1=正文，record2=封面图片。
-/// 字段偏移对齐 legado-E 的 MobiReader（exthFlag@128、resource@108、EXTH=headerLen+16）。
+/// 字段偏移MobiReader（exthFlag@128、resource@108、EXTH=headerLen+16）。
 List<int> _buildMobi({
   required String pdbName,
   String? exthTitle,
@@ -170,7 +170,7 @@ void main() {
     return f.path;
   }
 
-  group('MOBI 元数据（对齐 E 的 MobiFile.upBookInfo / MobiBook.metadata）', () {
+  group('MOBI 元数据', () {
     test('从 EXTH 提取书名/作者/简介，统计正文字数，导出封面', () async {
       const text = '第一章\n这是MOBI正文测试内容。\n第二章\n更多正文。';
       final path = await write(
@@ -239,7 +239,7 @@ void main() {
     });
   });
 
-  group('PDF 元数据（对齐 E 的 PdfFile.upBookInfo）', () {
+  group('PDF 元数据', () {
     test('从 Info 字典取 /Title /Author /Subject，用正文流统计字数', () async {
       final path = await write(
           'book.pdf',
@@ -284,7 +284,7 @@ void main() {
     });
   });
 
-  group('UMD 元数据（对齐 E 的 UmdFile.upBookInfo）', () {
+  group('UMD 元数据', () {
     test('复用 TLV 取书名/作者/类别，统计正文字数，导出封面', () async {
       const body = '这是UMD正文ABC内容。';
       final path = await write(

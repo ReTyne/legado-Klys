@@ -11,7 +11,7 @@ class _RssSourceEditScreenState extends State<RssSourceEditScreen>
   final Map<String, TextEditingController> _c = {};
   bool _enabled = true;
   bool _dirty = false;
-  /// 字符串规则补全（对齐上游 menu_auto_complete，默认关）。
+  /// 字符串规则补全。
   bool _ruleCompleteEnabled = false;
 
   static const List<String> _tabs = ['基本', '起始', '列表', 'WebView'];
@@ -117,7 +117,6 @@ class _RssSourceEditScreenState extends State<RssSourceEditScreen>
 
   RssSource _collect() {
     String? opt(String k) => _trimmed(k);
-    /// 对齐上游 RssSourceEditActivity.save() 的 ruleComplete：
     /// 按字段类型补 getter，preRule 为文章列表规则原文。
     String? ruleVal(String k) {
       final v = _trimmed(k);

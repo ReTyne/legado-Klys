@@ -1,7 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:legado_md3/help/source/rule_complete.dart';
 
-/// 对照上游 legado-E `help/RuleComplete.kt` 的字符串补全行为。
+///   `help/RuleComplete.kt` 的字符串补全行为。
 void main() {
   group('autoComplete 三类 getter', () {
     test('type1 文字补 @text', () {

@@ -1,4 +1,4 @@
-/// 从 crypto_utils.dart 拆分：对齐 legado-E `help/crypto/` 按算法分文件。
+/// 从 crypto_utils.dart 拆分： `help/crypto/` 按算法分文件。
 /// 以 part 归属同一库，私有类型互引保持可用。
 part of '../../utils/crypto_utils.dart';
 

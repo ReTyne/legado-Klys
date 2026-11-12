@@ -1,5 +1,5 @@
 // B1 组件契约：EOverflowMenuButton 必须锚定 AppBar 右上、项序可严格断言、
-// visible=false 不渲染、checkable 有勾选态、K 独有项隔离在末尾次级分组。
+// visible=false 不渲染、checkable 有勾选态、扩展项隔离在末尾次级分组。
 
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -76,7 +76,7 @@ void main() {
     expect(find.byIcon(Icons.check_box_outline_blank), findsOneWidget);
   });
 
-  testWidgets('K 独有项隔离在末尾「更多功能」子分组且仍可点击', (tester) async {
+  testWidgets('扩展项隔离在末尾「更多功能」子分组且仍可点击', (tester) async {
     final primary = [
       EOverflowItem(id: 'p1', label: '主项1', onTap: () {}),
       EOverflowItem(id: 'p2', label: '主项2', onTap: () {}),

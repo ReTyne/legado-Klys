@@ -20,7 +20,7 @@ class JsPackages {
   /// 注入到桥 IIFE 末尾的 JS 片段（原始字符串，Dart 不转义反斜杠与 `$`）。
   static const String definition = r'''
 
-  // ---- Rhino Packages.* 真实映射（对齐 legado 的 Java 互操作）----
+  // ---- Rhino Packages.* 真实映射----
   // 说明：以下每个键都是一串完整 Java 类名，值是桥里已实现的等价 JS 工具；
   // 最后按「.」拆成嵌套命名空间挂到 globalThis.Packages 上。未登记的类名
   // 取值为 undefined —— 这是「真实映射」而非「恒 null 假装存在」。

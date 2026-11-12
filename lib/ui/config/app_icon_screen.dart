@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:legado_md3/help/device/native_bridge.dart';
 import 'package:legado_md3/ui/widgets/app_widgets.dart';
 
-/// 动态桌面图标（对齐 legado-E `pref_config_theme.xml` 的 launcherIcon）。
+/// 动态桌面图标。
 ///
 /// 别名来自原生 `LauncherIconHelper.aliasNames()`（Launcher1..7），
 /// 通过 [NativeBridge.setLauncherIcon] 真实切换 LAUNCHER 入口组件。

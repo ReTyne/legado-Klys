@@ -15,7 +15,6 @@ import java.util.Base64
 /**
  * 7z / rar 压缩包原生解压（Flutter 侧无对应 Dart 解码器）。
  *
- * 对应 legado-E 的 LibArchiveUtils（libarchive）能力：
  *  - extractEntry：读取包内指定文件内容（书源 java.get7zStringContent / getRarStringContent）
  *  - extractAll：整包解压，返回 [{name, data(base64)}] 列表（java.un7zFile / unrarFile）
  *

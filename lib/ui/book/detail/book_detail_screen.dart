@@ -44,13 +44,13 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
   bool _introExpanded = false;
   int _readChapterIndex = 0;
   bool _inShelf = false;
-  // 对齐 E LocalConfig.bookInfoDeleteAlert：删除书架提醒开关
+  // 删除书架提醒开关
   bool _deleteAlert = true;
-  // 对齐 E onMenuOpened：当前书源，控制「登录 / 源变量 / 书籍变量」可见性
+  // 当前书源，控制「登录 / 源变量 / 书籍变量」可见性
   BookSource? _detailSource;
-  // 对齐 E AppConfig.isEInkMode：墨水屏不启用封面高斯模糊背景
+  // 墨水屏不启用封面高斯模糊背景
   bool _eink = false;
-  // 对齐 E upKinds：本地书在标签里追加文件大小（formatFileSize）
+  // 本地书在标签里追加文件大小（formatFileSize）
   int? _localFileSize;
 
   @override
@@ -73,7 +73,7 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
     }
   }
 
-  /// 对齐 E upKinds：`FileDoc.fromFile(book.bookUrl).size` → formatFileSize。
+  /// `FileDoc.fromFile(book.bookUrl).size` → formatFileSize。
   Future<void> _loadLocalFileSize() async {
     if (!widget.book.local) return;
     final path = localBookSourcePath(widget.book);
@@ -87,7 +87,7 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
     } catch (_) {}
   }
 
-  /// 点击书名 / 作者 / 分类标签按该词搜索（对齐 E CLICK_BOOK_NAME /
+  /// 点击书名 / 作者 / 分类标签按该词搜索（ CLICK_BOOK_NAME /
   /// CLICK_AUTHOR / CLICK_BOOK_LABEL → SearchActivity.start(...keyword)）。
   void _searchKeyword(String keyword) {
     final kw = keyword.trim();
@@ -96,7 +96,7 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
         MaterialPageRoute(builder: (_) => SearchScreen(initialKeyword: kw)));
   }
 
-  /// 分类字符串拆成可点标签（对齐 E Book.getKindList()）。
+  /// 分类字符串拆成可点标签。
   List<String> _kindParts(String kind) => kind
       .split(RegExp(r'[,，、|\s]+'))
       .map((e) => e.trim())
@@ -108,7 +108,7 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
     if (mounted) setState(() => _deleteAlert = p.getBool('bookInfoDeleteAlert') ?? true);
   }
 
-  /// 加载当前书源，供「登录 / 源变量 / 书籍变量」菜单判断可见性（对齐 E onMenuOpened）
+  /// 加载当前书源，供「登录 / 源变量 / 书籍变量」菜单判断可见性
   Future<void> _loadDetailSource() async {
     final origin = widget.book.origin;
     if (origin == null || origin.isEmpty) return;
@@ -123,7 +123,7 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
     } catch (_) {}
   }
 
-  /// 对齐 E BookInfoActivity.setSourceVariable / setBookVariable：变量持久化到 SharedPreferences
+  /// 变量持久化到 SharedPreferences
   Future<void> _editVariable(String prefKey, String title) async {
     final p = await SharedPreferences.getInstance();
     final ctrl = TextEditingController(text: p.getString(prefKey) ?? '');
@@ -141,7 +141,7 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
     if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('变量已保存')));
   }
 
-  /// 对齐 E BookInfoActivity.menu_log（AppLogDialog）：展示本书诊断信息
+  /// 展示本书诊断信息
   void _showBookLog() {
     showDialog(context: context, builder: (c) => AlertDialog(
       title: const Text('日志'),
@@ -302,10 +302,10 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
     ));
   }
 
-  // 对齐 E book_info.xml：详情页菜单无「更新书籍 / 缓存全部」项
+  // 详情页菜单无「更新书籍 / 缓存全部」项
   // （「刷新」统一走 _refreshBookInfo；离线缓存在阅读页顶部栏与缓存页），故删除无入口方法。
 
-  /// 是否本地 TXT（长章节拆分仅对此生效，对齐 E isLocalTxt 判断）
+  /// 是否本地 TXT
   bool get _isLocalTxt =>
       widget.book.local &&
       (widget.book.fileName?.toLowerCase().endsWith('.txt') ?? false);
@@ -403,7 +403,7 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
         child: SingleChildScrollView(child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            // 对齐 E res/menu/book_info.xml 的 showAsAction="never" 项与顺序
+            // showAsAction="never" 项与顺序
             // 1. 上传到远程（E: menu_upload，仅本地书可见，对齐 A10 书籍上传 WebDAV）
             if (widget.book.local && (widget.book.fileName?.isNotEmpty ?? false))
               ListTile(
@@ -458,7 +458,7 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
               onTap: () async { Navigator.pop(context); await Clipboard.setData(ClipboardData(text: widget.book.noteUrl ?? '')); if (mounted && context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('已复制'))); },
             ),
             // 9. 允许更新（E: menu_can_update → Book.canUpdate，checkable）
-            // 关闭「允许更新」时顺手清掉 updateError 标记（对齐 E:370-379）；
+            // 关闭「允许更新」时顺手清掉 updateError 标记；
             // canUpdate 才是书架 _updateAllBooks 的真实过滤字段。
             ListTile(
               leading: const Icon(Icons.sync),
@@ -533,7 +533,7 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
                     expandedHeight: 300,
                     pinned: true,
                     actions: [
-                      // 对齐 E book_info.xml showAsAction="ifRoom"：编辑（仅书架）/ 分享
+                      // 编辑（仅书架）/ 分享
                       if (_inShelf)
                         IconButton(icon: const Icon(Icons.edit), tooltip: '编辑', onPressed: _showEditBookDialog),
                       IconButton(icon: const Icon(Icons.share), tooltip: '分享',
@@ -556,7 +556,7 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
                               _infoRow(
                                 icon: Icons.person_outline,
                                 child: Expanded(
-                                  // 对齐 E tvAuthor 点击/长按 → SearchActivity.start(author)。
+                                  //  tvAuthor 点击/长按 → SearchActivity.start(author)。
                                   child: GestureDetector(
                                     onTap: () => _searchKeyword(book.author),
                                     onLongPress: () => _searchKeyword(book.author),
@@ -607,7 +607,7 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
 
                         const SizedBox(height: AppSpacing.s),
 
-                        // 简介：对齐 E showBookIntro 的 <useweb>/<usehtml>/<md>
+                        // 简介：<useweb>/<usehtml>/<md>
                         // 富文本分派（WebView + scheme 拦截 + 图片长按）；
                         // 纯文本维持 4 行展开/收起。
                         Padding(
@@ -724,7 +724,7 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
     );
   }
 
-  /// 简介渲染（对齐 E `BookInfoActivity.showBookIntro`）：
+  /// 简介渲染：
   /// 富文本按前缀分派到 [IntroRichView]（WebView + scheme 拦截 + 图片长按），
   /// 纯文本维持 4 行展开/收起。
   Widget _buildIntro(Book book, ColorScheme cs) {
@@ -763,7 +763,7 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
     final cover = (book.customCoverUrl != null && book.customCoverUrl!.isNotEmpty)
         ? book.customCoverUrl
         : book.coverUrl;
-    // 对齐 E showCover / BookCover.loadBlur：非墨水屏时用封面做高斯模糊背景。
+    // 非墨水屏时用封面做高斯模糊背景。
     final Widget? blurBg = !_eink && cover != null && cover.isNotEmpty
         ? Positioned.fill(
             child: ImageFiltered(
@@ -809,7 +809,7 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
               const SizedBox(height: 10),
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xl),
-                // 对齐 E tvName 点击/长按 → SearchActivity.start(book.name)。
+                //  tvName 点击/长按 → SearchActivity.start(book.name)。
                 child: GestureDetector(
                   onTap: () => _searchKeyword(book.name),
                   onLongPress: () => _searchKeyword(book.name),
@@ -850,11 +850,11 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
     );
   }
 
-  /// 可点击的分类标签（对齐 E lbKind.setLabels 点击回调 → 按该词搜索）。
+  /// 可点击的分类标签。
   Widget _searchableTag(String text) =>
       AppTag(text, onTap: () => _searchKeyword(text));
 
-  /// 封面长按看大图（对齐 E ivCover.setOnLongClickListener → PhotoDialog）。
+  /// 封面长按看大图。
   void _showCoverFullImage(Book book) {
     final cover = (book.customCoverUrl != null && book.customCoverUrl!.isNotEmpty)
         ? book.customCoverUrl
@@ -962,7 +962,7 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
 
   Future<void> _confirmRemoveFromShelf() async {
     final book = widget.book;
-    // 对齐 E BookInfoActivity.deleteBook()：本地书删除确认框带「同时删除源文件」
+    // 本地书删除确认框带「同时删除源文件」
     // 复选框（deleteBookOriginal 持久化）；关闭删除提醒时直接删，但仍按该偏好
     // 决定是否删除源文件（E: delBook(LocalConfig.deleteBookOriginal)）。
     late final DeleteBookChoice choice;

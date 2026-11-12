@@ -1,9 +1,9 @@
-// 功能位置对齐 E 版的「可验收基线」（B5 重写）。
+// 功能位置「可验收基线」（B5 重写）。
 //
 // 与旧版区别：旧版用「逐项 find.text ... findsOneWidget」的假顺序断言，
-// 只验存在不验顺序、且锁定 K 版旧文案。本版：
+// 只验存在不验顺序、且锁定 本项目旧文案。本版：
 //   - overflow 项用稳定 Key('e_menu::<id>') + getTopLeft().dy 升序做真正严格顺序断言；
-//   - 我的页断言 pref_main 14 项分组树 + 独有项按语义平铺归位（E 主落点顺序不变、功能不删、直接可触达）；
+//   - 我的页断言 pref_main 14 项分组树 + 独有项按语义平铺归位（主界面顺序不变、功能不删、直接可触达）；
 //   - 断言容器是锚定 AppBar 右上的 overflow（而非底部 sheet）。
 // 所有 expected 均由 lib/constant/e_placement.dart 单一真源驱动，避免文案漂移。
 
@@ -90,18 +90,18 @@ void main() {
       expect(find.byKey(Key(e.key)), findsOneWidget,
           reason: '缺少 overflow 项：${e.zh} (${e.id})');
       expect(find.text(e.zh), findsOneWidget,
-          reason: '缺少 E 权威文案：${e.zh}');
+          reason: '缺少 标准文案：${e.zh}');
     }
     // 真正严格顺序：按渲染 y 坐标升序必须等于单一真源顺序
     final ids = overflow.map((e) => e.id).toList();
     expect(_overflowOrderById(tester, ids), ids,
         reason: '书架 overflow 渲染顺序必须与 E main_bookshelf.xml 一致');
 
-    // K 版旧文案（已被 E 权威文案替换）不应出现在 E 主落点
+    // 本项目旧文案（已被 标准文案替换）不应出现在 主界面
     for (final old in const ['添加URL', '缓存导出', '导出书架', '导入书架']) {
-      expect(find.text(old), findsNothing, reason: '应改用 E 权威文案：$old');
+      expect(find.text(old), findsNothing, reason: '应改用 标准文案：$old');
     }
-    // E 书架没有的入口不应出现
+    // 已下架的入口不应出现
     for (final absent in const [
       '首页模块视图', '搜索书籍', '多选模式', '阅读记录', '清空书架', '排序设置'
     ]) {
@@ -109,7 +109,7 @@ void main() {
     }
   });
 
-  testWidgets('书架布局对话框提供 E 的布局/排序/分组样式选项', (tester) async {
+  testWidgets('书架布局对话框提供 布局/排序/分组样式选项', (tester) async {
     final p = BookProvider()..debugSeed(_seedBooks());
     await tester.pumpWidget(_withProvider(p, const BookshelfScreen()));
     await tester.pump();
@@ -134,14 +134,14 @@ void main() {
       expect(find.text(layout), findsOneWidget, reason: '缺少布局：$layout');
     }
     for (final sort in const ['最近阅读', '更新时间', '书名', '手动', '综合', '作者']) {
-      // 默认布局为网格后，「书名显示」分区标题也叫「书名」（E 版 book_name_choice
+      // 默认布局为网格后，「书名显示」分区标题也叫「书名」（ book_name_choice
       // 仅网格可见），会与排序项「书名」重名，故用 findsWidgets。
       expect(find.text(sort), sort == '书名' ? findsWidgets : findsOneWidget,
           reason: '缺少排序：$sort');
     }
     // 默认网格生效：书名显示方式（显示/隐藏/叠加）分区应可见
     expect(find.text('叠加'), findsWidgets,
-        reason: '默认网格布局下书名显示分区应可见（对齐 E book_name_choice）');
+        reason: '默认网格布局下书名显示分区应可见');
   });
 
   testWidgets('书架管理页可构建、多选与批量操作栏', (tester) async {
@@ -189,7 +189,7 @@ void main() {
       expect(f, findsWidgets, reason: '缺少 pref_main 结构项：$f');
     }
 
-    // K 独有项已按「相似度」聚合归位到 E 主落点之后的 4 张分区卡片中
+    // 扩展项已按「相似度」聚合归位到 主界面之后的 4 张分区卡片中
     // （不再藏在单个默认折叠的「更多功能」里，也不把同类功能拆散到不同组）。
     // 按页面真实自上而下顺序单调遍历验证，避免 ListView 懒构建卸载上方项
     // 后回查不到（沿用上面的滚动策略）。每项既是「分区存在」也是「功能

@@ -16,7 +16,7 @@ bool _asBool(dynamic v, bool fallback) {
   return s == 'true' || s == '1';
 }
 
-/// 替换净化规则。字段与 legado-E `data/entities/ReplaceRule.kt` 对齐：
+/// 替换净化规则。字段与  `data/entities/ReplaceRule.kt` 对齐：
 /// name / group / pattern / replacement / scope / scopeTitle / scopeContent /
 /// excludeScope / isEnabled / isRegex / timeoutMillisecond / sortOrder。
 class ReplaceRule {
@@ -93,7 +93,7 @@ class ReplaceRule {
     'order_num': order,
   };
 
-  /// 导出为 legado-E 兼容的 JSON 字段（跨端备份 / Web 端互通，不丢字段）。
+  /// 导出为  兼容的 JSON 字段（跨端备份 / Web 端互通，不丢字段）。
   Map<String, dynamic> toLegadoJson() => {
     'name': replaceSummary,
     'group': group,

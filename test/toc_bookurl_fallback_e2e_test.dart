@@ -138,10 +138,10 @@ void main() {
           reason: 'source 为空时不得再留空白页');
     });
 
-    test('搜索页：结果为 E 版单列横向列表（左封面+右信息，非网格）', () {
+    test('搜索页：结果为 单列横向列表（左封面+右信息，非网格）', () {
       final src = _read('lib/ui/book/search/search_screen.dart');
       expect(src, contains('ListView.separated'),
-          reason: '对照 E SearchActivity 的 LinearLayoutManager，应为单列列表');
+          reason: ' SearchActivity 的 LinearLayoutManager，应为单列列表');
       expect(src.contains('GridView.builder'), isFalse,
           reason: '搜索页不应是网格布局');
       expect(src, contains('const coverW = 80.0'),

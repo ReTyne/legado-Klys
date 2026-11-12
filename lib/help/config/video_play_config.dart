@@ -1,8 +1,8 @@
 import 'package:shared_preferences/shared_preferences.dart';
 
-/// 视频播放配置（对齐 legado-E `model/VideoPlay.kt` 的 `video_config` 偏好）。
+/// 视频播放配置。
 ///
-/// E 的四个配置项：
+/// 四个配置项：
 /// * autoPlay —— 是否自动播放（默认 true）
 /// * startFull —— 直接全屏（默认 false，需先启用自动播放）
 /// * longPressSpeed —— 长按倍速，以 0.1x 为单位的整数（默认 30 = 3.0x，

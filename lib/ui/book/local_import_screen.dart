@@ -22,7 +22,7 @@ class _LocalImportScreenState extends State<LocalImportScreen> {
     try {
       final result = await FilePicker.platform.pickFiles(
         type: FileType.custom,
-        // 对齐 legado-E：txt/epub/umd/pdf/mobi/azw3/azw + zip 压缩包
+        // txt/epub/umd/pdf/mobi/azw3/azw + zip 压缩包
         allowedExtensions: [
           'txt', 'TXT', 'epub', 'EPUB', 'umd', 'UMD', 'mobi', 'MOBI',
           'azw', 'AZW', 'azw3', 'AZW3', 'pdf', 'PDF', 'zip', 'ZIP',
@@ -63,7 +63,7 @@ class _LocalImportScreenState extends State<LocalImportScreen> {
     for (var i = 0; i < _selectedFiles.length; i++) {
       try {
         final file = _selectedFiles[i];
-        // 统一走导入服务：TXT/EPUB/UMD/MOBI/PDF/ZIP 全格式（对齐 legado-E）
+        // 统一走导入服务：TXT/EPUB/UMD/MOBI/PDF/ZIP 全格式
         final res = await _importService.importPath(file.path);
         successCount++;
         totalBooks += res.totalBooks;

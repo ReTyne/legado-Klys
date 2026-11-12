@@ -7,7 +7,7 @@ import 'package:legado_md3/data/model/book_source.dart';
 import 'package:legado_md3/data/model/rss_source.dart';
 import 'package:legado_md3/data/model/replace_rule.dart';
 
-/// 规则订阅的导入与自动更新（对齐 legado-E 的 ruleSubsUp() 启动期触发）。
+/// 规则订阅的导入与自动更新。
 ///
 /// 项目现有订阅页用 SharedPreferences `rule_subscriptions` 存储（每条含
 /// name/url/type/lastUpdate），这里沿用同一份数据，额外识别 `autoUpdate` 与

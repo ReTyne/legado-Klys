@@ -10,7 +10,7 @@ import 'package:legado_md3/ui/widgets/app_widgets.dart';
 
 /// 书籍详情「富文本简介」渲染。
 ///
-/// 对齐 legado-E `ui/book/info/BookInfoActivity.kt:542` `showBookIntro`：
+/// 542` `showBookIntro`：
 /// 简介并不是纯文本，而是按前缀分派三套渲染：
 ///  - `<useweb>`  → WebView 池 `loadDataWithBaseURL(bookUrl, html, ...)`，
 ///                   相对图片/链接以书籍地址为 base；
@@ -41,10 +41,10 @@ class IntroSpec {
   const IntroSpec(this.kind, this.content);
 }
 
-/// 按前缀解析简介（逐字对齐 E `showBookIntro` 的 `startsWith` +
+/// 按前缀解析简介（逐字`startsWith` +
 /// `lastIndexOf("<")` + `substring(prefixLen, lastIndex)` 语义）。
 ///
-/// E 的约定形如 `<useweb>HTML</useweb>`：末尾闭合标签起始的 `<` 即
+/// 约定形如 `<useweb>HTML</useweb>`：末尾闭合标签起始的 `<` 即
 /// `lastIndexOf("<")`，正文为两标签之间的内容。若找不到闭合标签
 /// （`lastIndex < 前缀长度`），E 直接把整段当纯文本展示，此处保持一致。
 IntroSpec parseIntro(String? intro) {
@@ -65,7 +65,7 @@ IntroSpec parseIntro(String? intro) {
   return IntroSpec(IntroKind.plain, intro);
 }
 
-/// `<useweb>` 的 baseUrl：对齐 E `bookUrl.takeIf { startsWith("http") }
+/// `<useweb>` 的 baseUrl： `bookUrl.takeIf { startsWith("http") }
 /// ?.substringBefore(",")`，仅 http(s) 且取逗号前第一段。
 String? usewebBaseUrl(String? bookUrl) {
   if (bookUrl == null || bookUrl.isEmpty) return null;
@@ -74,7 +74,7 @@ String? usewebBaseUrl(String? bookUrl) {
   return u;
 }
 
-/// 简介内链接的处理方式（对齐 E `CustomWebViewClient` 的 scheme 分支）。
+/// 简介内链接的处理方式。
 enum IntroLinkAction {
   /// http/https：WebView 内正常加载。
   allow,
@@ -94,7 +94,7 @@ IntroLinkAction classifyIntroUri(Uri uri) {
 }
 
 /// 把 `legado`/`yuedu` scheme 归一化为 [DeepLinkService] 可识别的链接。
-/// E 中两者都进 `OnLineImportActivity`；本项目 `handleLink` 仅认 `legado:`，
+/// 其中两者都进 `OnLineImportActivity`；本项目 `handleLink` 仅认 `legado:`，
 /// 故 `yuedu:` 改写为 `legado:` 后复用在线导入分派。
 String onlineImportLink(Uri uri) {
   if (uri.scheme.toLowerCase() == 'yuedu') {
@@ -383,7 +383,7 @@ class IntroRichView extends StatelessWidget {
     }
   }
 
-  /// 对齐 E `imgOnLongClickListener` → `PhotoDialog`：长按图片看大图。
+  /// 长按图片看大图。
   Future<void> _onLongPress(
       BuildContext context, InAppWebViewHitTestResult hit) async {
     final t = hit.type;
@@ -397,7 +397,7 @@ class IntroRichView extends StatelessWidget {
   }
 }
 
-/// 图片长按大图预览（对齐 E `PhotoDialog`，复用验证码页 InteractiveViewer 形态）。
+/// 图片长按大图预览。
 class IntroImagePreview extends StatelessWidget {
   final String url;
   const IntroImagePreview({super.key, required this.url});

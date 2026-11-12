@@ -29,7 +29,7 @@ class _BookshelfScreenState extends State<BookshelfScreen> {
   Map<String, int>? _waitUpdateCache;
   int _waitUpdateKey = -1;
 
-  // —— 更新目录容错（对齐 E MainViewModel）——
+  // —— 更新目录容错——
   /// 待更新队列（E: waitUpTocBooks）。
   final Set<String> _waitUpTocBooks = <String>{};
   /// 正在更新集合（E: onUpTocBooks），与待更新队列构成「双集合去重」。
@@ -63,7 +63,7 @@ class _BookshelfScreenState extends State<BookshelfScreen> {
     final wifiOk = coverCfg.onlyWifi
         ? await NetworkMonitor.instance.isWifi
         : false;
-    // 对齐 E BookType.updateError：加载失败标记供封面角标展示。
+    // 加载失败标记供封面角标展示。
     final errorBooks = await loadUpdateErrorBooks();
     if (!mounted) return;
     setState(() {
@@ -161,7 +161,7 @@ class _BookshelfScreenState extends State<BookshelfScreen> {
     return books;
   }
 
-  /// 更新目录（对齐 E MainViewModel.upToc / addToWaitUp / startUpTocJob /
+  /// 更新目录（ MainViewModel.upToc / addToWaitUp / startUpTocJob /
   /// updateToc / addDownload 的容错体系）：
   ///  - 双集合去重：waitUpTocBooks + onUpTocBooks；
   ///  - onlyUpdateRead：跳过未读完的书；
@@ -182,7 +182,7 @@ class _BookshelfScreenState extends State<BookshelfScreen> {
       toUpdate = toUpdate.sublist(0, _cfg.updateLimit);
     }
 
-    // 对齐 E addToWaitUp：onlyUpdateRead 跳过未读完 + 双集合去重。
+    // onlyUpdateRead 跳过未读完 + 双集合去重。
     final queue = <Book>[];
     String keyOf(Book b) => (b.bookUrl ?? '').isNotEmpty
         ? b.bookUrl!
@@ -269,7 +269,7 @@ class _BookshelfScreenState extends State<BookshelfScreen> {
             '更新完成，共检查 ${queue.length} 本，$updated 本有新章节')));
   }
 
-  /// 对齐 E MainViewModel.addDownload：只缓存 durChapterIndex 起后续
+  /// 只缓存 durChapterIndex 起后续
   /// preDownloadNum 章（不缓存整本），且跳过卷标 / 已缓存章节。
   Future<void> _preDownload(Book book, BookSource source, int num) async {
     final chapters = await _db.getChapters(book.name, book.author);
@@ -291,7 +291,7 @@ class _BookshelfScreenState extends State<BookshelfScreen> {
   }
 
   /// 书架 AppBar 右上角 overflow 菜单 —— 项与顺序严格对齐
-  /// legado-E `res/menu/main_bookshelf.xml` 的 11 个 showAsAction="never" 项。
+  ///  `res/menu/main_bookshelf.xml` 的 11 个 showAsAction="never" 项。
   /// 由单一真源 EPlacement 生成，回调逐 id 映射原「更多」底部 sheet 的各动作；
   /// 容器由底部 sheet 改为锚定 AppBar 右上的 EOverflowMenuButton。
   /// 「搜索」为 always 常驻图标，仍独立渲染在 AppBar。
@@ -358,7 +358,7 @@ class _BookshelfScreenState extends State<BookshelfScreen> {
     );
   }
 
-  /// 书架布局对话框 —— 项与顺序对齐 legado-E `dialog_bookshelf_config.xml`：
+  /// 书架布局对话框 —— 项与顺序 `dialog_bookshelf_config.xml`：
   /// 分组样式 / 显示未读 / 显示上次更新时间 / 显示待更新书籍 / 快速滚动条 /
   /// 布局（列表·紧凑列表·网格2~6）/ 排序（六项）/ 书名显示（网格布局下）。
   void _showBookshelfConfigDialog() {
@@ -484,7 +484,7 @@ class _BookshelfScreenState extends State<BookshelfScreen> {
                     radio('手动', 3, sortIndex, (v) => setLocal(() => sortIndex = v)),
                     radio('综合', 4, sortIndex, (v) => setLocal(() => sortIndex = v)),
                     radio('作者', 5, sortIndex, (v) => setLocal(() => sortIndex = v)),
-                    // 书名显示：仅网格布局可见（同 E 的 book_name_choice 可见性逻辑）
+                    // 书名显示：仅网格布局可见（同 book_name_choice 可见性逻辑）
                     if (layoutIndex >= 2) ...[
                       const Divider(height: 16),
                       Text('书名', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold, color: cs.primary)),
@@ -556,7 +556,7 @@ class _BookshelfScreenState extends State<BookshelfScreen> {
     );
   }
 
-  /// 日志对话框（对齐 legado-E 书架菜单 menu_log / AppLogDialog）
+  /// 日志对话框
   Future<void> _showLogDialog() async {
     final logs = await CrashLogHelper.instance.readLogs();
     if (!mounted) return;
@@ -588,7 +588,7 @@ class _BookshelfScreenState extends State<BookshelfScreen> {
     );
   }
 
-  /// URL 添加书籍对话框（对齐原版 menu_add_url）
+  /// URL 添加书籍对话框
   void _showAddBookByUrlDialog() {
     final controller = TextEditingController();
     showDialog(
@@ -1077,7 +1077,7 @@ class _BookshelfScreenState extends State<BookshelfScreen> {
               ListTile(leading: const Icon(Icons.swap_horiz_outlined), title: const Text('换源'), onTap: () { Navigator.pop(context); Navigator.push(context, MaterialPageRoute(builder: (_) => ChangeSourceScreen(book: book))); }),
               ListTile(leading: const Icon(Icons.image_outlined), title: const Text('换封面'), onTap: () { Navigator.pop(context); Navigator.push(context, MaterialPageRoute(builder: (_) => ChangeCoverScreen(book: book))); }),
               ListTile(leading: const Icon(Icons.download_outlined), title: const Text('缓存全部'), onTap: () { Navigator.pop(context); _cacheOneBook(book); }),
-              // 对齐 legado-E 的 BooksAdapterList：长按书籍直接进详情，书架无「书籍标记」等 E 没有的入口
+              // 长按书籍直接进详情，书架无「书籍标记」等 已下架的入口
               ListTile(leading: const Icon(Icons.bookmark_border), title: const Text('添加书签'), onTap: () { Navigator.pop(context); _addBookmarkAtProgress(book); }),
               const Divider(),
               ListTile(leading: const Icon(Icons.move_down_outlined), title: const Text('移动到分组'), onTap: () { Navigator.pop(context); _showMoveGroupDialog(book); }),
@@ -1095,7 +1095,7 @@ class _BookshelfScreenState extends State<BookshelfScreen> {
               const Divider(),
               ListTile(leading: Icon(Icons.delete_outline, color: cs.error), title: Text('删除', style: TextStyle(color: cs.error)), onTap: () async {
                 Navigator.pop(context);
-                // 对齐 E BookshelfManageActivity 批量删除：本地书带「同时删除
+                // 本地书带「同时删除
                 // 源文件」复选框（deleteBookOriginal 持久化）。
                 final choice = await showDeleteBookConfirm(
                   context,
@@ -1117,7 +1117,7 @@ class _BookshelfScreenState extends State<BookshelfScreen> {
     );
   }
 
-  /// 导出书籍对话框（对齐 legado-E CacheActivity 导出选项：格式/编码/章节名/替换规则/范围）
+  /// 导出书籍对话框
   Future<void> _showExportDialog(Book book) async {
     final chapters = await _db.getChapters(book.name, book.author);
     if (chapters.isEmpty) {
@@ -1131,7 +1131,7 @@ class _BookshelfScreenState extends State<BookshelfScreen> {
     var charset = 'UTF-8';
     var noChapterName = false;
     var useReplace = true;
-    // 对齐 legado-E CacheActivity 的导出范围三选一：0全部 1仅已缓存 2自定义范围。
+    // 0全部 1仅已缓存 2自定义范围。
     // 旧实现以 bool 表达三态，「仅已缓存/自定义范围」两个 radio 共用 value=false 无法互斥。
     int rangeMode = 0;
     final startCtrl = TextEditingController(text: '1');
@@ -1196,7 +1196,7 @@ class _BookshelfScreenState extends State<BookshelfScreen> {
                   onChanged: (v) => setS(() => useReplace = v),
                 ),
                 const Divider(),
-                // 对齐 legado-E CacheActivity：导出范围互斥单选，选中态由 groupValue 唯一确定
+                // 导出范围互斥单选，选中态由 groupValue 唯一确定
                 RadioListTile<int>(
                   dense: true,
                   contentPadding: EdgeInsets.zero,
@@ -1701,7 +1701,7 @@ class _BookshelfScreenState extends State<BookshelfScreen> {
     );
   }
 
-  /// 书架列表项 —— 结构对齐 legado-E `res/layout/item_bookshelf_list.xml`：
+  /// 书架列表项 —— 结构 `res/layout/item_bookshelf_list.xml`：
   /// 左侧封面 66x90，右侧书名(16sp)/作者(13sp)+上次更新时间/读到(13sp)/最新(13sp)，
   /// 未读数量以角标叠加在封面右上（showUnread）。
   Widget _buildListItem(Book book, {bool compact = false}) {
@@ -1764,7 +1764,7 @@ class _BookshelfScreenState extends State<BookshelfScreen> {
 
   final Map<String, String> _durTitleCache = {};
 
-  /// 当前阅读章节标题（对应 E 实体的 durChapterTitle），单章查询 + 内存缓存
+  /// 当前阅读章节标题，单章查询 + 内存缓存
   Future<String> _durChapterTitle(Book book, String key) async {
     final cached = _durTitleCache[key];
     if (cached != null) return cached;
@@ -1955,7 +1955,7 @@ class _BookshelfScreenState extends State<BookshelfScreen> {
         unread > 0;
     if (showDot) cover = _withUnreadDot(cover, width, height);
 
-    // 对齐 E BookType.updateError：更新目录失败的书在封面左上角标红「!」，
+    // 更新目录失败的书在封面左上角标红「!」，
     // 是该标记的真实视觉消费点（标记由 _updateAllBooks 写入）。
     if (_updateErrorBooks.contains(updateErrorBookKey(book))) {
       final badgeCs = Theme.of(context).colorScheme;

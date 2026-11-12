@@ -1,6 +1,6 @@
-/// 偏好键名映射层：Android(legado-E) ↔ Flutter(legado_md3) 备份互通。
+/// 偏好键名映射层：Android ↔ Flutter(legado_md3) 备份互通。
 ///
-/// 逐字对齐 legado-E `constant/PreferKey.kt` 的**字符串值**（约 20 个键的
+/// 逐字**字符串值**（约 20 个键的
 /// 常量名 ≠ 键名，照常量名拼写会静默读不到值，见扫描报告 #29/#30）。
 ///
 /// Flutter 侧 `AppPrefs`（app_constants.dart）有 4 个自造键名与上游不一致，

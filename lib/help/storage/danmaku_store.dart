@@ -8,7 +8,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:legado_md3/data/local/app_database.dart';
 import 'package:legado_md3/data/model/v14_models.dart';
 
-/// 一条 B 站弹幕（对齐 legado-E `BiliDanmukuParser.kt` 的 `<d p="...">` 属性）。
+/// 一条 B 站弹幕。
 ///
 /// `p` 字段逗号分隔：`time,type,textSize,color,timestamp,pool,userHash,danmakuId`
 ///   * [timeMs] 出现时间（秒 × 1000，对齐 Kotlin `(values[0] * 1000).toLong()`）
@@ -73,7 +73,7 @@ class DanmakuItem {
   }
 }
 
-/// B 站 XML 弹幕解析器（对齐 legado-E `help/gsyVideo/BiliDanmukuParser.kt`）。
+/// B 站 XML 弹幕解析器。
 ///
 /// 纯 Dart 实现，不依赖 `xml` 包；供 F 组视频页在拿到弹幕 XML 后直接调用：
 /// ```dart
@@ -103,7 +103,7 @@ class BiliDanmakuParser {
   }
 
   /// 解析单条 `<d>` 的 `p` 属性与正文（供流式解析或 F 组单独使用）。
-  /// 字段不足时按 legado 默认值补齐，任何非数字都安全回退，不抛异常。
+  /// 字段不足时 默认值补齐，任何非数字都安全回退，不抛异常。
   static DanmakuItem? parseD(String p, String rawText) {
     if (p.trim().isEmpty) return null;
     final parts = p.split(',');

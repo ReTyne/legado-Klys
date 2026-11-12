@@ -173,7 +173,7 @@ class WebViewLegadoJs implements LegadoJs {
     return null;
   }
 
-  /// 构造验证码图片请求头（对齐 E VerificationCodeDialog 的
+  /// 构造验证码图片请求头（
   /// `OkHttpModelLoader.sourceOriginOption`）：书源 header + 会话 Cookie +
   /// Referer，保证带登录态 / 防盗链的验证码图能正常加载。
   Future<Map<String, String>> _verificationHeaders(String imageUrl) async {
@@ -262,7 +262,6 @@ class WebViewLegadoJs implements LegadoJs {
 
     // 内部协议：zip 解压 / TTF 字体反爬 / 下载 / 分享（书源 JS 通过同步 XHR 调用）
     if (url.startsWith('legado://zip')) return await _handleZip(uri);
-    // 对齐 E JsExtensions.kt / StringUtils.kt / HtmlFormatter.kt：
     // java.strToBytes / bytesToStr / htmlFormat / toNumChapter 转交 Dart 侧
     // JsTextUtils（Flutter 侧无 Java Charset.forName 全字符集能力，由
     // enough_convert + 纯 Dart 正则提供唯一权威语义，避免 JS/Dart 两套漂移）。
@@ -274,10 +273,16 @@ class WebViewLegadoJs implements LegadoJs {
     if (url.startsWith('legado://share')) return await _handleShare(request);
     if (url.startsWith('legado://file')) return await _handleFile(uri);
     if (url.startsWith('legado://webview')) return await _handleWebView(uri);
-    if (url.startsWith('legado://browser')) return await _handleBrowser(uri);
+    if (url.startsWith('legado://browser')) {
+      return await _handleBrowser(request, uri);
+    }
     if (url.startsWith('legado://searchbook')) return await _handleSearchBook(uri);
     if (url.startsWith('legado://openlogin')) return await _handleOpenLogin(uri);
-    // 对齐 E 的 java.openVideoPlayer：书源脚本发同步 XHR 到该协议，转交
+    if (url.startsWith('legado://refreshexplore')) return await _handleRefreshExplore();
+    if (url.startsWith('legado://verificationcode')) {
+      return await _handleVerificationCode(uri);
+    }
+    // 书源脚本发同步 XHR 到该协议，转交
     // MethodChannel('legado/video') 由 Kotlin 原生播放器打开（互相联系）。
     if (url.startsWith('legado://video')) return await _handleVideo(uri);
     // java.ajaxAll 批量并发 / java.webViewGetOverrideUrl 重定向嗅探
@@ -414,7 +419,7 @@ class WebViewLegadoJs implements LegadoJs {
           if (dir == null) return _textResponse('$kind 解压失败（原生通道不可用）', 502);
           return _textResponse(dir, 200);
         }
-        // op=bytes：对齐 E get7z/getRarByteArrayContent，返回原始字节的 base64，
+        // op=bytes： get7z/getRarByteArrayContent，返回原始字节的 base64，
         // 由 JS 侧 __b64ToBytes 还原为 Uint8Array，避免 utf8 解码破坏二进制。
         if (op == 'bytes') {
           final raw = await ArchiveNative.extractEntryBytes(bytes, kind, path);
@@ -428,7 +433,7 @@ class WebViewLegadoJs implements LegadoJs {
 
       final archive = ZipDecoder().decodeBytes(bytes);
       if (op == 'unarchive') {
-        // 整包解压到 legado_files/unzip/<md5(名)>，返回相对目录（对齐 E unArchiveFile）
+        // 整包解压到 legado_files/unzip/<md5(名)>，返回相对目录
         final dir = await _unzipDir(zipUrl);
         for (final f in archive.files) {
           if (!f.isFile) continue;
@@ -447,7 +452,7 @@ class WebViewLegadoJs implements LegadoJs {
           continue;
         }
         final data = f.content;
-        // op=bytes：对齐 E getZipByteArrayContent，返回条目的原始字节 base64。
+        // op=bytes： getZipByteArrayContent，返回条目的原始字节 base64。
         if (op == 'bytes') {
           final raw = data is String ? utf8.encode(data) : List<int>.from(data as List<int>);
           return _textResponse(base64Encode(raw), 200);
@@ -612,7 +617,7 @@ class WebViewLegadoJs implements LegadoJs {
 
   /// legado://video 协议：java.openVideoPlayer(url, title)。
   /// 转交 MethodChannel('legado/video') 的 Kotlin 原生视频播放器；通道不可用时
-  /// 返回 'false' 让书源脚本静默降级（对齐 E 的容错语义，不抛异常）。
+  /// 返回 'false' 让书源脚本静默降级。
   Future<iw.WebResourceResponse> _handleVideo(iw.WebUri uri) async {
     final vUri = Uri.tryParse(uri.toString());
     final url = vUri?.queryParameters['url'] ?? '';
@@ -658,7 +663,7 @@ class WebViewLegadoJs implements LegadoJs {
   }
 
   /// 单个 ajaxAll 请求：复用与 _intercept 相同的 Dio / CookieJar / 持久 Cookie
-  /// 逻辑，失败时返回 502 项（对齐 legado 单条请求失败仍占位返回）。
+  /// 逻辑，失败时返回 502 项。
   Future<Map<String, dynamic>> _fetchOneAjax(dynamic item) async {
     final map = item is Map ? item : const <String, dynamic>{};
     final url = map['url']?.toString() ?? '';
@@ -774,7 +779,7 @@ class WebViewLegadoJs implements LegadoJs {
     }
   }
 
-  /// 路径安全解析（对齐 E `JsExtensions.getFile` 的 canonicalPath 白名单）。
+  /// 路径安全解析。
   /// 书源可通过 path 传入 `../` 试图越界读取应用私有数据，这里做归一化后
   /// 强制落在 legado_files 目录内，越界返回 null。
   File? _safeFile(Directory base, String path) {
@@ -798,7 +803,7 @@ class WebViewLegadoJs implements LegadoJs {
       final dir = await getApplicationDocumentsDirectory();
       final base = Directory('${dir.path}/legado_files');
       if (!base.existsSync()) base.createSync(recursive: true);
-      // 字节读 / 文件信息：对齐 E JsExtensions.readFile / getFile。
+      // 字节读 / 文件信息： JsExtensions.readFile / getFile。
       // 返回 base64（字节）或 JSON（元信息），JS 侧还原成 Uint8Array / File 对象。
       if (op == 'readbytes' || op == 'stat') {
         final f = _safeFile(base, path);
@@ -837,7 +842,7 @@ class WebViewLegadoJs implements LegadoJs {
       }
       if (op == 'download' || op == 'writehex') {
         // java.downloadFile：下载/写入文件到 legado_files/<md5(url)>.<type>，
-        // 返回相对文件名（可被 readTxtFile 直接读取，对齐 E 的缓存相对路径语义）。
+        // 返回相对文件名。
         Uint8List bytes;
         String nameKey;
         if (op == 'writehex') {
@@ -862,7 +867,7 @@ class WebViewLegadoJs implements LegadoJs {
         return _textResponse(name, 200);
       }
       if (op == 'list') {
-        // java.getTxtInFolder：拼接文件夹内全部文本内容（对齐 E，读后删除目录）
+        // java.getTxtInFolder：拼接文件夹内全部文本内容
         final folder = Directory('${base.path}/$path');
         if (!folder.existsSync()) return _textResponse('[]', 200);
         final files = folder
@@ -961,26 +966,46 @@ class WebViewLegadoJs implements LegadoJs {
   /// legado://browser 协议：阻塞式网页交互（java.startBrowserAwait/showBrowser/
   /// reLoginView）。同步 XHR 会挂起书源 JS 直到用户关闭浏览器，与 legado 的
   /// 「等待验证结果」语义一致。关闭时回传页面 HTML 作为响应体，同时回收 Cookie。
-  Future<iw.WebResourceResponse> _handleBrowser(iw.WebUri uri) async {
+  Future<iw.WebResourceResponse> _handleBrowser(
+      iw.WebResourceRequest request, iw.WebUri uri) async {
     final url = uri.queryParameters['url'] ?? '';
     final title = uri.queryParameters['title'] ?? '登录';
     if (url.isEmpty) return _textResponse('', 400);
     final nav = appNavigatorKey.currentState;
     if (nav == null) return _textResponse('', 502);
+    // 书源可在第 4 个参数里给出自定义页面内容，此时直接渲染该 HTML。
+    String? initialHtml;
     try {
-      final html = await nav.push<String>(MaterialPageRoute(
-          builder: (_) =>
-              BrowserScreen(url: url, title: title, captureHtmlOnExit: true)));
+      final b64 =
+          (request.headers ?? const <String, String>{})['X-Legado-Body'] ?? '';
+      if (b64.isNotEmpty) {
+        final decoded = utf8.decode(base64Decode(b64), allowMalformed: true);
+        if (decoded.isNotEmpty) initialHtml = decoded;
+      }
+    } catch (_) {}
+    try {
+      final result = await nav.push<BrowserCaptureResult>(MaterialPageRoute(
+          builder: (_) => BrowserScreen(
+              url: url,
+              title: title,
+              captureHtmlOnExit: true,
+              initialHtml: initialHtml)));
+      // 渲染后的整页 DOM：书源设置中心等页面把结果写进 DOM/Cookie/hash，
+      // 必须回传运行后的内容，否则书源读到原始空白页面。
+      final html = result?.html ?? '';
+      final finalUrl = result?.finalUrl ?? '';
+      var cookieStr = result?.cookies ?? '';
       // 回收登录 Cookie（与 _onBrowserRequest 同逻辑）
-      var cookieStr = '';
-      try {
-        final cookies =
-            await iw.CookieManager.instance().getCookies(url: iw.WebUri(url));
-        cookieStr = cookies
-            .where((ck) => ck.name.isNotEmpty && ck.value != null)
-            .map((ck) => '${ck.name}=${ck.value}')
-            .join('; ');
-      } catch (_) {}
+      if (cookieStr.isEmpty) {
+        try {
+          final cookies =
+              await iw.CookieManager.instance().getCookies(url: iw.WebUri(url));
+          cookieStr = cookies
+              .where((ck) => ck.name.isNotEmpty && ck.value != null)
+              .map((ck) => '${ck.name}=${ck.value}')
+              .join('; ');
+        } catch (_) {}
+      }
       if (cookieStr.isNotEmpty) {
         CookieManager().saveFromResponse(url, [cookieStr]);
         final host = Uri.tryParse(url)?.host ?? '';
@@ -992,12 +1017,17 @@ class WebViewLegadoJs implements LegadoJs {
       if (cookieStr.isNotEmpty) {
         headers['X-Set-Cookie'] = cookieStr;
       }
+      // 页面最终地址（含 #config= 等运行期 hash）通过响应头回传，
+      // 桥侧据此让 StrResponse.url() 返回真实地址，书源可从 URL 取结果。
+      if (finalUrl.isNotEmpty) {
+        headers['X-Final-Url'] = Uri.encodeComponent(finalUrl);
+      }
       return iw.WebResourceResponse(
         statusCode: 200,
         reasonPhrase: 'OK',
         contentType: 'text/plain; charset=utf-8',
         contentEncoding: 'utf-8',
-        data: Uint8List.fromList(utf8.encode(html ?? '')),
+        data: Uint8List.fromList(utf8.encode(html)),
         headers: headers,
       );
     } catch (e) {
@@ -1041,6 +1071,40 @@ class WebViewLegadoJs implements LegadoJs {
         }
       } catch (_) {}
     }
+    return _textResponse('true', 200);
+  }
+
+  /// legado://verificationcode 协议：java.getVerificationCode(imageUrl)。
+  /// 阻塞等待人工输入，完成后把识别结果作为响应体同步回传书源脚本。
+  Future<iw.WebResourceResponse> _handleVerificationCode(iw.WebUri uri) async {
+    final imageUrl = uri.queryParameters['url'] ?? '';
+    var code = '';
+    final nav = appNavigatorKey.currentState;
+    if (nav != null && imageUrl.isNotEmpty) {
+      try {
+        final headers = await _verificationHeaders(imageUrl);
+        code = await nav.push<String>(MaterialPageRoute(
+                builder: (_) => VerificationCodeScreen(
+                    imageUrl: imageUrl,
+                    sourceName: source.jsName,
+                    headers: headers))) ??
+            '';
+      } catch (_) {
+        code = '';
+      }
+    }
+    return _textResponse(code, 200);
+  }
+
+  /// legado://refreshexplore：书源调用 refreshExplore() 后失效发现分类缓存，
+  /// 并通知发现页重新求值动态分类，使控件里改过的变量立即生效。
+  Future<iw.WebResourceResponse> _handleRefreshExplore() async {
+    final src = source;
+    if (src is BookSource) {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.remove('exploreKinds_${src.bookSourceUrl}');
+    }
+    notifyExploreRefresh();
     return _textResponse('true', 200);
   }
 
@@ -1090,7 +1154,7 @@ class WebViewLegadoJs implements LegadoJs {
     final loginHeader = prefs.getString('loginHeader_$srcUrl') ?? '';
     final kvJson = prefs.getString('jsKv_$srcUrl') ?? '{}';
     final cookies = await _collectCookies(req);
-    // 发现页 infoMap（对齐 legado InfoMap：按书源持久化，控件状态跨会话保留）
+    // 发现页 infoMap
     final infoMap = req.infoMap ?? await _loadInfoMap(srcUrl);
 
     var script = req.script;
@@ -1122,6 +1186,9 @@ class WebViewLegadoJs implements LegadoJs {
       'sourceEnabledExploreArg': req.source.jsEnabledExplore,
       'sourceHeaderArg': req.source.header ?? '',
       'sourceLoginUrlArg': req.source.loginUrl ?? '',
+      'sourceLoginUiArg': req.source is BookSource
+          ? ((req.source as BookSource).loginUi ?? '')
+          : '',
       'sourceJsLibArg': req.source.jsLib ?? '',
       'sourceBookUrlPatternArg': req.source.jsBookUrlPattern,
     };
@@ -1147,6 +1214,7 @@ class WebViewLegadoJs implements LegadoJs {
         enabledExplore: sourceEnabledExploreArg,
         header: sourceHeaderArg,
         loginUrl: sourceLoginUrlArg,
+        loginUi: sourceLoginUiArg,
         jsLib: sourceJsLibArg,
         bookUrlPattern: sourceBookUrlPatternArg
       };
@@ -1155,7 +1223,7 @@ class WebViewLegadoJs implements LegadoJs {
       globalThis.book = __wrapBook(bookArg);
       globalThis.chapter = __wrapChapter(chapterArg);
       globalThis.rssArticle = rssArticleArg;
-      // 发现页控件状态（对齐 legado infoMap 绑定，支持 infoMap['k'] 读写）
+      // 发现页控件状态
       globalThis.infoMap = new Proxy(infoMapArg || {}, {
         get: function (t, k) { return t[k]; },
         set: function (t, k, v) { t[k] = (v === null || v === undefined) ? "" : String(v); __state.infoMap[k] = t[k]; return true; }
@@ -1243,8 +1311,8 @@ class WebViewLegadoJs implements LegadoJs {
     if (kv is Map && kv.isNotEmpty) {
       await prefs.setString('jsKv_$srcUrl', jsonEncode(kv));
     }
-    await _persistBridgeCookies(env['cookies']);
-    // 发现页控件状态回写（对齐 legado InfoMap：按书源持久化，跨会话保留）。
+    await _persistBridgeCookies(env['cookies'], srcUrl);
+    // 发现页控件状态回写。
     // 桥只上报本次被写过的键，需与入参 infoMap 合并后再落盘，避免覆盖丢失。
     final envInfoMap = env['infoMap'];
     if (envInfoMap is Map && envInfoMap.isNotEmpty) {
@@ -1273,8 +1341,31 @@ class WebViewLegadoJs implements LegadoJs {
     );
   }
 
+  /// 按书源维度持久化的 cookie jar：书源 `cookie.setCookie(url, ...)` 里的
+  /// url 是书源自己给出的任意字符串（可能是完整域名、自定义服务器甚至
+  /// 非 URL 的逻辑名），无法只靠请求的 host 反推。因此把整个 jar 以书源
+  /// key 落盘，下次求值时整体恢复，保证 login() 写入的 qttoken 等登录态
+  /// 在跨按钮点击后仍然可读（否则「用户后台」会误判为未登录）。
+  static const String _cookieJarPrefix = 'jsCookieJar_';
+
   Future<Map<String, dynamic>> _collectCookies(JsEvalRequest req) async {
     final out = <String, dynamic>{};
+    final prefs = await SharedPreferences.getInstance();
+    final srcUrl = req.source.jsUrl;
+    // 1) 先恢复该书源上次持久化的完整 jar。
+    final savedJar = prefs.getString('$_cookieJarPrefix$srcUrl');
+    if (savedJar != null && savedJar.isNotEmpty) {
+      final parsed = _tryJson(savedJar);
+      if (parsed is Map) {
+        parsed.forEach((k, v) {
+          if (v != null && v.toString().isNotEmpty) {
+            out[k.toString()] = v.toString();
+          }
+        });
+      }
+    }
+    // 2) 再叠加按请求 host 从内存 CookieJar / DB 收集的实时值。
+    //    同名 key 以实时值优先，避免过期快照覆盖刚登录写入的 Cookie。
     final hosts = <String>{};
     for (final u in [req.baseUrl, req.source.jsUrl].whereType<String>()) {
       final h = Uri.tryParse(u)?.host;
@@ -1293,8 +1384,20 @@ class WebViewLegadoJs implements LegadoJs {
     return out;
   }
 
-  Future<void> _persistBridgeCookies(dynamic cookies) async {
+  Future<void> _persistBridgeCookies(dynamic cookies, String srcUrl) async {
     if (cookies is! Map) return;
+    // 整体落盘：保留书源自定义 host 的 Cookie，且支持 removeCookie 的删除语义
+    // （map 中不再出现的 key 会随整体覆盖被清掉）。
+    final prefs = await SharedPreferences.getInstance();
+    try {
+      final jar = <String, String>{};
+      cookies.forEach((k, v) {
+        if (v != null && v.toString().isNotEmpty) {
+          jar[k.toString()] = v.toString();
+        }
+      });
+      await prefs.setString('$_cookieJarPrefix$srcUrl', jsonEncode(jar));
+    } catch (_) {}
     for (final entry in cookies.entries) {
       final h = entry.key.toString();
       final v = entry.value.toString();
@@ -1321,7 +1424,7 @@ class WebViewLegadoJs implements LegadoJs {
     }
   }
 
-  /// 读取发现页 infoMap（对齐 legado InfoMap：按书源持久化，控件状态跨会话保留）。
+  /// 读取发现页 infoMap。
   /// key 与 source_engine 的 _infoMapKey 保持一致。
   Future<Map<String, String>> _loadInfoMap(String srcUrl) async {
     try {

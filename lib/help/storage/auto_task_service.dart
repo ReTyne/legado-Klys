@@ -7,7 +7,7 @@ import 'package:legado_md3/help/storage/download_service.dart';
 import 'package:legado_md3/help/storage/auto_update_service.dart';
 import 'package:legado_md3/help/storage/rule_sub_auto_update.dart';
 
-/// 定时任务调度器（对齐 legado 官方原版 AutoTaskScheduler / AutoTaskRunner）。
+/// 定时任务调度器。
 ///
 /// 应用运行期间以 1 分钟为节拍轮询 [AutoTask.nextRunTime]，到点执行动作并
 /// 回写 lastRunTime。动作全部复用项目既有服务，保证调用链真实连通：

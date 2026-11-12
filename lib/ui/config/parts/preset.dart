@@ -3,7 +3,7 @@
 part of '../theme_manage_screen.dart';
 
 
-/// 预设主题色（对齐 legado 取色习惯：Material 中低饱和主色 + 配套强调色/背景）
+/// 预设主题色
 class _Preset {
   final String name;
   final int primary;

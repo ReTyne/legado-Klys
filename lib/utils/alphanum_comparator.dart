@@ -1,4 +1,4 @@
-/// 自然排序比较器（对齐 legado-E utils/AlphanumComparator.kt）。
+/// 自然排序比较器。
 ///
 /// 把字符串按「数字块 / 非数字块」交替切分后比较：数字块按数值比较，
 /// 因此 "file2" < "file10"（字典序会得到相反结果）。
@@ -12,7 +12,7 @@ library;
 
 import 'dart:collection';
 
-/// 与 legado-E AlphanumComparator 等价的 Comparator<String>。
+/// 与  AlphanumComparator 等价的 Comparator<String>。
 class AlphanumComparator {
   const AlphanumComparator._();
 

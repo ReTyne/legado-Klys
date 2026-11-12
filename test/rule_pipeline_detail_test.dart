@@ -1,7 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:legado_md3/help/source/rule_pipeline.dart';
 
-/// 对照上游 AnalyzeRule 的内联规则语义链：
 /// splitPutRule（@put JSON）、replaceRegex（## / ###）、
 /// 捕获组 $N、`{{}}` 插值、`<js>` 与结尾 @js:。
 void main() {

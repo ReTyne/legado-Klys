@@ -19,7 +19,7 @@ void main() {
   });
 
   // ==================== 16 位标志体系 ====================
-  group('BookType 位标志逐字对齐 legado-E BookType.kt', () {
+  group('BookType 位标志逐字 BookType.kt', () {
     test('9 个位标志与 allBookType 掩码数值完全一致', () {
       expect(BookType.video, 4); // 0b100
       expect(BookType.text, 8); // 0b1000

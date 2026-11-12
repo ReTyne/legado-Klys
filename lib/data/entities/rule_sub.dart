@@ -6,7 +6,7 @@ class RuleSub {
   int enabled;
   int? lastUpdateTime;
   int? customOrder;
-  /// 是否启动期自动更新（对齐 legado-E 的 ruleSubsUp()）。
+  /// 是否启动期自动更新。
   int autoUpdate;
   /// 自动更新间隔（小时，0=每次启动检查）。
   int updateInterval;

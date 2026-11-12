@@ -53,9 +53,9 @@ class AutoUpdateService {
   // ===== 设置项 key（settings_screen / other_config_screen 写入）=====
   /// 只更新当前正在阅读/最近打开的书籍
   static const String keyOnlyUpdateRead = 'only_update_read';
-  /// 全局禁用书籍更新（legado-E Book.canUpdate 语义）
+  /// 全局禁用书籍更新
   static const String keyBookUpdateDisable = 'bk_bookUpdateDisable';
-  /// 更新并发线程数（legado-E 默认 32）
+  /// 更新并发线程数
   static const String keyUpdateThreads = 'bk_updateThreads';
   /// 打开应用时自动检查应用更新
   static const String keyAutoCheckUpdate = 'oc_autoCheckUpdate';
@@ -227,7 +227,7 @@ class AutoUpdateService {
     // bk_bookUpdateDisable：定时器启动后才打开开关时同样直接不跑
     if (prefs.getBool(keyBookUpdateDisable) ?? false) return 0;
 
-    // bk_updateThreads：更新并发上限（legado-E 默认 32，上限 64 防异常值）
+    // bk_updateThreads：更新并发上限
     final semaphore = _Semaphore((prefs.getInt(keyUpdateThreads) ?? 32).clamp(1, 64));
     // only_update_read：只更新当前正在阅读/最近打开的书
     final onlyUpdateRead = prefs.getBool(keyOnlyUpdateRead) ?? false;

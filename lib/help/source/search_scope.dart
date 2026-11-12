@@ -2,7 +2,7 @@ import 'package:legado_md3/data/local/app_database.dart';
 import 'package:legado_md3/data/model/book_source.dart';
 import 'package:legado_md3/help/config/app_config.dart';
 
-/// 搜索范围（对照 legado-E ui/book/search/SearchScope.kt）
+/// 搜索范围
 ///
 /// scope 三种形态：
 ///  - 空串：全部启用书源
@@ -75,7 +75,7 @@ class SearchScope {
 
   /// 范围对应的书源列表（按 customOrder 排序）
   ///
-  /// 对齐 E 的 getBookSourceParts：空范围取全部启用书源；单书源按 url 精确匹配；
+  /// 空范围取全部启用书源；单书源按 url 精确匹配；
   /// 分组范围取各分组启用书源并剔除空分组；最终为空则回退全部启用书源。
   Future<List<BookSource>> getBookSourceParts(
       DatabaseService db) async {

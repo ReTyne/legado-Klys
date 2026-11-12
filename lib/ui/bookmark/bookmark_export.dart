@@ -4,7 +4,7 @@ import 'dart:io';
 import 'package:path_provider/path_provider.dart';
 import 'package:legado_md3/data/model/bookmark.dart';
 
-/// 书签导出（对齐 legado-E TocViewModel.saveBookmark / saveBookmarkMd）：
+/// 书签导出：
 /// JSON 为全字段列表；Markdown 为 `## 书名 作者` + 每条 `#### 章节`/`###### 原文`/`###### 摘要`。
 /// 目录页书签 Tab（E: menu_export_bookmark / menu_export_md）与书签页共用，避免两处重复实现。
 Future<File> exportBookmarks(

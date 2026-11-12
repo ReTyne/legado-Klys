@@ -81,7 +81,7 @@ class _PdfReaderScreenState extends State<PdfReaderScreen>
     super.dispose();
   }
 
-  /// 对齐 legado-E `ReadBookActivity.upScreenTimeOut`：keep_light 为
+  /// keep_light 为
   /// 0=跟随系统、60/300/600=保持亮屏 N 秒、-1=常亮。
   /// Flutter 无系统 SCREEN_OFF_TIMEOUT 写权限，用 wakelock + Timer 等价实现。
   void _applyKeepLight(int seconds) {
