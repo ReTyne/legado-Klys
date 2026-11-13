@@ -21,6 +21,10 @@ class SourceNetworkEntry {
     this.responseBytes = 0,
     this.error,
     this.responsePreview,
+    this.requestHeaders,
+    this.responseHeaders,
+    this.finalUrl,
+    this.redirects = const <String>[],
   });
 
   final DateTime time;
@@ -34,6 +38,22 @@ class SourceNetworkEntry {
   final int responseBytes;
   final String? error;
   final String? responsePreview;
+
+  /// 实际发出的请求头（含自动附加的 Cookie / User-Agent）。
+  final Map<String, String>? requestHeaders;
+
+  /// 服务端返回的响应头（含 Set-Cookie / Content-Type / Location 等）。
+  final Map<String, String>? responseHeaders;
+
+  /// 重定向后的最终落地地址；无重定向时等于 [url]。
+  final String? finalUrl;
+
+  /// 重定向链（含起始地址，末项为 [finalUrl]）。
+  final List<String> redirects;
+
+  bool get hasRedirect =>
+      redirects.length > 1 ||
+      (finalUrl != null && finalUrl!.isNotEmpty && finalUrl != url);
 
   bool get ok =>
       error == null &&
@@ -64,6 +84,10 @@ class SourceNetworkEntry {
         'responseBytes': responseBytes,
         'error': error,
         'responsePreview': responsePreview,
+        if (requestHeaders != null) 'requestHeaders': requestHeaders,
+        if (responseHeaders != null) 'responseHeaders': responseHeaders,
+        if (finalUrl != null) 'finalUrl': finalUrl,
+        if (redirects.isNotEmpty) 'redirects': redirects,
       };
 }
 
@@ -134,6 +158,10 @@ class SourceNetworkLog {
     String? error,
     List<int>? body,
     String? text,
+    Map<String, String>? requestHeaders,
+    Map<String, String>? responseHeaders,
+    String? finalUrl,
+    List<String>? redirects,
   }) {
     String? preview;
     final bytes = body?.length ?? text?.length ?? 0;
@@ -157,6 +185,10 @@ class SourceNetworkLog {
       responseBytes: bytes,
       error: error,
       responsePreview: preview,
+      requestHeaders: requestHeaders,
+      responseHeaders: responseHeaders,
+      finalUrl: finalUrl,
+      redirects: redirects ?? const <String>[],
     ));
   }
 

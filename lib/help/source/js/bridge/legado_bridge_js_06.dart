@@ -219,7 +219,8 @@ const String legadoBridgeJsPart06 = r'''    var b = bytes.slice();
     return new TextDecoder("utf-8").decode(b);
   }
   function __aesKeyBytes(key) {
-    var kb = __utf8ToBytes(String(key));
+    // 兼容字符串与字节数组（ArgsBase64 便捷方法会传入解码后的字节）。
+    var kb = __symArgBytes(key);
     var sizes = [16, 24, 32];
     for (var i = 0; i < sizes.length; i++) {
       if (kb.length <= sizes[i]) {
@@ -231,7 +232,7 @@ const String legadoBridgeJsPart06 = r'''    var b = bytes.slice();
     return Uint8Array.from(kb.slice(0, 32));
   }
   function __aesIv(iv) {
-    var b = __utf8ToBytes(String(iv || ""));
+    var b = __symArgBytes(iv || "");
     var out = new Uint8Array(16);
     out.set(b.slice(0, 16));
     return out;
@@ -591,6 +592,10 @@ const String legadoBridgeJsPart06 = r'''    var b = bytes.slice();
       if (arg.body !== undefined && arg.body !== null) opt.body = arg.body;
       if (arg.data !== undefined && arg.data !== null) opt.body = arg.data;
       if (arg.webView) opt.webView = true;
+      if (arg.timeout !== undefined && arg.timeout !== null) opt.timeout = arg.timeout;
+      if (arg.followRedirects !== undefined && arg.followRedirects !== null) {
+        opt.followRedirects = arg.followRedirects;
+      }
     } else if (typeof arg === "string") {
       var comma = arg.indexOf(",{");
       if (comma >= 0) {
@@ -602,6 +607,10 @@ const String legadoBridgeJsPart06 = r'''    var b = bytes.slice();
           if (o.body !== undefined && o.body !== null) opt.body = o.body;
           if (o.charset) opt.charset = o.charset;
           if (o.webView) opt.webView = true;
+          if (o.timeout !== undefined && o.timeout !== null) opt.timeout = o.timeout;
+          if (o.followRedirects !== undefined && o.followRedirects !== null) {
+            opt.followRedirects = o.followRedirects;
+          }
         } catch (e) {}
       }
       var m = /,(POST|GET|PUT|DELETE)(?::([\s\S]*))?$/i.exec(url);
@@ -640,6 +649,17 @@ const String legadoBridgeJsPart06 = r'''    var b = bytes.slice();
     if (!__hasHeader(headers, "Cookie") && !__hasHeader(headers, "cookie")) {
       var c = cookie.getCookie(url);
       if (c) headers["Cookie"] = c;
+    }
+    // 单次请求选项透传给原生拦截层（仅 http(s)，内部协议不走）。
+    // 原生读后即从转发头里移除，不会泄漏到目标站。
+    if (/^https?:\/\//i.test(url)) {
+      if (opt.timeout !== undefined && opt.timeout !== null && Number(opt.timeout) > 0) {
+        headers["X-Legado-Timeout"] = String(Math.floor(Number(opt.timeout)));
+      }
+      if (opt.followRedirects !== undefined && opt.followRedirects !== null) {
+        headers["X-Legado-FollowRedirects"] = opt.followRedirects ? "1" : "0";
+      }
+      if (opt.webView) headers["X-Legado-WebView"] = "1";
     }
     var x = new XMLHttpRequest();
     x.open(method, url, false);
@@ -688,6 +708,87 @@ const String legadoBridgeJsPart06 = r'''    var b = bytes.slice();
   function __hasHeader(headers, name) {
     var lk = name.toLowerCase();
     return Object.keys(headers).some(function (k) { return k.toLowerCase() === lk; });
+  }
+
+  // ---- 原生对称加密通道（DES / 3DES / DESede / SM4 / RC4）----
+  // 字节数组 → base64，用于把 key / iv / data 封送到 legado://crypto。
+  function __bytesToB64(bytes) {
+    var arr = (bytes instanceof Uint8Array) ? bytes : Uint8Array.from(bytes || []);
+    var s = "";
+    for (var i = 0; i < arr.length; i++) s += String.fromCharCode(arr[i] & 0xff);
+    return btoa(s);
+  }
+  // 通用参数 → 字节数组：字符串按 UTF-8，字节数组原样，其余转字符串。
+  function __symArgBytes(v) {
+    if (v === null || v === undefined || v === "") return new Uint8Array(0);
+    if (typeof v === "string") return __utf8ToBytes(v);
+    if (v instanceof Uint8Array) return v;
+    if (typeof v === "object" && typeof v.length === "number") return Uint8Array.from(v);
+    return __utf8ToBytes(String(v));
+  }
+  // 密文参数 → 字节数组：字符串自动识别 hex / base64，字节数组原样。
+  function __symCipherBytes(v) {
+    if (typeof v === "string") {
+      var s = v.trim();
+      if (/^[0-9a-fA-F]+$/.test(s) && s.length % 2 === 0) return __hexToBytes(s);
+      try { return __b64ToBytes(s); } catch (e) {}
+      return __utf8ToBytes(s);
+    }
+    return __symArgBytes(v);
+  }
+  // 同步调用原生 SymmetricCrypto，返回处理后字节数组。
+  function __nativeCrypto(op, transformation, keyBytes, ivBytes, dataBytes) {
+    var payload = {
+      op: op,
+      transformation: String(transformation),
+      key: __bytesToB64(keyBytes || []),
+      iv: ivBytes && ivBytes.length ? __bytesToB64(ivBytes) : "",
+      data: __bytesToB64(dataBytes || [])
+    };
+    var ret = __doXhr("legado://crypto", { method: "POST", body: payload }, null, null);
+    return __b64ToBytes(String(ret == null ? "" : ret));
+  }
+
+  // ---- 字体查询对象 ----
+  // 把原生解析出的字体数据包装成带方法的对象：
+  // unicodeToGlyphId / unicodeToGlyph / glyphToUnicode 三张映射 +
+  // getGlyfIdByUnicode / getGlyfByUnicode / getUnicodeByGlyf / isBlankUnicode /
+  // getReplacementMap，同时把替换表键值平铺到对象上，兼容按 map 遍历的书源。
+  function __makeQueryTTF(d) {
+    var blank = { 9: 1, 32: 1, 160: 1, 8194: 1, 8195: 1, 8199: 1,
+      8202: 1, 8203: 1, 8204: 1, 8205: 1, 8239: 1, 8287: 1 };
+    var u2gid = d.unicodeToGlyphId || {};
+    var u2g = d.unicodeToGlyph || {};
+    var g2u = d.glyphToUnicode || {};
+    var repl = d.replacement || {};
+    var obj = {
+      unicodeToGlyphId: u2gid,
+      unicodeToGlyph: u2g,
+      glyphToUnicode: g2u,
+      getGlyfIdByUnicode: function (u) {
+        var v = u2gid[String(u)];
+        return v == null ? 0 : (parseInt(v, 10) || 0);
+      },
+      getGlyfByUnicode: function (u) {
+        var v = u2g[String(u)];
+        return v == null ? null : v;
+      },
+      getUnicodeByGlyf: function (g) {
+        var v = g2u[String(g)];
+        return v == null ? 0 : (parseInt(v, 10) || 0);
+      },
+      isBlankUnicode: function (u) { return !!blank[parseInt(u, 10)]; },
+      getReplacementMap: function () { return repl; },
+      getGlyfById: function (id) {
+        var k = String(id);
+        for (var u in u2gid) { if (u2gid[u] === k) return u2g[u]; }
+        return null;
+      }
+    };
+    Object.keys(repl).forEach(function (k) {
+      if (!(k in obj)) obj[k] = repl[k];
+    });
+    return obj;
   }
 
   // ---- StrResponse----

@@ -682,6 +682,10 @@ class BookSourceEngine {
   // 非贪婪捕获在第一个 </js> 提前收尾、把脚本腰斩（正文加载不出的隐患）。
   static final RegExp _leadingJs = RegExp(r'^\s*<js>([\s\S]*)</js>');
   static final RegExp _wholeJs = RegExp(r'^\s*<js>([\s\S]*)</js>\s*$');
+  // @webjs:脚本 —— 规则内嵌 WebView 脚本，加载当前内容为页面后执行。
+  // 前缀大小写不敏感，脚本至少 5 个字符，匹配到规则串末尾。
+  static final RegExp _webJsRule =
+      RegExp(r'@webjs:([\s\S]+)', caseSensitive: false);
   static final RegExp _mustache = RegExp(r'\{\{([\s\S]*?)\}\}');
 
   /// 求值一段书源脚本，返回字符串结果（任何异常都安全降级为 null）。
@@ -734,6 +738,43 @@ class BookSourceEngine {
           baseUrl: baseUrl);
     }
   }
+
+  /// 执行规则内嵌的 `@webjs:` 脚本：把 [html]（当前内容）作为页面加载，
+  /// 注入 `window.result`（上一规则结果）、`window.baseUrl` 等全局，执行脚本
+  /// 取返回值。页面渲染失败/超时返回空串，由调用方降级。
+  Future<String> _evalWebJs(
+    BookSource source,
+    String html,
+    String script, {
+    dynamic result,
+    String? baseUrl,
+  }) async {
+    final resultStr = result is String
+        ? result
+        : (result == null ? '' : jsonEncode(result));
+    Map<String, String>? headers;
+    if (_sourceHeaders.isNotEmpty && !_sourceHeaders.containsKey('__js__')) {
+      headers = _sourceHeaders.map((k, v) => MapEntry(k, v.toString()));
+    }
+    final effectiveBase = (baseUrl != null && baseUrl.isNotEmpty)
+        ? baseUrl
+        : (_pipeline.baseUrl.isNotEmpty
+            ? _pipeline.baseUrl
+            : source.bookSourceUrl);
+    return HeadlessWebViewFetcher.fetchWebJs(
+      baseUrl: effectiveBase,
+      html: html,
+      javaScript: script,
+      result: resultStr,
+      headers: headers,
+      sourceKey: source.bookSourceUrl,
+    );
+  }
+
+  /// 从规则串中提取 `@webjs:` 脚本（去掉前缀及其之前的连接符文本），
+  /// 供异步求值入口识别。匹配不到返回 null。
+  static String? webJsScriptOf(String rule) =>
+      _webJsRule.firstMatch(rule)?.group(1)?.trim();
 
   /// 处理规则中的 `@put:` / `@get:` 变量语法（供异步 JS 路径复用）：
   /// * 先执行所有顶层 `@put:{key:rule}`（rule 对当前内容求值后存入变量表），
@@ -844,6 +885,16 @@ class BookSourceEngine {
     if (resolved.value != null) return resolved.value;
     final r = resolved.rule.trim();
     if (r.isEmpty) return null;
+    // @webjs: —— 用无头 WebView 加载当前内容为页面并注入 window.result，
+    // 执行脚本取返回值（脚本可访问 document / result / baseUrl 等）。
+    final webJsScript = webJsScriptOf(r);
+    if (webJsScript != null && webJsScript.isNotEmpty) {
+      final html = item is String ? item : jsonEncode(item);
+      final v = await _evalWebJs(source, html, webJsScript,
+          result: item, baseUrl: baseUrl);
+      if (v.isEmpty) return null;
+      return _pipeline.applyFieldOps(v, _pipeline.parseFieldParts(r).ops);
+    }
     final parts = _pipeline.parseFieldParts(r);
     var selector = parts.selector.trim();
     String? value;
@@ -942,9 +993,13 @@ class BookSourceEngine {
       if (_isInnerRuleExpr(expr)) {
         if (node is String) {
           // 原始文本节点（HTML/JSON 字符串）：XPath/CSS/正则/JSONPath 统一解析
+          final wj = webJsScriptOf(expr);
           if (expr.startsWith('@js:')) {
             v = await _evalJs(source, expr.substring(4), result: node,
                 baseUrl: baseUrl, key: key, page: page);
+          } else if (wj != null && wj.isNotEmpty) {
+            v = await _evalWebJs(source, node.toString(), wj,
+                result: node, baseUrl: baseUrl);
           } else if (expr.startsWith('<js>')) {
             final end = expr.lastIndexOf('</js>');
             final script = end > 4 ? expr.substring(4, end) : expr.substring(4);
@@ -1644,6 +1699,14 @@ class BookSourceEngine {
     if (resolved.value != null) return resolved.value;
     final r = resolved.rule.trim();
     if (r.isEmpty) return null;
+    // @webjs: —— 用无头 WebView 加载当前内容为页面并注入 window.result，
+    // 执行脚本取返回值。
+    final webJsScript = webJsScriptOf(r);
+    if (webJsScript != null && webJsScript.isNotEmpty) {
+      final v = await _evalWebJs(source, content, webJsScript,
+          result: content, baseUrl: baseUrl);
+      return v.isEmpty ? null : v;
+    }
     // 先匹配「纯整块 <js>…</js>」：带 \s*$ 锚定，能正确捕获脚本内
     // 含 </js> 字面量的整块规则；只有命中不了（规则以 <js> 开头但带
     // $.content 等后缀）才落到前置 <js> 分支。

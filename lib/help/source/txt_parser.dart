@@ -260,7 +260,7 @@ class TxtParserService {
         buf.add(line);
         bufBytes += lineBytes;
         offset += line.length + 1;
-        // 与 E 一致：累计达到 chunkBytes 后在当前行边界切分
+        // 累计达到 chunkBytes 后在当前行边界切分
         if (bufBytes >= chunkBytes) {
           flush(offset);
           chunkStart = offset;

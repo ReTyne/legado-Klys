@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:collection';
+import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart' as iw;
@@ -388,6 +389,202 @@ class HeadlessWebViewFetcher {
     );
     await safeDispose();
     return result;
+  }
+
+  /// 规则 `@webjs:` 求值：把当前内容 [html] 作为页面加载，注入
+  /// `window.result`（上一规则结果的 JSON）与书源常用全局，执行 [javaScript]
+  /// 并把返回值还原为字符串。加载/执行失败或超时返回空串，绝不抛异常。
+  /// 与 [fetch] 共用串行队列与熔断。
+  static Future<String> fetchWebJs({
+    required String baseUrl,
+    required String html,
+    required String javaScript,
+    String result = '',
+    int timeoutMs = 10000,
+    Map<String, String>? headers,
+    String? userAgent,
+    String sourceKey = '',
+  }) {
+    final origin = _webJsBase(baseUrl);
+    if (_broken || kIsWeb || origin.isEmpty || javaScript.trim().isEmpty) {
+      return Future.value('');
+    }
+    final completer = Completer<String>();
+    final previous = _queue;
+    _queue = previous
+        .catchError((_) {})
+        .then((_) => _guardedWebJs(
+              origin: origin,
+              html: html,
+              javaScript: javaScript,
+              result: result,
+              timeoutMs: timeoutMs,
+              headers: headers,
+              userAgent: userAgent,
+              sourceKey: sourceKey,
+            ))
+        .then((v) {
+          if (!completer.isCompleted) completer.complete(v);
+        })
+        .catchError((_) {});
+    return completer.future;
+  }
+
+  /// 把 baseUrl 规整为可作为 initialData 页面源的 http(s) 地址，
+  /// 避免 about:blank 之类的 opaque origin 让页面脚本受限。
+  static String _webJsBase(String baseUrl) {
+    final uri = Uri.tryParse(baseUrl.trim());
+    if (uri != null && (uri.scheme == 'http' || uri.scheme == 'https')) {
+      return uri.replace(query: '', fragment: '').toString();
+    }
+    return '';
+  }
+
+  static Future<String> _guardedWebJs({
+    required String origin,
+    required String html,
+    required String javaScript,
+    required String result,
+    required int timeoutMs,
+    Map<String, String>? headers,
+    String? userAgent,
+    String sourceKey = '',
+  }) async {
+    try {
+      return await _runWebJs(
+        origin: origin,
+        html: html,
+        javaScript: javaScript,
+        result: result,
+        timeoutMs: timeoutMs,
+        headers: headers,
+        userAgent: userAgent,
+        sourceKey: sourceKey,
+      );
+    } catch (e) {
+      debugPrint('HeadlessWebViewFetcher.fetchWebJs 失败: $e');
+      return '';
+    }
+  }
+
+  static Future<String> _runWebJs({
+    required String origin,
+    required String html,
+    required String javaScript,
+    required String result,
+    required int timeoutMs,
+    Map<String, String>? headers,
+    String? userAgent,
+    String sourceKey = '',
+  }) async {
+    final done = Completer<String>();
+    var settled = false;
+    var disposed = false;
+    iw.HeadlessInAppWebView? headless;
+
+    void finish(String value) {
+      if (settled) return;
+      settled = true;
+      if (!done.isCompleted) done.complete(value);
+    }
+
+    Future<void> safeDispose() async {
+      if (disposed) return;
+      disposed = true;
+      final h = headless;
+      if (h == null) return;
+      try {
+        await h.dispose();
+      } catch (_) {}
+    }
+
+    // 注入 window.result（JSON 字符串）与 baseUrl / source 常用全局。
+    // result 用 JSON 字符串字面量，书源脚本可 JSON.parse(result) 或直接用字符串。
+    final inject = <String>[
+      'window.result = ${jsonEncode(result)};',
+      'window.baseUrl = ${jsonEncode(origin)};',
+      'window.sourceKey = ${jsonEncode(sourceKey)};',
+      'window.content = ${jsonEncode(html)};',
+    ].join('\n');
+
+    final scripts = <iw.UserScript>[
+      iw.UserScript(
+        source: inject,
+        injectionTime: iw.UserScriptInjectionTime.AT_DOCUMENT_START,
+      ),
+    ];
+
+    try {
+      headless = iw.HeadlessInAppWebView(
+        initialSettings: iw.InAppWebViewSettings(
+          javaScriptEnabled: true,
+          domStorageEnabled: true,
+          supportMultipleWindows: false,
+          javaScriptCanOpenWindowsAutomatically: false,
+          mediaPlaybackRequiresUserGesture: true,
+          userAgent: userAgent ?? _defaultUserAgent,
+        ),
+        initialData: iw.InAppWebViewInitialData(
+          data: html.isEmpty ? '<html><body></body></html>' : html,
+          mimeType: 'text/html',
+          encoding: 'utf-8',
+          baseUrl: iw.WebUri(origin),
+          historyUrl: iw.WebUri(origin),
+        ),
+        initialUserScripts: UnmodifiableListView(scripts),
+        onLoadStop: (controller, loadedUrl) async {
+          try {
+            final res = await controller.evaluateJavascript(source: javaScript);
+            finish(_decodeWebJsValue(res));
+          } catch (_) {
+            finish('');
+          } finally {
+            await safeDispose();
+          }
+        },
+        onReceivedError: (controller, request, error) async {
+          if (request.isForMainFrame == false) return;
+          finish('');
+          await safeDispose();
+        },
+      );
+      await headless.run();
+    } catch (_) {
+      _broken = true;
+      finish('');
+      await safeDispose();
+      return '';
+    }
+
+    final value = await done.future.timeout(
+      Duration(milliseconds: timeoutMs <= 0 ? 10000 : timeoutMs),
+      onTimeout: () {
+        settled = true;
+        safeDispose();
+        return '';
+      },
+    );
+    await safeDispose();
+    return value;
+  }
+
+  /// evaluateJavascript 返回值：字符串为 JSON 带引号字面量，需去引号反转义；
+  /// 数字/布尔/null 直接取字符串；null 视为空。
+  static String _decodeWebJsValue(dynamic raw) {
+    if (raw == null) return '';
+    if (raw is String) {
+      if (raw == 'null' || raw.isEmpty) return '';
+      if (raw.length >= 2 && raw.startsWith('"') && raw.endsWith('"')) {
+        try {
+          final decoded = jsonDecode(raw);
+          return decoded is String ? decoded : decoded.toString();
+        } catch (_) {
+          return raw.substring(1, raw.length - 1);
+        }
+      }
+      return raw;
+    }
+    return raw.toString();
   }
 
   /// 把用户脚本包装为自执行异步函数：非空结果写入

@@ -495,6 +495,55 @@ const String legadoBridgeJsPart07 = r'''  function __jsoupResponse(url, text, co
     aesEncodeToString: function (text, key, transformation, iv) {
       return __aesEncryptToString(text, key, transformation, iv);
     },
+    // 便捷加解密：统一委托 createSymmetricCrypto，DES/3DES 由此获得原生实现。
+    aesDecodeToByteArray: function (data, key, transformation, iv) {
+      return java.createSymmetricCrypto(transformation, key, iv).decrypt(data);
+    },
+    aesBase64DecodeToByteArray: function (data, key, transformation, iv) {
+      return java.createSymmetricCrypto(transformation, key, iv).decrypt(data);
+    },
+    aesDecodeArgsBase64Str: function (data, key, mode, padding, iv) {
+      return java.createSymmetricCrypto("AES/" + mode + "/" + padding,
+        __b64ToBytes(String(key)), __b64ToBytes(String(iv))).decryptStr(data);
+    },
+    aesEncodeToByteArray: function (data, key, transformation, iv) {
+      return java.createSymmetricCrypto(transformation, key, iv).encrypt(data);
+    },
+    aesEncodeToBase64ByteArray: function (data, key, transformation, iv) {
+      return __utf8ToBytes(java.createSymmetricCrypto(transformation, key, iv).encryptBase64(data));
+    },
+    aesEncodeToBase64String: function (data, key, transformation, iv) {
+      return java.createSymmetricCrypto(transformation, key, iv).encryptBase64(data);
+    },
+    aesEncodeArgsBase64Str: function (data, key, mode, padding, iv) {
+      return java.createSymmetricCrypto("AES/" + mode + "/" + padding, key, iv).encryptBase64(data);
+    },
+    desDecodeToString: function (data, key, transformation, iv) {
+      return java.createSymmetricCrypto(transformation, key, iv).decryptStr(data);
+    },
+    desBase64DecodeToString: function (data, key, transformation, iv) {
+      return java.createSymmetricCrypto(transformation, key, iv).decryptStr(data);
+    },
+    desEncodeToString: function (data, key, transformation, iv) {
+      return java.createSymmetricCrypto(transformation, key, iv).encryptBase64(data);
+    },
+    desEncodeToBase64String: function (data, key, transformation, iv) {
+      return java.createSymmetricCrypto(transformation, key, iv).encryptBase64(data);
+    },
+    tripleDESDecodeStr: function (data, key, mode, padding, iv) {
+      return java.createSymmetricCrypto("DESede/" + mode + "/" + padding, key, iv).decryptStr(data);
+    },
+    tripleDESDecodeArgsBase64Str: function (data, key, mode, padding, iv) {
+      return java.createSymmetricCrypto("DESede/" + mode + "/" + padding,
+        __b64ToBytes(String(key)), __utf8ToBytes(String(iv))).decryptStr(data);
+    },
+    tripleDESEncodeBase64Str: function (data, key, mode, padding, iv) {
+      return java.createSymmetricCrypto("DESede/" + mode + "/" + padding, key, iv).encryptBase64(data);
+    },
+    tripleDESEncodeArgsBase64Str: function (data, key, mode, padding, iv) {
+      return java.createSymmetricCrypto("DESede/" + mode + "/" + padding,
+        __b64ToBytes(String(key)), __utf8ToBytes(String(iv))).encryptBase64(data);
+    },
 
     // 设备 / UA
     // deviceID 为 legado iOS 专属 API：安卓/本实现抛错，使书源的

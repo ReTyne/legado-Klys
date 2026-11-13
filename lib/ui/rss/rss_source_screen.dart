@@ -10,7 +10,7 @@ import 'package:legado_md3/ui/widgets/app_widgets.dart';
 
 /// 订阅源管理 ——  `ui/rss/source/RssSourceActivity`。
 ///
-/// 功能位置与 E 一致：
+/// 功能分区：
 /// - 列表项：启用开关 + 名称/地址 + 编辑 + 更多菜单（对齐 item_rss_source.xml）
 /// - 更多菜单：登录 / 刷新 / 复制JSON / 分享 / 删除
 /// - 顶栏：新增订阅源 + 分组过滤（全部/启用/禁用/未分组/各分组）

@@ -347,7 +347,7 @@ const String legadoBridgeJsPart08 = r'''    androidId: function () { return __st
       } catch (e) { return ""; }
     },
 
-    // 字体反爬（占位）
+    // 字体反爬：返回带映射与方法（getGlyfByUnicode 等）的字体对象。
     queryTTF: function (data, useCache) {
       try {
         var b64 = String(data == null ? "" : data);
@@ -361,7 +361,7 @@ const String legadoBridgeJsPart08 = r'''    androidId: function () { return __st
         }
         if (!b64) return null;
         var resp = __doXhr("legado://ttf", { method: "POST", body: b64 });
-        return JSON.parse(resp);
+        return __makeQueryTTF(JSON.parse(resp));
       } catch (e) { return null; }
     },
     getZipStringContent: function (url, path, charset) {
@@ -381,14 +381,14 @@ const String legadoBridgeJsPart08 = r'''    androidId: function () { return __st
     },
 
     // ---- 字节版压缩包读取----
-    // E 返回 ByteArray；WebView 里等价为 Uint8Array，供书源处理字体/图片/加密数据。
+    // 返回 Uint8Array，供书源处理字体/图片/加密数据。
     getZipByteArrayContent: function (url, path) { return __archiveBytes(url, path, "zip"); },
     get7zByteArrayContent: function (url, path) { return __archiveBytes(url, path, "7z"); },
     getRarByteArrayContent: function (url, path) { return __archiveBytes(url, path, "rar"); },
 
     // ---- 本地文件----
-    // E 返回 java.io.File；这里返回带 exists/length/readBytes/readText/
-    // getAbsolutePath 的 File-like 对象，覆盖书源对 File 的常用调用。
+    // 返回带 exists/length/readBytes/readText/getAbsolutePath 的 File-like 对象，
+    // 覆盖书源对 File 的常用调用。
     getFile: function (path) { return __makeFile(path); },
     readFile: function (path) {
       try {
@@ -398,7 +398,7 @@ const String legadoBridgeJsPart08 = r'''    androidId: function () { return __st
       } catch (e) { return null; }
     },
 
-    // E 已标记 @Deprecated 但老书源仍在调用，行为与 E 一致：直接委托 queryTTF。
+    // 兼容别名：直接委托 queryTTF。
     queryBase64TTF: function (data, useCache) { return this.queryTTF(data, useCache); },
 
     unzipFile: function (zipPath) {
@@ -491,9 +491,34 @@ const String legadoBridgeJsPart08 = r'''    androidId: function () { return __st
     // 对称加密： JsExtensions.createSymmetricCrypto(transformation, key, iv)
     // 返回 {encrypt, encryptBase64, encryptHex, decrypt, decryptStr}
     createSymmetricCrypto: function (transformation, key, iv) {
+      var t = String(transformation || "AES");
+      var alg = t.split("/")[0].toUpperCase().replace(/[-\s]/g, "");
+      var isAes = (alg === "AES" || alg === "" || alg === "RIJNDAEL");
+      // 非 AES 算法（DES / 3DES / DESede / SM4 / RC4）委托原生实现，
+      // 覆盖纯 JS 版不支持的分组长度与密钥编排；接口与 AES 版一致。
+      if (!isAes && (alg === "DES" || alg === "DESEDE" || alg === "3DES" ||
+          alg === "TRIPLEDES" || alg === "SM4" || alg === "SMS4" ||
+          alg === "RC4" || alg === "ARCFOUR")) {
+        var nkb = __symArgBytes(key);
+        var nivb = __symArgBytes(iv);
+        var nEnc = function (data) {
+          return __nativeCrypto("encrypt", t, nkb, nivb, __symArgBytes(data));
+        };
+        var nDec = function (data) {
+          return __nativeCrypto("decryptBytes", t, nkb, nivb, __symCipherBytes(data));
+        };
+        return {
+          encrypt: function (data) { return Array.from(nEnc(data)); },
+          encryptBase64: function (data) { return __bytesToB64(nEnc(data)); },
+          encryptHex: function (data) { return __bytesToHex(nEnc(data)); },
+          decrypt: function (data) { return Array.from(nDec(data)); },
+          decryptByteArray: function (data) { return Array.from(nDec(data)); },
+          decryptStr: function (data) { return __bytesToUtf8(nDec(data)); }
+        };
+      }
       var kb = __aesKeyBytes(key);
       var ivb = __aesIv(iv);
-      var mode = String(transformation || "AES").toUpperCase();
+      var mode = t.toUpperCase();
       var useCbc = mode.indexOf("CBC") >= 0;
       function encryptBytes(data) {
         var text = (typeof data === "string") ? data : String(data);

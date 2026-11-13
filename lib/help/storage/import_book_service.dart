@@ -95,7 +95,7 @@ class ImportBookService {
     if (extracted.isEmpty) {
       throw '压缩包内未找到可导入的书籍文件（支持 txt/epub/umd/pdf/mobi/azw3/azw）';
     }
-    // 与 E 一致：一次导入包内全部书籍，origin 标记来源压缩包
+    // 一次导入包内全部书籍，origin 标记来源压缩包
     ImportResult? first;
     var count = 0;
     for (final f in extracted) {

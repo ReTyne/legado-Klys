@@ -107,7 +107,7 @@ String onlineImportLink(Uri uri) {
 ///
 /// 覆盖书源简介最常见子集：标题、`**粗**`/`*斜*`/`` `码` ``、链接、图片、
 /// 无序/有序列表、引用、分隔线、围栏代码块、表格、段落。够用即可，
-/// 不追求 CommonMark 全兼容（E 用 Markwon，能力更强，此处为降级实现）。
+/// 不追求 CommonMark 全兼容，采用轻量的降级实现。
 String markdownToHtml(String md) {
   final lines = const LineSplitter().convert(md.replaceAll('\r\n', '\n'));
   final buf = StringBuffer();

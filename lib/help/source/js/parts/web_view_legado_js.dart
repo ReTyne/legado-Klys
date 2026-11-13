@@ -268,6 +268,9 @@ class WebViewLegadoJs implements LegadoJs {
     if (url.startsWith('legado://charset')) {
       return await _handleCharset(request, uri);
     }
+    if (url.startsWith('legado://crypto')) {
+      return await _handleCrypto(request);
+    }
     if (url.startsWith('legado://ttf')) return await _handleTtf(request);
     if (url.startsWith('legado://download')) return await _handleDownload(uri);
     if (url.startsWith('legado://share')) return await _handleShare(request);
@@ -326,7 +329,59 @@ class WebViewLegadoJs implements LegadoJs {
       if (ck != null && ck.isNotEmpty) headers['Cookie'] = ck;
     }
 
+    // 书源 JS 可通过自定义头单次指定请求选项：超时、是否跟随重定向、
+    // 是否用 WebView 渲染。这些头不转发给目标站，取出后即从 headers 移除。
+    int? optTimeoutMs;
+    var optFollowRedirects = true;
+    var optWebView = false;
+    final tRaw = headers.remove('X-Legado-Timeout');
+    if (tRaw != null) optTimeoutMs = int.tryParse(tRaw);
+    final frRaw = headers.remove('X-Legado-FollowRedirects');
+    if (frRaw != null) {
+      optFollowRedirects = frRaw != '0' && frRaw.toLowerCase() != 'false';
+    }
+    final wvRaw = headers.remove('X-Legado-WebView');
+    if (wvRaw != null) {
+      optWebView = wvRaw == '1' || wvRaw.toLowerCase() == 'true';
+    }
+    final reqHeaders = Map<String, String>.from(headers);
+
     final sw = Stopwatch()..start();
+    // webView 选项：先尝试无头 WebView 渲染（JS 动态填充的页面），
+    // 失败/为空时降级为普通 HTTP 请求。
+    if (optWebView) {
+      try {
+        final rendered = await HeadlessWebViewFetcher.fetch(
+          url: url,
+          headers: headers,
+          timeoutMs: optTimeoutMs ?? 15000,
+        );
+        if (rendered.isNotEmpty) {
+          SourceNetworkLog.instance.record(
+            url: url,
+            method: method,
+            origin: 'js-webview',
+            statusCode: 200,
+            durationMs: sw.elapsedMilliseconds,
+            text: rendered,
+            requestHeaders: reqHeaders,
+            responseHeaders: const {'content-type': 'text/html; charset=utf-8'},
+            finalUrl: url,
+          );
+          final outHeaders = _corsHeaders();
+          outHeaders['Content-Type'] = 'text/html; charset=utf-8';
+          return iw.WebResourceResponse(
+            statusCode: 200,
+            reasonPhrase: 'OK',
+            contentType: 'text/html; charset=utf-8',
+            contentEncoding: 'utf-8',
+            data: Uint8List.fromList(utf8.encode(rendered)),
+            headers: outHeaders,
+          );
+        }
+      } catch (_) {}
+    }
+
     try {
       final resp = await _dio.request<List<int>>(
         url,
@@ -335,9 +390,30 @@ class WebViewLegadoJs implements LegadoJs {
           method: method,
           headers: headers,
           responseType: ResponseType.bytes,
+          followRedirects: optFollowRedirects,
+          sendTimeout: optTimeoutMs != null
+              ? Duration(milliseconds: optTimeoutMs)
+              : null,
+          receiveTimeout: optTimeoutMs != null
+              ? Duration(milliseconds: optTimeoutMs)
+              : null,
         ),
       );
       final status = resp.statusCode ?? 200;
+      // 重定向链与最终地址（dio 自动跟随重定向时 resp.redirects 记录每跳）。
+      final redirects = <String>[url];
+      for (final r in resp.redirects) {
+        redirects.add(r.location.toString());
+      }
+      var finalUrl = resp.realUri.toString();
+      if (finalUrl.isEmpty) finalUrl = url;
+      if (optFollowRedirects && redirects.length == 1 && finalUrl != url) {
+        redirects.add(finalUrl);
+      }
+      final respHeaders = <String, String>{};
+      resp.headers.map.forEach((k, vals) {
+        respHeaders[k] = vals.join('; ');
+      });
       // 书源 JS 的 java.ajax 走这条拦截通道，不经 BookSourceEngine._fetch。
       // 记入全局网络日志，调试页/登录页才能看到真实的请求与响应。
       SourceNetworkLog.instance.record(
@@ -348,6 +424,10 @@ class WebViewLegadoJs implements LegadoJs {
         durationMs: sw.elapsedMilliseconds,
         body: resp.data,
         error: status >= 400 ? 'HTTP $status' : null,
+        requestHeaders: reqHeaders,
+        responseHeaders: respHeaders,
+        finalUrl: finalUrl,
+        redirects: redirects,
       );
       final setCookies = resp.headers.map['set-cookie'] ?? const <String>[];
       CookieManager().saveFromResponse(url, setCookies);
@@ -517,14 +597,15 @@ class WebViewLegadoJs implements LegadoJs {
       final bodyStrBytes = base64Decode(b64);
       final bodyStr = utf8.decode(bodyStrBytes);
       final bytes = base64Decode(bodyStr);
-      final map = TtfParser.fromBytes(bytes).buildReplacementMap();
-      final json = jsonEncode(map);
+      final data = TtfParser.fromBytes(bytes).buildQueryData();
+      final json = jsonEncode(data);
       return iw.WebResourceResponse(
         statusCode: 200,
         reasonPhrase: 'OK',
         contentType: 'application/json; charset=utf-8',
         contentEncoding: 'utf-8',
         data: Uint8List.fromList(utf8.encode(json)),
+        headers: _corsHeaders(),
       );
     } catch (e) {
       return _textResponse('ttf 解析失败: $e', 502);
@@ -612,6 +693,56 @@ class WebViewLegadoJs implements LegadoJs {
       }
     } catch (e) {
       return _textResponse('charset 处理失败: $e', 502);
+    }
+  }
+
+  /// legado://crypto 协议：对称加解密（DES / 3DES / DESede / AES / SM4 / RC4，
+  /// 支持 ECB/CBC/PCBC/CFB/OFB/CTR 与 PKCS5/PKCS7/NoPadding）。
+  /// 请求体为 base64(JSON)，字段：op / transformation / key / iv / data，
+  /// 其中 key/iv/data 为字节的 base64。响应体为处理后字节的 base64。
+  /// 书源 JS 侧由此得到与 createSymmetricCrypto 一致的字节结果，再按需转成
+  /// 数组 / hex / base64 / 字符串。
+  Future<iw.WebResourceResponse> _handleCrypto(
+      iw.WebResourceRequest request) async {
+    try {
+      final b64 =
+          (request.headers ?? const <String, String>{})['X-Legado-Body'] ?? '';
+      if (b64.isEmpty) return _textResponse('crypto 参数为空', 400);
+      final jsonStr = utf8.decode(base64Decode(b64), allowMalformed: true);
+      final decoded = jsonDecode(jsonStr);
+      if (decoded is! Map) return _textResponse('crypto 参数格式错误', 400);
+      final m = decoded;
+      final op = m['op']?.toString() ?? 'encrypt';
+      final transformation =
+          m['transformation']?.toString() ?? 'AES/ECB/PKCS5Padding';
+      final keyBytes = Uint8List.fromList(
+          base64Decode((m['key']?.toString() ?? '').trim()));
+      final ivRaw = (m['iv']?.toString() ?? '').trim();
+      Uint8List? ivBytes;
+      if (ivRaw.isNotEmpty) {
+        ivBytes = Uint8List.fromList(base64Decode(ivRaw));
+      }
+      final dataBytes = Uint8List.fromList(
+          base64Decode((m['data']?.toString() ?? '').trim()));
+      final cipher = SymmetricCrypto(transformation, keyBytes, iv: ivBytes);
+      final Uint8List out;
+      switch (op) {
+        case 'decrypt':
+        case 'decryptBytes':
+          out = cipher.decryptBytes(dataBytes);
+          break;
+        case 'digestHex':
+        case 'digestBase64':
+        case 'hmacHex':
+        case 'hmacBase64':
+          // 摘要/HMAC 走纯 JS 实现即可，这里只保留对称加解密通道。
+          return _textResponse('unsupported op: $op', 400);
+        default:
+          out = cipher.encrypt(dataBytes);
+      }
+      return _textResponse(base64.encode(out), 200);
+    } catch (e) {
+      return _textResponse('crypto 处理失败: $e', 502);
     }
   }
 
@@ -970,6 +1101,10 @@ class WebViewLegadoJs implements LegadoJs {
       iw.WebResourceRequest request, iw.WebUri uri) async {
     final url = uri.queryParameters['url'] ?? '';
     final title = uri.queryParameters['title'] ?? '登录';
+    // refetchAfterSuccess：验证/交互完成后是否用通过验证的 Cookie 重新向原
+    // 地址发起一次原生请求，把服务端正文作为响应体返回。书源传 false 或
+    // 提供自定义页面内容时，直接回传浏览器里运行后的 DOM。
+    final refetch = uri.queryParameters['refetch'] != '0';
     if (url.isEmpty) return _textResponse('', 400);
     final nav = appNavigatorKey.currentState;
     if (nav == null) return _textResponse('', 502);
@@ -992,8 +1127,8 @@ class WebViewLegadoJs implements LegadoJs {
               initialHtml: initialHtml)));
       // 渲染后的整页 DOM：书源设置中心等页面把结果写进 DOM/Cookie/hash，
       // 必须回传运行后的内容，否则书源读到原始空白页面。
-      final html = result?.html ?? '';
-      final finalUrl = result?.finalUrl ?? '';
+      var html = result?.html ?? '';
+      var finalUrl = result?.finalUrl ?? '';
       var cookieStr = result?.cookies ?? '';
       // 回收登录 Cookie（与 _onBrowserRequest 同逻辑）
       if (cookieStr.isEmpty) {
@@ -1013,12 +1148,26 @@ class WebViewLegadoJs implements LegadoJs {
           await _db.saveCookie(host, cookieStr);
         }
       }
+      // 验证成功后重取：仅对真实 http(s) 地址、且未指定自定义页面内容、
+      // 且书源未显式关闭 refetch 时生效。重取复用刚回收的 Cookie 与书源
+      // 请求头，返回服务端正文；失败或空正文时保留浏览器 DOM 作为兜底。
+      if (refetch &&
+          initialHtml == null &&
+          (url.startsWith('http://') || url.startsWith('https://'))) {
+        final refetched = await _refetchAfterBrowser(url);
+        if (refetched != null && refetched.isNotEmpty) {
+          html = refetched;
+        }
+      }
       final headers = _corsHeaders();
       if (cookieStr.isNotEmpty) {
         headers['X-Set-Cookie'] = cookieStr;
       }
       // 页面最终地址（含 #config= 等运行期 hash）通过响应头回传，
       // 桥侧据此让 StrResponse.url() 返回真实地址，书源可从 URL 取结果。
+      if (finalUrl.isEmpty && refetch) {
+        finalUrl = url;
+      }
       if (finalUrl.isNotEmpty) {
         headers['X-Final-Url'] = Uri.encodeComponent(finalUrl);
       }
@@ -1033,6 +1182,93 @@ class WebViewLegadoJs implements LegadoJs {
     } catch (e) {
       return _textResponse('', 502);
     }
+  }
+
+  /// 浏览器交互完成后，用已通过验证的 Cookie 重新请求原地址取正文。
+  /// 记录请求头 / 响应头 / 最终地址 / 重定向链到网络日志；失败返回 null，
+  /// 由调用方保留浏览器 DOM 兜底。
+  Future<String?> _refetchAfterBrowser(String url) async {
+    final reqHeaders = <String, String>{};
+    try {
+      final h = await _sourceHeaders();
+      reqHeaders.addAll(h);
+    } catch (_) {}
+    final ck = CookieManager().cookieHeader(url);
+    if (ck != null && ck.isNotEmpty && !reqHeaders.containsKey('Cookie')) {
+      reqHeaders['Cookie'] = ck;
+    }
+    final sw = Stopwatch()..start();
+    try {
+      final resp = await _dio.get<List<int>>(
+        url,
+        options: Options(
+          method: 'GET',
+          headers: reqHeaders,
+          responseType: ResponseType.bytes,
+        ),
+      );
+      final status = resp.statusCode ?? 200;
+      final respHeaders = <String, String>{};
+      resp.headers.map.forEach((k, vals) {
+        respHeaders[k] = vals.join('; ');
+      });
+      final redirects = <String>[url];
+      for (final r in resp.redirects) {
+        redirects.add(r.location.toString());
+      }
+      final realUrl = resp.realUri.toString();
+      if (realUrl.isNotEmpty && redirects.length == 1 && realUrl != url) {
+        redirects.add(realUrl);
+      }
+      final bytes = resp.data ?? const <int>[];
+      SourceNetworkLog.instance.record(
+        url: url,
+        method: 'GET',
+        origin: 'engine',
+        statusCode: status,
+        durationMs: sw.elapsedMilliseconds,
+        body: bytes,
+        error: status >= 400 ? 'HTTP $status' : null,
+        requestHeaders: reqHeaders,
+        responseHeaders: respHeaders,
+        finalUrl: realUrl.isEmpty ? url : realUrl,
+        redirects: redirects,
+      );
+      final setCookies = resp.headers.map['set-cookie'] ?? const <String>[];
+      if (setCookies.isNotEmpty) {
+        CookieManager().saveFromResponse(url, setCookies);
+      }
+      if (status >= 400) return null;
+      return utf8.decode(bytes, allowMalformed: true);
+    } catch (e) {
+      SourceNetworkLog.instance.record(
+        url: url,
+        method: 'GET',
+        origin: 'engine',
+        statusCode: 502,
+        durationMs: sw.elapsedMilliseconds,
+        error: '重取失败: $e',
+        requestHeaders: reqHeaders,
+      );
+      return null;
+    }
+  }
+
+  /// 取书源配置的请求头（含 loginHeader 与 header 字段），用于原生重取。
+  Future<Map<String, String>> _sourceHeaders() async {
+    final out = <String, String>{};
+    try {
+      final raw = source.header;
+      if (raw != null && raw.trim().isNotEmpty) {
+        final decoded = jsonDecode(raw);
+        if (decoded is Map) {
+          decoded.forEach((k, v) {
+            out[k.toString()] = v?.toString() ?? '';
+          });
+        }
+      }
+    } catch (_) {}
+    return out;
   }
 
   /// legado://searchbook 协议：java.searchBook(key, scope)。

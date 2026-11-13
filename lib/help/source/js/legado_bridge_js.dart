@@ -18,7 +18,7 @@
 ///   * 压缩包：getZipStringContent / get7zStringContent / getRarStringContent /
 ///     getZipByteArrayContent / get7zByteArrayContent / getRarByteArrayContent /
 ///     unzipFile / un7zFile / unrarFile / unArchiveFile（7z/rar 走 Android 原生解压）
-///   * 字体反爬：queryTTF / queryBase64TTF（后者为 E 已废弃 API 的兼容委托）
+///   * 字体反爬：queryTTF / queryBase64TTF（后者为旧 API 的兼容别名）
 ///
 /// 该脚本在每个书源的无头 WebView 创建后于「全局作用域」执行一次；
 /// 书源的 jsLib / loginUrl 随后也在全局作用域执行（定义全局函数）。

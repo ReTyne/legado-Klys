@@ -11,16 +11,29 @@ class TtfParser {
   factory TtfParser.fromBytes(List<int> bytes) =>
       TtfParser(ByteData.sublistView(Uint8List.fromList(bytes)));
 
+  int get _length => _data.lengthInBytes;
+
+  /// 是否需要读取 [offset] 起的 [count] 个字节。非法字体/非字体数据
+  /// （WAF 拦截页、空响应等）会越界，统一在此拦下，让解析安全降级。
+  bool _hasBytes(int offset, int count) =>
+      offset >= 0 && count >= 0 && offset + count <= _length;
+
   /// 读取表目录，返回 tag -> (offset, length)
   Map<String, (int, int)> _tableDirectory() {
-    final numTables = _data.getUint16(4);
     final tables = <String, (int, int)>{};
+    if (!_hasBytes(4, 2)) return tables;
+    final numTables = _data.getUint16(4);
     var offset = 12;
     for (var i = 0; i < numTables; i++) {
-      final tag = ascii.decode(_data.buffer.asUint8List(offset, 4));
+      if (!_hasBytes(offset, 16)) break;
+      final tag = ascii.decode(_data.buffer.asUint8List(offset, 4),
+          allowInvalid: true);
       final tableOffset = _data.getUint32(offset + 8);
       final length = _data.getUint32(offset + 12);
-      tables[tag] = (tableOffset, length);
+      // 只登记落在数据范围内的表，避免后续解析读越界
+      if (_hasBytes(tableOffset, 0) && tableOffset + length <= _length) {
+        tables[tag] = (tableOffset, length);
+      }
       offset += 16;
     }
     return tables;
@@ -32,13 +45,16 @@ class TtfParser {
     final cmapInfo = tables['cmap'];
     if (cmapInfo == null) return {};
     final (offset, _) = cmapInfo;
+    if (!_hasBytes(offset + 2, 2)) return {};
     final numTables = _data.getUint16(offset + 2);
     final result = <int, int>{};
 
     for (var i = 0; i < numTables; i++) {
       final recOffset = offset + 4 + i * 8;
+      if (!_hasBytes(recOffset, 8)) break;
       final platformID = _data.getUint16(recOffset);
       final subOffset = offset + _data.getUint32(recOffset + 4);
+      if (!_hasBytes(subOffset, 2)) continue;
       final format = _data.getUint16(subOffset);
 
       // 只处理 Unicode 平台 (platformID=3) 或 全平台 (0)
@@ -189,6 +205,49 @@ class TtfParser {
       }
     }
     return result;
+  }
+
+  /// 构建字体查询结构化数据，供书源侧构造带方法的字体对象：
+  ///  * replacement    原字符 -> 真实字符（兼容把返回值当替换表使用的书源）
+  ///  * unicodeToGlyphId  Unicode -> 字形 ID
+  ///  * unicodeToGlyph    Unicode -> 字形指纹（优先取 post 字形名，缺失时用字形 ID）
+  ///  * glyphToUnicode    字形指纹 -> Unicode（反查，取首次出现）
+  Map<String, dynamic> buildQueryData() {
+    Map<int, int> cmap;
+    Map<int, String> post;
+    Map<String, String> replacement;
+    try {
+      cmap = parseCmap();
+    } catch (_) {
+      cmap = <int, int>{};
+    }
+    try {
+      post = parsePost();
+    } catch (_) {
+      post = <int, String>{};
+    }
+    try {
+      replacement = buildReplacementMap();
+    } catch (_) {
+      replacement = <String, String>{};
+    }
+    final unicodeToGlyphId = <String, String>{};
+    final unicodeToGlyph = <String, String>{};
+    final glyphToUnicode = <String, String>{};
+    cmap.forEach((codePoint, glyphId) {
+      final key = codePoint.toString();
+      unicodeToGlyphId[key] = glyphId.toString();
+      final name = post[glyphId];
+      final glyf = (name != null && name.isNotEmpty) ? name : 'glyf_$glyphId';
+      unicodeToGlyph[key] = glyf;
+      glyphToUnicode.putIfAbsent(glyf, () => key);
+    });
+    return <String, dynamic>{
+      'replacement': replacement,
+      'unicodeToGlyphId': unicodeToGlyphId,
+      'unicodeToGlyph': unicodeToGlyph,
+      'glyphToUnicode': glyphToUnicode,
+    };
   }
 
   /// 构建字符替换映射：原字符 -> 真实字符

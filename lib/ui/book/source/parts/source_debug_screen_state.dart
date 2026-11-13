@@ -1356,7 +1356,8 @@ class _SourceDebugScreenState extends State<SourceDebugScreen>
                     style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
                 const SizedBox(height: AppSpacing.xs),
                 Text(
-                    '状态码、耗时、请求地址、响应大小与来源通道来自网络请求日志；'
+                    '每条请求展开后可查看状态码、耗时、请求地址、请求头、响应头、'
+                    '最终地址、重定向链、响应大小与来源通道；'
                     '引擎主请求与书源 JS 内 java.ajax 发出的请求都会记录。',
                     style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant)),
               ],
@@ -1455,10 +1456,19 @@ class _SourceDebugScreenState extends State<SourceDebugScreen>
           _detailRow('耗时', '${e.durationMs} ms'),
           _detailRow('方法', e.method),
           _detailRow('请求地址', e.url),
+          if (e.finalUrl != null && e.finalUrl!.isNotEmpty)
+            _detailRow(
+              e.finalUrl != e.url ? '最终地址 · 重定向' : '最终地址',
+              e.finalUrl!,
+              color: e.finalUrl != e.url ? cs.tertiary : null,
+            ),
           _detailRow('响应大小', '${e.responseBytes} B'),
           _detailRow('来源通道', e.origin),
           _detailRow('时间', e.clock),
           if (e.error != null) _detailRow('错误', e.error!, color: cs.error),
+          _monoBlock('请求头', _headersText(e.requestHeaders)),
+          _monoBlock('响应头', _headersText(e.responseHeaders)),
+          if (e.hasRedirect) _monoBlock('重定向链', _redirectChainText(e)),
           if (preview != null)
             Container(
               width: double.infinity,
@@ -1523,6 +1533,53 @@ class _SourceDebugScreenState extends State<SourceDebugScreen>
     );
   }
 
+  /// 等宽文本展示块：标题 + 灰底圆角内容，用于请求头 / 响应头 / 重定向链
+  Widget _monoBlock(String label, String text) {
+    final cs = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.symmetric(
+          horizontal: AppSpacing.m, vertical: AppSpacing.xs),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(label,
+              style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant)),
+          const SizedBox(height: AppSpacing.xs),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.all(AppSpacing.s),
+            decoration: BoxDecoration(
+              color: cs.surfaceContainerHighest,
+              borderRadius: AppRadius.mAll,
+            ),
+            child: SelectableText(
+              text,
+              style: TextStyle(
+                  fontSize: 11,
+                  height: 1.4,
+                  fontFamily: 'monospace',
+                  color: cs.onSurface),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  /// 把请求头 / 响应头整理为逐行「key: value」文本，为空时返回「无」
+  String _headersText(Map<String, String>? headers) {
+    if (headers == null || headers.isEmpty) return '无';
+    return headers.entries.map((h) => '${h.key}: ${h.value}').join('\n');
+  }
+
+  /// 把重定向链整理为可读文本：首条地址起行，后续每条以「→」标记跳转
+  String _redirectChainText(SourceNetworkEntry e) {
+    if (e.redirects.isEmpty) return e.finalUrl ?? '无';
+    return e.redirects.asMap().entries.map((entry) {
+      return entry.key == 0 ? entry.value : '→ ${entry.value}';
+    }).join('\n');
+  }
+
   /// 单条网络请求的可复制纯文本详情
   String _networkEntryText(SourceNetworkEntry e) {
     final sb = StringBuffer();
@@ -1533,6 +1590,17 @@ class _SourceDebugScreenState extends State<SourceDebugScreen>
     sb.writeln('响应大小: ${e.responseBytes} B');
     sb.writeln('来源通道: ${e.origin}');
     sb.writeln('请求地址: ${e.url}');
+    if (e.finalUrl != null && e.finalUrl!.isNotEmpty) {
+      sb.writeln('最终地址${e.finalUrl != e.url ? "（重定向）" : ""}: ${e.finalUrl}');
+    }
+    sb.writeln('----- 请求头 -----');
+    sb.writeln(_headersText(e.requestHeaders));
+    sb.writeln('----- 响应头 -----');
+    sb.writeln(_headersText(e.responseHeaders));
+    if (e.hasRedirect) {
+      sb.writeln('----- 重定向链 -----');
+      sb.writeln(_redirectChainText(e));
+    }
     if (e.error != null) sb.writeln('错误: ${e.error}');
     if (e.responsePreview != null) {
       sb.writeln('----- 响应预览 -----');
@@ -1541,7 +1609,7 @@ class _SourceDebugScreenState extends State<SourceDebugScreen>
     return sb.toString();
   }
 
-  /// 网络请求日志纯文本（用于「仅复制网络请求日志」）
+  /// 网络请求日志纯文本（用于「仅复制网络请求日志」及日志导出）
   String _networkLogText() {
     final sb = StringBuffer();
     sb.writeln('===== 网络请求日志：${widget.source.bookSourceName} =====');
@@ -1551,9 +1619,25 @@ class _SourceDebugScreenState extends State<SourceDebugScreen>
       sb.writeln('${e.clock}  ${e.method}  ${e.statusLabel}  ${e.durationMs}ms  '
           '${e.responseBytes}B  [${e.origin}]');
       sb.writeln('  ${e.url}');
+      if (e.finalUrl != null && e.finalUrl!.isNotEmpty) {
+        sb.writeln('  最终地址${e.finalUrl != e.url ? "（重定向）" : ""}: ${e.finalUrl}');
+      }
+      _appendTextSection(sb, '请求头', _headersText(e.requestHeaders));
+      _appendTextSection(sb, '响应头', _headersText(e.responseHeaders));
+      if (e.hasRedirect) {
+        _appendTextSection(sb, '重定向链', _redirectChainText(e));
+      }
       if (e.error != null) sb.writeln('  错误: ${e.error}');
     }
     return sb.toString();
+  }
+
+  /// 向纯文本缓冲追加「标题 + 逐行缩进内容」区块
+  void _appendTextSection(StringBuffer sb, String label, String text) {
+    sb.writeln('  $label:');
+    for (final line in text.split('\n')) {
+      sb.writeln('    $line');
+    }
   }
 
   // ==================== 日志导出 / 分享 ====================

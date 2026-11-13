@@ -15,5 +15,6 @@ bool ruleNeedsRealJs(String? rule) {
   if (rule == null || rule.isEmpty) return false;
   return rule.contains('<js>') ||
       rule.contains('@js:') ||
+      rule.contains('@webjs:') ||
       rule.contains('{{');
 }

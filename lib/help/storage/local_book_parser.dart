@@ -644,13 +644,13 @@ class LocalBookParser {
         final r = _be32(bytes, r0 + 108);
         if (r > 0 && r < offsets.length) coverRecord = r;
       }
-      // EXTH 标志：E 用 readUInt32(128)，部分 MOBI 变体在 MOBI+0x80(144)，两处都探测
+      // EXTH 标志通常在头部偏移 128，部分 MOBI 变体在 MOBI+0x80(144)，两处都探测
       var exthFlag = r0 + 132 <= bytes.length ? _be32(bytes, r0 + 128) : 0;
       if ((exthFlag & 0x40) == 0 && r0 + 148 <= bytes.length) {
         exthFlag = _be32(bytes, r0 + 144);
       }
       if ((exthFlag & 0x40) != 0) {
-        // EXTH 紧接 MOBI header；E 用 length+16，个别实现无 16 字节 PalmDOC 前缀
+        // EXTH 紧接 MOBI header；常规按 length+16 定位，个别实现无 16 字节 PalmDOC 前缀
         int? exthStart;
         for (final s in [r0 + 16 + mobiLen, r0 + mobiLen]) {
           if (s + 12 <= bytes.length && _ascii(bytes, s, 4) == 'EXTH') {

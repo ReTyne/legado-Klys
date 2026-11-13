@@ -116,4 +116,84 @@ void main() {
       expect(login, contains('已刷新，输入内容已保留'));
     });
   });
+
+  group('引擎能力：对称加密 / 字体对象 / 规则内嵌 WebView', () {
+    test('非 AES 对称加密走原生通道并覆盖 DES/3DES/SM4/RC4', () {
+      expect(bridge, contains('__nativeCrypto('));
+      expect(bridge, contains('legado://crypto'));
+      expect(bridge, contains('alg === "DESEDE"'));
+      expect(bridge, contains('alg === "SM4"'));
+      expect(bridge, contains('alg === "RC4"'));
+      // AES 仍走纯 JS 路径，不误入原生通道
+      expect(bridge, contains('isAes = (alg === "AES"'));
+    });
+
+    test('补齐 DES/3DES 便捷加解密方法', () {
+      for (final name in [
+        'tripleDESDecodeStr',
+        'tripleDESEncodeBase64Str',
+        'tripleDESEncodeArgsBase64Str',
+        'desDecodeToString',
+        'desEncodeToBase64String',
+        'aesEncodeToBase64String',
+      ]) {
+        expect(bridge, contains('$name: function'), reason: '缺少 $name');
+      }
+    });
+
+    test('原生加密协议 handler 使用完整算法实现', () {
+      final js = _src('lib/help/source/js/parts/web_view_legado_js.dart');
+      expect(js, contains("url.startsWith('legado://crypto')"));
+      expect(js, contains('_handleCrypto'));
+      expect(js, contains('SymmetricCrypto(transformation, keyBytes'));
+      expect(js, contains('cipher.decryptBytes(dataBytes)'));
+    });
+
+    test('queryTTF 返回带映射与方法的字体对象', () {
+      expect(bridge, contains('__makeQueryTTF('));
+      expect(bridge, contains('getGlyfByUnicode'));
+      expect(bridge, contains('getUnicodeByGlyf'));
+      expect(bridge, contains('isBlankUnicode'));
+      expect(bridge, contains('unicodeToGlyphId'));
+      // 兼容把返回值当替换表遍历的书源
+      expect(bridge, contains('getReplacementMap: function'));
+      final parser = _src('lib/help/source/ttf_parser.dart');
+      expect(parser, contains('buildQueryData()'));
+      expect(parser, contains("'replacement': replacement"));
+    });
+
+    test('@webjs: 规则由无头 WebView 加载内容并注入 window.result', () {
+      final engine = _src('lib/help/source/source_engine.dart');
+      expect(engine, contains('_webJsRule'));
+      expect(engine, contains('_evalWebJs('));
+      expect(engine, contains('HeadlessWebViewFetcher.fetchWebJs'));
+      final fetcher = _src('lib/help/source/js/headless_webview.dart');
+      expect(fetcher, contains('static Future<String> fetchWebJs'));
+      expect(fetcher, contains('window.result = '));
+      expect(fetcher, contains('AT_DOCUMENT_START'));
+      final legadoJs = _src('lib/help/source/js/parts/legado_js.dart');
+      expect(legadoJs, contains("rule.contains('@webjs:')"));
+    });
+
+    test('网络选项透传并把请求/响应头与重定向链写入日志', () {
+      expect(bridge, contains('X-Legado-Timeout'));
+      expect(bridge, contains('X-Legado-FollowRedirects'));
+      expect(bridge, contains('X-Legado-WebView'));
+      final js = _src('lib/help/source/js/parts/web_view_legado_js.dart');
+      expect(js, contains("headers.remove('X-Legado-Timeout')"));
+      expect(js, contains('followRedirects: optFollowRedirects'));
+      expect(js, contains('requestHeaders: reqHeaders'));
+      expect(js, contains('responseHeaders: respHeaders'));
+      expect(js, contains('redirects: redirects'));
+      final log = _src('lib/help/source/source_network_log.dart');
+      expect(log, contains('bool get hasRedirect'));
+    });
+
+    test('refetchAfterSuccess 用原生重取原地址并记录重定向链', () {
+      final js = _src('lib/help/source/js/parts/web_view_legado_js.dart');
+      expect(js, contains("_refetchAfterBrowser"));
+      expect(js, contains("uri.queryParameters['refetch']"));
+      expect(js, contains('resp.realUri.toString()'));
+    });
+  });
 }
