@@ -12,8 +12,9 @@ if (localPropertiesFile.exists()) {
     }
 }
 
-def flutterVersionCode = localProperties.getProperty('flutter.versionCode') ?: '1'
-def flutterVersionName = localProperties.getProperty('flutter.versionName') ?: '1.0'
+// Android 版本号独立固定：versionName 为对外展示版本，versionCode 为递增整数。
+def flutterVersionCode = '3'
+def flutterVersionName = '1.09'
 
 android {
     namespace "com.legado.md3"
