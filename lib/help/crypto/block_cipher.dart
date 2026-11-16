@@ -2,7 +2,6 @@
 /// 以 part 归属同一库，私有类型互引保持可用。
 part of '../../utils/crypto_utils.dart';
 
-
 // =====================================================================
 // AES（FIPS-197，128/192/256）
 // =====================================================================
@@ -13,7 +12,6 @@ abstract class _BlockCipher {
   void decryptBlock(Uint8List input, int inOff, Uint8List output, int outOff);
 }
 
-
 // =====================================================================
 // 分组密码模式（ECB/CBC/PCBC/CFB/OFB/CTR）
 // =====================================================================
@@ -21,13 +19,15 @@ abstract class _BlockCipher {
 enum _Mode { ecb, cbc, pcbc, cfb, ofb, ctr }
 
 /// 应用分组模式。ECB/CBC/PCBC 要求数据按块对齐；CFB/OFB/CTR 按流处理。
-Uint8List _applyMode(
-    _BlockCipher cipher, _Mode mode, Uint8List? iv, Uint8List data, bool encrypt) {
+Uint8List _applyMode(_BlockCipher cipher, _Mode mode, Uint8List? iv,
+    Uint8List data, bool encrypt) {
   final bs = cipher.blockSize;
   final out = Uint8List(data.length);
-  final streamModes = mode == _Mode.cfb || mode == _Mode.ofb || mode == _Mode.ctr;
+  final streamModes =
+      mode == _Mode.cfb || mode == _Mode.ofb || mode == _Mode.ctr;
+  // ECB/CBC/PCBC（含 NoPadding）必须按块对齐，否则给出明确错误。
   if (!streamModes && data.length % bs != 0) {
-    throw ArgumentError('数据长度必须是块大小 $bs 的倍数');
+    throw ArgumentError('数据长度必须是块大小 $bs 的倍数（模式 ${mode.name.toUpperCase()}）');
   }
   if (mode != _Mode.ecb && (iv == null || iv.length != bs)) {
     throw ArgumentError('模式 ${mode.name.toUpperCase()} 需要 $bs 字节 IV');
@@ -97,9 +97,14 @@ Uint8List _applyMode(
         for (var i = 0; i < len; i++) {
           out[off + i] = data[off + i] ^ ks[i];
         }
+        // CFB 反馈寄存器必须装入「密文」：加密取输出，解密取输入。
+        // 若解密误用明文输出反馈，后续块的密钥流会错乱导致解密失败。
+        final feedback = encrypt ? out : data;
         final next = Uint8List(bs);
-        next.setRange(0, len, out.sublist(off, off + len));
-        next.setRange(len, bs, prev.sublist(len, bs));
+        next.setRange(0, len, feedback.sublist(off, off + len));
+        if (len < bs) {
+          next.setRange(len, bs, prev.sublist(len, bs));
+        }
         prev.setRange(0, bs, next);
       }
       return out;
@@ -113,6 +118,7 @@ Uint8List _applyMode(
         for (var i = 0; i < len; i++) {
           out[off + i] = data[off + i] ^ ks[i];
         }
+        // OFB 反馈的是密钥流，与输入/输出无关，加解密路径对称
         prev.setRange(0, bs, ks);
       }
       return out;
@@ -137,7 +143,7 @@ Uint8List _applyMode(
 }
 
 // =====================================================================
-// PKCS#5/PKCS7 填充
+// PKCS#5/PKCS#7 填充
 // =====================================================================
 
 Uint8List _padPkcs7(Uint8List data, int blockSize) {
@@ -158,6 +164,42 @@ Uint8List _unpadPkcs7(Uint8List data, int blockSize) {
     if (data[i] != p) return data;
   }
   return Uint8List.fromList(data.sublist(0, data.length - p));
+}
+
+// =====================================================================
+// ISO10126 填充：末字节记录填充长度，其余填充字节为真实随机值
+// =====================================================================
+
+Uint8List _padIso10126(Uint8List data, int blockSize) {
+  final pad = blockSize - (data.length % blockSize);
+  final out = Uint8List(data.length + pad);
+  out.setRange(0, data.length, data);
+  final random = Random.secure();
+  for (var i = data.length; i < out.length - 1; i++) {
+    out[i] = random.nextInt(256);
+  }
+  out[out.length - 1] = pad;
+  return out;
+}
+
+Uint8List _unpadIso10126(Uint8List data, int blockSize) {
+  if (data.isEmpty) return data;
+  final p = data[data.length - 1];
+  if (p < 1 || p > blockSize || p > data.length) return data;
+  // 中间为随机字节，不校验其内容，仅按末字节长度裁剪
+  return Uint8List.fromList(data.sublist(0, data.length - p));
+}
+
+/// 按填充方式去填充。
+Uint8List _unpad(Uint8List data, String padding, int blockSize) {
+  if (padding == 'ISO10126') return _unpadIso10126(data, blockSize);
+  return _unpadPkcs7(data, blockSize);
+}
+
+/// 按填充方式填充（PKCS7 或 ISO10126）。
+Uint8List _pad(Uint8List data, String padding, int blockSize) {
+  if (padding == 'ISO10126') return _padIso10126(data, blockSize);
+  return _padPkcs7(data, blockSize);
 }
 
 // =====================================================================
@@ -194,7 +236,6 @@ Uint8List _normalizeKey(String algorithm, List<int> key) {
   }
 }
 
-
 // =====================================================================
 // transformation 解析
 // =====================================================================
@@ -203,6 +244,7 @@ class _Transformation {
   _Transformation(String transformation) {
     final parts = transformation.toUpperCase().split('/');
     var alg = parts[0].trim();
+    // 算法名归一化：3DES/TRIPLEDES → DESEDE，SMS4 → SM4，ARCFOUR → RC4
     if (alg == '3DES' || alg == 'TRIPLEDES' || alg == 'DESEDE') alg = 'DESEDE';
     if (alg == 'SMS4') alg = 'SM4';
     if (alg == 'ARCFOUR') alg = 'RC4';
@@ -211,21 +253,37 @@ class _Transformation {
     }
     algorithm = alg;
     mode = parts.length > 1 ? parts[1].trim() : 'ECB';
+    // GCM 需要 GHASH 认证标签，当前纯 Dart 实现不提供，明确拒绝而非静默降级
+    if (mode == 'GCM') {
+      throw ArgumentError('分组模式 GCM 暂不支持：需要 GHASH 与认证标签实现');
+    }
     if (!const {'ECB', 'CBC', 'PCBC', 'CFB', 'OFB', 'CTR'}.contains(mode)) {
       throw ArgumentError('不支持的分组模式: ${parts[1]}');
     }
-    final padding = parts.length > 2 ? parts[2].trim() : 'PKCS5PADDING';
-    if (!const {'PKCS5PADDING', 'PKCS7PADDING', 'NOPADDING', 'ISO10126PADDING'}
-        .contains(padding)) {
-      throw ArgumentError('不支持的填充方式: ${parts[2]}');
+    final padRaw = parts.length > 2 ? parts[2].trim() : 'PKCS5PADDING';
+    switch (padRaw) {
+      case 'PKCS5PADDING':
+      case 'PKCS7PADDING':
+        padding = 'PKCS7';
+        break;
+      case 'ISO10126PADDING':
+        padding = 'ISO10126';
+        break;
+      case 'NOPADDING':
+        padding = 'NONE';
+        break;
+      default:
+        throw ArgumentError('不支持的填充方式: ${parts[2]}');
     }
-    // 流模式（CFB/OFB/CTR/RC4）不应用块填充
-    padded = mode != 'CFB' && mode != 'OFB' && mode != 'CTR' && alg != 'RC4' &&
-        padding != 'NOPADDING';
+    // 流模式（CFB/OFB/CTR/RC4）与 NoPadding 均不应用块填充
+    final streamMode =
+        mode == 'CFB' || mode == 'OFB' || mode == 'CTR' || alg == 'RC4';
+    padded = !streamMode && padding != 'NONE';
   }
 
   late final String algorithm;
   late final String mode;
+  late final String padding;
   late final bool padded;
 }
 

@@ -25,7 +25,7 @@ class DownloadService extends ChangeNotifier {
   final DatabaseService _db = DatabaseService();
   final BookSourceEngine _engine = BookSourceEngine();
 
-  /// 缓存保留章节数上限（对齐 Sigma imageRetainNum，0 表示不限条目）。
+ /// 缓存保留章节数上限（，0 表示不限条目）。
   /// 由设置页写入；未配置时仅按体积上限清理。
   static const String keyImageRetainNum = 'imageRetainNum';
   /// 正文缓存体积上限 MB（与设置页 / cache_manage_screen 同一个 key）。

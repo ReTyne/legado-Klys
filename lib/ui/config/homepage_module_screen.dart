@@ -15,7 +15,7 @@ part 'parts/homepage_set_edit_dialog.dart';
 part 'parts/homepage_set_edit_dialog_state.dart';
 
 
-/// 首页模块管理（fork 特性：卡片式模块化首页）。
+/// 首页模块管理（特性：卡片式模块化首页）。
 ///
 /// 模块：增删改 / 启停 / 拖拽排序 / 类型选择，全部走
 /// getHomepageModules / insertHomepageModule / updateHomepageModule /

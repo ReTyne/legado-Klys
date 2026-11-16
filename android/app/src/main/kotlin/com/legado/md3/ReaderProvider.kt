@@ -14,17 +14,17 @@ import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicReference
 
 /**
- * ReaderProvider：对齐 Sigma `api/ReaderProvider.kt` 的 16 条 addURI 契约。
+ * ReaderProvider：16 条 addURI 契约。
  *
- * 与 Sigma 的差异（数据源）：Sigma 直接操作 Room；本项目 DB 在 Dart 侧
+ * 差异（数据源）：直接操作 Room；本项目 DB 在 Dart 侧
  * (`app_database.dart`)，故经 [ReaderProviderBridge] 通过 `legado/reader_provider`
  * 通道向 Dart 查询（原生 -> Dart），Dart 返回统一 ReturnData JSON 字符串，
  * 这里用 MatrixCursor(arrayOf("result"), 1) 包装返回给跨进程调用方。
  * 若 Flutter 引擎尚未就绪，退化为读取 Dart 侧预先通过 `cache` 方法写入的
  * 共享 JSON 文件（见 [ReaderProviderBridge.cache]）。
  *
- * 相对 Sigma 基准三处缺陷（分析 §3.1 N3）的修正：
- *  - 5 条 rss* URI 映射到正确的 Rss* 请求码（Sigma 误映射到 BookSource 码）；
+ * 基准三处缺陷（分析 §3.1 N3）的修正：
+ * - 5 条 rss* URI 映射到正确的 Rss* 请求码（误映射到 BookSource 码）；
  *  - delete 按请求码分派，不再把 DeleteRssSources 调错控制器；
  *  - SaveBookProgress 能力并入 `book/insert`（json body 携带进度），不留死代码。
  */
@@ -58,7 +58,7 @@ class ReaderProvider : ContentProvider() {
     }
 
     override fun onCreate(): Boolean {
-        // 对齐 Sigma ReaderProvider.onCreate -> ShortCuts.buildShortCuts 联动
+ // -> ShortCuts.buildShortCuts 联动
         context?.let { ShortcutHelper.buildShortcuts(it) }
         return true
     }
@@ -116,7 +116,7 @@ class ReaderProvider : ContentProvider() {
         return args
     }
 
-    /** 对齐 Sigma SimpleCursor：MatrixCursor(arrayOf("result"), 1)，仅 getString(0) 有意义 */
+ /** MatrixCursor(arrayOf("result"), 1)，仅 getString(0) 有意义 */
     private class SimpleCursor(json: String) : MatrixCursor(arrayOf("result"), 1) {
         init {
             addRow(arrayOf(json))

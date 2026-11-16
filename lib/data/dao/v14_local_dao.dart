@@ -79,7 +79,7 @@ extension DatabaseServiceV14LocalDao on DatabaseService {
         where: 'id = ?', whereArgs: [id]);
   }
 
-  // ==================== v14 DAO（第十轮 / 阅读Sigma 对齐） ====================
+ // ==================== v14 DAO ====================
 
   // --- SearchBook 跨源换源检索缓存 ---
 }

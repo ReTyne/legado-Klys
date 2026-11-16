@@ -1,4 +1,4 @@
-/// 章节页数估算 / 全书索引（对齐 fork PageEstimate 思路）
+/// 章节页数估算 / 全书索引（PageEstimate 思路）
 class PageEstimate {
   int? id;
   String bookName;

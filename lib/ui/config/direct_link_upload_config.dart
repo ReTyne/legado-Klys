@@ -96,7 +96,7 @@ class _DirectLinkUploadConfigDialogState
     });
   }
 
-  /// 导入默认规则（E: menu_import_default → selector(defaultRules)）
+  /// 导入默认规则
   Future<void> _importDefault() async {
     final picked = await showModalBottomSheet<DirectLinkRule>(
       context: context,
@@ -127,7 +127,7 @@ class _DirectLinkUploadConfigDialogState
     if (picked != null) _fillRule(picked);
   }
 
-  /// 复制规则 JSON（E: menu_copy_rule）
+  /// 复制规则 JSON
   void _copyRule() {
     final rule = _currentRule();
     if (rule == null) return;
@@ -135,7 +135,7 @@ class _DirectLinkUploadConfigDialogState
     _toast('已复制规则 JSON');
   }
 
-  /// 粘贴规则 JSON（E: menu_paste_rule）
+  /// 粘贴规则 JSON
   Future<void> _pasteRule() async {
     final clip = await Clipboard.getData(Clipboard.kTextPlain);
     final text = clip?.text?.trim();

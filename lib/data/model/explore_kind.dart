@@ -42,15 +42,31 @@ class ExploreKind {
   bool get isError => title.startsWith('ERROR:');
 
   factory ExploreKind.fromJson(Map<String, dynamic> json) {
+    // 同时接受 toggle 与 switch 两种开关写法，switch 归一为 toggle。
+    final rawType = (json['type'] ?? 'url').toString().trim().toLowerCase();
+    final type = rawType == 'switch' ? typeToggle : rawType;
+    // 下拉选项同时接受 chars 与 options 两种键名。
+    final optsRaw = json['chars'] ?? json['options'];
+    final List<String>? chars = optsRaw is List
+        ? optsRaw.map((e) => e?.toString() ?? '').toList()
+        : (optsRaw is String && optsRaw.isNotEmpty
+            ? optsRaw
+                .split(RegExp(r'[,，]'))
+                .map((e) => e.trim())
+                .where((e) => e.isNotEmpty)
+                .toList()
+            : null);
     return ExploreKind(
       title: (json['title'] ?? '').toString(),
       url: json['url']?.toString(),
-      type: (json['type'] ?? 'url').toString(),
+      type: type,
       action: json['action']?.toString(),
-      chars: (json['chars'] as List?)?.map((e) => e?.toString() ?? '').toList(),
+      chars: chars,
       defaultValue: json['default']?.toString(),
       viewName: json['viewName']?.toString(),
-      style: json['style'] is Map ? Map<String, dynamic>.from(json['style'] as Map) : null,
+      style: json['style'] is Map
+          ? Map<String, dynamic>.from(json['style'] as Map)
+          : null,
     );
   }
 

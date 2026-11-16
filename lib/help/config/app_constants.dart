@@ -482,7 +482,7 @@ class AppPrefs {
   /* ---------- Android ↔ Flutter 备份互通（键名映射层真实消费点） ---------- */
 
   /// 读偏好时「读双键」：先读 Flutter 键，缺失则经 [PreferKeyMap.toUpstream]
-  /// 读上游别名键。导入 Android `config.xml`（上游键名）后，4 个自造键名
+ /// 读别名键。导入 Android `config.xml`（标准键名）后，4 个自造键名
   /// (cover_useDefault / cover_showName / cover_showAuthor / exportToWebDav)
   /// 的设置才不会静默丢失（扫描报告 #30）。
   static bool _readBool(SharedPreferences p, String flutterKey, bool fallback) =>
@@ -490,7 +490,7 @@ class AppPrefs {
       p.getBool(PreferKeyMap.toUpstream(flutterKey)) ??
       fallback;
 
-  /// 备份导入：把 Android `config.xml` 的 prefs Map（上游键名）经
+ /// 备份导入：把 Android `config.xml` 的 prefs Map（标准键名）经
   /// [PreferKeyMap.importFromUpstream] 转换后写入本地，并刷新内存缓存。
   /// 与 BackupService 恢复链路对接的显式入口（键名映射被真实消费）。
   static Future<void> importFromUpstream(
@@ -517,7 +517,7 @@ class AppPrefs {
   }
 
   /// 备份导出：把本地 SharedPreferences（Flutter 键名）经
-  /// [PreferKeyMap.exportToUpstream] 映射成上游键名 Map，供写入 Android 可读配置。
+  /// [PreferKeyMap.exportToUpstream] 映射成标准键名 Map，供写入 Android 可读配置。
   static Map<String, dynamic> exportForUpstream(SharedPreferences p) {
     final Map<String, dynamic> raw = <String, dynamic>{};
     for (final String k in p.getKeys()) {

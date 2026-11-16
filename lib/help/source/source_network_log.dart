@@ -67,8 +67,7 @@ class SourceNetworkEntry {
     return s == null ? '—' : s.toString();
   }
 
-  String get clock =>
-      '${time.hour.toString().padLeft(2, '0')}:'
+  String get clock => '${time.hour.toString().padLeft(2, '0')}:'
       '${time.minute.toString().padLeft(2, '0')}:'
       '${time.second.toString().padLeft(2, '0')}';
 
@@ -166,13 +165,11 @@ class SourceNetworkLog {
     String? preview;
     final bytes = body?.length ?? text?.length ?? 0;
     if (text != null && text.isNotEmpty) {
-      preview = text.length > _previewLimit
-          ? text.substring(0, _previewLimit)
-          : text;
+      preview =
+          text.length > _previewLimit ? text.substring(0, _previewLimit) : text;
     } else if (body != null && body.isNotEmpty) {
-      final slice = body.length > _previewLimit
-          ? body.sublist(0, _previewLimit)
-          : body;
+      final slice =
+          body.length > _previewLimit ? body.sublist(0, _previewLimit) : body;
       preview = utf8.decode(slice, allowMalformed: true);
     }
     add(SourceNetworkEntry(
@@ -190,6 +187,37 @@ class SourceNetworkLog {
       finalUrl: finalUrl,
       redirects: redirects ?? const <String>[],
     ));
+  }
+
+  /// 把一次请求的真实元信息编码成可经 WebView 响应头回灌给 JS 侧的
+  /// X-Legado-* 头集合，让脚本里的 Jsoup Response 能读到真实值。
+  ///
+  /// * `X-Legado-RespHeaders`：服务端响应头，UTF-8 JSON 的 base64；
+  /// * `X-Legado-ReqHeaders`：实际发出的请求头，UTF-8 JSON 的 base64；
+  /// * `X-Legado-Final-Url`：重定向后的最终地址，URL 编码；
+  /// * `X-Legado-Redirects`：重定向链，UTF-8 JSON 的 base64。
+  ///
+  /// Set-Cookie 由调用方以 `X-Set-Cookie` 单独回传，此处不覆盖该键。
+  Map<String, String> toLegadoHeaders(SourceNetworkEntry entry) {
+    String b64Json(Object? value) =>
+        base64.encode(utf8.encode(jsonEncode(value)));
+    final out = <String, String>{};
+    final resp = entry.responseHeaders;
+    if (resp != null && resp.isNotEmpty) {
+      out['X-Legado-RespHeaders'] = b64Json(resp);
+    }
+    final req = entry.requestHeaders;
+    if (req != null && req.isNotEmpty) {
+      out['X-Legado-ReqHeaders'] = b64Json(req);
+    }
+    final finalUrl = entry.finalUrl;
+    if (finalUrl != null && finalUrl.isNotEmpty) {
+      out['X-Legado-Final-Url'] = Uri.encodeComponent(finalUrl);
+    }
+    if (entry.redirects.isNotEmpty) {
+      out['X-Legado-Redirects'] = b64Json(entry.redirects);
+    }
+    return out;
   }
 
   /// 把调试页拿到的「原始源码」整理成可读文本：

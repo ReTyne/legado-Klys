@@ -127,7 +127,7 @@ void main() {
       expect(s, contains('EPlacement.aboutTop'));
       expect(s, contains('EPlacement.aboutOtherCategory'));
       expect(s.contains('degradations') || s.contains('当前平台不支持'), isTrue,
-          reason: 'createHeapDump 应显式标注平台降级');
+ reason: 'createHeapDump 应平台降级');
       final p = _src('lib/ui/main/my/profile_screen.dart');
       // 精确匹配方法定义，避免把「旧 _showAbout 弹窗移除」这类注释算作残留。
       expect(RegExp(r'\bvoid\s+_showAbout\s*\(').hasMatch(p), isFalse,

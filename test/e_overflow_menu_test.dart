@@ -48,7 +48,7 @@ void main() {
     expect(_renderedOrder(tester, ['a', 'b', 'c']), ['a', 'b', 'c']);
   });
 
-  testWidgets('visibleByDefault=false 项默认不渲染（不伪造空壳）', (tester) async {
+ testWidgets('visibleByDefault=false 项默认不渲染', (tester) async {
     final items = [
       EOverflowItem(id: 'a', label: '可见', onTap: () {}),
       EOverflowItem(id: 'b', label: '隐藏', visibleByDefault: false, onTap: () {}),

@@ -1,4 +1,4 @@
-// 本轮「书源按钮失效 / 网页空白 / 界面观感」修复的离线回归基线。
+// 「书源按钮失效 / 网页空白 / 界面观感」修复的离线回归基线。
 //
 // 覆盖不便在纯 widget 环境稳定复现的链路，用源码契约 + 纯函数断言锁死：
 //  * _corsHeaders 必须返回可变 map（否则 java.ajax 抛 unmodifiable map，
@@ -18,8 +18,7 @@ String _src(String rel) => File(rel).readAsStringSync();
 void main() {
   group('java.ajax CORS 头可变性（checkNet 等按钮失效根因）', () {
     test('_corsHeaders 返回可变 map，不能是 const', () {
-      final s = _src(
-          'lib/help/source/js/parts/web_view_legado_js.dart');
+      final s = _src('lib/help/source/js/parts/web_view_legado_js.dart');
       final m = RegExp(r'Map<String, String> _corsHeaders\(\)\s*=>\s*([^;]+);')
           .firstMatch(s);
       expect(m, isNotNull, reason: '应存在 _corsHeaders() 定义');
@@ -34,8 +33,7 @@ void main() {
     });
 
     test('存在对 CORS 头的追加赋值（证明必须可变）', () {
-      final s = _src(
-          'lib/help/source/js/parts/web_view_legado_js.dart');
+      final s = _src('lib/help/source/js/parts/web_view_legado_js.dart');
       expect(RegExp(r"outHeaders\['Content-Type'\]\s*=").hasMatch(s), isTrue);
       expect(RegExp(r"outHeaders\['X-Legado-Error'\]\s*=").hasMatch(s), isTrue);
       expect(RegExp(r"headers\['X-Set-Cookie'\]\s*=").hasMatch(s), isTrue);
@@ -54,10 +52,9 @@ void main() {
     });
 
     test('登录页与发现页共用 flex_fillet 组件', () {
-      final login = _src(
-          'lib/ui/book/source/parts/source_login_screen_state.dart');
-      final discover =
-          _src('lib/ui/main/discover/discover_screen.dart');
+      final login =
+          _src('lib/ui/book/source/parts/source_login_screen_state.dart');
+      final discover = _src('lib/ui/main/discover/discover_screen.dart');
       expect(login, contains('FlexPercentLayout'));
       expect(discover, contains('FlexPercentLayout'));
       expect(login, contains('flexBasisPercentOf'));
@@ -95,9 +92,8 @@ void main() {
       // 第一行两个按钮：宽度相等（按 flex 权重均分，铺满整行）
       final rows = tester.widgetList<Row>(find.byType(Row)).toList();
       expect(rows, isNotEmpty);
-      final firstRowChildren = rows.first.children
-          .whereType<Expanded>()
-          .toList();
+      final firstRowChildren =
+          rows.first.children.whereType<Expanded>().toList();
       expect(firstRowChildren.length, 2, reason: '第一行应是 2 个等宽按钮');
       // 整行项（第三个）独占一行：该行只有一个 Expanded
       final fullRow = rows[1].children.whereType<Expanded>().toList();
@@ -107,8 +103,7 @@ void main() {
 
   group('浏览器 data: 自包含页面', () {
     test('源码含解码 + loadData 路径，地址栏不暴露 base64', () {
-      final s = _src(
-          'lib/ui/browser/parts/browser_screen_state.dart');
+      final s = _src('lib/ui/browser/parts/browser_screen_state.dart');
       expect(s, contains('_decodeDataHtml'));
       expect(s, contains('InAppWebViewInitialData'));
       expect(s, contains('loadData'));
@@ -123,16 +118,26 @@ void main() {
     test('14 项 扩展功能类名与语义分区都在', () {
       final s = _src('lib/ui/main/my/profile_screen.dart');
       for (final cls in const [
-        'AutoTaskScreen', 'HomepageModuleScreen', 'DownloadManageScreen',
-        'CloudTtsScreen', 'ReadingStatsScreen', 'AiChatScreen',
-        'AgentToolScreen', 'WelcomeConfigScreen', 'AppIconScreen',
-        'VideoSettingScreen', 'SettingsScreen',
+        'AutoTaskScreen',
+        'HomepageModuleScreen',
+        'DownloadManageScreen',
+        'CloudTtsScreen',
+        'ReadingStatsScreen',
+        'AiChatScreen',
+        'AgentToolScreen',
+        'WelcomeConfigScreen',
+        'AppIconScreen',
+        'VideoSettingScreen',
+        'SettingsScreen',
       ]) {
         expect(s, contains(cls), reason: '独有功能 $cls 不应被删');
       }
       // 相似度聚合分区（不再是单个「更多功能」折叠黑洞，也不把同类功能拆散）
       for (final t in const [
-        '设置与外观', '阅读与内容', '视听与 AI', '关于与项目',
+        '设置与外观',
+        '阅读与内容',
+        '视听与 AI',
+        '关于与项目',
       ]) {
         expect(s, contains(t), reason: '缺少相似度聚合分区 $t');
       }

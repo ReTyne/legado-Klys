@@ -242,7 +242,7 @@ class _ChapterListScreenState extends State<ChapterListScreen>
   /// 章节标题按替换规则处理
   String _displayTitle(String raw) {
     if (!_tocUseReplace || _replaceRules.isEmpty) return raw;
-    // 目录标题走 scopeTitle 通道（上游 ReplaceRuleDao.findEnabledByTitleScope），
+ // 目录标题走 scopeTitle 通道（ReplaceRuleDao.findEnabledByTitleScope），
     // 并同时传书名与书源 origin 供 scope / excludeScope 匹配。
     return ReplaceRuleService().applyRules(
       raw,
@@ -259,7 +259,7 @@ class _ChapterListScreenState extends State<ChapterListScreen>
       widget.book!.local &&
       (widget.book!.fileName?.toLowerCase().endsWith('.txt') ?? false);
 
-  /// 切换长章节拆分（E: menu_split_long_chapter）：
+  /// 切换长章节拆分：
   /// 重新解析目录入库 → 刷新列表 → 以 (index, tocChanged) 通知阅读页重载目录。
   Future<void> _toggleSplitLongChapter() async {
     final book = widget.book;

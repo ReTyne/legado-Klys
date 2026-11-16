@@ -1,4 +1,4 @@
-/// 通用带过期的 KV 缓存（对齐 Sigma CacheDao / deadline 语义）
+/// 通用带过期的 KV 缓存（ / deadline 语义）
 class KvCache {
   String key;
   String? value;

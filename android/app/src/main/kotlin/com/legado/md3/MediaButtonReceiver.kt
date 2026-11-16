@@ -6,9 +6,9 @@ import android.content.Intent
 import android.view.KeyEvent
 
 /**
- * ACTION_MEDIA_BUTTON 耳机/蓝牙/锁屏媒体键接收（对齐 Sigma receiver/MediaButtonReceiver.kt）。
+ * ACTION_MEDIA_BUTTON 耳机/蓝牙/锁屏媒体键接收。
  *
- * Sigma 在原生直接判 `mediaButtonPerNext` 决定切章/切段落；本项目把按键语义
+ * 在原生直接判 `mediaButtonPerNext` 决定切章/切段落；本项目把按键语义
  * 完整解析后经 `legado/media_button` 通道转发给 Dart，由 Dart 侧（含该开关）
  * 决定切章、切朗读段落或播放/暂停，从而真实连通朗读控制。
  */

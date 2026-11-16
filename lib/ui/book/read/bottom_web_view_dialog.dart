@@ -10,9 +10,9 @@ import 'package:path_provider/path_provider.dart';
 import 'package:legado_md3/help/device/native_bridge.dart';
 import 'package:legado_md3/ui/widgets/app_widgets.dart';
 
-/// 响应式底部 WebView 弹窗配置（对齐 Sigma `BottomWebViewDialog.Config` 的可落地子集）。
+/// 响应式底部 WebView 弹窗配置（ 的可落地子集）。
 class BottomWebViewConfig {
-  /// 弹窗占屏高比例（Sigma peekHeight）
+ /// 弹窗占屏高比例（peekHeight）
   final double peekHeight;
 
   /// 平板/宽屏断点；超过则居中并限制宽度
@@ -45,7 +45,7 @@ class BottomWebViewConfig {
   /// 是否监听网页 console 日志
   final bool listenConsole;
 
-  /// 退出时是否清空 WebView 缓存/历史（对齐 clearHistory）
+  /// 退出时是否清空 WebView 缓存/历史
   final bool clearHistoryOnClose;
 
   /// 自定义 UA；为空用内置移动 UA

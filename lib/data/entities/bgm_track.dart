@@ -1,4 +1,4 @@
-/// BGM 背景音乐曲目（对齐 fork BGM 在线音乐库）
+/// BGM 背景音乐曲目（BGM 在线音乐库）
 class BgmTrack {
   int? id;
   String title;

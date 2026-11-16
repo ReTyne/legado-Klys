@@ -10,8 +10,8 @@ extension DatabaseServiceBookDao on DatabaseService {
   }
 
   /// 真·位运算 SQL：对 books.type 执行 `type & mask > 0`。
-  /// 显式标注：本项目 books.type 为顺序枚举(0..4)，仅当数据已按位标志落库
-  /// （如 search_books 表 type 默认 8、或导入的上游备份）时结果才与上游一致。
+ /// ：本项目 books.type 为顺序枚举(0..4)，仅当数据已按位标志落库
+ /// （如 search_books 表 type 默认 8、或导入的备份）时结果才与一致。
   Future<List<Book>> getBooksByTypeBitmask(int mask) async {
     final db = await database;
     final maps = await db.rawQuery(
@@ -24,7 +24,7 @@ extension DatabaseServiceBookDao on DatabaseService {
   /// 虚拟分组按位规则过滤。
   ///
   /// 本项目 books.type 存顺序枚举、group_name 存分组名（非位掩码），
-  /// 无法直接对列套用上游 `type & mask` / `sum(groupId) & group` SQL，
+ /// 无法直接对列套用 `type & mask` / `sum(groupId) & group` SQL，
   /// 故采用报告允许的等价方案：把每本书投影成位标志/位掩码，再用
   /// [BookGroupQuery.matchesGroup] 应用同一套位规则。
   /// [groupBitsOf] 由调用方把书映射成 group 位掩码（默认 0=未分组）；

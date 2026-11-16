@@ -4,7 +4,7 @@ part of '../change_source_screen.dart';
 
 
 
-/// 换源迁移选项（fork F21）：进度 / 章内位置 / 书签 / 高亮分别可选。
+/// 换源迁移选项：进度 / 章内位置 / 书签 / 高亮分别可选。
 class _MigrationOptions {
   _MigrationOptions({required this.keepProgress});
 

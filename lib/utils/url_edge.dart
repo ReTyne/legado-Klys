@@ -1,15 +1,12 @@
-/// 批次 6 · URL 边界工具。
-///
-/// 真实消费点：本轮由 `test/detail_batch6_test.dart` 覆盖契约。
-/// 生产接线（JS bridge 的 getAbsoluteURL / HTTP 响应解码链路）不在本轮文件
-/// 所有权内（`lib/help/source/**` 与 `lib/help/http/**` 由主代理负责），
-/// 故此处只提供纯函数工具，供后续统一接入，不做「只写不读」的假接线。
+/// URL 边界工具：查询/表单编码判定、参数编码、相对地址解析。
 library;
 
-/// Query 保留集（对齐 `NetworkUtils.kt:70`）：`!$&()*+,-./:;=?@[\]^_`{|}~`
+import 'dart:convert';
+
+/// Query 保留集 `!$&()*+,-./:;=?@[\]^_`{|}~`。
 const String _queryReserved = r'!$&()*+,-./:;=?@[\]^_`{|}~';
 
-/// Form 保留集（对齐 `NetworkUtils.kt:87`）：`*-._`
+/// Form 保留集 `*-._`。
 const String _formReserved = '*-._';
 
 bool _isAsciiLetterOrDigit(int code) =>
@@ -25,9 +22,8 @@ bool _isHex16(int code) =>
 bool _isDigit16Char(String s, int i) =>
     i < s.length && _isHex16(s.codeUnitAt(i));
 
-/// 对齐 `NetworkUtils.encodedQuery/encodedForm`（:99-149）：
-/// 逐字符判定是否已 URL 编码；`%` 后两位须均为 16 进制字符，
-/// 否则视为「需编码」。0-9A-Za-z 与 [reserved] 中的字符视为已编码。
+/// 逐字符判定字符串是否已 URL 编码：`%` 后两位须均为 16 进制字符，
+/// 否则视为「需编码」；0-9A-Za-z 与 [reserved] 中的字符视为已编码。
 bool _isEncoded(String str, String reserved) {
   final reservedCodes = reserved.codeUnits.toSet();
   var i = 0;
@@ -48,10 +44,10 @@ bool _isEncoded(String str, String reserved) {
   return true;
 }
 
-/// Query 保留集判定（NetworkUtils.kt:99-123）。
+/// Query 保留集判定。
 bool encodedQuery(String str) => _isEncoded(str, _queryReserved);
 
-/// Form 保留集判定（NetworkUtils.kt:125-149，仅 `*-._` 四个额外保留字符）。
+/// Form 保留集判定（仅 `*-._` 四个额外保留字符）。
 bool encodedForm(String str) => _isEncoded(str, _formReserved);
 
 bool _isAbsUrl(String s) {
@@ -61,16 +57,20 @@ bool _isAbsUrl(String s) {
 
 bool _isDataUrl(String s) => s.toLowerCase().startsWith('data:');
 
-/// 对齐 `NetworkUtils.getAbsoluteURL`（:161-190）四类边界分支：
-///  * baseURL 为空 → 返回 trim 后的相对路径；
-///  * 逗号截断 baseURL（`data:` URL 选项场景，:165）；
-///  * 绝对 URL / Data URL → 原样返回（:178-179）；
-///  * `javascript:` → 返回空串（:180）；
-///  * 其余按 base 解析相对路径（:183）。
-String getAbsoluteURL(String? baseURL, String relativePath) {
+/// 相对地址解析为绝对 URL。
+///
+/// 分支：baseURL 为空 → 返回 trim 后的相对路径；逗号截断 baseURL；
+/// 绝对 URL / Data URL → 原样返回；`javascript:` → 返回空串；
+/// 其余按 base 解析相对路径。
+///
+/// [redirectUrl] 非空时优先作为解析基址（用于重定向后的地址）。
+String getAbsoluteURL(String? baseURL, String relativePath,
+    {String? redirectUrl}) {
   final trimmed = relativePath.trim();
-  if (baseURL == null || baseURL.isEmpty) return trimmed;
-  final base = baseURL.split(',').first;
+  final effectiveBase =
+      (redirectUrl != null && redirectUrl.isNotEmpty) ? redirectUrl : baseURL;
+  if (effectiveBase == null || effectiveBase.isEmpty) return trimmed;
+  final base = effectiveBase.split(',').first;
   Uri? baseUri;
   try {
     baseUri = Uri.parse(base);
@@ -85,4 +85,40 @@ String getAbsoluteURL(String? baseURL, String relativePath) {
   } catch (_) {
     return trimmed;
   }
+}
+
+/// 把参数 Map 编码为 `key=value&...` 请求体/查询串（URLEncoder 语义）。
+///
+/// * 已编码的值（含合法 `%XX`）不重复编码；
+/// * 普通字符集：空格编码为 `+`，其余非保留字节按 UTF-8 `%XX` 大写；
+/// * [charset] 为 `escape` 时：空格编码为 `%20`，非 ASCII 走百分号大写编码。
+String encodeParams(Map<String, dynamic> params, {String charset = 'utf-8'}) {
+  final escape = charset.toLowerCase() == 'escape';
+  final parts = <String>[];
+  for (final e in params.entries) {
+    final k = _encodeParam(e.key.toString(), escape);
+    final v = _encodeParam(e.value?.toString() ?? '', escape);
+    parts.add('$k=$v');
+  }
+  return parts.join('&');
+}
+
+const Set<int> _unreserved = <int>{0x2A, 0x2D, 0x2E, 0x5F};
+
+String _encodeParam(String s, bool escape) {
+  // 已编码（或仅含 unreserved 字符）时无需再编码。
+  if (encodedForm(s)) return s;
+  final bytes = utf8.encode(s);
+  final sb = StringBuffer();
+  for (final b in bytes) {
+    if (_isAsciiLetterOrDigit(b) || _unreserved.contains(b)) {
+      sb.writeCharCode(b);
+    } else if (b == 0x20 && !escape) {
+      sb.write('+');
+    } else {
+      sb.write('%');
+      sb.write(b.toRadixString(16).toUpperCase().padLeft(2, '0'));
+    }
+  }
+  return sb.toString();
 }

@@ -3,7 +3,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 /// 第十轮 C 组：不落在 [ReadConfig]（主代理独占模型 `lib/data/model/read_config.dart`）
 /// 内的阅读配置项，统一在此集中定义键并用 SharedPreferences 持久化。
 ///
-/// 覆盖 Sigma `pref_config_read.xml` 的 4 个额外键
+/// 覆盖 `pref_config_read.xml` 的 4 个额外键
 /// （progressBarBehavior / showBrightnessView / expandTextMenu / mouseWheelPage）
 /// 与本域新增的「双指预览替换 / 跟随系统亮度 / 自动页数估算」。
 /// 阅读页与阅读设置页共用本文件，避免键名分叉形成新的数据孤岛。

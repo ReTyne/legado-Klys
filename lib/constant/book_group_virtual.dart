@@ -1,16 +1,16 @@
 import 'book_type.dart';
 
-/// 逐字：
-/// - `data/entities/BookGroup.kt:32-40` 的 7 个内置虚拟分组常量；
-/// - `data/AppDatabase.kt:177-242` `onOpen` 的幂等插入 / 开库脏数据修复 SQL；
-/// - `data/dao/BookDao.kt:21-82` `flowByGroup` 的位运算分组过滤。
+/// 本文件集中定义三类虚拟分组能力：
+/// - 7 个内置虚拟分组常量；
+/// - 开库时 `onOpen` 的幂等插入与脏数据修复 SQL；
+/// - `flowByGroup` 的位运算分组过滤。
 ///
 /// 本项目 `book_groups` 表主键是自增 `id`、列为 `groupId/name/"order"/show/cover`
-/// (+ v14 补的 `enableRefresh`)，与上游 `groupId` 主键 / `groupName` 列不同；
+/// (+ v14 补的 `enableRefresh`)，与 `groupId` 主键 / `groupName` 列不同；
 /// 因此 SQL 的**列名按本项目适配**，但 groupId/order/show/enableRefresh 的
-/// **取值逐字**。上游用 `where not exists` 保证每次开库幂等。
+/// **取值保持一致**。用 `where not exists` 保证每次开库幂等。
 
-/// 一个内置虚拟分组行（对齐 AppDatabase.kt onOpen 的 insert 值）。
+/// 一个内置虚拟分组行（onOpen 的 insert 值）。
 class VirtualGroupRow {
   final int groupId;
   final String name;
@@ -41,7 +41,7 @@ class VirtualBookGroup {
   static const int idVideo = -6;
   static const int idError = -11;
 
-  /// AppDatabase.kt:180-226 的 7 行（顺序与 order 值一致）：
+ /// 的 7 行（顺序与 order 值一致）：
   ///  - IdLocal 带 enableRefresh=0；IdLocalNone 带 show=0；
   ///  - 其余 show=1、enableRefresh 走表默认 1；
   ///  - order：全部 -10 / 本地 -9 / 音频 -8 / 网络未分组 -7 /
@@ -57,8 +57,8 @@ class VirtualBookGroup {
   ];
 
   /// 生成 7 条 `insert ... select ... where not exists` 幂等插入 SQL
-  /// （对齐 AppDatabase.kt:179-226）。列名按 book_groups 表适配为
-  /// `groupId/name/"order"/show/enableRefresh`；上游列名为 groupName。
+ /// 。列名按 book_groups 表适配为
+ /// `groupId/name/"order"/show/enableRefresh`；列名为 groupName。
   static List<String> buildInsertSqls({String table = 'book_groups'}) =>
       builtIns.map((VirtualGroupRow g) {
         return 'insert into $table(groupId, name, "order", show, enableRefresh) '
@@ -67,7 +67,7 @@ class VirtualBookGroup {
             '(select * from $table where groupId = ${g.groupId})';
       }).toList();
 
-  /// 上游 onOpen 的 4 条脏数据修复 SQL 原文（AppDatabase.kt:228-242），
+ /// onOpen 的 4 条脏数据修复 SQL 原文，
   /// 仅作契约留存：Flutter 表名/列不同，实际执行见 [buildRepairSqls]。
   static const List<String> upstreamRepairSqls = <String>[
     "update book_sources set loginUi = null where loginUi = 'null'",
@@ -76,14 +76,14 @@ class VirtualBookGroup {
     "update httpTTS set concurrentRate = '0' where concurrentRate is null",
   ];
 
-  /// 本项目可执行的开库修复 SQL（幂等）。与上游对照：
+ /// 本项目可执行的开库修复 SQL（幂等）。对照：
   /// - `book_sources` / `rss_sources` 的 loginUi：表名/列一一对应，照搬；
   /// - `httpTTS.loginUi`：本项目 `http_tts` 表**无 loginUi 列**，无法等价实现 →
-  ///   跳过（不伪造列）；
+ /// 跳过；
   /// - `httpTTS.concurrentRate`：本项目 `http_tts.concurrentRate` 为 INTEGER，
-  ///   上游写字符串 '0'；这里补数值 0，NULL→0 语义等价；
+ /// 写字符串 '0'；这里补数值 0，NULL→0 语义等价；
   /// - `keyboardAssists` 空表灌默认数据：本项目 `keyboard_assists` 表结构
-  ///   (name/rule/...) 与上游 (type/key/value/serialNo) 不同，且无
+ /// (name/rule/...) 与 (type/key/value/serialNo) 不同，且无
   ///   `defaultData/keyboardAssists.json` 资源，无法等价灌入 → 跳过。
   static List<String> buildRepairSqls() => const <String>[
         "update book_sources set loginUi = null where loginUi = 'null'",
@@ -92,18 +92,18 @@ class VirtualBookGroup {
       ];
 }
 
-/// `BookDao.flowByGroup` 的位运算分组过滤（BookDao.kt:21-82）。
+/// `BookDao.flowByGroup` 的位运算分组过滤。
 ///
-/// 上游在 books.type（位标志列）上直接用 `type & X > 0` 与
+/// 在 books.type（位标志列）上直接用 `type & X > 0` 与
 /// `(SELECT sum(groupId) FROM book_groups where groupId > 0) & group` 子查询判定。
-/// 本项目 books.type 存 Flutter 顺序枚举，无法直接对该列套用上游位规则，
+/// 本项目 books.type 存 Flutter 顺序枚举，无法直接对该列套用位规则，
 /// 故同时提供：
-///  - [buildFlowByGroupWhere] / [buildFlowByGroupSql]：逐字复刻上游 SQL（契约 / 未来切换用）；
+/// - [buildFlowByGroupWhere] / [buildFlowByGroupSql]：位标志分组 SQL（契约 / 未来切换用）；
 ///  - [matchesGroup]：Dart 层把书投影成位标志后应用**同一套**位规则（报告 #17 允许的等价实现）。
 class BookGroupQuery {
   BookGroupQuery._();
 
-  /// 生成上游 flowByGroup 各分支的 WHERE 子句（逐字复刻 BookDao.kt）。
+ /// 生成 flowByGroup 各分支的 WHERE 子句。
   /// [groupColumn] / [groupTable] 可切到本项目列名（group_name / book_groups）。
   static String buildFlowByGroupWhere(
     int groupId, {
@@ -114,20 +114,19 @@ class BookGroupQuery {
         '(SELECT sum(groupId) FROM $groupTable where groupId > 0) & $groupColumn';
     switch (groupId) {
       case VirtualBookGroup.idRoot:
-        // BookDao.kt:37-44 flowRoot
+ // flowRoot
         return 'type & ${BookType.text} > 0 '
             'and type & ${BookType.local} = 0 '
             'and ($sumExpr) = 0 '
             'and (select show from $groupTable where groupId = ${VirtualBookGroup.idNetNone}) != 1';
       case VirtualBookGroup.idAll:
-        // BookDao.kt:47 flowAll（无 where，占位恒真）
+ // flowAll（无 where，恒真）
         return '1 = 1';
       case VirtualBookGroup.idLocal:
         return 'type & ${BookType.local} > 0';
       case VirtualBookGroup.idAudio:
         return 'type & ${BookType.audio} > 0';
       case VirtualBookGroup.idNetNone:
-        // BookDao.kt:59-65
         return 'type & ${BookType.audio} = 0 '
             'and type & ${BookType.local} = 0 '
             'and type & ${BookType.video} = 0 '
@@ -139,7 +138,7 @@ class BookGroupQuery {
       case VirtualBookGroup.idError:
         return 'type & ${BookType.updateError} > 0';
       default:
-        // BookDao.kt:75 flowByUserGroup
+ // flowByUserGroup
         return '($groupColumn & $groupId) > 0';
     }
   }
@@ -168,7 +167,7 @@ class BookGroupQuery {
   /// [userGroupsSum]：`sum(groupId) where groupId > 0`；
   /// [netNoneShow]：IdNetNone 分组的 show 值。
   ///
-  /// 注：flowRoot 的 `netNoneShow != 1` 是上游原文（看似反直觉，逐字照抄）。
+ /// 注：flowRoot 的 `netNoneShow != 1` 看似反直觉，但为既定契约，故保留。
   static bool matchesGroup({
     required int typeFlags,
     required int groupBits,

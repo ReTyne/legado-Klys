@@ -11,7 +11,7 @@ import java.io.File
 /**
  * SAF（ACTION_OPEN_DOCUMENT_TREE，持久 URI 权限）+ FileProvider 文件分享。
  *
- * 对齐分析 §6.2 / ui_main §6.2：defaultBookTreeUri / backupUri 等目录授权、
+ * defaultBookTreeUri / backupUri 等目录授权、
  * 以及把本地缓存/书籍文件以 content:// 形式安全地交给外部 App 打开或分享。
  * authority 与 Manifest 的 ${applicationId}.fileProvider 一致。
  */

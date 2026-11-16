@@ -18,7 +18,7 @@ part 'parts/des_core.dart';
 ///
 /// 用途：把「两个真实聚合源（7632 / 7814）重度依赖、且可纯 Dart 实现」的桥 API
 /// 做成真实实现，供 `test/real_source_compat_test.dart` 在无 WebView 的单测里断言。
-/// 与 `legado_bridge_js.dart`（注入 WebView 的 JS 桥）语义对齐：
+/// 提供与注入 WebView 的 JS 桥同名的工具能力：
 ///   * java.base64Encode / base64Decode / base64DecodeToByteArray
 ///   * java.getWebViewUA、java.timeFormat
 ///   * cache.put/get/putMemory/getFromMemory
@@ -30,14 +30,14 @@ part 'parts/des_core.dart';
 /// refreshExplore、Packages.*、java.deviceID（iOS 专属）依赖 Android 原生、
 /// Rhino Java 互操作或可见 WebView，仍由 WebView 桥 + 原生通道承担。
 
-/// 对齐 java.base64Encode / base64Decode / base64DecodeToByteArray 的真实编解码。
+/// 提供 base64 编码、解码与解字节数组的真实实现。
 class JsBridgeCodec {
   JsBridgeCodec._();
 
-  /// base64 编码（对齐 __b64Unicode：先取 UTF-8 字节）。
+  /// base64 编码（先取 UTF-8 字节）。
   static String base64Encode(String text) => base64.encode(utf8.encode(text));
 
-  /// base64 解码为 UTF-8 字符串（解码失败返回空串，对齐桥的 try/catch 兜底）。
+  /// base64 解码为 UTF-8 字符串（解码失败返回空串）。
   static String base64Decode(String text) {
     try {
       return utf8.decode(base64.decode(_clean(text)));
@@ -46,7 +46,7 @@ class JsBridgeCodec {
     }
   }
 
-  /// 对齐 java.base64DecodeToByteArray：返回字节数组，供 createSymmetricCrypto 解密。
+  /// 返回字节数组，供 createSymmetricCrypto 解密。
   static List<int> base64DecodeToByteArray(String text) {
     try {
       return base64.decode(_clean(text));
@@ -55,14 +55,14 @@ class JsBridgeCodec {
     }
   }
 
-  /// 字节数组 -> base64（对齐 encryptBase64）。
+  /// 字节数组 -> base64。
   static String bytesToBase64(List<int> bytes) => base64.encode(bytes);
 
-  /// 字节数组 -> 小写 hex（对齐 encryptHex）。
+  /// 字节数组 -> 小写 hex。
   static String bytesToHex(List<int> bytes) =>
       bytes.map((b) => (b & 0xff).toRadixString(16).padLeft(2, '0')).join();
 
-  /// hex 字符串 -> 字节数组（对齐 __hexToBytes）。
+  /// hex 字符串 -> 字节数组。
   static List<int> hexToBytes(String hex) {
     final h = hex.replaceAll(RegExp(r'[^0-9a-fA-F]'), '');
     final out = <int>[];

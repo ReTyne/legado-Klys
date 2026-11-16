@@ -138,7 +138,7 @@ class Book {
 
   factory Book.fromMap(Map<String, dynamic> map) {
     // 备份导入边界（BackupService 恢复书籍时调用本方法，是「旧备份 type 重映射」
-    // 的真实消费点）：上游/Android 备份的 type 是位标志（>=8），需转成
+ // 的真实消费点）：/Android 备份的 type 是位标志（>=8），需转成
     // 本项目顺序枚举落库；Flutter 自身备份的 type 为 0..4 顺序枚举，原样保留。
     // 位标志中的 local 位叠加到 Book.local 布尔，避免类型信息丢失。
     final int rawType = _rawTypeInt(map['type']);
@@ -188,7 +188,7 @@ class Book {
     return int.tryParse(v?.toString() ?? '') ?? 0;
   }
 
-  /// 跨端导出（Android 备份互通）：输出与上游 BookType 位标志一致的 Map。
+ /// 跨端导出（Android 备份互通）：输出与 BookType 位标志一致的 Map。
   /// `type` 由本项目顺序枚举转成位标志（[BookType.fromFlutterEnum]），
   /// 并按 origin 前缀/`local` 补本地位。本项目自身备份仍用 [toMap]（顺序枚举），
   /// 以免改变 reader_router / book_provider 依赖的 switch 语义。

@@ -9,7 +9,7 @@ import 'package:legado_md3/help/storage/direct_link_upload.dart';
 /// 直链上传配置来自 assets/defaultData/directLinkUpload.json。
 void main() {
   group('DirectLinkRule 模型', () {
-    test('默认规则与 E assets 一致（3 条）', () {
+    test('默认规则为 3 条且字段完整', () {
       expect(DirectLinkUploadService.defaultRules.length, 3);
       expect(
         DirectLinkUploadService.defaultRules[0].uploadUrl,
@@ -22,7 +22,7 @@ void main() {
     });
 
     test('E 默认规则 JSON 原样解析', () {
-      // E assets/defaultData/directLinkUpload.json 原文
+      // 默认规则原文
       const eJson = '''
 [
   {

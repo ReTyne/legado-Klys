@@ -237,7 +237,7 @@ class _MainScreenState extends State<MainScreen> {
   }
 
   Widget _buildMainScaffold() {
-    // 自适应导航（对齐 fork MD3 MainAdaptiveLayout / NG 浮动侧栏）：
+ // 自适应导航（MD3 MainAdaptiveLayout / 浮动侧栏）：
     // 手机 / 窄窗口用底部 NavigationBar；平板 / 宽窗口用左侧 NavigationRail。
     final width = MediaQuery.of(context).size.width;
     final useRail = width >= 720;

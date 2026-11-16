@@ -6,7 +6,7 @@ import 'package:flutter/foundation.dart';
 import 'package:legado_md3/data/local/app_database.dart';
 import 'package:legado_md3/data/model/v14_models.dart';
 
-/// BGM 在线背景音乐服务（对齐 fork 的 BGM 音乐库 / 朗读场景混音）。
+/// BGM 在线背景音乐服务，支持歌单持久化与朗读场景混音。
 ///
 /// * 歌单持久化：`DatabaseService().getBgmTracks()/insertBgmTrack()/deleteBgmTrack()`；
 /// * 播放：`audioplayers`，本地文件走 [DeviceFileSource]，在线 URL 走 [UrlSource]；

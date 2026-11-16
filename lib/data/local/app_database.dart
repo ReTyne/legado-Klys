@@ -5,6 +5,8 @@ import 'package:path/path.dart' as path;
 import 'package:legado_md3/data/model/book.dart';
 import 'package:legado_md3/data/model/book_chapter.dart';
 import 'package:legado_md3/data/model/book_source.dart';
+import 'package:legado_md3/data/model/book_source_part.dart';
+import 'package:legado_md3/constant/app_const.dart';
 import 'package:legado_md3/data/model/db_models.dart';
 import 'package:legado_md3/data/model/bookmark.dart';
 import 'package:legado_md3/data/model/read_record.dart';
@@ -37,7 +39,6 @@ part '../dao/v14_content_dao.dart';
 part '../dao/v14_media_dao.dart';
 part '../dao/maintenance_dao.dart';
 
-
 class DatabaseService {
   static final DatabaseService _instance = DatabaseService._internal();
   factory DatabaseService() => _instance;
@@ -65,7 +66,7 @@ class DatabaseService {
       'splitLongChapter INTEGER DEFAULT 1, readConfig TEXT, '
       'PRIMARY KEY (name, author))';
 
-  /// 与 v7 重建表、v9 迁移、BookChapter.toMap/fromMap 完全对齐：
+  /// 表结构与 v7 重建表、v9 迁移、BookChapter.toMap/fromMap 保持一致：
   /// isVip / update_time 必填，否则全新安装时 insertChapters 会因缺列抛异常。
   static const String bookChaptersTableSql =
       'CREATE TABLE IF NOT EXISTS book_chapters (bookName TEXT NOT NULL, '
@@ -77,7 +78,7 @@ class DatabaseService {
       'PRIMARY KEY (bookName, bookAuthor, chapter_index))';
 
   /// v13 新增 5 张表的建表 SQL（生产与回归测试共用，避免列集合漂移）。
-  /// 对齐官方原版 AutoTask / RssReadRecord / BookMemo / BookHighlight / Download。
+ /// AutoTask / RssReadRecord / BookMemo / BookHighlight / Download。
   static const List<String> v13TableSqls = [
     'CREATE TABLE IF NOT EXISTS auto_tasks (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, action TEXT, jsCode TEXT, hour INTEGER DEFAULT 8, minute INTEGER DEFAULT 0, intervalMinutes INTEGER DEFAULT 0, enabled INTEGER DEFAULT 1, lastRunTime INTEGER, note TEXT, customOrder INTEGER DEFAULT 0)',
     'CREATE TABLE IF NOT EXISTS rss_read_records (id INTEGER PRIMARY KEY AUTOINCREMENT, link TEXT UNIQUE, title TEXT, sourceUrl TEXT, durPos REAL DEFAULT 0, readTime INTEGER, enabled INTEGER DEFAULT 1)',
@@ -110,11 +111,20 @@ class DatabaseService {
     return _db!;
   }
 
+  /// 在已打开的数据库上执行生产建表流程，供测试复用同一份 SQL。
+  static Future<void> createTablesForTest(Database db) =>
+      _instance._onCreate(db, _dbVersion);
+
+  /// 注入已打开的数据库实例，供测试避让平台数据库路径与文件锁。
+  static void overrideDatabaseForTest(Database db) {
+    _instance._db = db;
+  }
+
   Future<Database> _initDatabase() async {
     final dbPath = await getDatabasesPath();
     final fullPath = path.join(dbPath, 'legado_md3.db');
-    // onOpen 在 onCreate/onUpgrade 之后、每次开库都会调用（对齐
-    // 数据库打开回调，用于幂等补插虚拟分组与脏数据修复。
+    // onOpen 在 onCreate/onUpgrade 之后、每次开库都会调用，
+    // 用于幂等补插虚拟分组与脏数据修复。
     return openDatabase(
       fullPath,
       version: _dbVersion,
@@ -129,7 +139,7 @@ class DatabaseService {
   /// 2) 开库脏数据修复 SQL（loginUi='null' 转 NULL、concurrentRate 空值补 0）。
   /// 全部 try/catch：旧库缺 groupId/enableRefresh 列时不影响开库。
   /// 无法等价实现的部分（httpTTS.loginUi / keyboardAssists 默认数据）
-  /// 已在 VirtualBookGroup.buildRepairSqls 注释中显式标注并跳过。
+ /// 已在 VirtualBookGroup.buildRepairSqls 注释中并跳过。
   Future<void> _onOpen(Database db) async {
     for (final sql in VirtualBookGroup.buildInsertSqls()) {
       try {
@@ -145,60 +155,141 @@ class DatabaseService {
 
   Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
     if (oldVersion < 6) {
-      try { await db.execute('ALTER TABLE replace_rules ADD COLUMN isTitle INTEGER DEFAULT 0'); } catch (_) {}
-      try { await db.execute('ALTER TABLE replace_rules ADD COLUMN isContent INTEGER DEFAULT 1'); } catch (_) {}
-      try { await db.execute('ALTER TABLE replace_rules ADD COLUMN isRegex INTEGER DEFAULT 1'); } catch (_) {}
+      try {
+        await db.execute(
+            'ALTER TABLE replace_rules ADD COLUMN isTitle INTEGER DEFAULT 0');
+      } catch (_) {}
+      try {
+        await db.execute(
+            'ALTER TABLE replace_rules ADD COLUMN isContent INTEGER DEFAULT 1');
+      } catch (_) {}
+      try {
+        await db.execute(
+            'ALTER TABLE replace_rules ADD COLUMN isRegex INTEGER DEFAULT 1');
+      } catch (_) {}
     }
     if (oldVersion < 7) {
       // book_chapters 旧表用保留字 "index" 且缺 start_pos/end_pos/variable，重建并迁移
       try {
-        await db.execute('ALTER TABLE book_chapters RENAME TO book_chapters_old');
+        await db
+            .execute('ALTER TABLE book_chapters RENAME TO book_chapters_old');
       } catch (_) {}
-      await db.execute('CREATE TABLE IF NOT EXISTS book_chapters (bookName TEXT NOT NULL, bookAuthor TEXT NOT NULL, chapter_index INTEGER NOT NULL, title TEXT, url TEXT, baseUrl TEXT, isVolume INTEGER DEFAULT 0, isVip INTEGER DEFAULT 0, isPay INTEGER DEFAULT 0, update_time TEXT, tag TEXT, resourceUrl TEXT, content TEXT, start_pos INTEGER, end_pos INTEGER, variable TEXT, PRIMARY KEY (bookName, bookAuthor, chapter_index))');
+      await db.execute(
+          'CREATE TABLE IF NOT EXISTS book_chapters (bookName TEXT NOT NULL, bookAuthor TEXT NOT NULL, chapter_index INTEGER NOT NULL, title TEXT, url TEXT, baseUrl TEXT, isVolume INTEGER DEFAULT 0, isVip INTEGER DEFAULT 0, isPay INTEGER DEFAULT 0, update_time TEXT, tag TEXT, resourceUrl TEXT, content TEXT, start_pos INTEGER, end_pos INTEGER, variable TEXT, PRIMARY KEY (bookName, bookAuthor, chapter_index))');
       try {
-        await db.execute('INSERT OR REPLACE INTO book_chapters (bookName, bookAuthor, chapter_index, title, url, baseUrl, isVolume, isPay, tag, resourceUrl, content) SELECT bookName, bookAuthor, "index", title, url, baseUrl, isVolume, isPay, tag, resourceUrl, content FROM book_chapters_old');
+        await db.execute(
+            'INSERT OR REPLACE INTO book_chapters (bookName, bookAuthor, chapter_index, title, url, baseUrl, isVolume, isPay, tag, resourceUrl, content) SELECT bookName, bookAuthor, "index", title, url, baseUrl, isVolume, isPay, tag, resourceUrl, content FROM book_chapters_old');
         await db.execute('DROP TABLE book_chapters_old');
       } catch (_) {}
     }
     if (oldVersion < 8) {
-      // v8：让所有表结构与各模型 toMap/fromMap 对齐（旧建表语句缺列会导致写入抛
+      // v8：让所有表结构与各模型 toMap/fromMap 保持一致（旧建表语句缺列会导致写入抛
       // “table X has no column named Y”）。逐列 ADD，已存在/失败均忽略，保证可重入。
       await _addColumnsIfMissing(db, 'books', const [
-        'coverUrl TEXT', 'intro TEXT', 'kind TEXT', 'lastChapter TEXT', 'lastChapterIndex INTEGER',
-        'durChapterIndex INTEGER', 'durChapterPos INTEGER', 'durChapterTime INTEGER', 'noteUrl TEXT',
-        'bookUrl TEXT', 'origin TEXT', 'originName TEXT', 'tag TEXT', 'wordCount INTEGER',
-        'canUpdate INTEGER DEFAULT 1', 'local INTEGER DEFAULT 0', 'type INTEGER DEFAULT 0',
-        'group_name TEXT', 'order_num INTEGER', 'latestChapterTime INTEGER', 'lastCheckTime INTEGER',
-        'infoHtml TEXT', 'tocHtml TEXT', 'variable TEXT', 'customOrder INTEGER',
-        'allowUpdate INTEGER DEFAULT 1', 'fileName TEXT', 'customCoverUrl TEXT', 'bookComment TEXT',
+        'coverUrl TEXT',
+        'intro TEXT',
+        'kind TEXT',
+        'lastChapter TEXT',
+        'lastChapterIndex INTEGER',
+        'durChapterIndex INTEGER',
+        'durChapterPos INTEGER',
+        'durChapterTime INTEGER',
+        'noteUrl TEXT',
+        'bookUrl TEXT',
+        'origin TEXT',
+        'originName TEXT',
+        'tag TEXT',
+        'wordCount INTEGER',
+        'canUpdate INTEGER DEFAULT 1',
+        'local INTEGER DEFAULT 0',
+        'type INTEGER DEFAULT 0',
+        'group_name TEXT',
+        'order_num INTEGER',
+        'latestChapterTime INTEGER',
+        'lastCheckTime INTEGER',
+        'infoHtml TEXT',
+        'tocHtml TEXT',
+        'variable TEXT',
+        'customOrder INTEGER',
+        'allowUpdate INTEGER DEFAULT 1',
+        'fileName TEXT',
+        'customCoverUrl TEXT',
+        'bookComment TEXT',
       ]);
       await _addColumnsIfMissing(db, 'book_sources', const [
-        'loginUi TEXT', 'loginCheckJs TEXT', 'coverDecodeJs TEXT', 'eventListener INTEGER DEFAULT 0',
-        'customButton INTEGER DEFAULT 0', 'enabledCookieJar INTEGER DEFAULT 0', 'concurrentRate TEXT',
-        'homepageModules TEXT', 'checkKeyWord TEXT', 'exploreScreen TEXT', 'ruleImage TEXT',
-        'variableComment TEXT', 'jsLib TEXT', 'variable TEXT',
+        'loginUi TEXT',
+        'loginCheckJs TEXT',
+        'coverDecodeJs TEXT',
+        'eventListener INTEGER DEFAULT 0',
+        'customButton INTEGER DEFAULT 0',
+        'enabledCookieJar INTEGER DEFAULT 0',
+        'concurrentRate TEXT',
+        'homepageModules TEXT',
+        'checkKeyWord TEXT',
+        'exploreScreen TEXT',
+        'ruleImage TEXT',
+        'variableComment TEXT',
+        'jsLib TEXT',
+        'variable TEXT',
       ]);
       await _addColumnsIfMissing(db, 'bookmarks', const [
-        'bookAuthor TEXT', 'pageIndex INTEGER DEFAULT 0',
+        'bookAuthor TEXT',
+        'pageIndex INTEGER DEFAULT 0',
       ]);
-      await _addColumnsIfMissing(db, 'replace_rules', const ['order_num INTEGER']);
+      await _addColumnsIfMissing(
+          db, 'replace_rules', const ['order_num INTEGER']);
       await _addColumnsIfMissing(db, 'rss_sources', const [
-        'sourceIcon TEXT', 'group_name TEXT', 'sourceComment TEXT', 'searchUrl TEXT', 'sortUrl TEXT',
-        'loginUrl TEXT', 'loginUi TEXT', 'loginCheckJs TEXT', 'coverDecodeJs TEXT', 'header TEXT',
-        'variableComment TEXT', 'concurrentRate TEXT', 'jsLib TEXT', 'startHtml TEXT', 'startStyle TEXT',
-        'startJs TEXT', 'preloadJs TEXT', 'ruleArticles TEXT', 'ruleNextPage TEXT', 'ruleTitle TEXT',
-        'rulePubDate TEXT', 'ruleDescription TEXT', 'ruleImage TEXT', 'ruleLink TEXT', 'ruleContent TEXT',
-        'style TEXT', 'injectJs TEXT', 'contentWhitelist TEXT', 'contentBlacklist TEXT',
-        'shouldOverrideUrlLoading TEXT', 'customOrder INTEGER', 'unreadCount INTEGER DEFAULT 0',
-        'variable TEXT', 'enabledCookieJar INTEGER DEFAULT 0',
+        'sourceIcon TEXT',
+        'group_name TEXT',
+        'sourceComment TEXT',
+        'searchUrl TEXT',
+        'sortUrl TEXT',
+        'loginUrl TEXT',
+        'loginUi TEXT',
+        'loginCheckJs TEXT',
+        'coverDecodeJs TEXT',
+        'header TEXT',
+        'variableComment TEXT',
+        'concurrentRate TEXT',
+        'jsLib TEXT',
+        'startHtml TEXT',
+        'startStyle TEXT',
+        'startJs TEXT',
+        'preloadJs TEXT',
+        'ruleArticles TEXT',
+        'ruleNextPage TEXT',
+        'ruleTitle TEXT',
+        'rulePubDate TEXT',
+        'ruleDescription TEXT',
+        'ruleImage TEXT',
+        'ruleLink TEXT',
+        'ruleContent TEXT',
+        'style TEXT',
+        'injectJs TEXT',
+        'contentWhitelist TEXT',
+        'contentBlacklist TEXT',
+        'shouldOverrideUrlLoading TEXT',
+        'customOrder INTEGER',
+        'unreadCount INTEGER DEFAULT 0',
+        'variable TEXT',
+        'enabledCookieJar INTEGER DEFAULT 0',
       ]);
       await _addColumnsIfMissing(db, 'rss_articles', const [
-        'description TEXT', 'author TEXT', 'category TEXT', 'sourceName TEXT',
-        'isRead INTEGER DEFAULT 0', 'starred INTEGER DEFAULT 0', 'readTime INTEGER',
-        'image TEXT', 'content TEXT',
+        'description TEXT',
+        'author TEXT',
+        'category TEXT',
+        'sourceName TEXT',
+        'isRead INTEGER DEFAULT 0',
+        'starred INTEGER DEFAULT 0',
+        'readTime INTEGER',
+        'image TEXT',
+        'content TEXT',
       ]);
       await _addColumnsIfMissing(db, 'txt_toc_rules', const [
-        'name TEXT', 'volumeRule TEXT', 'example TEXT', 'serialNumber INTEGER DEFAULT -1',
+        'name TEXT',
+        'volumeRule TEXT',
+        'example TEXT',
+        'serialNumber INTEGER DEFAULT -1',
       ]);
     }
     if (oldVersion < 9) {
@@ -210,7 +301,7 @@ class DatabaseService {
     }
     if (oldVersion < 10) {
       // v10：rss_sources 补运行时字段列（articleStyle/enableJs/loadWithBaseUrl/preload/
-      // singleUrl/cacheFirst/redirectPolicy/type），与 RssSource.toMap/fromMap 对齐，
+      // singleUrl/cacheFirst/redirectPolicy/type），与 RssSource.toMap/fromMap 保持一致，
       // 否则旧库写入会抛 "table rss_sources has no column named X"。逐列 ADD 可重入。
       await _addColumnsIfMissing(db, 'rss_sources', const [
         'articleStyle INTEGER',
@@ -250,7 +341,8 @@ class DatabaseService {
   }
 
   /// 给已存在的表逐列补列（SQLite 不支持 ADD COLUMN IF NOT EXISTS，逐列 try/catch）
-  Future<void> _addColumnsIfMissing(Database db, String table, List<String> columns) async {
+  Future<void> _addColumnsIfMissing(
+      Database db, String table, List<String> columns) async {
     for (final col in columns) {
       try {
         await db.execute('ALTER TABLE $table ADD COLUMN $col');
@@ -263,34 +355,61 @@ class DatabaseService {
   Future<void> _onCreate(Database db, int version) async {
     await db.execute(booksTableSql);
     await db.execute(bookChaptersTableSql);
-    await db.execute('CREATE TABLE IF NOT EXISTS book_sources (bookSourceUrl TEXT PRIMARY KEY, bookSourceName TEXT, bookSourceGroup TEXT, bookSourceType INTEGER, bookSourceComment TEXT, lastUpdateTime INTEGER, enabled INTEGER DEFAULT 1, enabledExplore INTEGER DEFAULT 1, customOrder INTEGER, respondTime INTEGER, weight INTEGER, header TEXT, loginUrl TEXT, loginUi TEXT, loginCheckJs TEXT, bookUrlPattern TEXT, charset TEXT, coverDecodeJs TEXT, eventListener INTEGER DEFAULT 0, customButton INTEGER DEFAULT 0, enabledCookieJar INTEGER DEFAULT 0, concurrentRate TEXT, homepageModules TEXT, searchUrl TEXT, checkKeyWord TEXT, exploreUrl TEXT, exploreScreen TEXT, ruleSearch TEXT, ruleExplore TEXT, ruleBookInfo TEXT, ruleToc TEXT, ruleContent TEXT, ruleReview TEXT, ruleImage TEXT, variableComment TEXT, jsLib TEXT, variable TEXT, rulePut TEXT, ruleGet TEXT)');
-    await db.execute('CREATE TABLE IF NOT EXISTS book_groups (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, "order" INTEGER, show INTEGER DEFAULT 1, cover TEXT)');
-    await db.execute('CREATE TABLE IF NOT EXISTS book_knowledge (id INTEGER PRIMARY KEY AUTOINCREMENT, bookName TEXT, author TEXT, type TEXT, name TEXT, content TEXT, cover TEXT, "order" INTEGER)');
-    await db.execute('CREATE TABLE IF NOT EXISTS book_progress (id INTEGER PRIMARY KEY AUTOINCREMENT, bookName TEXT, author TEXT, chapterIndex INTEGER, pagePos INTEGER, duration INTEGER, lastReadTime INTEGER)');
-    await db.execute('CREATE TABLE IF NOT EXISTS book_markings (id INTEGER PRIMARY KEY AUTOINCREMENT, bookName TEXT, author TEXT, chapterIndex INTEGER, chapterTitle TEXT, pagePos INTEGER, content TEXT, note TEXT, color INTEGER, createTime INTEGER)');
-    await db.execute('CREATE TABLE IF NOT EXISTS bookmarks (id INTEGER PRIMARY KEY AUTOINCREMENT, bookName TEXT, bookAuthor TEXT, chapterIndex INTEGER, chapterTitle TEXT, pageIndex INTEGER DEFAULT 0, content TEXT, createTime INTEGER, author TEXT, pagePos INTEGER, note TEXT)');
-    await db.execute('CREATE TABLE IF NOT EXISTS caches (id INTEGER PRIMARY KEY AUTOINCREMENT, bookName TEXT, author TEXT, chapterIndex INTEGER, chapterTitle TEXT, content TEXT, size INTEGER, saveTime INTEGER)');
-    await db.execute('CREATE TABLE IF NOT EXISTS cloud_tts_engines (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, type TEXT, url TEXT, apiKey TEXT, region TEXT, voice TEXT, rate INTEGER, pitch INTEGER, enabled INTEGER DEFAULT 1, concurrentRate INTEGER)');
-    await db.execute('CREATE TABLE IF NOT EXISTS cookies (id INTEGER PRIMARY KEY AUTOINCREMENT, url TEXT, cookie TEXT, lastUpdateTime INTEGER)');
-    await db.execute('CREATE TABLE IF NOT EXISTS dict_rules (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, summary TEXT, url TEXT, rule TEXT, enabled INTEGER DEFAULT 1, "order" INTEGER)');
-    await db.execute('CREATE TABLE IF NOT EXISTS highlight_rules (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, pattern TEXT, color INTEGER, enabled INTEGER DEFAULT 1, "order" INTEGER)');
-    await db.execute('CREATE TABLE IF NOT EXISTS highlight_tag_rules (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, pattern TEXT, color INTEGER, enabled INTEGER DEFAULT 1, "order" INTEGER, scope TEXT)');
-    await db.execute('CREATE TABLE IF NOT EXISTS http_tts (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, url TEXT, method TEXT, headers TEXT, body TEXT, enabled INTEGER DEFAULT 1, concurrentRate INTEGER)');
-    await db.execute('CREATE TABLE IF NOT EXISTS read_records (id INTEGER PRIMARY KEY AUTOINCREMENT, bookName TEXT, author TEXT, duration INTEGER, date INTEGER, chapterIndex INTEGER, pagePos INTEGER)');
-    await db.execute('CREATE TABLE IF NOT EXISTS replace_rules (id INTEGER PRIMARY KEY AUTOINCREMENT, replaceSummary TEXT, replaceRule TEXT, replacement TEXT, enable INTEGER DEFAULT 1, isTitle INTEGER DEFAULT 0, isContent INTEGER DEFAULT 1, isRegex INTEGER DEFAULT 1, scope TEXT, order_num INTEGER, "order" INTEGER, excludeScope TEXT, group_name TEXT, timeoutMillisecond INTEGER DEFAULT 3000, sortOrder INTEGER)');
-    await db.execute('CREATE TABLE IF NOT EXISTS rss_sources (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, url TEXT, sourceIcon TEXT, group_name TEXT, sourceComment TEXT, searchUrl TEXT, sortUrl TEXT, loginUrl TEXT, loginUi TEXT, loginCheckJs TEXT, coverDecodeJs TEXT, header TEXT, variableComment TEXT, concurrentRate TEXT, jsLib TEXT, startHtml TEXT, startStyle TEXT, startJs TEXT, preloadJs TEXT, ruleArticles TEXT, ruleNextPage TEXT, ruleTitle TEXT, rulePubDate TEXT, ruleDescription TEXT, ruleImage TEXT, ruleLink TEXT, ruleContent TEXT, style TEXT, injectJs TEXT, contentWhitelist TEXT, contentBlacklist TEXT, shouldOverrideUrlLoading TEXT, enabled INTEGER DEFAULT 1, customOrder INTEGER, lastUpdateTime INTEGER, unreadCount INTEGER DEFAULT 0, variable TEXT, enabledCookieJar INTEGER DEFAULT 0, articleStyle INTEGER, enableJs INTEGER DEFAULT 0, loadWithBaseUrl INTEGER DEFAULT 0, preload INTEGER DEFAULT 0, singleUrl INTEGER DEFAULT 0, cacheFirst INTEGER DEFAULT 0, redirectPolicy TEXT, type INTEGER DEFAULT 0, "group" TEXT, icon TEXT, description TEXT)');
-    await db.execute('CREATE TABLE IF NOT EXISTS rss_articles (id INTEGER PRIMARY KEY AUTOINCREMENT, sourceUrl TEXT, title TEXT, link TEXT, description TEXT, content TEXT, image TEXT, pubDate INTEGER, author TEXT, category TEXT, sourceName TEXT, isRead INTEGER DEFAULT 0, starred INTEGER DEFAULT 0, readTime INTEGER, star INTEGER DEFAULT 0, desc TEXT, read INTEGER DEFAULT 0)');
-    await db.execute('CREATE TABLE IF NOT EXISTS rss_stars (id INTEGER PRIMARY KEY AUTOINCREMENT, sourceUrl TEXT, title TEXT, link TEXT, desc TEXT, content TEXT, starTime INTEGER)');
-    await db.execute('CREATE TABLE IF NOT EXISTS rule_subs (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, url TEXT, type TEXT, enabled INTEGER DEFAULT 1, lastUpdateTime INTEGER, customOrder INTEGER)');
-    await db.execute('CREATE TABLE IF NOT EXISTS search_content_history (id INTEGER PRIMARY KEY AUTOINCREMENT, content TEXT, searchTime INTEGER)');
-    await db.execute('CREATE TABLE IF NOT EXISTS servers (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, host TEXT, port INTEGER, path TEXT, username TEXT, password TEXT, enabled INTEGER DEFAULT 1)');
-    await db.execute('CREATE TABLE IF NOT EXISTS tag_group_rules (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, pattern TEXT, "group" TEXT, enabled INTEGER DEFAULT 1, "order" INTEGER)');
-    await db.execute('CREATE TABLE IF NOT EXISTS translation_caches (id INTEGER PRIMARY KEY AUTOINCREMENT, source TEXT, target TEXT, original TEXT, translated TEXT, saveTime INTEGER)');
-    await db.execute('CREATE TABLE IF NOT EXISTS txt_toc_rules (id INTEGER PRIMARY KEY, name TEXT, chapterRule TEXT, volumeRule TEXT, example TEXT, serialNumber INTEGER DEFAULT -1, enable INTEGER DEFAULT 1, "order" INTEGER)');
-    await db.execute('CREATE TABLE IF NOT EXISTS keyboard_assists (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, rule TEXT, enabled INTEGER DEFAULT 1, "order" INTEGER)');
-    await db.execute('CREATE TABLE IF NOT EXISTS homepage_modules (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, type INTEGER, sourceUrl TEXT, exploreUrl TEXT, config TEXT, customOrder INTEGER, enabled INTEGER DEFAULT 1)');
-    await db.execute('CREATE TABLE IF NOT EXISTS homepage_custom_sets (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, moduleIds TEXT, customOrder INTEGER)');
-    // v13 新表（对齐官方原版 AutoTask / RssReadRecord / BookMemo /
+    await db.execute(
+        'CREATE TABLE IF NOT EXISTS book_sources (bookSourceUrl TEXT PRIMARY KEY, bookSourceName TEXT, bookSourceGroup TEXT, bookSourceType INTEGER, bookSourceComment TEXT, lastUpdateTime INTEGER, enabled INTEGER DEFAULT 1, enabledExplore INTEGER DEFAULT 1, customOrder INTEGER DEFAULT 0, respondTime INTEGER, weight INTEGER, header TEXT, loginUrl TEXT, loginUi TEXT, loginCheckJs TEXT, bookUrlPattern TEXT, charset TEXT, coverDecodeJs TEXT, eventListener INTEGER DEFAULT 0, customButton INTEGER DEFAULT 0, enabledCookieJar INTEGER DEFAULT 0, concurrentRate TEXT, homepageModules TEXT, searchUrl TEXT, checkKeyWord TEXT, exploreUrl TEXT, exploreScreen TEXT, ruleSearch TEXT, ruleExplore TEXT, ruleBookInfo TEXT, ruleToc TEXT, ruleContent TEXT, ruleReview TEXT, ruleImage TEXT, variableComment TEXT, jsLib TEXT, variable TEXT, rulePut TEXT, ruleGet TEXT)');
+    await db.execute(
+        'CREATE TABLE IF NOT EXISTS book_groups (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, "order" INTEGER, show INTEGER DEFAULT 1, cover TEXT)');
+    await db.execute(
+        'CREATE TABLE IF NOT EXISTS book_knowledge (id INTEGER PRIMARY KEY AUTOINCREMENT, bookName TEXT, author TEXT, type TEXT, name TEXT, content TEXT, cover TEXT, "order" INTEGER)');
+    await db.execute(
+        'CREATE TABLE IF NOT EXISTS book_progress (id INTEGER PRIMARY KEY AUTOINCREMENT, bookName TEXT, author TEXT, chapterIndex INTEGER, pagePos INTEGER, duration INTEGER, lastReadTime INTEGER)');
+    await db.execute(
+        'CREATE TABLE IF NOT EXISTS book_markings (id INTEGER PRIMARY KEY AUTOINCREMENT, bookName TEXT, author TEXT, chapterIndex INTEGER, chapterTitle TEXT, pagePos INTEGER, content TEXT, note TEXT, color INTEGER, createTime INTEGER)');
+    await db.execute(
+        'CREATE TABLE IF NOT EXISTS bookmarks (id INTEGER PRIMARY KEY AUTOINCREMENT, bookName TEXT, bookAuthor TEXT, chapterIndex INTEGER, chapterTitle TEXT, pageIndex INTEGER DEFAULT 0, content TEXT, createTime INTEGER, author TEXT, pagePos INTEGER, note TEXT)');
+    await db.execute(
+        'CREATE TABLE IF NOT EXISTS caches (id INTEGER PRIMARY KEY AUTOINCREMENT, bookName TEXT, author TEXT, chapterIndex INTEGER, chapterTitle TEXT, content TEXT, size INTEGER, saveTime INTEGER)');
+    await db.execute(
+        'CREATE TABLE IF NOT EXISTS cloud_tts_engines (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, type TEXT, url TEXT, apiKey TEXT, region TEXT, voice TEXT, rate INTEGER, pitch INTEGER, enabled INTEGER DEFAULT 1, concurrentRate INTEGER)');
+    await db.execute(
+        'CREATE TABLE IF NOT EXISTS cookies (id INTEGER PRIMARY KEY AUTOINCREMENT, url TEXT, cookie TEXT, lastUpdateTime INTEGER)');
+    await db.execute(
+        'CREATE TABLE IF NOT EXISTS dict_rules (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, summary TEXT, url TEXT, rule TEXT, enabled INTEGER DEFAULT 1, "order" INTEGER)');
+    await db.execute(
+        'CREATE TABLE IF NOT EXISTS highlight_rules (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, pattern TEXT, color INTEGER, enabled INTEGER DEFAULT 1, "order" INTEGER)');
+    await db.execute(
+        'CREATE TABLE IF NOT EXISTS highlight_tag_rules (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, pattern TEXT, color INTEGER, enabled INTEGER DEFAULT 1, "order" INTEGER, scope TEXT)');
+    await db.execute(
+        'CREATE TABLE IF NOT EXISTS http_tts (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, url TEXT, method TEXT, headers TEXT, body TEXT, enabled INTEGER DEFAULT 1, concurrentRate INTEGER)');
+    await db.execute(
+        'CREATE TABLE IF NOT EXISTS read_records (id INTEGER PRIMARY KEY AUTOINCREMENT, bookName TEXT, author TEXT, duration INTEGER, date INTEGER, chapterIndex INTEGER, pagePos INTEGER)');
+    await db.execute(
+        'CREATE TABLE IF NOT EXISTS replace_rules (id INTEGER PRIMARY KEY AUTOINCREMENT, replaceSummary TEXT, replaceRule TEXT, replacement TEXT, enable INTEGER DEFAULT 1, isTitle INTEGER DEFAULT 0, isContent INTEGER DEFAULT 1, isRegex INTEGER DEFAULT 1, scope TEXT, order_num INTEGER, "order" INTEGER, excludeScope TEXT, group_name TEXT, timeoutMillisecond INTEGER DEFAULT 3000, sortOrder INTEGER)');
+    await db.execute(
+        'CREATE TABLE IF NOT EXISTS rss_sources (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, url TEXT, sourceIcon TEXT, group_name TEXT, sourceComment TEXT, searchUrl TEXT, sortUrl TEXT, loginUrl TEXT, loginUi TEXT, loginCheckJs TEXT, coverDecodeJs TEXT, header TEXT, variableComment TEXT, concurrentRate TEXT, jsLib TEXT, startHtml TEXT, startStyle TEXT, startJs TEXT, preloadJs TEXT, ruleArticles TEXT, ruleNextPage TEXT, ruleTitle TEXT, rulePubDate TEXT, ruleDescription TEXT, ruleImage TEXT, ruleLink TEXT, ruleContent TEXT, style TEXT, injectJs TEXT, contentWhitelist TEXT, contentBlacklist TEXT, shouldOverrideUrlLoading TEXT, enabled INTEGER DEFAULT 1, customOrder INTEGER, lastUpdateTime INTEGER, unreadCount INTEGER DEFAULT 0, variable TEXT, enabledCookieJar INTEGER DEFAULT 0, articleStyle INTEGER, enableJs INTEGER DEFAULT 0, loadWithBaseUrl INTEGER DEFAULT 0, preload INTEGER DEFAULT 0, singleUrl INTEGER DEFAULT 0, cacheFirst INTEGER DEFAULT 0, redirectPolicy TEXT, type INTEGER DEFAULT 0, "group" TEXT, icon TEXT, description TEXT)');
+    await db.execute(
+        'CREATE TABLE IF NOT EXISTS rss_articles (id INTEGER PRIMARY KEY AUTOINCREMENT, sourceUrl TEXT, title TEXT, link TEXT, description TEXT, content TEXT, image TEXT, pubDate INTEGER, author TEXT, category TEXT, sourceName TEXT, isRead INTEGER DEFAULT 0, starred INTEGER DEFAULT 0, readTime INTEGER, star INTEGER DEFAULT 0, desc TEXT, read INTEGER DEFAULT 0)');
+    await db.execute(
+        'CREATE TABLE IF NOT EXISTS rss_stars (id INTEGER PRIMARY KEY AUTOINCREMENT, sourceUrl TEXT, title TEXT, link TEXT, desc TEXT, content TEXT, starTime INTEGER)');
+    await db.execute(
+        'CREATE TABLE IF NOT EXISTS rule_subs (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, url TEXT, type TEXT, enabled INTEGER DEFAULT 1, lastUpdateTime INTEGER, customOrder INTEGER)');
+    await db.execute(
+        'CREATE TABLE IF NOT EXISTS search_content_history (id INTEGER PRIMARY KEY AUTOINCREMENT, content TEXT, searchTime INTEGER)');
+    await db.execute(
+        'CREATE TABLE IF NOT EXISTS servers (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, host TEXT, port INTEGER, path TEXT, username TEXT, password TEXT, enabled INTEGER DEFAULT 1)');
+    await db.execute(
+        'CREATE TABLE IF NOT EXISTS tag_group_rules (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, pattern TEXT, "group" TEXT, enabled INTEGER DEFAULT 1, "order" INTEGER)');
+    await db.execute(
+        'CREATE TABLE IF NOT EXISTS translation_caches (id INTEGER PRIMARY KEY AUTOINCREMENT, source TEXT, target TEXT, original TEXT, translated TEXT, saveTime INTEGER)');
+    await db.execute(
+        'CREATE TABLE IF NOT EXISTS txt_toc_rules (id INTEGER PRIMARY KEY, name TEXT, chapterRule TEXT, volumeRule TEXT, example TEXT, serialNumber INTEGER DEFAULT -1, enable INTEGER DEFAULT 1, "order" INTEGER)');
+    await db.execute(
+        'CREATE TABLE IF NOT EXISTS keyboard_assists (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, rule TEXT, enabled INTEGER DEFAULT 1, "order" INTEGER)');
+    await db.execute(
+        'CREATE TABLE IF NOT EXISTS homepage_modules (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, type INTEGER, sourceUrl TEXT, exploreUrl TEXT, config TEXT, customOrder INTEGER, enabled INTEGER DEFAULT 1)');
+    await db.execute(
+        'CREATE TABLE IF NOT EXISTS homepage_custom_sets (id INTEGER PRIMARY KEY AUTOINCREMENT, name TEXT, moduleIds TEXT, customOrder INTEGER)');
+ // v13 新表（AutoTask / RssReadRecord / BookMemo /
     // BookHighlight / Download）。全部 IF NOT EXISTS，升级路径复用。
     // SQL 抽为公开常量：生产与回归测试共用同一份，避免列集合漂移。
     for (final sql in v13TableSqls) {
@@ -310,19 +429,31 @@ class DatabaseService {
       'readConfig TEXT',
     ]);
     await _addColumnsIfMissing(db, 'book_chapters', const [
-      'startFragmentId TEXT', 'endFragmentId TEXT', 'imgUrl TEXT', 'titleMD5 TEXT',
+      'startFragmentId TEXT',
+      'endFragmentId TEXT',
+      'imgUrl TEXT',
+      'titleMD5 TEXT',
     ]);
     await _addColumnsIfMissing(db, 'read_records', const [
-      'deviceId TEXT', 'readTime INTEGER', 'lastRead INTEGER',
+      'deviceId TEXT',
+      'readTime INTEGER',
+      'lastRead INTEGER',
     ]);
     await _addColumnsIfMissing(db, 'book_groups', const [
-      'groupId INTEGER', 'coverStyle INTEGER', 'enableRefresh INTEGER DEFAULT 1',
+      'groupId INTEGER',
+      'coverStyle INTEGER',
+      'enableRefresh INTEGER DEFAULT 1',
     ]);
     await _addColumnsIfMissing(db, 'rule_subs', const [
-      'silentUpdate INTEGER DEFAULT 0', 'js TEXT', 'showRule TEXT', 'sourceUrl TEXT',
+      'silentUpdate INTEGER DEFAULT 0',
+      'js TEXT',
+      'showRule TEXT',
+      'sourceUrl TEXT',
     ]);
     await _addColumnsIfMissing(db, 'replace_rules', const [
-      'useTo TEXT', 'scopeTitle INTEGER DEFAULT 0', 'scopeContent INTEGER DEFAULT 1',
+      'useTo TEXT',
+      'scopeTitle INTEGER DEFAULT 0',
+      'scopeContent INTEGER DEFAULT 1',
     ]);
     // 细节轮： ReplaceRule 实体，补齐排除范围/分组/超时/排序字段。
     // _onUpgrade 末尾会复用 _onCreate，因此新装与升级路径都会执行，且幂等。
@@ -336,10 +467,13 @@ class DatabaseService {
       'replacement TEXT',
     ]);
     await _addColumnsIfMissing(db, 'book_sources', const [
-      'payAction TEXT', 'downloadUrls TEXT',
+      'payAction TEXT',
+      'downloadUrls TEXT',
     ]);
     await _addColumnsIfMissing(db, 'book_progress', const [
-      'deviceId TEXT', 'syncedTime INTEGER', 'durChapterTitle TEXT',
+      'deviceId TEXT',
+      'syncedTime INTEGER',
+      'durChapterTitle TEXT',
     ]);
   }
 

@@ -9,7 +9,7 @@ import 'package:legado_md3/data/model/book.dart';
 
 String src(String p) => File(p).readAsStringSync();
 
-/// 批次 5 · 数据层根基回归：
+/// 数据层根基回归：
 /// 16 BookType 位标志 + 旧备份重映射、17 onOpen 7 虚拟分组幂等 + 修复 SQL、
 /// 18 偏好键名映射层 + DAO 位运算分组过滤。
 void main() {
@@ -36,7 +36,7 @@ void main() {
       expect(BookType.webDavTag, 'webDav::');
     });
 
-    test('hasFlag / notFlag 即上游 type & mask 判定，可叠加', () {
+ test('hasFlag / notFlag 即 type & mask 判定，可叠加', () {
       const int localText = BookType.text | BookType.local; // 264
       expect(BookType.hasFlag(localText, BookType.text), isTrue);
       expect(BookType.hasFlag(localText, BookType.local), isTrue);
@@ -91,8 +91,8 @@ void main() {
   });
 
   // ==================== 16/18 DAO 位运算分组过滤 ====================
-  group('BookGroupQuery 位运算分组过滤（对齐 BookDao.flowByGroup）', () {
-    test('buildFlowByGroupWhere 逐字复刻上游 SQL 表达式', () {
+  group('BookGroupQuery 位运算分组过滤', () {
+ test('buildFlowByGroupWhere 生成位运算 SQL 表达式', () {
       expect(
         BookGroupQuery.buildFlowByGroupWhere(VirtualBookGroup.idRoot),
         contains('type & 8 > 0'),
@@ -153,12 +153,12 @@ void main() {
       // 用户分组位与
       expect(match(4, text, bits: 4 | 2), isTrue);
       expect(match(8, text, bits: 4), isFalse);
-      // flowRoot：上游 `(show of IdNetNone) != 1`，逐字照抄
+ // flowRoot： `(show of IdNetNone) != 1`
       expect(match(VirtualBookGroup.idRoot, text, show: 1), isFalse);
       expect(match(VirtualBookGroup.idRoot, text, show: 0), isTrue);
     });
 
-    test('上游 flowByGroup SQL 可在位标志列上真实执行', () async {
+    test('flowByGroup SQL 可在位标志列上真实执行', () async {
       final Database db = await databaseFactory.openDatabase(':memory:');
       addTearDown(() => db.close());
       await db.execute(
@@ -196,7 +196,7 @@ void main() {
       return db;
     }
 
-    test('执行两遍 buildInsertSqls 仍为 7 行，且 order/show/enableRefresh 对齐', () async {
+    test('执行两遍 buildInsertSqls 仍为 7 行，且 order/show/enableRefresh 值一致', () async {
       final Database db = await groupsDb();
       addTearDown(() => db.close());
       final List<String> sqls = VirtualBookGroup.buildInsertSqls();
@@ -224,7 +224,7 @@ void main() {
       expect(byId[-5]!['show'], 0); // IdLocalNone 隐藏
       expect(byId[-11]!['order'], -1); // 更新失败
       expect(byId[-6]!['name'], '视频');
-      // builtIns 常量与上游 Id 值一致
+ // builtIns 常量与 Id 值一致
       expect(VirtualBookGroup.idAll, -1);
       expect(VirtualBookGroup.idError, -11);
       expect(VirtualBookGroup.idRoot, -100);
@@ -254,7 +254,7 @@ void main() {
       expect(rs.single['loginUi'], isNull);
       final tt = await db.query('http_tts');
       expect(tt.single['concurrentRate'], 0);
-      // 上游 4 条修复 SQL 原文契约留存
+ // 4 条修复 SQL 原文契约留存
       expect(VirtualBookGroup.upstreamRepairSqls.length, 4);
       expect(VirtualBookGroup.upstreamRepairSqls.first,
           "update book_sources set loginUi = null where loginUi = 'null'");
@@ -263,7 +263,7 @@ void main() {
 
   // ==================== 18 偏好键名映射层 ====================
   group('偏好键名映射往返（Android ↔ Flutter 备份互通）', () {
-    test('toUpstream / fromUpstream 单键互逆，自造键映射到上游字符串值', () {
+ test('toUpstream / fromUpstream 单键互逆，自造键映射到字符串值', () {
       expect(PreferKeyMap.toUpstream('cover_useDefault'), 'useDefaultCover');
       expect(PreferKeyMap.toUpstream('exportToWebDav'), 'webDavCacheBackup');
       expect(PreferKeyMap.toUpstream('theme_mode'), 'themeMode');
@@ -330,7 +330,7 @@ void main() {
       expect(csv, '2,2,1,2,0,1,2,1,1');
       final Map<String, dynamic> back = PreferKeyMap.exportClickActions(csv);
       expect(back.length, 9);
-      // 结构往返：9 键顺序与值一致（码值不翻译，显式标注的不等价）
+ // 结构往返：9 键顺序与值一致
       for (int i = 0; i < kUpstreamClickActionKeys.length; i++) {
         expect(back[kUpstreamClickActionKeys[i]], upstream9[kUpstreamClickActionKeys[i]]);
       }
@@ -339,7 +339,7 @@ void main() {
 
   // ==================== 备份导入/导出边界行为 ====================
   group('Book 备份边界：位标志导入重映射 + toUpstreamMap 导出', () {
-    test('fromMap 把上游位标志 type 转成顺序枚举并保留 local 位', () {
+ test('fromMap 把位标志 type 转成顺序枚举并保留 local 位', () {
       final Book b = Book.fromMap(<String, dynamic>{
         'name': 'n',
         'author': 'a',

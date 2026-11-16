@@ -139,7 +139,7 @@ class _OpdsCatalogScreenState extends State<OpdsCatalogScreen> {
     }
   }
 
-  /// 采集链接类型 → 本地文件扩展名（对齐 ImportBookService.supported）
+  /// 采集链接类型 → 本地文件扩展名
   String _extFor(OpdsEntry entry) {
     for (final l in entry.links) {
       final t = (l.type ?? '').toLowerCase();

@@ -145,7 +145,7 @@ void main() {
       expect(src.contains('GridView.builder'), isFalse,
           reason: '搜索页不应是网格布局');
       expect(src, contains('const coverW = 80.0'),
-          reason: '列表项左封面固定 80dp（对齐 item_search.xml 的 80dp）');
+          reason: '列表项左封面固定 80dp');
       expect(src.contains('width: 50,'), isFalse,
           reason: '不应再使用 50x70 的 ListTile 小封面');
     });

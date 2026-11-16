@@ -3,11 +3,11 @@
 part of '../offline_js_bridge.dart';
 
 
-/// 对齐 cookie 对象：按 host 归并 Cookie，支持 getKey(url, name) 取单值。
+/// cookie 对象：按 host 归并 Cookie，支持 getKey(url, name) 取单值。
 class JsBridgeCookie {
   final Map<String, String> _jar = <String, String>{};
 
-  /// 合并写入 Cookie（同 host 同名覆盖，对齐桥 __ingestSetCookie）。
+  /// 合并写入 Cookie（同 host 同名覆盖）。
   void setCookie(String url, String cookieStr) {
     final host = _hostOf(url);
     final jar = _pairs(_jar[host] ?? '');
@@ -21,7 +21,7 @@ class JsBridgeCookie {
   /// 删除某 host 的 Cookie。
   void removeCookie(String url) => _jar.remove(_matchHost(_hostOf(url)));
 
-  /// 取 Cookie 中指定 name 的值（对齐桥 cookie.getKey 的正则语义）。
+  /// 取 Cookie 中指定 name 的值（按正则语义匹配）。
   String getKey(String url, String name) {
     final c = getCookie(url);
     final m = RegExp('(?:^|;\\s*)${RegExp.escape(name)}=([^;]*)').firstMatch(c);

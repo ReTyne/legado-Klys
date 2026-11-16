@@ -6,7 +6,7 @@ import 'package:legado_md3/help/source/opds_engine.dart';
 import 'package:legado_md3/ui/main/discover/opds_catalog_screen.dart';
 
 /// 回归：OpdsEngine 此前全库无调用方（孤儿实现），且 search() 只遍历 entry.links，
-/// 找不到标准 OPDS 放在 feed 级的 <link rel="search">。本轮接入发现页并修复搜索。
+/// 找不到标准 OPDS 放在 feed 级的 <link rel="search">。接入发现页并修复搜索。
 const String _feed = '''<?xml version="1.0" encoding="UTF-8"?>
 <feed xmlns="http://www.w3.org/2005/Atom">
   <title>示例 OPDS</title>
@@ -65,17 +65,20 @@ void main() {
   });
 
   test('UI→引擎→导入 的调用链契约（源码锁定，防止再次成为孤儿）', () {
-    final discover = File('lib/ui/main/discover/discover_screen.dart').readAsStringSync();
+    final discover =
+        File('lib/ui/main/discover/discover_screen.dart').readAsStringSync();
     expect(discover, contains('OpdsCatalogScreen'));
     expect(discover, contains('OPDS 目录'));
 
-    final screen = File('lib/ui/main/discover/opds_catalog_screen.dart').readAsStringSync();
+    final screen = File('lib/ui/main/discover/opds_catalog_screen.dart')
+        .readAsStringSync();
     expect(screen, contains('engine.fetchCatalog'));
     expect(screen, contains('engine.search'));
     expect(screen, contains('engine.downloadBook'));
     expect(screen, contains('ImportBookService().importPath'));
 
-    final engineSrc = File('lib/help/source/opds_engine.dart').readAsStringSync();
+    final engineSrc =
+        File('lib/help/source/opds_engine.dart').readAsStringSync();
     expect(engineSrc, contains('List<OpdsEntry> parseAtom('));
     expect(engineSrc, contains('parseSearchTemplate'));
   });

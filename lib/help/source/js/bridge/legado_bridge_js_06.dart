@@ -24,8 +24,47 @@ const String legadoBridgeJsPart06 = r'''    var b = bytes.slice();
     if (k.indexOf(",") >= 0) return __nEToPem(k);
     return k;
   }
-  // book/chapter 对象包装：补齐 legado 原版 BookBean/ChapterBean 的 JS 方法
-  // （大灰狼等书源直接调用 book.getVariable / book.setUseReplaceRule / book.readConfig.useReplaceRule）
+  // book/chapter 对象包装：补齐 BookBean/ChapterBean 的 JS 方法
+  // （聚合类书源直接调用 book.getVariable / book.setUseReplaceRule / book.readConfig.useReplaceRule）
+  // 写方法（putVariable / putBigVariable 等）对 book / chapter 通用，统一在此补齐。
+  function __wrapWriteMethods(o) {
+    if (!o.__bigVar || typeof o.__bigVar !== "object") o.__bigVar = {};
+    if (typeof o.putVariable !== "function") {
+      o.putVariable = function (key, value) {
+        var m = {};
+        try { m = JSON.parse(this.variable || "{}") || {}; } catch (e) { m = {}; }
+        m[key] = value;
+        this.variable = JSON.stringify(m);
+        return true;
+      };
+    }
+    if (typeof o.putLyric !== "function") {
+      o.putLyric = function (v) { this.lyric = (typeof v === "string") ? v : JSON.stringify(v); return true; };
+    }
+    if (typeof o.putImgUrl !== "function") {
+      o.putImgUrl = function (v) { this.imgUrl = String(v == null ? "" : v); return true; };
+    }
+    if (typeof o.putDanmaku !== "function") {
+      o.putDanmaku = function (v) { this.danmaku = (typeof v === "string") ? v : JSON.stringify(v); return true; };
+    }
+    if (typeof o.update !== "function") {
+      o.update = function (m) {
+        if (m && typeof m === "object") Object.keys(m).forEach((k) => { this[k] = m[k]; });
+        return this;
+      };
+    }
+    if (typeof o.putBigVariable !== "function") {
+      o.putBigVariable = function (key, value) { this.__bigVar[key] = value; return true; };
+    }
+    if (typeof o.getBigVariable !== "function") {
+      o.getBigVariable = function (key) {
+        if (key === undefined || key === null || key === "") return this.__bigVar;
+        var v = this.__bigVar[key];
+        return v === undefined ? "" : v;
+      };
+    }
+    return o;
+  }
   globalThis.__wrapBook = function (b) {
     if (!b || typeof b !== "object") return b;
     if (typeof b.getVariable !== "function") {
@@ -65,6 +104,7 @@ const String legadoBridgeJsPart06 = r'''    var b = bytes.slice();
       b.getVariableComment = function () { return this.variableComment || ""; };
       if (!b.readConfig || typeof b.readConfig !== "object") b.readConfig = {};
     }
+    __wrapWriteMethods(b);
     return b;
   };
   globalThis.__wrapChapter = function (c) {
@@ -79,6 +119,7 @@ const String legadoBridgeJsPart06 = r'''    var b = bytes.slice();
       c.getIsVolume = function () { return !!this.isVolume; };
       c.getResourceUrl = function () { return this.resourceUrl || ""; };
     }
+    __wrapWriteMethods(c);
     return c;
   };
 
@@ -324,7 +365,22 @@ const String legadoBridgeJsPart06 = r'''    var b = bytes.slice();
       }
       return "";
     },
-    replaceCookie: function (url, c) { return this.setCookie(url, c); }
+    // 合并语义：新键值覆盖同名项，未出现的键保留。
+    replaceCookie: function (url, c) { return this.setCookie(url, c); },
+    setWebCookie: function (url, c) { return this.setCookie(url, c); },
+    cookieToMap: function (urlOrStr) {
+      var s = urlOrStr;
+      if (typeof s === "string" && s.indexOf("=") < 0) {
+        var got = this.getCookie(s);
+        if (got) s = got;
+      }
+      return __parseCookiePairs(typeof s === "string" ? s : "");
+    },
+    mapToCookie: function (m) {
+      var o = (m && typeof m === "object") ? m : {};
+      return Object.keys(o).map(function (k) { return k + "=" + o[k]; }).join("; ");
+    },
+    clear: function () { __state.cookies = {}; return true; }
   };
   globalThis.cookie = cookie;
 
@@ -372,7 +428,7 @@ const String legadoBridgeJsPart06 = r'''    var b = bytes.slice();
     removeMemory: function (key) { delete __state.memory[key]; },
     deleteMemory: function (key) { delete __state.memory[key]; },
     // 文件缓存
-    putFile: function (key, value) { return this.put("file_" + key, value); },
+    putFile: function (key, value, saveTime) { return this.put("file_" + key, value, saveTime); },
     getFile: function (key) { return this.get("file_" + key); }
   };
   globalThis.cache = cache;
@@ -498,19 +554,74 @@ const String legadoBridgeJsPart06 = r'''    var b = bytes.slice();
       try { return JSON.parse(v); } catch (e) { return v; }
     },
     // 刷新
-    refreshJSLib: function () { return true; },
-    putConcurrent: function (value) { __state.meta.concurrentRate = value; return true; },
-    // 登录
-    login: function () { return true; },
-    getLoginJs: function () { return __state.meta.loginUrl || ""; },
-    getHeaderMap: function (hasLoginHeader) {
+    // 属性方式访问书源字段（部分订阅源用属性而非 getter）
+    get header() { return __state.meta.header || ""; },
+    get jsLib() { return __state.meta.jsLib || ""; },
+    get loginUrl() { return __state.meta.loginUrl || ""; },
+    get loginUi() { return __state.meta.loginUi || ""; },
+    get concurrentRate() { return __state.meta.concurrentRate || 0; },
+    getLoginHeaderMap: function () {
       try {
-        var h = __state.meta.header ? JSON.parse(__state.meta.header) : {};
-        if (hasLoginHeader && __state.loginHeader) {
-          try { Object.assign(h, JSON.parse(__state.loginHeader)); } catch (e) {}
-        }
-        return h;
+        var h = __state.loginHeader ? JSON.parse(__state.loginHeader) : {};
+        return (h && typeof h === "object") ? h : {};
       } catch (e) { return {}; }
+    },
+    refreshExplore: function () { return java.refreshExplore(); },
+    evalJS: function (jsStr) {
+      try { return eval("(function(){ " + String(jsStr == null ? "" : jsStr) + " })()"); }
+      catch (e) { return null; }
+    },
+    getSource: function () { return source; },
+    getTag: function () { return __state.meta.name || ""; },
+    // 触发 jsLib 缓存失效：清空已加载标记并通知原生下次重新求值脚本库。
+    refreshJSLib: function () {
+      __state.jsLibInvalidated = true;
+      try { __doXhr("legado://loginui/refreshJSLib", { method: "GET" }); } catch (e) {}
+      return true;
+    },
+    putConcurrent: function (value) { __state.meta.concurrentRate = value; return true; },
+    // 执行登录函数：jsLib / loginUrl 加载期通常定义全局 login()，存在则调用其结果。
+    login: function () {
+      try {
+        var fn = globalThis.login;
+        if (typeof fn === "function" && fn !== source.login) {
+          var r = fn();
+          return r === undefined ? true : !!r;
+        }
+      } catch (e) { return false; }
+      return false;
+    },
+    getLoginJs: function () {
+      var s = __state.meta.loginUrl || "";
+      if (s.indexOf("@js:") === 0) return s.substring(4);
+      if (s.indexOf("<js>") === 0) {
+        var end = s.lastIndexOf("</js>");
+        return end > 4 ? s.substring(4, end) : s.substring(4);
+      }
+      return s;
+    },
+    getHeaderMap: function (hasLoginHeader) {
+      var h = {};
+      try {
+        var raw = __state.meta.header || "";
+        // 规则型请求头：@js: / <js>...</js>，先求值再按 JSON 解析。
+        if (raw.indexOf("@js:") === 0 || raw.indexOf("<js>") === 0) {
+          var expr = raw.indexOf("@js:") === 0 ? raw.substring(4)
+              : raw.substring(4, raw.lastIndexOf("</js>"));
+          var prelude = (__state.meta.jsLib || "") + "\n";
+          try { raw = String(eval(prelude + expr)); }
+          catch (e) { raw = String(eval("(function(){" + prelude + expr + "})()")); }
+        }
+        var parsed = raw ? JSON.parse(raw) : {};
+        if (parsed && typeof parsed === "object") Object.assign(h, parsed);
+      } catch (e) {}
+      if (hasLoginHeader && __state.loginHeader) {
+        try { Object.assign(h, JSON.parse(__state.loginHeader)); } catch (e) {}
+      }
+      // 补默认 UA
+      var hasUa = Object.keys(h).some(function (k) { return k.toLowerCase() === "user-agent"; });
+      if (!hasUa) h["User-Agent"] = __state.ua;
+      return h;
     }
   };
   globalThis.source = source;
@@ -620,6 +731,12 @@ const String legadoBridgeJsPart06 = r'''    var b = bytes.slice();
       if (extra.method) opt.method = String(extra.method).toUpperCase();
       if (extra.headers) Object.assign(opt.headers, extra.headers);
       if (extra.body !== undefined && extra.body !== null) opt.body = extra.body;
+      if (extra.timeout !== undefined && extra.timeout !== null) opt.timeout = extra.timeout;
+      if (extra.followRedirects !== undefined && extra.followRedirects !== null) {
+        opt.followRedirects = extra.followRedirects;
+      }
+      if (extra.webView) opt.webView = true;
+      if (extra.charset) opt.charset = extra.charset;
     }
     return { url: url, opt: opt };
   }
@@ -668,6 +785,26 @@ const String legadoBridgeJsPart06 = r'''    var b = bytes.slice();
     });
     if (respType === "arraybuffer") x.responseType = "arraybuffer";
     x.send(bodyStr);
+    // 真实响应头 / 最终地址 / 重定向链由原生以 X-Legado-* 头回传，
+    // 供 __jsoupResponse.headers() / url() 返回真实值。
+    var __meta = { code: x.status, message: x.statusText || "", headers: {}, finalUrl: "", redirects: [], cookies: {} };
+    try {
+      var rh = x.getResponseHeader("X-Legado-RespHeaders");
+      if (rh) { try { __meta.headers = JSON.parse(__unb64Unicode(rh)) || {}; } catch (e) {} }
+    } catch (e) {}
+    try {
+      var fu2 = x.getResponseHeader("X-Legado-Final-Url");
+      if (fu2) __meta.finalUrl = decodeURIComponent(fu2);
+    } catch (e) {}
+    try {
+      var rd = x.getResponseHeader("X-Legado-Redirects");
+      if (rd) { __meta.redirects = JSON.parse(__unb64Unicode(rd)) || []; }
+    } catch (e) {}
+    try {
+      var sc2 = x.getResponseHeader("X-Set-Cookie");
+      if (sc2) __meta.cookies = __parseCookiePairs(sc2);
+    } catch (e) {}
+    globalThis.__lastXhr = __meta;
     var sc = null;
     try { sc = x.getResponseHeader("X-Set-Cookie"); } catch (e) {}
     // 交互页面的最终地址（含运行期 hash，如 #config=）由原生通过响应头回传，
@@ -793,16 +930,23 @@ const String legadoBridgeJsPart06 = r'''    var b = bytes.slice();
 
   // ---- StrResponse----
   // body()/url()/code()/message()/headers() 均为方法；toString() 返回正文。
-  function __strResponse(url, body, code, message, headers) {
+  function __strResponse(url, body, code, message, headers, opts) {
     var b = (body === null || body === undefined) ? "" : String(body);
+    var o = opts || {};
+    var ct = Number(o.callTime) || 0;
+    var eb = (o.errorBody === undefined || o.errorBody === null) ? b : String(o.errorBody);
+    var status = code || 200;
     return {
       body: function () { return b; },
       url: function () { return String(url == null ? "" : url); },
-      code: function () { return code || 200; },
+      code: function () { return status; },
       message: function () { return message || "OK"; },
       headers: function () { return headers || {}; },
       raw: function () { return b; },
-      isSuccessful: function () { return (code || 200) < 400; },
+      isSuccessful: function () { return status < 400; },
+      callTime: function () { return ct; },
+      putCallTime: function (t) { ct = Number(t) || 0; return this; },
+      errorBody: function () { return eb; },
       toString: function () { return b; }
     };
   }

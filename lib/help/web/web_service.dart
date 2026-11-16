@@ -26,14 +26,99 @@ import 'package:legado_md3/help/device/web_service_boundary.dart';
 import 'package:legado_md3/help/exceptions/app_exceptions.dart';
 import 'package:legado_md3/utils/regex_timeout.dart';
 
+/// Web 端书源导出：逐源输出完整 `toJson()`（含 rulePut / ruleGet）。
+List<Map<String, dynamic>> bookSourcesToWeb(List<BookSource> sources) =>
+    sources.map((s) => s.toJson()).toList();
+
+/// 从书源列表提取去重后的 base URL（`scheme://host[:port]`）。
+List<String> bookSourceBaseUrls(Iterable<BookSource> sources) {
+  final out = <String>[];
+  for (final s in sources) {
+    final u = Uri.tryParse(s.bookSourceUrl);
+    if (u == null || !u.hasScheme || u.host.isEmpty) continue;
+    final base = '${u.scheme}://${u.host}${u.hasPort ? ':${u.port}' : ''}';
+    if (!out.contains(base)) out.add(base);
+  }
+  return out;
+}
+
+/// 把 Web 请求体完整还原为 RssSource 实体（保留全部规则字段）。
+///
+/// 以标准字段 `sourceName / sourceUrl` 为准，兼容 DB 字段 `name / url`；
+/// 非 plain 值先字符串化，避免 `RssSource.fromJson` 的严格类型转换抛错；
+/// 再补齐 fromJson 未覆盖的 Start 规则与运行态字段，确保保存时不丢规则。
+RssSource rssSourceFromWeb(Map<String, dynamic> json) {
+  final normalized = <String, dynamic>{...json};
+  void alias(String from, String to) {
+    if (!normalized.containsKey(to) && normalized.containsKey(from)) {
+      normalized[to] = normalized[from];
+    }
+  }
+
+  alias('name', 'sourceName');
+  alias('url', 'sourceUrl');
+  alias('group', 'sourceGroup');
+  alias('group_name', 'sourceGroup');
+  // 按字段期望类型规整，避免 RssSource.fromJson 的严格类型转换抛错。
+  const boolKeys = <String>{
+    'enabled',
+    'enabledCookieJar',
+    'enableJs',
+    'loadWithBaseUrl',
+    'preload',
+    'singleUrl',
+    'cacheFirst',
+  };
+  const numKeys = <String>{
+    'articleStyle',
+    'customOrder',
+    'lastUpdateTime',
+    'type',
+  };
+  final safe = <String, dynamic>{};
+  normalized.forEach((k, v) {
+    final key = k.toString();
+    if (v == null) {
+      safe[key] = null;
+    } else if (boolKeys.contains(key)) {
+      safe[key] = v is bool
+          ? v
+          : (v is num ? v != 0 : v.toString() == 'true' || v.toString() == '1');
+    } else if (numKeys.contains(key)) {
+      safe[key] = v is num ? v : int.tryParse(v.toString());
+    } else {
+      safe[key] = v is String ? v : v.toString();
+    }
+  });
+  final s = RssSource.fromJson(safe);
+  String? pick(String k) => json.containsKey(k) ? json[k]?.toString() : null;
+  if (json.containsKey('startHtml')) s.startHtml = pick('startHtml');
+  if (json.containsKey('startStyle')) s.startStyle = pick('startStyle');
+  if (json.containsKey('startJs')) s.startJs = pick('startJs');
+  if (json.containsKey('preloadJs')) s.preloadJs = pick('preloadJs');
+  if (json.containsKey('variable')) s.variable = pick('variable');
+  return s;
+}
+
+/// 把 RssSource 完整序列化为 Web JSON：实体 toJson 字段 + Start 规则 / 运行态字段。
+Map<String, dynamic> rssSourceToWeb(RssSource s) => <String, dynamic>{
+      ...s.toJson(),
+      'id': s.id,
+      'startHtml': s.startHtml,
+      'startStyle': s.startStyle,
+      'startJs': s.startJs,
+      'preloadJs': s.preloadJs,
+      'variable': s.variable,
+    };
+
 /// Web 远程控制服务。
 ///
 /// * HTTP：shelf + shelf_router，26 个端点全部实现（另多做若干管理端点）；
 /// * WebSocket：/bookSourceDebug、/rssSourceDebug、/searchBook 走标准 RFC6455
-///   升级（见 [WebSocketHandlers]），按 `WebSocketServer.kt:11-22` 分派，
+/// 升级（见 [WebSocketHandlers]），按 分派，
 ///   30s 协议级 ping 保活；原 `/searchBook` HTTP 端点与 `/debug/stream` SSE
 ///   一并保留兼容；
-/// * Sigma 把 WS 放在 port+1 独立端口，这里复用同一端口按路径分派升级，
+/// * 把 WS 放在 port+1 独立端口，这里复用同一端口按路径分派升级，
 ///   避免 Web 管理端需要连两个端口（能力等价，属「不同方式已实现」）。
 class WebService {
   final DatabaseService _db = DatabaseService();
@@ -83,7 +168,7 @@ class WebService {
 
   Future<void> start({int port = 1122}) async {
     if (_server != null) return;
-    // 对齐 WebService.kt:185-191：端口须在 1024..65530，越界回退 1122。
+ // ：端口须在 1024..65530，越界回退 1122。
     port = validateWebPort(port);
     this.port = port;
     final router = Router();
@@ -96,6 +181,8 @@ class WebService {
     // 书源API
     router.get('/getBookSources', _getBookSources);
     router.get('/getBookSource', _getBookSource);
+    router.get('/getBookSourceBaseURL', _getBookSourceBaseURL);
+    router.get('/getBookSourceBaseUrl', _getBookSourceBaseURL);
     router.post('/saveBookSource', _saveBookSource);
     router.post('/saveBookSources', _saveBookSources);
     router.post('/deleteBookSources', _deleteBookSources);
@@ -171,7 +258,7 @@ class WebService {
     // request.hijack 靠同步抛 HijackException 接管 socket，一旦进入
     // CORS/auth 中间件的 await，就无法完成 101 协议切换。
     FutureOr<Response> rootHandler(Request request) {
-      // 对齐 HttpServer.kt:26 `WebService.serve()`：每次请求续期唤醒锁。
+ // `WebService.serve`：每次请求续期唤醒锁。
       unawaited(WebServiceBoundary.instance.onRequestServed());
       if (wsHandlers.shouldHandle(request)) {
         return wsHandlers.dispatch(request)!;
@@ -180,7 +267,7 @@ class WebService {
     }
 
     _server = await shelf_io.serve(rootHandler, InternetAddress.anyIPv4, port);
-    // 对齐 WebService.kt:154-173：启动后按全部网卡地址下发前台通知契约。
+ // ：启动后按全部网卡地址下发前台通知契约。
     await WebServiceBoundary.instance.onStarted(
       addresses: await _getLocalIPs(),
       port: port,
@@ -244,10 +331,10 @@ class WebService {
   Future<String> get address async =>
       'http://${(await _getLocalIPs()).first}:$port';
 
-  /// 全部网卡地址（供前台通知「地址看板」使用，对齐 WebService.kt:93-111）。
+ /// 全部网卡地址（供前台通知「地址看板」使用，）。
   Future<List<String>> get addresses => _getLocalIPs();
 
-  /// 对齐 NetworkUtils.getLocalIPAddress :248-270：遍历全部网卡、排除
+  /// 遍历全部网卡、排除
   /// loopback、严格 IPv4 校验、返回**全部**地址（而非首个），空则回退 127.0.0.1。
   Future<List<String>> _getLocalIPs() async {
     final result = <String>[];
@@ -265,7 +352,7 @@ class WebService {
     return result.isEmpty ? <String>['127.0.0.1'] : result;
   }
 
-  /// Sigma `HttpServer.kt` 对 `List<*> > 3000` 采用 chunked 分块响应。
+ /// 对 `List<*> > 3000` 采用 chunked 分块响应。
   /// shelf 在 body 为 Stream 时自动使用 `Transfer-Encoding: chunked`，
   /// 客户端仍收到完整 JSON，仅传输层分块，避免一次性编码超大列表。
   Response _jsonResponse(dynamic data, {int statusCode = 200}) {
@@ -400,7 +487,7 @@ class WebService {
 
   Response _debugHistoryApi(Request request) => _rd(_debugHistory.toList());
 
-  // === 3 个 WebSocket 端点（对齐 WebSocketServer.kt:11-22） ===
+ // === 3 个 WebSocket 端点 ===
 
   /// 统一分派：搜索端点逐批推结果，调试端点触发真实校验并回推日志。
   Future<void> _handleWsMessage(
@@ -421,7 +508,7 @@ class WebService {
   }
 
   /// `/searchBook`：收到 `{key, bookSourceUrl?}` 后逐源搜索、逐批回推。
-  /// 对齐 `BookSearchWebSocket.onSearchSuccess`（每批 send JSON 数组）与
+ /// （每批 send JSON 数组）与
   /// `onSearchFinish`（结束态文本 + NormalClosure 关闭）。
   Future<void> _wsSearch(
     Map<String, dynamic> message,
@@ -445,9 +532,8 @@ class WebService {
     }
     await Future.wait(sources.map((s) async {
       try {
-        final books = await _engine
-            .search(s, key)
-            .timeout(const Duration(seconds: 30));
+        final books =
+            await _engine.search(s, key).timeout(const Duration(seconds: 30));
         final batch = <Map<String, dynamic>>[];
         for (final b in books) {
           final j = b.toJson();
@@ -466,7 +552,7 @@ class WebService {
 
   /// `/bookSourceDebug` 与 `/rssSourceDebug`：收到 `{tag, key?}` 后按 tag
   /// 找源，用真实书源搜索 / RSS 拉取触发一次调试，日志经 [logDebug] 进入
-  /// 全局广播流回推给所有调试连接；结束态 state=1000 对齐 `printLog`。
+ /// 全局广播流回推给所有调试连接；结束态 state=1000 。
   Future<void> _wsDebug(
     WsEndpoint endpoint,
     Map<String, dynamic> message,
@@ -524,7 +610,13 @@ class WebService {
   Future<Response> _getBookSources(Request request) async {
     final sources = await _db.getAllSources();
     if (sources.isEmpty) return _rdError('设备源列表为空');
-    return _rd(sources.map((s) => s.toJson()).toList());
+    return _rd(bookSourcesToWeb(sources));
+  }
+
+  /// 返回所有书源去重后的 base URL（`scheme://host[:port]`）。
+  Future<Response> _getBookSourceBaseURL(Request request) async {
+    final sources = await _db.getAllSources();
+    return _rd(bookSourceBaseUrls(sources));
   }
 
   Future<Response> _getBookSource(Request request) async {
@@ -624,8 +716,8 @@ class WebService {
   Future<Response> _getBookshelf(Request request) async {
     var books = await _db.getAllBooks();
     if (books.isEmpty) return _rdError('还没有添加小说');
-    // 对齐 BookController.kt:53-61：Web 书架顺序跟随排序偏好
-    // （上游键 bookshelfSort；兼容 Flutter 本地键 bs_sortType 映射）。
+ // Web 书架顺序跟随排序偏好
+ // （键 bookshelfSort；兼容 Flutter 本地键 bs_sortType 映射）。
     int sortType = 0;
     try {
       final prefs = await SharedPreferences.getInstance();
@@ -727,24 +819,25 @@ class WebService {
     if (url.isNotEmpty) {
       book = await _findBookByUrl(url);
       if (book == null) return _rdError('未在数据库找到对应书籍，请先添加');
-      // 对齐 BookController.kt:186-195：目录可能正被其它线程下载入库，
+ // ：目录可能正被其它线程下载入库，
       // 先尝试一次实时抓目录写库，再最多 30 次 × 1s 轮询等待章节入库。
       final Book currentBook = book;
-      final cached = await _db.getChapters(currentBook.name, currentBook.author);
+      final cached =
+          await _db.getChapters(currentBook.name, currentBook.author);
       if (cached.isEmpty) {
         await _fetchTocFromSource(currentBook);
       }
       chapters = await pollForValue<List<BookChapter>>(() async {
-        final cs =
-            await _db.getChapters(currentBook.name, currentBook.author);
-        return cs.isEmpty ? null : cs;
-      }) ??
+            final cs =
+                await _db.getChapters(currentBook.name, currentBook.author);
+            return cs.isEmpty ? null : cs;
+          }) ??
           <BookChapter>[];
     } else {
       chapters = await pollForValue<List<BookChapter>>(() async {
-        final cs = await _db.getChapters(name, author);
-        return cs.isEmpty ? null : cs;
-      }) ??
+            final cs = await _db.getChapters(name, author);
+            return cs.isEmpty ? null : cs;
+          }) ??
           <BookChapter>[];
     }
     if (index < 0 || index >= chapters.length) {
@@ -760,22 +853,18 @@ class WebService {
       final source = await _db.getSource(book!.origin!);
       if (source != null) {
         try {
-          final live = await _engine
-              .getContent(source, chapter.url,
-                  bookInfo: {
-                    'bookUrl': book.bookUrl,
-                    'name': book.name,
-                    'author': book.author,
-                    'tocUrl': book.noteUrl,
-                    'durChapterIndex': index,
-                  },
-                  chapter: {
-                    'index': chapter.index,
-                    'title': chapter.title,
-                    'url': chapter.url,
-                    'bookUrl': book.bookUrl,
-                  })
-              .timeout(const Duration(seconds: 30));
+          final live = await _engine.getContent(source, chapter.url, bookInfo: {
+            'bookUrl': book.bookUrl,
+            'name': book.name,
+            'author': book.author,
+            'tocUrl': book.noteUrl,
+            'durChapterIndex': index,
+          }, chapter: {
+            'index': chapter.index,
+            'title': chapter.title,
+            'url': chapter.url,
+            'bookUrl': book.bookUrl,
+          }).timeout(const Duration(seconds: 30));
           if (live != null && live.trim().isNotEmpty) {
             content = live;
             await _db.updateChapterContent(
@@ -869,10 +958,9 @@ class WebService {
             (data['durChapterIndex'] ?? data['chapterIndex'] ?? '0')
                 .toString()) ??
         0;
-    final pos =
-        int.tryParse((data['durChapterPos'] ?? data['pagePos'] ?? '0')
-            .toString()) ??
-            0;
+    final pos = int.tryParse(
+            (data['durChapterPos'] ?? data['pagePos'] ?? '0').toString()) ??
+        0;
     final chapterTitle = (data['durChapterTitle'] ?? '').toString();
     await _db.updateReadPosition(
       name,
@@ -933,9 +1021,8 @@ class WebService {
     final results = <Map<String, dynamic>>[];
     await Future.wait(sources.map((s) async {
       try {
-        final books = await _engine
-            .search(s, key)
-            .timeout(const Duration(seconds: 30));
+        final books =
+            await _engine.search(s, key).timeout(const Duration(seconds: 30));
         for (final b in books) {
           final j = b.toJson();
           j['originName'] = s.bookSourceName;
@@ -1013,8 +1100,7 @@ class WebService {
       bookAuthor: author,
       chapterIndex: index,
       chapterTitle: (data['chapterTitle'] ?? '').toString(),
-      pageIndex:
-          int.tryParse((data['pageIndex'] ?? '0').toString()) ?? 0,
+      pageIndex: int.tryParse((data['pageIndex'] ?? '0').toString()) ?? 0,
       content: data['content']?.toString(),
     );
     await _db.insertBookmark(mark);
@@ -1029,11 +1115,11 @@ class WebService {
     if (fileName.isEmpty) return _rdError('fileName 不能为空');
     // 防目录穿越，只保留文件名
     fileName = fileName.split('/').last.split('\\').last;
-    final ext = fileName.contains('.')
-        ? fileName.split('.').last.toLowerCase()
-        : '';
+    final ext =
+        fileName.contains('.') ? fileName.split('.').last.toLowerCase() : '';
     if (!ImportBookService.supported.contains(ext)) {
-      return _rdError('不支持的文件类型：$ext（支持 ${ImportBookService.supported.join('/')}）');
+      return _rdError(
+          '不支持的文件类型：$ext（支持 ${ImportBookService.supported.join('/')}）');
     }
     final bytes = await request
         .read()
@@ -1045,8 +1131,8 @@ class WebService {
       final dir = await getTemporaryDirectory();
       final target = Directory(p.join(dir.path, 'web_upload'));
       if (!await target.exists()) await target.create(recursive: true);
-      final file = File(p.join(target.path,
-          '${DateTime.now().millisecondsSinceEpoch}_$fileName'));
+      final file = File(p.join(
+          target.path, '${DateTime.now().millisecondsSinceEpoch}_$fileName'));
       await file.writeAsBytes(bytes);
       final result = await ImportBookService().importPath(file.path);
       return _rd({
@@ -1129,9 +1215,9 @@ class WebService {
     }
     if (path.isEmpty) return _rdError('封面地址为空');
     if (path.startsWith('http')) {
-      // 对齐 BookController.kt:76-93：封面加载 3 秒超时，统一输出 image/png。
-      // 【降级标注】上游 84×112 缩放 + PNG 压缩 + WeakHashMap 默认封面缓存
-      // 依赖 Android Bitmap/Glide，纯 Dart 无图像编解码等价能力（本轮不引入
+ // ：封面加载 3 秒超时，统一输出 image/png。
+ // 【】 84×112 缩放 + PNG 压缩 + WeakHashMap 默认封面缓存
+ // 依赖 Android Bitmap/Glide，纯 Dart 无图像编解码等价能力（不引入
       // pubspec 依赖）；这里以 coverLoadTimeout 超时 + 固定 image/png 输出 +
       // 失败回退 302 原图（由前端按 84×112 做 CSS 尺寸约束）降级。
       List<int>? bytes;
@@ -1158,8 +1244,8 @@ class WebService {
     final src = _q(request, ['path', 'src', 'url']);
     if (src.isEmpty) return _rdError('图片链接为空');
     if (!src.startsWith('http')) return _rdError('图片链接为空');
-    // 对齐 BookController.kt:99-116：解析 width，缺省/非法回退 640。
-    // 【降级标注】上游 ImageProvider.getImage(book, src, width) 按宽度缩放
+ // ：解析 width，缺省/非法回退 640。
+ // 【】 ImageProvider.getImage(book, src, width) 按宽度缩放
     // Bitmap 并走书源鉴权缓存；Flutter 无 dart 图像编解码等价能力，降级为
     // 返回原图字节 + 把解析后的宽度经 X-Legado-Image-Width 回传，
     // 由 Web 前端按该宽度做 CSS 尺寸约束。
@@ -1212,19 +1298,11 @@ class WebService {
   Future<Response> _getRssSources(Request request) async {
     final sources = await _db.getRssSources();
     if (sources.isEmpty) return _rdError('源列表为空');
-    return _rd(sources.map((s) => _rssJson(s)).toList());
+    return _rd(sources.map(rssSourceToWeb).toList());
   }
 
-  Map<String, dynamic> _rssJson(RssSource s) => {
-        'id': s.id,
-        'sourceName': s.sourceName,
-        'sourceUrl': s.sourceUrl,
-        'sourceIcon': s.sourceIcon,
-        'sourceGroup': s.sourceGroup,
-        'sourceComment': s.sourceComment,
-        'enabled': s.enabled ?? true,
-        'customOrder': s.customOrder,
-      };
+  /// 完整字段序列化（含全部规则字段），不再只导出 7 个概览字段。
+  Map<String, dynamic> _rssJson(RssSource s) => rssSourceToWeb(s);
 
   Future<Response> _getRssSource(Request request) async {
     final url = _q(request, ['url', 'sourceUrl']);
@@ -1244,17 +1322,8 @@ class WebService {
     if (name.trim().isEmpty || url.trim().isEmpty) {
       return _rdError('源名称和URL不能为空');
     }
-    final source = RssSource(
-      sourceName: name,
-      sourceUrl: url,
-      sourceGroup: data['sourceGroup']?.toString() ?? data['group']?.toString(),
-      sourceIcon: data['sourceIcon']?.toString(),
-      sourceComment: data['sourceComment']?.toString(),
-      enabled: data['enabled'] is bool
-          ? data['enabled'] as bool
-          : (data['enabled']?.toString() != 'false'),
-      customOrder: int.tryParse((data['customOrder'] ?? '').toString()),
-    );
+    // 完整实体反序列化：保留全部规则字段（此前只重建 7 字段，规则全丢）。
+    final source = rssSourceFromWeb(data);
     final existing = await _findRssSource(url);
     if (existing != null && existing.id != null) {
       source.id = existing.id;
@@ -1282,14 +1351,8 @@ class WebService {
       final name = (item['sourceName'] ?? item['name'] ?? '').toString();
       final url = (item['sourceUrl'] ?? item['url'] ?? '').toString();
       if (name.trim().isEmpty || url.trim().isEmpty) continue;
-      final source = RssSource(
-        sourceName: name,
-        sourceUrl: url,
-        sourceGroup: item['sourceGroup']?.toString(),
-        sourceIcon: item['sourceIcon']?.toString(),
-        sourceComment: item['sourceComment']?.toString(),
-        enabled: item['enabled'] is bool ? item['enabled'] as bool : true,
-      );
+      // 完整实体反序列化，规则字段不丢。
+      final source = rssSourceFromWeb(Map<String, dynamic>.from(item));
       final existing = await _findRssSource(url);
       if (existing != null && existing.id != null) {
         source.id = existing.id;
@@ -1297,7 +1360,7 @@ class WebService {
       } else {
         await _db.insertRssSource(source);
       }
-      ok.add(_rssJson(source));
+      ok.add(rssSourceToWeb(source));
     }
     return _rd(ok);
   }
@@ -1376,7 +1439,8 @@ class WebService {
         'excludeScope': raw['excludeScope']?.toString(),
         'group_name': (raw['group'] ?? raw['group_name'])?.toString(),
         'timeoutMillisecond': _asInt(raw['timeoutMillisecond']),
-        'order_num': _asInt(raw['order_num'] ?? raw['order'] ?? raw['sortOrder']),
+        'order_num':
+            _asInt(raw['order_num'] ?? raw['order'] ?? raw['sortOrder']),
       };
 
   int? _asInt(dynamic v) =>
@@ -1416,7 +1480,7 @@ class WebService {
     final text = (data['text'] ?? '').toString();
     String content;
     try {
-      // 对齐 ReplaceRuleController.kt:79-92：正则替换带
+ // ：正则替换带
       // getValidTimeoutMillisecond() 超时保护（防 ReDoS），异常回退 stackTraceStr。
       content = await replaceRegexWithTimeout(
         input: text,
@@ -1427,14 +1491,15 @@ class WebService {
         ruleName: rule.replaceSummary,
       );
     } catch (e) {
-      // 上游 catch 分支返回 `e.stackTraceStr`；此处对齐统一异常文本工具。
+ // catch 分支返回 `e.stackTraceStr` 统一异常文本。
       content = stackTraceStr(e);
     }
     return _rd(content);
   }
 
   // === web-yuedu3 静态前端 ===
-  Future<Response> _serveIndex(Request request) => _serveAsset(request, 'index.html');
+  Future<Response> _serveIndex(Request request) =>
+      _serveAsset(request, 'index.html');
 
   Future<Response> _serveAsset(Request request, String asset) async {
     var path = asset;
@@ -1444,7 +1509,8 @@ class WebService {
     final key = 'assets/web/$path';
     try {
       final data = await rootBundle.load(key);
-      final bytes = data.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes);
+      final bytes =
+          data.buffer.asUint8List(data.offsetInBytes, data.lengthInBytes);
       return Response.ok(bytes, headers: {
         'Content-Type': _mime(path),
         'Cache-Control': 'no-cache',

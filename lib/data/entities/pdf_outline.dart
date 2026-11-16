@@ -1,4 +1,4 @@
-/// PDF 大纲（对齐 Sigma PdfOutline / pdfx 大纲解析结果）
+/// PDF 大纲（ / pdfx 大纲解析结果）
 class PdfOutline {
   int? id;
   String bookName;

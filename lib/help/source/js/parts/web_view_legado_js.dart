@@ -22,6 +22,9 @@ class WebViewLegadoJs implements LegadoJs {
   String? _loadedSourceUrl;
   String? _deviceId;
 
+  /// legado://rule 求值上下文（setContent / setBaseUrl / setRedirectUrl 维护）。
+  final Map<String, dynamic> _ruleContext = <String, dynamic>{};
+
   bool get _persistCookie => source.enabledCookieJar;
 
   static const Duration _ensureTimeout = Duration(seconds: 15);
@@ -53,7 +56,8 @@ class WebViewLegadoJs implements LegadoJs {
         // 验证码识别：书源 JS 的 getVerificationCode(imageUrl) 返回 Promise，
         // 此处弹人工输入界面，用户提交后回传结果 resolve Promise。
         controller.addJavaScriptHandler(
-            handlerName: 'legadoVerification', callback: _onVerificationRequest);
+            handlerName: 'legadoVerification',
+            callback: _onVerificationRequest);
       },
       onLoadStop: (controller, url) async {
         try {
@@ -92,7 +96,7 @@ class WebViewLegadoJs implements LegadoJs {
     ''';
     await c.evaluateJavascript(source: seed);
     // eventListener：开启后把书源 JS 的 console 输出桥接进引擎调试日志，
-    // 使「调试」页能看到脚本内的 console.log/warn/error（对齐脚本日志排查需求）。
+    // 使「调试」页能看到脚本内的 console.log/warn/error（支撑脚本日志排查）。
     if (src is BookSource && (src).eventListener) {
       try {
         await c.evaluateJavascript(source: '''
@@ -121,8 +125,7 @@ class WebViewLegadoJs implements LegadoJs {
         await c.evaluateJavascript(source: lib);
       } catch (e) {
         debugPrint('jsLib 求值失败: $e');
-        SourceNetworkLog.instance
-            .addScriptError('jsLib 加载失败: $e');
+        SourceNetworkLog.instance.addScriptError('jsLib 加载失败: $e');
       }
     }
     final login = (src.loginUrl ?? '').trim();
@@ -131,8 +134,7 @@ class WebViewLegadoJs implements LegadoJs {
         await c.evaluateJavascript(source: login);
       } catch (e) {
         debugPrint('loginUrl 初始化失败: $e');
-        SourceNetworkLog.instance
-            .addScriptError('loginUrl（登录脚本）加载失败: $e');
+        SourceNetworkLog.instance.addScriptError('loginUrl（登录脚本）加载失败: $e');
       }
     }
     _loadedSourceUrl = src.jsUrl;
@@ -168,7 +170,8 @@ class WebViewLegadoJs implements LegadoJs {
         } catch (_) {}
       }
       await _controller?.evaluateJavascript(
-          source: '__resolveBrowser(${_js(id)}, ${_js(cookieStr)}, ${_js(finalUrl)});');
+          source:
+              '__resolveBrowser(${_js(id)}, ${_js(cookieStr)}, ${_js(finalUrl)});');
     } catch (_) {}
     return null;
   }
@@ -241,7 +244,8 @@ class WebViewLegadoJs implements LegadoJs {
   }
 
   /// 原生接管书源 JS 发起的所有 XHR（绕过 CORS、统一 Cookie/编码）。
-  Future<iw.WebResourceResponse?> _intercept(iw.WebResourceRequest request) async {
+  Future<iw.WebResourceResponse?> _intercept(
+      iw.WebResourceRequest request) async {
     final uri = request.url;
     final url = uri.toString();
 
@@ -275,13 +279,30 @@ class WebViewLegadoJs implements LegadoJs {
     if (url.startsWith('legado://download')) return await _handleDownload(uri);
     if (url.startsWith('legado://share')) return await _handleShare(request);
     if (url.startsWith('legado://file')) return await _handleFile(uri);
-    if (url.startsWith('legado://webview')) return await _handleWebView(uri);
+    if (url.startsWith('legado://webview')) {
+      return await _handleWebView(request, uri);
+    }
+    if (url.startsWith('legado://rule')) {
+      return await _handleRule(request, uri);
+    }
+    if (url.startsWith('legado://loginui')) {
+      return await _handleLoginUi(request, uri);
+    }
+    if (url.startsWith('legado://sign')) {
+      return await _handleSign(request);
+    }
     if (url.startsWith('legado://browser')) {
       return await _handleBrowser(request, uri);
     }
-    if (url.startsWith('legado://searchbook')) return await _handleSearchBook(uri);
-    if (url.startsWith('legado://openlogin')) return await _handleOpenLogin(uri);
-    if (url.startsWith('legado://refreshexplore')) return await _handleRefreshExplore();
+    if (url.startsWith('legado://searchbook')) {
+      return await _handleSearchBook(uri);
+    }
+    if (url.startsWith('legado://openlogin')) {
+      return await _handleOpenLogin(uri);
+    }
+    if (url.startsWith('legado://refreshexplore')) {
+      return await _handleRefreshExplore();
+    }
     if (url.startsWith('legado://verificationcode')) {
       return await _handleVerificationCode(uri);
     }
@@ -289,7 +310,9 @@ class WebViewLegadoJs implements LegadoJs {
     // MethodChannel('legado/video') 由 Kotlin 原生播放器打开（互相联系）。
     if (url.startsWith('legado://video')) return await _handleVideo(uri);
     // java.ajaxAll 批量并发 / java.webViewGetOverrideUrl 重定向嗅探
-    if (url.startsWith('legado://ajaxall')) return await _handleAjaxAll(request);
+    if (url.startsWith('legado://ajaxall')) {
+      return await _handleAjaxAll(request);
+    }
     if (url.startsWith('legado://overrideurl')) {
       return await _handleWebViewOverride(request);
     }
@@ -322,8 +345,7 @@ class WebViewLegadoJs implements LegadoJs {
       } catch (_) {}
     }
 
-    final hasCookie =
-        headers.keys.any((k) => k.toLowerCase() == 'cookie');
+    final hasCookie = headers.keys.any((k) => k.toLowerCase() == 'cookie');
     if (!hasCookie) {
       final ck = CookieManager().cookieHeader(url);
       if (ck != null && ck.isNotEmpty) headers['Cookie'] = ck;
@@ -446,6 +468,13 @@ class WebViewLegadoJs implements LegadoJs {
         outHeaders['X-Set-Cookie'] = setCookies.join('\n');
       }
       outHeaders['Content-Type'] = contentType;
+      // 把真实响应头 / 最终地址 / 重定向链 / 请求头回灌给 JS 侧。
+      try {
+        final last = SourceNetworkLog.instance.last;
+        if (last != null) {
+          outHeaders.addAll(SourceNetworkLog.instance.toLegadoHeaders(last));
+        }
+      } catch (_) {}
       return iw.WebResourceResponse(
         statusCode: status,
         reasonPhrase: _reason(status),
@@ -524,7 +553,8 @@ class WebViewLegadoJs implements LegadoJs {
           final data = f.content;
           await out.writeAsBytes(data is List<int> ? data : const <int>[]);
         }
-        return _textResponse(p.relative(dir, from: (await _filesBase()).path), 200);
+        return _textResponse(
+            p.relative(dir, from: (await _filesBase()).path), 200);
       }
       for (final f in archive.files) {
         if (!f.isFile) continue;
@@ -534,14 +564,19 @@ class WebViewLegadoJs implements LegadoJs {
         final data = f.content;
         // op=bytes： getZipByteArrayContent，返回条目的原始字节 base64。
         if (op == 'bytes') {
-          final raw = data is String ? utf8.encode(data) : List<int>.from(data as List<int>);
+          final raw = data is String
+              ? utf8.encode(data)
+              : List<int>.from(data as List<int>);
           return _textResponse(base64Encode(raw), 200);
         }
         final String content;
         if (data is String) {
           content = data;
         } else if (data is List<int>) {
-          content = utf8.decode(data);
+          final cs = uri.queryParameters['cs'];
+          content = (cs != null && cs.isNotEmpty)
+              ? JsTextUtils.bytesToStr(data, charset: cs)
+              : utf8.decode(data);
         } else {
           content = utf8.decode(f.content as List<int>);
         }
@@ -588,9 +623,11 @@ class WebViewLegadoJs implements LegadoJs {
   }
 
   /// legado://ttf 协议：解析字体反爬映射（java.queryTTF）。请求体为 base64 字体数据。
-  Future<iw.WebResourceResponse> _handleTtf(iw.WebResourceRequest request) async {
+  Future<iw.WebResourceResponse> _handleTtf(
+      iw.WebResourceRequest request) async {
     try {
-      final b64 = (request.headers ?? const <String, String>{})['X-Legado-Body'] ?? '';
+      final b64 =
+          (request.headers ?? const <String, String>{})['X-Legado-Body'] ?? '';
       if (b64.isEmpty) return _textResponse('ttf 数据为空', 400);
       // X-Legado-Body 由 __b64Unicode(bodyStr) 生成，bodyStr 是字体数据的 base64 文本，
       // 故需两层解码：先还原 bodyStr，再解码出字体字节。
@@ -624,7 +661,9 @@ class WebViewLegadoJs implements LegadoJs {
       final dlDir = Directory('${dir.path}/downloads');
       if (!dlDir.existsSync()) dlDir.createSync(recursive: true);
       var name = url.split('/').last.split('?').first;
-      if (name.isEmpty) name = 'download_${DateTime.now().millisecondsSinceEpoch}';
+      if (name.isEmpty) {
+        name = 'download_${DateTime.now().millisecondsSinceEpoch}';
+      }
       final file = File('${dlDir.path}/$name');
       await file.writeAsBytes(bytes);
       return _textResponse(file.path, 200);
@@ -634,9 +673,11 @@ class WebViewLegadoJs implements LegadoJs {
   }
 
   /// legado://share 协议：分享文本（java.share）。请求体为文本。
-  Future<iw.WebResourceResponse> _handleShare(iw.WebResourceRequest request) async {
+  Future<iw.WebResourceResponse> _handleShare(
+      iw.WebResourceRequest request) async {
     try {
-      final b64 = (request.headers ?? const <String, String>{})['X-Legado-Body'] ?? '';
+      final b64 =
+          (request.headers ?? const <String, String>{})['X-Legado-Body'] ?? '';
       String text = '';
       if (b64.isNotEmpty) {
         text = utf8.decode(base64Decode(b64));
@@ -654,8 +695,8 @@ class WebViewLegadoJs implements LegadoJs {
   }
 
   /// legado://charset 协议：把书源脚本的 4 个文本/编码扩展函数转交 Dart 侧
-  /// [JsTextUtils]，使上游 JsExtensions.kt / StringUtils.kt / HtmlFormatter.kt
-  /// 的语义只有一份权威实现（JS 桥只做参数封送，不再各写一套简化正则）。
+  /// [JsTextUtils]，让文本/编码语义只有一份权威实现（JS 桥只做参数封送，
+  /// 不再各写一套简化正则）。
   ///
   /// 请求体沿用 `__doXhr` 的 `X-Legado-Body`（`__b64Unicode`：UTF-8 base64）；
   /// 返回体为 `text/plain`：
@@ -680,9 +721,8 @@ class WebViewLegadoJs implements LegadoJs {
               jsonEncode(JsTextUtils.strToBytes(body, charset: cs)), 200);
         case 'decode':
           final arr = (jsonDecode(body) as List?) ?? const <dynamic>[];
-          final bytes = arr
-              .map((e) => (e is num ? e.toInt() : 0) & 0xff)
-              .toList();
+          final bytes =
+              arr.map((e) => (e is num ? e.toInt() : 0) & 0xff).toList();
           return _textResponse(JsTextUtils.bytesToStr(bytes, charset: cs), 200);
         case 'htmlFormat':
           return _textResponse(JsTextUtils.htmlFormat(body), 200);
@@ -713,10 +753,34 @@ class WebViewLegadoJs implements LegadoJs {
       if (decoded is! Map) return _textResponse('crypto 参数格式错误', 400);
       final m = decoded;
       final op = m['op']?.toString() ?? 'encrypt';
+
+      // 摘要 / HMAC：走 CryptoUtils 全算法静态门面（MD2/MD5/SHA*/Hmac*）。
+      if (op == 'digest' || op == 'hmac') {
+        final algorithm = m['algorithm']?.toString() ?? 'MD5';
+        final data = m['data']?.toString() ?? '';
+        final key = m['key']?.toString() ?? '';
+        final out = m['out']?.toString() ?? 'hex';
+        final wantB64 = out == 'base64';
+        final String result;
+        if (op == 'hmac') {
+          result = wantB64
+              ? CryptoUtils.hmacBase64(algorithm, key, data)
+              : CryptoUtils.hmacHex(algorithm, key, data);
+        } else {
+          result = wantB64
+              ? CryptoUtils.simpleHashBase64(algorithm, data)
+              : CryptoUtils.simpleHash(algorithm, data);
+        }
+        return _textResponse(result, 200);
+      }
+      if (op == 'asym') return _cryptoAsym(m);
+      if (op == 'sign') return _cryptoSign(m);
+
+      // 对称加解密：key/iv/data 为字节的 base64。
       final transformation =
           m['transformation']?.toString() ?? 'AES/ECB/PKCS5Padding';
-      final keyBytes = Uint8List.fromList(
-          base64Decode((m['key']?.toString() ?? '').trim()));
+      final keyBytes =
+          Uint8List.fromList(base64Decode((m['key']?.toString() ?? '').trim()));
       final ivRaw = (m['iv']?.toString() ?? '').trim();
       Uint8List? ivBytes;
       if (ivRaw.isNotEmpty) {
@@ -731,18 +795,244 @@ class WebViewLegadoJs implements LegadoJs {
         case 'decryptBytes':
           out = cipher.decryptBytes(dataBytes);
           break;
-        case 'digestHex':
-        case 'digestBase64':
-        case 'hmacHex':
-        case 'hmacBase64':
-          // 摘要/HMAC 走纯 JS 实现即可，这里只保留对称加解密通道。
-          return _textResponse('unsupported op: $op', 400);
         default:
           out = cipher.encrypt(dataBytes);
       }
       return _textResponse(base64.encode(out), 200);
     } catch (e) {
       return _textResponse('crypto 处理失败: $e', 502);
+    }
+  }
+
+  /// legado://crypto 的非对称分派（op=asym），调 AsymmetricCrypto 门面。
+  iw.WebResourceResponse _cryptoAsym(Map m) {
+    try {
+      final transformation = m['transformation']?.toString() ?? 'RSA';
+      final publicKey = m['publicKey']?.toString() ?? '';
+      final privateKey =
+          m['privateKey']?.toString() ?? m['key']?.toString() ?? '';
+      final data = m['data']?.toString() ?? '';
+      final sub = m['sub']?.toString() ?? m['op2']?.toString() ?? 'encrypt';
+      final usePublicKey = m['usePublicKey'] != false &&
+          m['usePublicKey']?.toString() != 'false';
+      final crypto = AsymmetricCrypto(transformation,
+          publicKey: publicKey.isEmpty ? null : publicKey,
+          privateKey: privateKey.isEmpty ? null : privateKey);
+      switch (sub) {
+        case 'decrypt':
+        case 'decryptStr':
+          return _textResponse(crypto.decryptStr(data), 200);
+        case 'decryptHex':
+          return _textResponse(crypto.decryptHex(data), 200);
+        case 'encryptHex':
+          return _textResponse(
+              crypto.encryptHex(data, usePublicKey: usePublicKey), 200);
+        default:
+          return _textResponse(
+              crypto.encryptBase64(data, usePublicKey: usePublicKey), 200);
+      }
+    } catch (e) {
+      return _textResponse('asym 处理失败: $e', 502);
+    }
+  }
+
+  /// legado://crypto / legado://sign 的签名分派，调 RsaSign 门面。
+  iw.WebResourceResponse _cryptoSign(Map m) {
+    try {
+      final algorithm = m['algorithm']?.toString() ?? 'SHA256withRSA';
+      final sub = m['op2']?.toString() ??
+          m['sub']?.toString() ??
+          (m['op']?.toString() == 'verify' ? 'verify' : 'sign');
+      final isVerify = sub == 'verify';
+      final key = m['key']?.toString() ?? '';
+      final privateKey = isVerify
+          ? (m['privateKey']?.toString() ?? '')
+          : (m['privateKey']?.toString() ?? key);
+      final publicKey = isVerify
+          ? (m['publicKey']?.toString() ?? key)
+          : (m['publicKey']?.toString() ?? '');
+      final data = m['data']?.toString() ?? '';
+      final sign = RsaSign(algorithm,
+          privateKey: privateKey.isEmpty ? null : privateKey,
+          publicKey: publicKey.isEmpty ? null : publicKey);
+      final out = m['out']?.toString() ?? 'base64';
+      switch (sub) {
+        case 'verify':
+          final signature = m['signature']?.toString() ?? '';
+          return _textResponse(
+              sign.verify(data, signature) ? 'true' : 'false', 200);
+        case 'signHex':
+          return _textResponse(sign.signHex(data), 200);
+        default:
+          return _textResponse(
+              out == 'hex' ? sign.signHex(data) : sign.signBase64(data), 200);
+      }
+    } catch (e) {
+      return _textResponse('sign 处理失败: $e', 502);
+    }
+  }
+
+  /// legado://rule 协议：java.getString / getStringList / getElement /
+  /// getElements / setContent / setBaseUrl / setRedirectUrl。
+  /// 调用 [RulePipeline] 的公开方法求值，并维护每次求值的规则上下文。
+  Future<iw.WebResourceResponse> _handleRule(
+      iw.WebResourceRequest request, iw.WebUri uri) async {
+    try {
+      var op = uri.queryParameters['op'] ?? '';
+      final b64 =
+          (request.headers ?? const <String, String>{})['X-Legado-Body'] ?? '';
+      Map<String, dynamic> body = <String, dynamic>{};
+      if (b64.isNotEmpty) {
+        final decoded =
+            jsonDecode(utf8.decode(base64Decode(b64), allowMalformed: true));
+        if (decoded is Map) body = Map<String, dynamic>.from(decoded);
+      }
+      if (op.isEmpty) op = body['op']?.toString() ?? '';
+      final rule = body['rule']?.toString() ?? '';
+      var content = body['content']?.toString() ?? '';
+      if (content.isEmpty) content = _ruleContext['content']?.toString() ?? '';
+      var baseUrl = body['baseUrl']?.toString() ?? '';
+      if (baseUrl.isEmpty) baseUrl = _ruleContext['baseUrl']?.toString() ?? '';
+      if (baseUrl.isEmpty) baseUrl = source.jsHttpUrl;
+      final isUrl = body['isUrl'] == true || body['isUrl']?.toString() == '1';
+      String resolveOut(String v) {
+        if (!isUrl || v.isEmpty) return v;
+        final b = Uri.tryParse(baseUrl);
+        if (b == null || !b.hasScheme) return v;
+        return b.resolve(v).toString();
+      }
+
+      switch (op) {
+        case 'setContent':
+          _ruleContext['content'] = body['content']?.toString() ?? '';
+          if (body['baseUrl'] != null) {
+            _ruleContext['baseUrl'] = body['baseUrl'].toString();
+          }
+          return _textResponse('true', 200);
+        case 'setBaseUrl':
+          _ruleContext['baseUrl'] =
+              (body['baseUrl'] ?? body['url'] ?? '').toString();
+          return _textResponse('true', 200);
+        case 'setRedirectUrl':
+          _ruleContext['redirectUrl'] = (body['url'] ?? '').toString();
+          return _textResponse('true', 200);
+        case 'getString':
+          final v = RulePipeline(baseUrl: baseUrl)
+                  .extractStringFromRaw(content, rule) ??
+              '';
+          return _textResponse(resolveOut(v), 200);
+        case 'getStringList':
+          final list = RulePipeline(baseUrl: baseUrl)
+              .extractListFromRaw(content, rule)
+              .map(resolveOut)
+              .toList();
+          return _textResponse(jsonEncode(list), 200);
+        case 'getElement':
+          final doc = html_parser.parse(content);
+          final els = RulePipeline(baseUrl: baseUrl).selectElements(doc, rule);
+          return _textResponse(els.isEmpty ? '' : els.first.outerHtml, 200);
+        case 'getElements':
+          final doc = html_parser.parse(content);
+          final els = RulePipeline(baseUrl: baseUrl).selectElements(doc, rule);
+          return _textResponse(
+              jsonEncode(els.map((e) => e.outerHtml).toList()), 200);
+        case 'getJsonNodes':
+          dynamic root;
+          try {
+            root = jsonDecode(content);
+          } catch (_) {
+            root = null;
+          }
+          final nodes = root == null
+              ? <dynamic>[]
+              : RulePipeline(baseUrl: baseUrl).selectJsonNodes(root, rule);
+          return _textResponse(jsonEncode(nodes), 200);
+        default:
+          return _textResponse('unknown op: $op', 400);
+      }
+    } catch (e) {
+      return _textResponse('rule 处理失败: $e', 502);
+    }
+  }
+
+  /// legado://loginui/<action>：UI 事件记录与回调。
+  /// 把书源触发的 upLoginData / upUiData / reUiView / copyText /
+  /// clearTtsCache / refreshBookInfo / refreshContent / upConfig 等写入
+  /// SharedPreferences 供 UI 层消费，并对刷新类动作发出通知。
+  static const String _uiEventKey = 'legadoUiEvents';
+
+  Future<iw.WebResourceResponse> _handleLoginUi(
+      iw.WebResourceRequest request, iw.WebUri uri) async {
+    try {
+      final parsed = Uri.tryParse(uri.toString());
+      final action = (parsed != null && parsed.pathSegments.isNotEmpty)
+          ? parsed.pathSegments.last
+          : (uri.queryParameters['action'] ?? '');
+      final b64 =
+          (request.headers ?? const <String, String>{})['X-Legado-Body'] ?? '';
+      String data = '';
+      if (b64.isNotEmpty) {
+        data = utf8.decode(base64Decode(b64), allowMalformed: true);
+      }
+      final prefs = await SharedPreferences.getInstance();
+      final list = <Map<String, dynamic>>[];
+      final saved = prefs.getString(_uiEventKey);
+      if (saved != null && saved.isNotEmpty) {
+        try {
+          final prev = jsonDecode(saved);
+          if (prev is List) {
+            for (final e in prev) {
+              if (e is Map) list.add(Map<String, dynamic>.from(e));
+            }
+          }
+        } catch (_) {}
+      }
+      list.add(<String, dynamic>{
+        'action': action,
+        'data': data,
+        'source': source.jsUrl,
+        'time': DateTime.now().millisecondsSinceEpoch,
+      });
+      if (list.length > 200) list.removeRange(0, list.length - 200);
+      await prefs.setString(_uiEventKey, jsonEncode(list));
+
+      switch (action) {
+        case 'copyText':
+          if (data.isNotEmpty) await prefs.setString('legadoClipboard', data);
+          break;
+        case 'clearTtsCache':
+          await prefs.remove('legadoTtsCache');
+          break;
+        case 'refreshBookInfo':
+        case 'refreshContent':
+        case 'reUiView':
+          notifyExploreRefresh();
+          break;
+        case 'refreshJSLib':
+          await prefs.setBool('jsLibInvalidated_${source.jsUrl}', true);
+          break;
+      }
+      return _textResponse('true', 200);
+    } catch (e) {
+      return _textResponse('true', 200);
+    }
+  }
+
+  /// legado://sign 协议：java.createSign 的 sign / verify，调 RsaSign 门面。
+  Future<iw.WebResourceResponse> _handleSign(
+      iw.WebResourceRequest request) async {
+    try {
+      final b64 =
+          (request.headers ?? const <String, String>{})['X-Legado-Body'] ?? '';
+      if (b64.isEmpty) return _textResponse('sign 参数为空', 400);
+      final decoded =
+          jsonDecode(utf8.decode(base64Decode(b64), allowMalformed: true));
+      if (decoded is! Map) return _textResponse('sign 参数格式错误', 400);
+      final m = Map<String, dynamic>.from(decoded);
+      m['op2'] = m['op']?.toString() ?? 'sign';
+      return _cryptoSign(m);
+    } catch (e) {
+      return _textResponse('sign 处理失败: $e', 502);
     }
   }
 
@@ -771,15 +1061,30 @@ class WebViewLegadoJs implements LegadoJs {
     final b64 =
         (request.headers ?? const <String, String>{})['X-Legado-Body'] ?? '';
     List<dynamic> items;
+    var isTest = false;
+    var skipRateLimit = false;
+    var timeoutMs = 0;
     try {
       final decoded = jsonDecode(utf8.decode(base64Decode(b64)));
-      items = decoded is List ? decoded : const <dynamic>[];
+      if (decoded is List) {
+        items = decoded;
+      } else if (decoded is Map) {
+        final list = decoded['list'];
+        items = list is List ? list : const <dynamic>[];
+        isTest = decoded['isTest'] == true;
+        skipRateLimit = decoded['skipRateLimit'] == true;
+        timeoutMs = (decoded['timeout'] as num?)?.toInt() ?? 0;
+      } else {
+        items = const <dynamic>[];
+      }
     } catch (_) {
       return _textResponse('[]', 400);
     }
     // 为每个 URL 建独立 Future；Future.wait 真并发，单项失败不影响整批。
     final futures = <Future<Map<String, dynamic>>>[
-      for (final item in items) _fetchOneAjax(item),
+      for (final item in items)
+        _fetchOneAjax(item,
+            isTest: isTest, skipRateLimit: skipRateLimit, timeoutMs: timeoutMs),
     ];
     final results = await Future.wait(futures);
     // 带 CORS 头：POST + 自定义头场景下 XHR 才能读到响应体
@@ -795,7 +1100,12 @@ class WebViewLegadoJs implements LegadoJs {
 
   /// 单个 ajaxAll 请求：复用与 _intercept 相同的 Dio / CookieJar / 持久 Cookie
   /// 逻辑，失败时返回 502 项。
-  Future<Map<String, dynamic>> _fetchOneAjax(dynamic item) async {
+  Future<Map<String, dynamic>> _fetchOneAjax(
+    dynamic item, {
+    bool isTest = false,
+    bool skipRateLimit = false,
+    int timeoutMs = 0,
+  }) async {
     final map = item is Map ? item : const <String, dynamic>{};
     final url = map['url']?.toString() ?? '';
     final method = (map['method']?.toString() ?? 'GET').toUpperCase();
@@ -830,8 +1140,12 @@ class WebViewLegadoJs implements LegadoJs {
           method: method,
           headers: headers,
           responseType: ResponseType.bytes,
+          sendTimeout: timeoutMs > 0 ? Duration(milliseconds: timeoutMs) : null,
+          receiveTimeout:
+              timeoutMs > 0 ? Duration(milliseconds: timeoutMs) : null,
         ),
       );
+      // isTest / skipRateLimit 由 JS 侧用于错误码归一与限流旁路；此处透传超时。
       final setCookies = resp.headers.map['set-cookie'] ?? const <String>[];
       CookieManager().saveFromResponse(url, setCookies);
       if (_persistCookie) {
@@ -848,8 +1162,7 @@ class WebViewLegadoJs implements LegadoJs {
       }
       return <String, dynamic>{
         'url': url,
-        'body': utf8.decode(
-            Uint8List.fromList(resp.data ?? const <int>[]),
+        'body': utf8.decode(Uint8List.fromList(resp.data ?? const <int>[]),
             allowMalformed: true),
         'code': code,
         'message': _reason(code),
@@ -874,20 +1187,11 @@ class WebViewLegadoJs implements LegadoJs {
     try {
       final b64 =
           (request.headers ?? const <String, String>{})['X-Legado-Body'] ?? '';
-      final m = jsonDecode(utf8.decode(base64Decode(b64)))
-          as Map<String, dynamic>;
+      final m =
+          jsonDecode(utf8.decode(base64Decode(b64))) as Map<String, dynamic>;
       final url = m['url']?.toString() ?? '';
       if (url.isEmpty) return _textResponse('', 400);
-      final headers = <String, String>{};
-      final raw = source.header;
-      if (raw != null && raw.trim().isNotEmpty) {
-        try {
-          final v = jsonDecode(raw);
-          if (v is Map) {
-            v.forEach((k, val) => headers[k.toString()] = val?.toString() ?? '');
-          }
-        } catch (_) {}
-      }
+      final headers = await _sourceHeaders();
       final result = await HeadlessWebViewFetcher.fetchOverrideUrl(
         url: url,
         html: m['html']?.toString() ?? '',
@@ -895,7 +1199,10 @@ class WebViewLegadoJs implements LegadoJs {
         injectJs: m['js']?.toString() ?? '',
         cacheFirst: m['cacheFirst'] == true,
         delayMs: (m['delayMs'] as num?)?.toInt() ?? 0,
+        timeoutMs: (m['timeoutMs'] as num?)?.toInt() ?? 25000,
         headers: headers.isEmpty ? null : headers,
+        encode: m['encode']?.toString() ?? 'utf-8',
+        tag: m['tag']?.toString() ?? '',
       );
       return iw.WebResourceResponse(
         statusCode: 200,
@@ -917,7 +1224,8 @@ class WebViewLegadoJs implements LegadoJs {
     if (path.isEmpty) return null;
     final root = p.normalize(p.absolute(base.path));
     final target = p.normalize(p.absolute('${base.path}/$path'));
-    if (target != root && !target.startsWith('$root${Platform.pathSeparator}')) {
+    if (target != root &&
+        !target.startsWith('$root${Platform.pathSeparator}')) {
       return null;
     }
     return File(target);
@@ -944,17 +1252,24 @@ class WebViewLegadoJs implements LegadoJs {
           return _textResponse(base64Encode(f.readAsBytesSync()), 200);
         }
         final exists = f.existsSync();
-        return _textResponse(jsonEncode({
-          'path': path,
-          'name': p.basename(path),
-          'absolutePath': f.path,
-          'exists': exists,
-          'length': exists ? f.lengthSync() : 0,
-        }), 200);
+        return _textResponse(
+            jsonEncode({
+              'path': path,
+              'name': p.basename(path),
+              'absolutePath': f.path,
+              'exists': exists,
+              'length': exists ? f.lengthSync() : 0,
+            }),
+            200);
       }
       if (op == 'read') {
         final f = _safeFile(base, path);
         if (f == null || !f.existsSync()) return _textResponse('', 200);
+        final cs = uri.queryParameters['cs'];
+        if (cs != null && cs.isNotEmpty) {
+          return _textResponse(
+              JsTextUtils.bytesToStr(f.readAsBytesSync(), charset: cs), 200);
+        }
         return _textResponse(f.readAsStringSync(), 200);
       }
       if (op == 'delete') {
@@ -963,11 +1278,20 @@ class WebViewLegadoJs implements LegadoJs {
         return _textResponse('true', 200);
       }
       if (op == 'cache') {
+        final saveTime =
+            int.tryParse(uri.queryParameters['saveTime'] ?? '') ?? 0;
+        var name = url.split('/').last.split('?').first;
+        if (name.isEmpty) {
+          name = 'cache_${DateTime.now().millisecondsSinceEpoch}';
+        }
+        final f = File('${base.path}/$name');
+        // 按秒过期：缓存未超过 saveTime 秒则直接复用。
+        if (saveTime > 0 && f.existsSync()) {
+          final age = DateTime.now().difference(f.lastModifiedSync()).inSeconds;
+          if (age < saveTime) return _textResponse(f.path, 200);
+        }
         final resp = await _dio.get<List<int>>(url,
             options: Options(responseType: ResponseType.bytes));
-        var name = url.split('/').last.split('?').first;
-        if (name.isEmpty) name = 'cache_${DateTime.now().millisecondsSinceEpoch}';
-        final f = File('${base.path}/$name');
         await f.writeAsBytes(resp.data ?? const <int>[]);
         return _textResponse(f.path, 200);
       }
@@ -1036,62 +1360,77 @@ class WebViewLegadoJs implements LegadoJs {
 
   /// legado://webview 协议：用第二个无头 WebView 加载网页、等 JS 渲染后取渲染 HTML
   /// （java.webViewGetSource）。带超时与失败回退，任何异常返回空串让书源降级。
-  Future<iw.WebResourceResponse> _handleWebView(iw.WebUri uri) async {
+  Future<iw.WebResourceResponse> _handleWebView(
+      iw.WebResourceRequest request, iw.WebUri uri) async {
     try {
-      final url = uri.queryParameters['url'] ?? '';
+      var url = uri.queryParameters['url'] ?? '';
+      var html = '';
+      var injectJs = '';
+      var sourceRegex = '';
+      var encode = 'utf-8';
+      var tag = '';
+      var cacheFirst = false;
+      var delayMs = 0;
+      final b64 =
+          (request.headers ?? const <String, String>{})['X-Legado-Body'] ?? '';
+      if (b64.isNotEmpty) {
+        final decoded =
+            jsonDecode(utf8.decode(base64Decode(b64), allowMalformed: true));
+        if (decoded is Map) {
+          final m = Map<String, dynamic>.from(decoded);
+          url = m['url']?.toString() ?? url;
+          html = m['html']?.toString() ?? '';
+          injectJs = m['injectJs']?.toString() ?? m['js']?.toString() ?? '';
+          sourceRegex =
+              m['sourceRegex']?.toString() ?? m['regex']?.toString() ?? '';
+          encode = m['encode']?.toString() ?? 'utf-8';
+          tag = m['tag']?.toString() ?? '';
+          cacheFirst = m['cacheFirst'] == true;
+          delayMs = (m['delayMs'] as num?)?.toInt() ?? 0;
+        }
+      }
+      if (html.isEmpty) html = uri.queryParameters['html'] ?? '';
       if (url.isEmpty) return _textResponse('', 400);
-      final html = await _renderWithWebView(url).timeout(const Duration(seconds: 25));
-      return _textResponse(html, 200);
+      final rendered = await _renderWithWebView(url,
+              html: html,
+              injectJs: injectJs,
+              sourceRegex: sourceRegex,
+              cacheFirst: cacheFirst,
+              delayMs: delayMs,
+              encode: encode,
+              tag: tag)
+          .timeout(const Duration(seconds: 30));
+      return _textResponse(rendered, 200);
     } catch (e) {
       return _textResponse('', 502);
     }
   }
 
-  Future<String> _renderWithWebView(String url) async {
-    final completer = Completer<String>();
-    var disposed = false;
-    Future<void> safeDispose(iw.HeadlessInAppWebView h) async {
-      if (disposed) return;
-      disposed = true;
-      try {
-        await h.dispose();
-      } catch (_) {}
-    }
-
-    late final iw.HeadlessInAppWebView h;
-    h = iw.HeadlessInAppWebView(
-      initialSettings: iw.InAppWebViewSettings(
-        javaScriptEnabled: true,
-        domStorageEnabled: true,
-        useShouldInterceptRequest: false,
-        userAgent:
-            'Mozilla/5.0 (Linux; Android 13; Pixel 6) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36',
-      ),
-      initialUrlRequest: iw.URLRequest(url: iw.WebUri(url)),
-      onLoadStop: (controller, loadedUrl) async {
-        try {
-          // 额外等待 JS 渲染
-          await Future<void>.delayed(const Duration(seconds: 3));
-          final res =
-              await controller.evaluateJavascript(source: 'document.documentElement.outerHTML');
-          final html = res?.toString() ?? '';
-          if (!completer.isCompleted) completer.complete(html);
-        } catch (e) {
-          if (!completer.isCompleted) completer.complete('');
-        } finally {
-          await safeDispose(h);
-        }
-      },
-      onReceivedError: (controller, request, error) async {
-        if (!completer.isCompleted) completer.complete('');
-        await safeDispose(h);
-      },
+  /// 把完整参数交给 [HeadlessWebViewFetcher.fetch] 渲染取源码。
+  Future<String> _renderWithWebView(
+    String url, {
+    String html = '',
+    String injectJs = '',
+    String sourceRegex = '',
+    bool cacheFirst = false,
+    int delayMs = 0,
+    String encode = 'utf-8',
+    String tag = '',
+  }) async {
+    final headers = await _sourceHeaders();
+    return await HeadlessWebViewFetcher.fetch(
+      url: url,
+      html: html,
+      injectJs: injectJs.isEmpty ? null : injectJs,
+      evalJs: 'document.documentElement.outerHTML',
+      cacheFirst: cacheFirst,
+      delayMs: delayMs,
+      sourceRegex: sourceRegex,
+      encode: encode,
+      tag: tag,
+      timeoutMs: 25000,
+      headers: headers.isEmpty ? null : headers,
     );
-    await h.run();
-    return completer.future.timeout(const Duration(seconds: 25), onTimeout: () {
-      safeDispose(h);
-      return '';
-    });
   }
 
   /// legado://browser 协议：阻塞式网页交互（java.startBrowserAwait/showBrowser/
@@ -1268,6 +1607,19 @@ class WebViewLegadoJs implements LegadoJs {
         }
       }
     } catch (_) {}
+    // 登录头联动：合并该源持久化的 loginHeader_$srcUrl（AnalyzeUrl 重取场景）。
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final loginRaw = prefs.getString('loginHeader_${source.jsUrl}');
+      if (loginRaw != null && loginRaw.trim().isNotEmpty) {
+        final decoded = jsonDecode(loginRaw);
+        if (decoded is Map) {
+          decoded.forEach((k, v) {
+            out[k.toString()] = v?.toString() ?? '';
+          });
+        }
+      }
+    } catch (_) {}
     return out;
   }
 
@@ -1344,7 +1696,8 @@ class WebViewLegadoJs implements LegadoJs {
     return _textResponse('true', 200);
   }
 
-  iw.WebResourceResponse _textResponse(String msg, int code) => iw.WebResourceResponse(
+  iw.WebResourceResponse _textResponse(String msg, int code) =>
+      iw.WebResourceResponse(
         statusCode: code,
         reasonPhrase: 'Error',
         contentType: 'text/plain; charset=utf-8',
@@ -1361,8 +1714,7 @@ class WebViewLegadoJs implements LegadoJs {
         'Access-Control-Allow-Credentials': 'true',
         'Access-Control-Allow-Headers': '*',
         'Access-Control-Expose-Headers': '*',
-        'Access-Control-Allow-Methods':
-            'GET,POST,PUT,DELETE,HEAD,OPTIONS,PATCH'
+        'Access-Control-Allow-Methods': 'GET,POST,PUT,DELETE,HEAD,OPTIONS,PATCH'
       };
 
   String _reason(int code) {
@@ -1427,6 +1779,17 @@ class WebViewLegadoJs implements LegadoJs {
           : '',
       'sourceJsLibArg': req.source.jsLib ?? '',
       'sourceBookUrlPatternArg': req.source.jsBookUrlPattern,
+      'srcArg': req.src ?? '',
+      'titleArg': req.title ?? '',
+      'nextChapterUrlArg': req.nextChapterUrl ?? '',
+      'isFromBookInfoArg': req.isFromBookInfo ?? false,
+      'fromBookInfoArg': req.fromBookInfo ?? req.isFromBookInfo ?? false,
+      'speakTextArg': req.speakText ?? '',
+      'speakSpeedArg': req.speakSpeed ?? 0,
+      'eventArg': req.event ?? <String, dynamic>{},
+      'isLongClickArg': req.isLongClick ?? false,
+      'contentArg': req.content ?? '',
+      'sceneArg': req.scene ?? '',
     };
 
     final functionBody = '''
@@ -1436,6 +1799,20 @@ class WebViewLegadoJs implements LegadoJs {
       globalThis.key = keyArg;
       globalThis.page = pageArg;
       globalThis.baseUrl = baseUrlArg;
+      // 场景注入的全局变量（src/title/nextChapterUrl/speakText/event/content/scene 等）
+      globalThis.src = srcArg;
+      globalThis.title = titleArg;
+      globalThis.nextChapterUrl = nextChapterUrlArg;
+      globalThis.isFromBookInfo = isFromBookInfoArg;
+      globalThis.fromBookInfo = fromBookInfoArg;
+      globalThis.speakText = speakTextArg;
+      globalThis.speakSpeed = speakSpeedArg;
+      globalThis.event = eventArg;
+      globalThis.isLongClick = isLongClickArg;
+      globalThis.content = contentArg;
+      globalThis.scene = sceneArg || '';
+      // 按场景切换 java 可见方法子集（未指定 scene 时返回完整 java）。
+      globalThis.java = __javaForScene(sceneArg || '');
       globalThis.sourceUrl = baseUrlArg || ${_js(req.source.jsUrl)};
       globalThis.sourceName = ${_js(req.source.jsName)};
       // 更新 __state.meta，不覆盖 globalThis.source（保留 bridge 中的完整方法）
@@ -1502,8 +1879,8 @@ class WebViewLegadoJs implements LegadoJs {
     iw.CallAsyncJavaScriptResult? res;
     try {
       // 90 秒上限：防止书源 JS 死循环/长挂把整条抓取链路拖死
-      res = await c.callAsyncJavaScript(
-              functionBody: functionBody, arguments: args)
+      res = await c
+          .callAsyncJavaScript(functionBody: functionBody, arguments: args)
           .timeout(const Duration(seconds: 90));
     } catch (e) {
       return JsEvalResult(error: 'JS 执行异常: $e', variable: req.source.variable);
@@ -1514,8 +1891,7 @@ class WebViewLegadoJs implements LegadoJs {
     }
     Map<String, dynamic> env;
     try {
-      env =
-          jsonDecode(res?.value?.toString() ?? '{}') as Map<String, dynamic>;
+      env = jsonDecode(res?.value?.toString() ?? '{}') as Map<String, dynamic>;
     } catch (e) {
       return JsEvalResult(
           value: res?.value?.toString(), variable: req.source.variable);
@@ -1569,8 +1945,8 @@ class WebViewLegadoJs implements LegadoJs {
       kv: env['kv'] is Map
           ? Map<String, dynamic>.from(env['kv'] as Map)
           : const {},
-      logs: (env['logs'] as List?)?.map((e) => e.toString()).toList() ??
-          const [],
+      logs:
+          (env['logs'] as List?)?.map((e) => e.toString()).toList() ?? const [],
       toasts: (env['toasts'] as List?)?.map((e) => e.toString()).toList() ??
           const [],
       error: env['error']?.toString(),
@@ -1650,10 +2026,10 @@ class WebViewLegadoJs implements LegadoJs {
           final idx = pair.indexOf('=');
           if (idx > 0) {
             await iw.CookieManager.instance().setCookie(
-                  url: iw.WebUri(url),
-                  name: pair.substring(0, idx).trim(),
-                  value: pair.substring(idx + 1).trim(),
-                );
+              url: iw.WebUri(url),
+              name: pair.substring(0, idx).trim(),
+              value: pair.substring(idx + 1).trim(),
+            );
           }
         }
       } catch (_) {}
@@ -1669,8 +2045,7 @@ class WebViewLegadoJs implements LegadoJs {
       if (raw == null || raw.isEmpty) return {};
       final json = _tryJson(raw);
       if (json is Map) {
-        return json
-            .map((k, v) => MapEntry(k.toString(), v?.toString() ?? ''));
+        return json.map((k, v) => MapEntry(k.toString(), v?.toString() ?? ''));
       }
     } catch (_) {}
     return {};

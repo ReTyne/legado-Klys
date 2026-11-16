@@ -1,4 +1,4 @@
-/// 多套排版预设（对齐 Sigma ReadBookConfig.configList / shareLayout）
+/// 多套排版预设（ / shareLayout）
 class ReadPreset {
   int? id;
   String name;

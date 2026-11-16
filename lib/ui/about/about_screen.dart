@@ -152,9 +152,9 @@ class _AboutScreenState extends State<AboutScreen> {
     );
   }
 
-  /// 对齐 [EPlacement.degradations] 的 'about.xml createHeapDump'：
+  /// 依据 [EPlacement.degradations] 的 'about.xml createHeapDump' 配置：
   /// 创建堆栈转储（HeapDump）为 Android 专属能力，Flutter 无等价实现，
-  /// 保留该项但显式标注平台降级、给出提示，不伪造功能。
+ /// 保留该项但平台降级、给出提示，。
   void _showHeapDumpUnsupported() {
     ScaffoldMessenger.of(context).showSnackBar(
       const SnackBar(content: Text('当前平台不支持创建堆栈转储')),

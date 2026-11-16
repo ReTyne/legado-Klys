@@ -423,7 +423,7 @@ class _ReadingSettingsScreenState extends State<ReadingSettingsScreen>
             if (path != null) rp.updateConfig((c) => c.bgImage = path);
           },
         ),
-        // ===== 批次 3 · 日/夜/墨水屏三套独立配置=====
+ // ===== 日/夜/墨水屏三套独立配置=====
         // 切换模式后，上方的「文字颜色 / 背景颜色」写入的是当前模式那份，互不覆盖。
         const AppSectionHeader('日 / 夜 / 墨水屏 独立配置（已接线）'),
         Padding(
@@ -757,7 +757,7 @@ List<FooterSlot> _safeFooterSlots(ReadConfig config) {
   return list.sublist(0, 3);
 }
 
-/* ===== 第十轮：阅读设置按 sheet 分层 + 多套排版预设 ===== */
+/* ===== 阅读设置按 sheet 分层 + 多套排版预设 ===== */
 
 /// 阅读页「设置分区」底部 sheet：把 5 个设置分区分层组织，点击直达对应 Tab，
 /// 并提供「排版预设」入口。不改动既有整页设置入口（_showReadingSettings）。
@@ -830,7 +830,7 @@ void showReaderSettingsSectionsSheet(BuildContext context, {Book? book}) {
   );
 }
 
-/// 多套排版预设（对齐 Sigma `ReadBookConfig.configList` / `shareLayout`）。
+/// 多套排版预设，支持在配置间切换与共享布局。
 /// 数据走 v14 `read_presets` 表：getReadPresets / insertReadPreset / deleteReadPreset；
 /// 切换时把 ReadConfig 注入 ReadProvider.setConfig 并持久化。
 class ReadPresetSheet extends StatefulWidget {

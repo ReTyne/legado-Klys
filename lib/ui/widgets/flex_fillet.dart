@@ -15,7 +15,7 @@
 import 'package:flutter/material.dart';
 import 'package:legado_md3/ui/theme/app_design.dart';
 
-/// 解析 legado `style.layout_flexBasisPercent`（对齐 FlexboxLayoutManager）。
+/// 解析 `style.layout_flexBasisPercent` 弹性基准百分比。
 /// -1 / 0 / 非法 / 缺省 → 0.4（约一行 2 个）；>0 且 <0.95 → 原值；>=0.95 → 1（整行）。
 double flexBasisPercentOf(dynamic style) {
   if (style is Map) {
@@ -34,7 +34,7 @@ double flexBasisPercentOf(dynamic style) {
 /// 每行用 Row + Expanded 让子项按 flex 权重**铺满整行**（等价于原版
 /// flexWrap=wrap + layout_flexGrow=1 的均分效果）。
 ///
-/// 相比 Wrap 的「内容宽度 + 右侧留白」，这里每一行都严格对齐、两侧齐平，
+/// 相比 Wrap 的「内容宽度 + 右侧留白」，这里每一行都占满宽度、两侧齐平，
 /// 按钮宽度也更大，中文标签不再被大量截断成「打赏享…」。
 class FlexPercentLayout extends StatelessWidget {
   const FlexPercentLayout({

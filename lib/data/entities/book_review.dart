@@ -1,4 +1,4 @@
-/// 段评（对齐 Sigma ReviewColumn / BookChapterReview）
+/// 段评（ / BookChapterReview）
 class BookReview {
   int? id;
   String bookName;

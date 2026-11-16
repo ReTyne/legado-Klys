@@ -15,7 +15,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 /// 其他设置 - OtherConfigScreen
 ///
-/// 存储约定：开关类统一使用 oc_ 前缀，与原版预置项对齐的键沿用原版命名
+/// 存储约定：开关类统一使用 oc_ 前缀，预置项键沿用既有命名
 /// （例如 updateToVariant / mediaButtonOnExit / loadCoverOnlyWifi）。
 class OtherConfigScreen extends StatefulWidget {
   const OtherConfigScreen({super.key});

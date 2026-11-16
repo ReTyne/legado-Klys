@@ -163,7 +163,7 @@ void main() {
     });
   });
 
-  // ——— 源码契约（防止回归 / 防回退批次 1） ———
+ // ——— 源码契约（防止回归 / 防回退） ———
   group('搜索分页 #12 源码契约', () {
     test('按源 page + hasMore + 滚到底 + FAB + 焦点 + 生命周期全部落地', () {
       final s = src('lib/ui/book/search/search_screen.dart');
@@ -197,7 +197,7 @@ void main() {
       expect(s.contains('width: 50,'), isFalse);
     });
 
-    test('批次 1 章节替换规则标题通道未被回退', () {
+ test('章节替换规则标题通道未被回退', () {
       final s = src('lib/ui/book/chapter/chapter_list_screen.dart');
       expect(s, contains('isTitle: true'));
     });

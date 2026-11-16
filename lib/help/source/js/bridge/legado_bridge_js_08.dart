@@ -1,11 +1,12 @@
 /// JS 片段 8/8（按体积均匀切片，拼接顺序不可变）。
-const String legadoBridgeJsPart08 = r'''    androidId: function () { return __state.deviceId; },
+const String legadoBridgeJsPart08 =
+    r'''    androidId: function () { return __state.deviceId; },
     getWebViewUA: function () { return __state.ua; },
     getAppVariant: function () { return "android"; },
 
     // 时间
-    timeFormat: function (time, pattern) { return __timeFormat(time, pattern, false); },
-    timeFormatUTC: function (time, pattern) { return __timeFormat(time, pattern, true); },
+    timeFormat: function (time, pattern) { return __timeFormat(time, pattern, false, 0); },
+    timeFormatUTC: function (time, pattern, sh) { return __timeFormat(time, pattern, true, sh); },
 
     // 跨阶段键值
     put: function (k, v) { cache.put(k, v); return true; },
@@ -31,14 +32,29 @@ const String legadoBridgeJsPart08 = r'''    androidId: function () { return __st
       return true;
     },
     // open(name, url, title, origin)：login → 打开当前书源登录页；
-    // url/webView → 内置浏览器打开；其余名称忽略。
+    // url/webView/browser → 内置浏览器；sort/rss/search/explore 做数据准备与事件记录。
     open: function (name, url, title, origin) {
+      var n = String(name == null ? "" : name).toLowerCase();
+      var u = String(url == null ? "" : url);
+      var t = String(title == null ? "" : title);
+      var o = String(origin == null ? "" : origin);
       try {
-        var n = String(name == null ? "" : name).toLowerCase();
         if (n === "login") {
-          __doXhr("legado://openlogin?origin=" + encodeURIComponent(origin == null ? "" : origin), { method: "GET" });
+          __doXhr("legado://openlogin?origin=" + encodeURIComponent(o), { method: "GET" });
         } else if (n === "url" || n === "webview" || n === "browser") {
-          if (url) __openBrowser(url, title || "", false);
+          if (u) __openBrowser(u, t, false);
+        } else if (n === "sort") {
+          __state.sortData = { url: u, title: t, origin: o };
+          __uiEvent("openSort", { url: u, title: t, origin: o });
+        } else if (n === "rss") {
+          globalThis.rssArticle = __wrapWriteMethods({ url: u, title: t, origin: o });
+          __uiEvent("openRss", { url: u, title: t, origin: o });
+        } else if (n === "search") {
+          __uiEvent("openSearch", { key: u || t, origin: o });
+          if (u || t) this.searchBook(u || t, o);
+        } else if (n === "explore") {
+          __uiEvent("openExplore", { url: u, title: t, origin: o });
+          __doXhr("legado://refreshexplore", { method: "GET" });
         }
       } catch (e) {}
       return true;
@@ -47,15 +63,25 @@ const String legadoBridgeJsPart08 = r'''    androidId: function () { return __st
     // 浏览器登录
     // 非阻塞式：legado 语义为 Unit（发现页 url 型分类常写
     // `{{java.startBrowser(url,title)}}`，求值须为空串而非 Promise）。
-    startBrowser: function (url, title) { __openBrowser(url, title, false); },
+    startBrowser: function (url, title, html) { __openBrowser(url, title, false, html); },
     startBrowserDp: function (url, title) { __openBrowser(url, title, false); },
     // 阻塞式：用户关闭网页后返回带 body() 的 StrResponse（正文为关闭时页面 HTML）
     startBrowserAwait: function (url, title, refetchAfterSuccess, html) {
       return __openBrowserAwaitHtml(url, title, refetchAfterSuccess, html);
     },
-    showBrowser: function (url, title) { return __openBrowserAwaitHtml(url, title); },
+    showBrowser: function (url, html, preloadJs, config) {
+      var custom = (typeof html === "string" && html.indexOf("<") >= 0) ? html : null;
+      var title = (typeof html === "string" && html.indexOf("<") < 0) ? html : "";
+      return __openBrowserAwaitHtml(url, title || "浏览", true, custom, preloadJs, config);
+    },
     showReadingBrowser: function (url, title) { return __openBrowserAwaitHtml(url, title); },
-    reLoginView: function (url) { return __openBrowserAwaitHtml(url || "", "登录"); },
+    reLoginView: function (deltaUp) {
+      __uiEvent("reUiView", { deltaUp: deltaUp === undefined ? true : !!deltaUp });
+      if (typeof deltaUp === "string" && /^https?:\/\//i.test(deltaUp)) {
+        return __openBrowserAwaitHtml(deltaUp, "登录");
+      }
+      return __strResponse("", "", 200, "OK", {});
+    },
 
     // 环境探测：轻阅读不可用，需抛错让书源走标准分支
     qread: function () { throw new Error("qread 不可用"); },
@@ -104,21 +130,39 @@ const String legadoBridgeJsPart08 = r'''    androidId: function () { return __st
       } catch (e) { return data; }
     },
 
-    // 字体替换（降级标注）：上游 JsExtensions.replaceFont(text,
-    // errorQueryTTF, correctQueryTTF, filter) 用两个 QueryTTF 的字体轮廓
-    // 反查「字形相同但码位错乱」的字符再替换，依赖 Android 的 TTF 解析与
-    // 字形轮廓比对；Flutter/JS 桥无等价能力，无法复刻。
-    // 这里保留「显式字符映射表」这一可等价子集：调用方传入 map（或 JSON
-    // 字符串）时按字符逐一替换；传入 QueryTTF 句柄时原样返回文本。
-    replaceFont: function (text, font) {
+    // 字体替换：双参（text, 显式字符映射表）按表逐字替换；
+    // 三/四参（text, errorQueryTTF, correctQueryTTF, filter）按字形轮廓
+    // 签名反查「字形相同但码位错乱」的字符再替换，filter=true 删除无对应字符。
+    replaceFont: function (text, errorQ, correctQ, filter) {
+      // 双参：显式字符映射表（map 或 JSON 字符串）。
+      if (arguments.length <= 2) {
+        try {
+          var font = errorQ;
+          var map = (typeof font === "string") ? JSON.parse(font) : font;
+          if (!map || typeof map !== "object" || typeof map.length === "number") return text;
+          var s0 = String(text == null ? "" : text), out0 = "";
+          for (var i0 = 0; i0 < s0.length; i0++) {
+            var c0 = s0[i0];
+            out0 += (map[c0] !== undefined && map[c0] !== null) ? map[c0] : c0;
+          }
+          return out0;
+        } catch (e) { return text; }
+      }
+      // 三/四参：两个 QueryTTF 对象，按签名反查替换。
       try {
-        var map = (typeof font === "string") ? JSON.parse(font) : font;
-        if (!map || typeof map !== "object" || typeof map.length === "number") return text;
         var s = String(text == null ? "" : text);
-        var out = "";
+        var errMap = __fontSignatureMap(errorQ);
+        var corMap = __fontSignatureMap(correctQ);
+        var out = "", del = !!filter;
         for (var i = 0; i < s.length; i++) {
-          var c = s[i];
-          out += (map[c] !== undefined && map[c] !== null) ? map[c] : c;
+          var ch = s[i];
+          if (ch.length > 1) { out += ch; i++; continue; }
+          var cp = s.codePointAt ? s.codePointAt(i) : s.charCodeAt(i);
+          var sig = errMap.byUnicode[cp];
+          if (sig === undefined) { if (!del) out += ch; continue; }
+          var target = corMap.bySignature[sig];
+          if (target === undefined || target === null) { if (!del) out += ch; continue; }
+          out += (String.fromCodePoint ? String.fromCodePoint(target) : String.fromCharCode(target));
         }
         return out;
       } catch (e) { return text; }
@@ -133,11 +177,39 @@ const String legadoBridgeJsPart08 = r'''    androidId: function () { return __st
       try { return __doXhr("legado://share", { method: "POST", body: String(text == null ? "" : text) }); }
       catch (e) { return false; }
     },
-    openUrl: function (url) { __openBrowser(url, "", false); },
+    openUrl: function (url, mimeType) {
+      var u = String(url == null ? "" : url);
+      var mt = String(mimeType == null ? "" : mimeType);
+      // legado:// / yuedu:// 导入链接：记录事件交给原生导入流程。
+      if (/^(legado|yuedu):\/\//i.test(u)) {
+        __uiEvent("importSource", { url: u, mimeType: mt });
+        return true;
+      }
+      __openBrowser(u, "", false, null, mt);
+      return true;
+    },
 
     // 编码 / 文本处理
     encodeURI: function (str, enc) {
-      try { return encodeURIComponent(String(str)).replace(/%20/g, "+"); } catch (e) { return ""; }
+      try {
+        var s = String(str == null ? "" : str);
+        if (enc && String(enc).trim()) {
+          // V8 TextEncoder 仅支持 UTF-8；其它字符集交给 Dart 侧编码后逐字节转义。
+          var bytes = this.strToBytes(s, String(enc));
+          var out = "";
+          for (var i = 0; i < bytes.length; i++) {
+            var b = bytes[i] & 0xff;
+            if ((b >= 0x41 && b <= 0x5A) || (b >= 0x61 && b <= 0x7A) ||
+                (b >= 0x30 && b <= 0x39) || b === 0x2D || b === 0x2E ||
+                b === 0x5F || b === 0x7E) {
+              out += String.fromCharCode(b);
+            } else if (b === 0x20) { out += "+"; }
+            else { out += "%" + ("0" + b.toString(16).toUpperCase()).slice(-2); }
+          }
+          return out;
+        }
+        return encodeURIComponent(s).replace(/%20/g, "+");
+      } catch (e) { return ""; }
     },
     // 保留 <img>（含懒加载 data-src）、块级标签转换行、段首两个全角空格缩进、
     // 去注释与空格实体。真实语义转交 Dart 侧 JsTextUtils.htmlFormat，避免
@@ -169,12 +241,26 @@ const String legadoBridgeJsPart08 = r'''    androidId: function () { return __st
       if (any === null || any === undefined) { java.log("null"); }
       else { java.log(typeof any); }
     },
+    // 返回普通对象（非原生 URL），searchParams 为普通 Map。
     toURL: function (urlStr, baseUrl) {
-      try { return new URL(urlStr, baseUrl || __state.meta.httpUrl); } catch (e) { return null; }
+      var u;
+      try { u = new URL(urlStr, baseUrl || __state.meta.httpUrl); } catch (e) { return null; }
+      var params = {};
+      try { u.searchParams.forEach(function (v, k) { params[k] = v; }); } catch (e) {}
+      return {
+        href: u.href, protocol: u.protocol, host: u.host, hostname: u.hostname,
+        port: u.port, pathname: u.pathname, search: u.search, hash: u.hash,
+        origin: u.origin, searchParams: params,
+        getQuery: function () { return u.search ? u.search.substring(1) : ""; },
+        get: function (k) { return params[k] === undefined ? "" : params[k]; },
+        set: function (k, v) { params[k] = String(v); return this; },
+        addQueryParameter: function (k, v) { params[k] = String(v); return this; },
+        toString: function () { return u.href; }
+      };
     },
     // `(第)(.+?)(章)` 命中时把中间数字
     // 用 StringUtils.stringToInt（全角转半角 + 中文数字）转成阿拉伯数字，
-    // 其余原样；上游 `(第)(.+?)(章)` 无 ^$ 锚点，用 find() 取首个匹配。
+ // 其余原样； `(第)(.+?)(章)` 无 ^$ 锚点，用 find 取首个匹配。
     // 旧实现只做「去前导零」，不认「第一百零二章」。
     toNumChapter: function (s) {
       if (s === null || s === undefined) return null;
@@ -234,11 +320,13 @@ const String legadoBridgeJsPart08 = r'''    androidId: function () { return __st
       return result;
     },
     cacheFile: function (urlStr, saveTime) {
-      try { return __doXhr("legado://file?op=cache&url=" + encodeURIComponent(urlStr), { method: "GET" }); }
+      var q = "&saveTime=" + encodeURIComponent(String(Number(saveTime) || 0));
+      try { return __doXhr("legado://file?op=cache&url=" + encodeURIComponent(urlStr) + q, { method: "GET" }); }
       catch (e) { return ""; }
     },
     readTxtFile: function (path, charset) {
-      try { return __doXhr("legado://file?op=read&path=" + encodeURIComponent(path), { method: "GET" }); }
+      var cs = (charset && String(charset).trim()) ? "&cs=" + encodeURIComponent(String(charset)) : "";
+      try { return __doXhr("legado://file?op=read&path=" + encodeURIComponent(path) + cs, { method: "GET" }); }
       catch (e) { return ""; }
     },
     deleteFile: function (path) {
@@ -267,7 +355,7 @@ const String legadoBridgeJsPart08 = r'''    androidId: function () { return __st
     // 串行逐个同步 XHR 会让总耗时等于各请求之和；这里把整批 URL 一次性
     // POST 给原生，由 Dart 侧用 Future.wait 真并发发起，并按入参顺序回传，
     // 既保持返回顺序，又把总耗时压缩到「最慢的那个请求」。
-    ajaxAll: function (urlList) {
+    ajaxAll: function (urlList, skipRateLimit) {
       var list = Array.isArray(urlList) ? urlList : [];
       if (list.length === 0) return [];
       // 兼容字符串数组与 {url, method, headers, body} 对象数组两种书源写法
@@ -284,12 +372,15 @@ const String legadoBridgeJsPart08 = r'''    androidId: function () { return __st
         return { url: String(u), method: "GET" };
       });
       try {
-        var raw = __doXhr("legado://ajaxall", { method: "POST", body: JSON.stringify(urls) });
+        var payload = { list: urls, isTest: false,
+          skipRateLimit: !!skipRateLimit, timeout: 0 };
+        var raw = __doXhr("legado://ajaxall", { method: "POST", body: JSON.stringify(payload) });
         var arr = JSON.parse(raw);
         if (Array.isArray(arr)) {
           // Future.wait 已保证元素顺序与 urls 一致，逐个还原为 StrResponse
           return arr.map(function (r) {
-            return __strResponse(r.url, r.body, r.code, r.message, r.headers || {});
+            return __strResponse(r.url, r.body, r.code, r.message, r.headers || {},
+              { callTime: r.callTime });
           });
         }
       } catch (e) {}
@@ -298,14 +389,57 @@ const String legadoBridgeJsPart08 = r'''    androidId: function () { return __st
         return __strResponse(o.url, "", 502, "Error", {});
       });
     },
-    ajaxTestAll: function (urlList, timeout) { return this.ajaxAll(urlList); },
+    // isTest 模式：失败按错误类型归一到 -1~-7（超时/未知主机/连接拒绝/SSL/...）。
+    ajaxTestAll: function (urlList, timeout, skipRateLimit) {
+      var list = Array.isArray(urlList) ? urlList : [];
+      if (list.length === 0) return [];
+      var urls = list.map(function (u) {
+        if (typeof u === "string") return { url: u, method: "GET" };
+        if (u && typeof u === "object") {
+          return {
+            url: String(u.url == null ? "" : u.url),
+            method: String(u.method || "GET"),
+            headers: u.headers || {},
+            body: u.body === undefined ? null : u.body
+          };
+        }
+        return { url: String(u), method: "GET" };
+      });
+      try {
+        var payload = { list: urls, isTest: true,
+          skipRateLimit: !!skipRateLimit, timeout: Number(timeout) || 0 };
+        var raw = __doXhr("legado://ajaxall", { method: "POST", body: JSON.stringify(payload) });
+        var arr = JSON.parse(raw);
+        if (Array.isArray(arr)) {
+          return arr.map(function (r) {
+            return __strResponse(r.url, r.body, __testErrorCode(r), r.message,
+              r.headers || {}, { callTime: r.callTime });
+          });
+        }
+      } catch (e) {}
+      return urls.map(function (o) {
+        return __strResponse(o.url, "", -1, "Error", {});
+      });
+    },
 
     // WebView 渲染：走 legado://webview 内部协议，用第二个无头 WebView 加载并等 JS 渲染后取源码
+    // 把 html / url / js / sourceRegex / cacheFirst / delayMs / encode 全部封进
+    // legado://webview 请求，由 Dart 侧调 HeadlessWebViewFetcher.fetch 渲染。
     webView: function (html, url, js, cacheFirst) {
       try {
         var target = url || "";
         if (!target) return html || "";
-        var rendered = __doXhr("legado://webview?url=" + encodeURIComponent(target), { method: "GET" });
+        var payload = {
+          url: target,
+          html: html == null ? "" : String(html),
+          injectJs: js == null ? "" : String(js),
+          sourceRegex: "",
+          cacheFirst: !!cacheFirst,
+          delayMs: 0,
+          encode: "utf-8",
+          tag: ""
+        };
+        var rendered = __doXhr("legado://webview", { method: "POST", body: JSON.stringify(payload) });
         return rendered || html || "";
       } catch (e) { return html || ""; }
     },
@@ -313,7 +447,17 @@ const String legadoBridgeJsPart08 = r'''    androidId: function () { return __st
       try {
         var target = url || "";
         if (!target) return "";
-        return __doXhr("legado://webview?url=" + encodeURIComponent(target), { method: "GET" });
+        var payload = {
+          url: target,
+          html: html == null ? "" : String(html),
+          injectJs: js == null ? "" : String(js),
+          sourceRegex: String(sourceRegex == null ? "" : sourceRegex),
+          cacheFirst: !!cacheFirst,
+          delayMs: Number(delayTime) || 0,
+          encode: "utf-8",
+          tag: ""
+        };
+        return __doXhr("legado://webview", { method: "POST", body: JSON.stringify(payload) });
       } catch (e) { return ""; }
     },
     // WebView 重定向 / 资源嗅探：
@@ -350,33 +494,62 @@ const String legadoBridgeJsPart08 = r'''    androidId: function () { return __st
     // 字体反爬：返回带映射与方法（getGlyfByUnicode 等）的字体对象。
     queryTTF: function (data, useCache) {
       try {
-        var b64 = String(data == null ? "" : data);
-        // data 为 http 链接时先下载字体文件
-        if (/^https?:\/\//i.test(b64)) {
-          var bytes = __doXhr(b64, { method: "GET" }, "arraybuffer");
-          var bin = new Uint8Array(bytes);
-          var binStr = "";
-          for (var i = 0; i < bin.length; i++) binStr += String.fromCharCode(bin[i]);
-          b64 = btoa(binStr);
+        var b64 = "", rawStr = "", isPath = false;
+        if (typeof data === "string") {
+          rawStr = data;
+          if (/^https?:\/\//i.test(rawStr)) {
+            // http 链接：先下载字体文件字节。
+            var bytes = __doXhr(rawStr, { method: "GET" }, "arraybuffer");
+            var bin = new Uint8Array(bytes);
+            var binStr = "";
+            for (var i = 0; i < bin.length; i++) binStr += String.fromCharCode(bin[i]);
+            b64 = btoa(binStr);
+          } else if (/^[A-Za-z0-9+/=\s]+$/.test(rawStr) && rawStr.replace(/\s+/g, "").length > 64) {
+            // 已是 base64 字体数据。
+            b64 = rawStr.replace(/\s+/g, "");
+          } else {
+            isPath = true; // 本地文件路径
+          }
+        } else if (data && typeof data.length === "number") {
+          // 字节数组（Array / Uint8Array）。
+          var s2 = "";
+          for (var j = 0; j < data.length; j++) s2 += String.fromCharCode(data[j] & 0xff);
+          b64 = btoa(s2);
+        }
+        if (isPath) {
+          var fb = __doXhr("legado://file?op=readbytes&path=" + encodeURIComponent(rawStr), { method: "GET" });
+          b64 = String(fb || "");
         }
         if (!b64) return null;
+        // useCache：按字体内容 SHA-256 缓存解析结果，避免重复解析。
+        var cacheKey = "";
+        if (useCache) {
+          try { cacheKey = "ttf_" + __sha256(b64); } catch (e) { cacheKey = "ttf_" + b64.length; }
+          var hit = cache.getFromMemory(cacheKey);
+          if (hit && typeof hit === "object") return hit;
+        }
         var resp = __doXhr("legado://ttf", { method: "POST", body: b64 });
-        return __makeQueryTTF(JSON.parse(resp));
+        var obj = __makeQueryTTF(JSON.parse(resp));
+        if (useCache && cacheKey) cache.putMemory(cacheKey, obj);
+        return obj;
       } catch (e) { return null; }
     },
     getZipStringContent: function (url, path, charset) {
+      var cs = (charset && String(charset).trim()) ? "&cs=" + encodeURIComponent(String(charset)) : "";
       try {
-        return __doXhr("legado://zip?url=" + encodeURIComponent(url) + "&path=" + encodeURIComponent(path || ""), { method: "GET" });
+        return __doXhr("legado://zip?url=" + encodeURIComponent(url) + "&path=" + encodeURIComponent(path || "") + cs, { method: "GET" });
       } catch (e) { return ""; }
     },
     get7zStringContent: function (url, path, charset) {
+      var cs = (charset && String(charset).trim()) ? "&cs=" + encodeURIComponent(String(charset)) : "";
       try {
-        return __doXhr("legado://zip?kind=7z&url=" + encodeURIComponent(url) + "&path=" + encodeURIComponent(path || ""), { method: "GET" });
+        return __doXhr("legado://zip?kind=7z&url=" + encodeURIComponent(url) + "&path=" + encodeURIComponent(path || "") + cs, { method: "GET" });
       } catch (e) { return ""; }
     },
     getRarStringContent: function (url, path, charset) {
+      var cs = (charset && String(charset).trim()) ? "&cs=" + encodeURIComponent(String(charset)) : "";
       try {
-        return __doXhr("legado://zip?kind=rar&url=" + encodeURIComponent(url) + "&path=" + encodeURIComponent(path || ""), { method: "GET" });
+        return __doXhr("legado://zip?kind=rar&url=" + encodeURIComponent(url) + "&path=" + encodeURIComponent(path || "") + cs, { method: "GET" });
       } catch (e) { return ""; }
     },
 
@@ -478,12 +651,14 @@ const String legadoBridgeJsPart08 = r'''    androidId: function () { return __st
         return arr.map(function (s) { return String(s == null ? "" : s); }).join("\n");
       } catch (e) { return ""; }
     },
-    openVideoPlayer: function (url, title) {
+    openVideoPlayer: function (url, title, isFloat) {
       // 经 legado://video 内部协议转交 Dart handler → MethodChannel('legado/video')
-      // → Kotlin 原生视频播放器。
+      // → Kotlin 原生视频播放器；isFloat 透传悬浮窗选项。
       // 同步 XHR 返回 'true'/'false'，供书源判断是否成功拉起播放器。
       try {
-        var ok = __doXhr("legado://video?url=" + encodeURIComponent(url || "") + "&title=" + encodeURIComponent(title || ""), { method: "GET" });
+        var ok = __doXhr("legado://video?url=" + encodeURIComponent(url || "") +
+          "&title=" + encodeURIComponent(title || "") +
+          "&isFloat=" + (isFloat ? "1" : "0"), { method: "GET" });
         return String(ok).indexOf("true") >= 0;
       } catch (e) { return false; }
     },
@@ -508,6 +683,7 @@ const String legadoBridgeJsPart08 = r'''    androidId: function () { return __st
           return __nativeCrypto("decryptBytes", t, nkb, nivb, __symCipherBytes(data));
         };
         return {
+          setIv: function (v) { nivb = __symArgBytes(v); return this; },
           encrypt: function (data) { return Array.from(nEnc(data)); },
           encryptBase64: function (data) { return __bytesToB64(nEnc(data)); },
           encryptHex: function (data) { return __bytesToHex(nEnc(data)); },
@@ -548,6 +724,7 @@ const String legadoBridgeJsPart08 = r'''    androidId: function () { return __st
         return btoa(s);
       }
       return {
+        setIv: function (v) { ivb = __aesIv(v); return this; },
         encrypt: function (data) { return Array.from(encryptBytes(data)); },
         encryptBase64: function (data) { return bytesToB64(encryptBytes(data)); },
         encryptHex: function (data) { return __bytesToHex(encryptBytes(data)); },
@@ -565,21 +742,27 @@ const String legadoBridgeJsPart08 = r'''    androidId: function () { return __st
       };
     },
 
-    // 非对称加密： JsExtensions.createAsymmetricCrypto(transformation)
-    // 返回 {setPublicKey, setPrivateKey, encrypt, encryptBase64, decrypt, decryptStr}
-    createAsymmetricCrypto: function (transformation) {
+    // 非对称加密：createAsymmetricCrypto(transformation, usePublicKey)
+    // 返回 {setPublicKey, setPrivateKey, encrypt, encryptBase64, encryptHex, decrypt, decryptStr}。
+    // usePublicKey 决定加密时采用公钥还是私钥。
+    createAsymmetricCrypto: function (transformation, usePublicKey) {
       var pubKey = "", priKey = "";
+      var usePub = (usePublicKey === undefined) ? true : !!usePublicKey;
       return {
         setPublicKey: function (key) { pubKey = __normalizePem(key); return this; },
         setPrivateKey: function (key) { priKey = __normalizePem(key); return this; },
         encrypt: function (data) {
           try {
             var crypt = new JSEncrypt();
-            crypt.setPublicKey(pubKey);
+            crypt.setPublicKey(usePub ? pubKey : priKey);
             return crypt.encrypt(String(data == null ? "" : data)) || "";
           } catch (e) { return ""; }
         },
         encryptBase64: function (data) { return this.encrypt(data); },
+        encryptHex: function (data) {
+          var b64 = this.encrypt(data);
+          try { return __bytesToHex(__b64ToBytes(b64)); } catch (e) { return ""; }
+        },
         decrypt: function (data) {
           try {
             var crypt = new JSEncrypt();
@@ -591,29 +774,226 @@ const String legadoBridgeJsPart08 = r'''    androidId: function () { return __st
       };
     },
 
-    // 签名： JsExtensions.createSign(algorithm)
-    // 返回 {setPublicKey, setPrivateKey, sign, signHex}
+    // 签名：createSign(algorithm) 按 algorithm 选择 hash，走 legado://sign 通道。
+    // 返回 {setPublicKey, setPrivateKey, sign, signBase64, signHex, verify}。
     createSign: function (algorithm) {
       var pubKey = "", priKey = "";
+      var alg = String(algorithm || "SHA256withRSA");
+      function hashOf() {
+        var a = alg.toUpperCase();
+        if (a.indexOf("MD5") >= 0) return "md5";
+        if (a.indexOf("SHA1") >= 0 || a.indexOf("SHA-1") >= 0) return "sha1";
+        if (a.indexOf("SHA224") >= 0) return "sha224";
+        if (a.indexOf("SHA384") >= 0) return "sha384";
+        if (a.indexOf("SHA512") >= 0) return "sha512";
+        return "sha256";
+      }
+      function signCall(data, out) {
+        try {
+          var payload = { op: "sign", algorithm: alg, hash: hashOf(), key: priKey,
+            data: String(data == null ? "" : data), out: out };
+          return __doXhr("legado://sign", { method: "POST", body: payload }, null, null) || "";
+        } catch (e) { return ""; }
+      }
       return {
         setPublicKey: function (key) { pubKey = __normalizePem(key); return this; },
         setPrivateKey: function (key) { priKey = __normalizePem(key); return this; },
-        sign: function (data) {
+        sign: function (data) { return signCall(data, "base64"); },
+        signBase64: function (data) { return signCall(data, "base64"); },
+        signHex: function (data) { return signCall(data, "hex"); },
+        verify: function (data, signature) {
           try {
-            var crypt = new JSEncrypt();
-            crypt.setPrivateKey(priKey);
-            return crypt.sign(String(data == null ? "" : data), function (s) { return s; }, "sha256") || "";
-          } catch (e) { return ""; }
-        },
-        signHex: function (data) {
-          try {
-            var crypt = new JSEncrypt();
-            crypt.setPrivateKey(priKey);
-            return crypt.sign(String(data == null ? "" : data), function (s) { return s; }, "sha256") || "";
-          } catch (e) { return ""; }
+            var payload = { op: "verify", algorithm: alg, hash: hashOf(), key: pubKey,
+              data: String(data == null ? "" : data),
+              signature: String(signature == null ? "" : signature) };
+            var r = __doXhr("legado://sign", { method: "POST", body: payload }, null, null);
+            return String(r).indexOf("true") >= 0;
+          } catch (e) { return false; }
         }
       };
     },
+
+    // ==================== 内容 / 规则上下文 ====================
+    // 维护 __state.ruleContext，四个 setXxx 方法链式返回 java 自身。
+    setContent: function (content, baseUrl) {
+      var ctx = __state.ruleContext || (__state.ruleContext = {});
+      ctx.content = String(content == null ? "" : content);
+      if (baseUrl !== undefined && baseUrl !== null) ctx.baseUrl = String(baseUrl);
+      __ruleCall("setContent", { content: ctx.content, baseUrl: ctx.baseUrl || "" });
+      return java;
+    },
+    setBaseUrl: function (baseUrl) {
+      var ctx = __state.ruleContext || (__state.ruleContext = {});
+      ctx.baseUrl = String(baseUrl == null ? "" : baseUrl);
+      __ruleCall("setBaseUrl", { baseUrl: ctx.baseUrl });
+      return java;
+    },
+    setRedirectUrl: function (url) {
+      var ctx = __state.ruleContext || (__state.ruleContext = {});
+      ctx.redirectUrl = String(url == null ? "" : url);
+      __ruleCall("setRedirectUrl", { url: ctx.redirectUrl });
+      return java;
+    },
+    getString: function (rule, mContent, isUrl) {
+      return __ruleCall("getString", { rule: rule, content: mContent, isUrl: !!isUrl });
+    },
+    getStringList: function (rule, mContent, isUrl) {
+      var r = __ruleCall("getStringList", { rule: rule, content: mContent, isUrl: !!isUrl });
+      try { var a = JSON.parse(r); return Array.isArray(a) ? a : []; } catch (e) { return []; }
+    },
+    getElement: function (rule) {
+      return __makeElement(__ruleCall("getElement", { rule: rule }));
+    },
+    getElements: function (rule) {
+      var r = __ruleCall("getElements", { rule: rule });
+      try {
+        var a = JSON.parse(r);
+        return Array.isArray(a) ? a.map(__makeElement) : [];
+      } catch (e) { return []; }
+    },
+
+    // ==================== UI 事件 / 登录与配置 ====================
+    addBook: function (bookUrl) {
+      __uiEvent("addBook", { url: String(bookUrl == null ? "" : bookUrl) });
+      return true;
+    },
+    showPhoto: function (src) {
+      __uiEvent("showPhoto", { src: String(src == null ? "" : src) });
+      return true;
+    },
+    copyText: function (text) {
+      var t = String(text == null ? "" : text);
+      __state.clipboard = t;
+      __uiEvent("copyText", { text: t });
+      return true;
+    },
+    clearTtsCache: function () {
+      __uiEvent("clearTtsCache", {});
+      return true;
+    },
+    upLoginData: function (data) {
+      var d = (typeof data === "string") ? data : JSON.stringify(data);
+      __state.loginData = d;
+      __uiEvent("upLoginData", { data: d });
+      return true;
+    },
+    upUiData: function (data) {
+      var d = (typeof data === "string") ? data : JSON.stringify(data);
+      __state.uiData = d;
+      __uiEvent("upUiData", { data: d });
+      return true;
+    },
+    reUiView: function (deltaUp) {
+      __uiEvent("reUiView", { deltaUp: deltaUp === undefined ? true : !!deltaUp });
+      return true;
+    },
+    refreshBookInfo: function () {
+      __uiEvent("refreshBookInfo", {});
+      return true;
+    },
+    refreshContent: function () {
+      __uiEvent("refreshContent", {});
+      return true;
+    },
+    upConfig: function (config) {
+      var c = config;
+      if (typeof c === "string") {
+        try { c = JSON.parse(c); } catch (e) { c = { value: c }; }
+      }
+      if (c && typeof c === "object") {
+        __state.config = Object.assign(__state.config || {}, c);
+      }
+      __uiEvent("upConfig", { config: __state.config || {} });
+      return true;
+    },
+    getRandomLetter: function () {
+      return String.fromCharCode(97 + Math.floor(Math.random() * 26));
+    },
+
+    // ==================== Promise 桥的原生分派 ====================
+    // funName 为 run / xxxAwait；同步执行对应能力后把结果写进
+    // cache.putMemory(id, data)，回调 window.__legadoBridgeResult(id, success)，
+    // 并返回 Promise，兼顾 await 与回调两种写法。
+    request: function (funName, jsParam, id) {
+      var data = null, success = false;
+      try {
+        var fn = String(funName || "");
+        var p = jsParam;
+        if (typeof p === "string") { try { p = JSON.parse(p); } catch (e) {} }
+        var arg = (p && typeof p === "object" && !Array.isArray(p)) ? p : { value: p };
+        var url = arg.url || arg.value || (typeof p === "string" ? p : "");
+        var body = arg.body || arg.data || arg.post || null;
+        var headers = arg.headers || {};
+        switch (fn) {
+          case "run":
+            data = (typeof p === "string") ? eval(p) : null;
+            break;
+          case "ajaxAwait":
+          case "getAwait":
+          case "headAwait":
+          case "postAwait":
+          case "connectAwait":
+          case "webViewAwait":
+            data = java.__awaitDispatch(fn, url, body, headers, arg);
+            break;
+          case "decryptStrAwait":
+            data = java.createSymmetricCrypto(arg.transformation || "AES", arg.key, arg.iv)
+                .decryptStr(arg.data || body || "");
+            break;
+          case "encryptBase64Await":
+            data = java.createSymmetricCrypto(arg.transformation || "AES", arg.key, arg.iv)
+                .encryptBase64(arg.data || body || "");
+            break;
+          case "encryptHexAwait":
+            data = java.createSymmetricCrypto(arg.transformation || "AES", arg.key, arg.iv)
+                .encryptHex(arg.data || body || "");
+            break;
+          case "createSignHexAwait":
+            data = java.createSign(arg.algorithm || "SHA256withRSA")
+                .setPrivateKey(arg.key || arg.privateKey || "").signHex(arg.data || body || "");
+            break;
+          case "downloadFileAwait":
+            data = java.downloadFile(arg.url || url);
+            break;
+          case "readTxtFileAwait":
+            data = java.readTxtFile(arg.path || url, arg.charset);
+            break;
+          case "importScriptAwait":
+            data = java.importScript(arg.path || url);
+            break;
+          case "getStringAwait":
+            data = java.getString(arg.rule || "", arg.content, arg.isUrl);
+            break;
+          default:
+            data = null;
+        }
+        success = true;
+      } catch (e) {
+        data = String(e && e.message || e);
+        success = false;
+      }
+      try { cache.putMemory(id, data); } catch (e) {}
+      try {
+        if (typeof window !== "undefined" && typeof window.__legadoBridgeResult === "function") {
+          window.__legadoBridgeResult(id, success);
+        }
+      } catch (e) {}
+      return Promise.resolve(data);
+    },
+    __awaitDispatch: function (fn, url, body, headers, arg) {
+      try {
+        if (fn === "getAwait") return java.get(url, headers).body();
+        if (fn === "headAwait") return java.head(url, headers).body();
+        if (fn === "postAwait") return java.post(url, body, headers).body();
+        if (fn === "connectAwait") return java.connect(url, headers).execute().body();
+        if (fn === "webViewAwait") return java.webView(arg.html || "", url, arg.js || "", arg.cacheFirst);
+        return java.ajax(url, { method: arg.method || "GET", headers: headers, body: body });
+      } catch (e) { return ""; }
+    },
+
+    // ==================== AnalyzeUrl 场景 ====================
+    getUserAgent: function () { return __state.ua; },
+    getHeaderMap: function (hasLoginHeader) { return source.getHeaderMap(hasLoginHeader); },
 
     // java.lang / java.net 常见静态调用
     lang: {
@@ -629,8 +1009,154 @@ const String legadoBridgeJsPart08 = r'''    androidId: function () { return __st
   };
   globalThis.java = java;
 
+  // ---- UI 事件：JS 侧记录 + 原生 legado://loginui/<action> 回调 ----
+  function __uiEvent(action, payload) {
+    if (!__state.uiEvents) __state.uiEvents = [];
+    __state.uiEvents.push({ action: action, data: payload, time: Date.now() });
+    if (__state.uiEvents.length > 200) __state.uiEvents.shift();
+    try {
+      return __doXhr("legado://loginui/" + encodeURIComponent(action),
+        { method: "POST", body: JSON.stringify({ action: action, data: payload }) });
+    } catch (e) { return ""; }
+  }
+
+  // ---- 规则求值通道：把 rule/content/isUrl 封送 legado://rule ----
+  function __ruleCall(op, extra) {
+    var payload = extra || {};
+    var ctx = __state.ruleContext || (__state.ruleContext = {});
+    if (payload.content === undefined || payload.content === null) payload.content = ctx.content || "";
+    if (payload.baseUrl === undefined || payload.baseUrl === null) payload.baseUrl = ctx.baseUrl || "";
+    try {
+      return __doXhr("legado://rule?op=" + encodeURIComponent(op),
+        { method: "POST", body: JSON.stringify(payload) });
+    } catch (e) { return ""; }
+  }
+
+  // ---- 把元素 HTML 包装成带 text/html/attr 方法的轻量对象 ----
+  function __makeElement(html) {
+    var h = String(html == null ? "" : html);
+    return {
+      html: function () { return h; },
+      outerHtml: function () { return h; },
+      text: function () { return h.replace(/<[^>]*>/g, ""); },
+      attr: function (name) {
+        var m = h.match(new RegExp(name + "\\s*=\\s*[\"']([^\"']*)[\"']", "i"));
+        return m ? m[1] : "";
+      },
+      toString: function () { return h; }
+    };
+  }
+
+  // ---- QueryTTF → 按码位/轮廓签名建立反查表 ----
+  function __fontSignatureMap(q) {
+    var out = { byUnicode: {}, bySignature: {} };
+    if (!q || typeof q !== "object") return out;
+    var u2g = q.unicodeToGlyph || {};
+    if (!Object.keys(u2g).length && typeof q.getReplacementMap === "function") {
+      u2g = q.getReplacementMap() || {};
+    }
+    Object.keys(u2g).forEach(function (u) {
+      var g = u2g[u];
+      var sig = (g && typeof g === "object") ? (g.signature || g.outline || g.name || g) : g;
+      if (sig === null || sig === undefined) return;
+      var key = (typeof sig === "object") ? JSON.stringify(sig) : String(sig);
+      var cp = parseInt(u, 10);
+      if (isNaN(cp)) return;
+      out.byUnicode[cp] = key;
+      if (out.bySignature[key] === undefined) out.bySignature[key] = cp;
+    });
+    Object.keys(q).forEach(function (k) {
+      if (/^\d+$/.test(k)) {
+        var cp2 = parseInt(k, 10);
+        if (out.byUnicode[cp2] === undefined) out.byUnicode[cp2] = String(q[k]);
+      }
+    });
+    return out;
+  }
+
+  // ---- isTest 错误码 -1~-7 ----
+  function __testErrorCode(r) {
+    var c = Number(r.code);
+    if (c >= 200 && c < 400) return 0;
+    var msg = (String(r.message || "") + " " + String(r.body || "")).toLowerCase();
+    if (msg.indexOf("timeout") >= 0 || msg.indexOf("超时") >= 0) return -1;
+    if (msg.indexOf("unknownhost") >= 0 || msg.indexOf("未知主机") >= 0) return -2;
+    if (msg.indexOf("refused") >= 0 || msg.indexOf("连接拒绝") >= 0) return -3;
+    if (msg.indexOf("ssl") >= 0 || msg.indexOf("handshake") >= 0 || msg.indexOf("证书") >= 0) return -4;
+    if (msg.indexOf("reset") >= 0 || msg.indexOf("断开") >= 0) return -5;
+    if (msg.indexOf("unreachable") >= 0 || msg.indexOf("不可达") >= 0) return -6;
+    return -7;
+  }
+
+  // ---- xxxAwait 全局封装：经 java.request 执行并从内存缓存取回结果 ----
+  function __awaitFn(name) {
+    return function (jsParam) {
+      var id = "r" + Date.now() + Math.floor(Math.random() * 100000);
+      return java.request(name, jsParam, id).then(function (v) {
+        var m = cache.getFromMemory(id);
+        return m === null ? v : m;
+      });
+    };
+  }
+  ["ajaxAwait", "connectAwait", "getAwait", "headAwait", "postAwait", "webViewAwait",
+   "decryptStrAwait", "encryptBase64Await", "encryptHexAwait", "createSignHexAwait",
+   "downloadFileAwait", "readTxtFileAwait", "importScriptAwait", "getStringAwait"]
+    .forEach(function (n) {
+      if (typeof globalThis[n] !== "function") globalThis[n] = __awaitFn(n);
+    });
+  if (typeof window.__legadoBridgeResult !== "function") {
+    window.__legadoBridgeResult = function () {};
+  }
+
+  // ---- 按场景暴露 java 的方法子集；未指定场景时返回完整 java ----
+  var __sceneCore = [
+    "log", "toast", "longToast", "ajax", "get", "post", "head", "put", "delete", "connect",
+    "newResponse", "getCookie", "base64Encode", "base64Decode", "encodeBase64", "decodeBase64",
+    "md5Encode", "md5Encode16", "sha1Encode", "sha256Encode", "digestHex", "digestBase64Str",
+    "HMacHex", "HMacBase64", "hexDecodeToString", "hexEncodeToString", "stringToHex",
+    "base64DecodeToByteArray", "hexDecodeToByteArray", "aesDecodeToString", "aesEncodeToString",
+    "createSymmetricCrypto", "createAsymmetricCrypto", "createSign", "put", "remove", "contains",
+    "getSource", "getTag", "getWebViewUA", "getUserAgent", "getHeaderMap", "getAbsoluteURL",
+    "getRedirectUrl", "randomUUID", "logType", "toURL", "toNumChapter", "strToBytes", "bytesToStr",
+    "htmlFormat", "t2s", "s2t", "importScript", "cacheFile", "readTxtFile", "deleteFile",
+    "downloadFile", "download", "share", "openUrl", "getZipStringContent", "get7zStringContent",
+    "getRarStringContent", "queryTTF", "queryBase64TTF", "getFile", "readFile", "getTxtInFolder",
+    "timeFormat", "timeFormatUTC", "encodeURI", "gzipCompress", "gzipDecompress", "ajaxAll",
+    "ajaxTestAll", "webView", "webViewGetSource", "startBrowser", "startBrowserAwait",
+    "showBrowser", "reLoginView", "getVerificationCode", "refreshExplore", "searchBook", "open",
+    "getReadBookConfig", "getThemeConfig", "getThemeMode", "openVideoPlayer", "lang", "net", "request"
+  ];
+  var __javaScenes = {
+    rule: __sceneCore.concat(["getString", "getStringList", "getElement", "getElements",
+      "setContent", "setBaseUrl", "setRedirectUrl"]),
+    webview: __sceneCore.concat(["request", "upConfig", "webView", "webViewGetSource",
+      "webViewGetOverrideUrl"]),
+    web: __sceneCore.concat(["request", "upConfig"]),
+    url: __sceneCore.concat(["getUserAgent", "getHeaderMap"]),
+    login: __sceneCore.concat(["upLoginData", "upUiData", "reUiView", "addBook"]),
+    rss: __sceneCore.concat(["getString", "getStringList"]),
+    replace: __sceneCore.concat(["replaceFont", "queryTTF"])
+  };
+  function __javaForScene(scene) {
+    var s = String(scene || "").toLowerCase();
+    if (!s || !__javaScenes[s]) return java;
+    var allow = __javaScenes[s];
+    var view = {};
+    allow.forEach(function (k) {
+      if (typeof java[k] === "function") {
+        view[k] = function () { return java[k].apply(java, arguments); };
+      } else if (java[k] !== undefined) {
+        view[k] = java[k];
+      }
+    });
+    view.__scene = s;
+    return view;
+  }
+  globalThis.__javaForScene = __javaForScene;
+
   function __pad(n) { return n < 10 ? "0" + n : "" + n; }
-  function __timeFormat(time, pattern, utc) {
+  // sh：时区偏移（小时）；叠加到时间戳后再按 utc 标志取值。
+  function __timeFormat(time, pattern, utc, sh) {
     if (!time) return "";
     var d;
     if (typeof time === "number" || /^\d+$/.test(String(time))) {
@@ -641,6 +1167,8 @@ const String legadoBridgeJsPart08 = r'''    androidId: function () { return __st
       d = new Date(String(time).replace(/-/g, "/"));
     }
     if (isNaN(d.getTime())) return "";
+    var off = Number(sh) || 0;
+    if (off) d = new Date(d.getTime() + off * 3600000);
     var p = pattern || "yyyy-MM-dd HH:mm:ss";
     var Y = utc ? d.getUTCFullYear() : d.getFullYear();
     var M = (utc ? d.getUTCMonth() : d.getMonth()) + 1;
@@ -662,6 +1190,7 @@ const String legadoBridgeJsPart08 = r'''    androidId: function () { return __st
   globalThis.__resetTransient = function () {
     __state.logs = [];
     __state.toasts = [];
+    __state.toastRecords = [];
     __state.hosts = [];
     __state.browser = [];
   };
@@ -683,8 +1212,13 @@ const String legadoBridgeJsPart08 = r'''    androidId: function () { return __st
       cookies: __state.cookies,
       logs: __state.logs,
       toasts: __state.toasts,
+      toastRecords: __state.toastRecords || [],
       hosts: __state.hosts,
       browser: __state.browser,
+      uiEvents: __state.uiEvents || [],
+      clipboard: __state.clipboard || "",
+      config: __state.config || {},
+      ruleContext: __state.ruleContext || {},
       error: err ? ((err && err.stack) ? String(err.stack) : String(err)) : null
     });
   };

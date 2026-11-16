@@ -26,7 +26,7 @@ part 'parts/pdf_outline_parser.dart';
 /// * 底部菜单（上一页/下一页、翻页滑杆、页码与总页数、跳页对话框、亮度滑杆、护眼遮罩）；
 /// * 左右滑动翻页与双指缩放由 pdfx 的 [PdfView] 内置手势完成。
 ///
-/// 阅读进度保存方式与 [ReadingScreen] 对齐：退出/翻页时调用
+/// 阅读进度保存方式与 [ReadingScreen] 一致：退出/翻页时调用
 /// `BookProvider.saveReadingProgress`（durChapterIndex=0 对应 PDF 单章「正文」，
 /// durChapterPos=当前页码），并同步 SharedPreferences 键
 /// `pdf_progress_<书名>_<作者>` 便于单独恢复。

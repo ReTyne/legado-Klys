@@ -2,7 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/services.dart';
 
-/// 音频通知栏 / 后台播放控制（Android 原生前台服务，见 `AudioNotifyService.kt`）。
+/// 音频通知栏 / 后台播放控制（Android 原生前台服务，见 ）。
 ///
 /// 分工：
 ///  - Dart 侧用 audioplayers 真正解码播放；

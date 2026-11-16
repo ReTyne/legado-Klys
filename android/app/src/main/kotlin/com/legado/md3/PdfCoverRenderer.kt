@@ -12,7 +12,7 @@ import java.io.FileOutputStream
 import java.security.MessageDigest
 
 /**
- * PdfRenderer 首页封面（对齐 Sigma / 分析 §6.2 PdfRenderer + ParcelFileDescriptor + Bitmap）。
+ * PdfRenderer 首页封面（ 分析 §6.2 PdfRenderer + ParcelFileDescriptor + Bitmap）。
  *
  * 渲染 PDF 第 0 页为 PNG 存入 cacheDir/pdf_covers，返回绝对路径供 Dart 侧
  * 作为本地书封面显示。支持普通文件路径与 content:// URI。

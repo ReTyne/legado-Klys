@@ -2,6 +2,10 @@
 /// 作为同一库的 part，私有成员互引保持可用。
 part of '../source_debug_screen.dart';
 
+/// 调试被用户终止或超时时抛出的内部信号（可取消的 Future 协作式取消点）。
+class _DebugAborted implements Exception {
+  const _DebugAborted();
+}
 
 class _SourceDebugScreenState extends State<SourceDebugScreen>
     with SingleTickerProviderStateMixin {
@@ -10,6 +14,16 @@ class _SourceDebugScreenState extends State<SourceDebugScreen>
   final List<_LogLine> _logs = [];
   bool _running = false;
   double _progress = 0;
+
+  // 主动终止 / 超时
+  static const int _defaultTimeoutSeconds = 60;
+  int _timeoutSeconds = _defaultTimeoutSeconds;
+  Timer? _timeoutTimer;
+  bool _cancelRequested = false;
+  bool _timedOut = false;
+  // 中止信号：与耗时的引擎 Future 竞速，终止/超时时立即让 _runAll 返回，
+  // 不必等待底层网络请求结束（真正的可取消 Future 协作点）。
+  Completer<void>? _abortSignal;
 
   // 各阶段原始源码
   String? _searchSrc;
@@ -139,6 +153,104 @@ class _SourceDebugScreenState extends State<SourceDebugScreen>
     _toast('已复制$what');
   }
 
+  // ==================== 主动终止 / 超时 ====================
+
+  /// 启动超时看门狗：到点自动标记取消并提示。
+  void _armTimeout() {
+    _disarmTimeout();
+    if (_timeoutSeconds <= 0) return;
+    _timeoutTimer = Timer(Duration(seconds: _timeoutSeconds), () {
+      if (!(_running || _stepRunning || _exploreRunning)) return;
+      _timedOut = true;
+      _cancelRequested = true;
+      _signalAbort();
+      _log('调试超时（${_timeoutSeconds}s），已自动终止', level: _LogLevel.error);
+      _toast('调试超时，已自动终止');
+      if (mounted) {
+        setState(() {
+          _stepRunning = false;
+          _exploreRunning = false;
+        });
+      }
+      if (_running) _finish(false);
+    });
+  }
+
+  void _disarmTimeout() {
+    _timeoutTimer?.cancel();
+    _timeoutTimer = null;
+  }
+
+  /// 唤醒中止信号，让所有 _guard 包裹的引擎 Future 立即以 _DebugAborted 结束。
+  void _signalAbort() {
+    final signal = _abortSignal;
+    if (signal != null && !signal.isCompleted) signal.complete();
+  }
+
+  /// 包裹耗时的引擎 Future：与中止信号竞速，先到者决定结果。
+  Future<T> _guard<T>(Future<T> operation) {
+    final signal = _abortSignal?.future;
+    if (signal == null) return operation;
+    return Future.any<T>([
+      operation,
+      signal.then<T>((_) => throw const _DebugAborted()),
+    ]);
+  }
+
+  /// 用户主动终止：置取消标志，各步骤在协作式取消点尽快停下。
+  void _abort() {
+    if (!(_running || _stepRunning || _exploreRunning)) return;
+    _cancelRequested = true;
+    _signalAbort();
+    _log('调试已被用户终止', level: _LogLevel.error);
+    _toast('已发送终止指令');
+    if (mounted) {
+      setState(() {
+        _stepRunning = false;
+        _exploreRunning = false;
+      });
+    }
+    if (_running) _finish(false);
+  }
+
+  /// 协作式取消点：已请求终止则中断后续步骤。
+  void _checkCancelled() {
+    if (_cancelRequested) throw const _DebugAborted();
+  }
+
+  /// 超时秒数设置（0 表示不限时）。
+  Future<void> _showTimeoutConfig() async {
+    final ctl = TextEditingController(text: '$_timeoutSeconds');
+    final value = await showDialog<int>(
+      context: context,
+      builder: (c) => AlertDialog(
+        title: const Text('调试超时'),
+        content: TextField(
+          controller: ctl,
+          keyboardType: TextInputType.number,
+          decoration: const InputDecoration(
+            labelText: '超时秒数（0 = 不限时）',
+            border: OutlineInputBorder(),
+          ),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(c), child: const Text('取消')),
+          FilledButton(
+            onPressed: () => Navigator.pop(
+                c, int.tryParse(ctl.text.trim()) ?? _defaultTimeoutSeconds),
+            child: const Text('确定'),
+          ),
+        ],
+      ),
+    );
+    ctl.dispose();
+    if (value != null && mounted) {
+      setState(() => _timeoutSeconds = value < 0 ? 0 : value);
+      _toast(value <= 0 ? '已关闭超时' : '超时设为 ${value}s');
+    }
+  }
+
   /// 解析调试输入，路由到对应阶段：
   ///  - `++url`      目录调试
   ///  - `--url`      正文调试
@@ -148,7 +260,9 @@ class _SourceDebugScreenState extends State<SourceDebugScreen>
   ({String target, String url}) _parseDebugTarget(String input) {
     final t = input.trim();
     if (t.startsWith('++')) return (target: 'toc', url: t.substring(2).trim());
-    if (t.startsWith('--')) return (target: 'content', url: t.substring(2).trim());
+    if (t.startsWith('--')) {
+      return (target: 'content', url: t.substring(2).trim());
+    }
     final dc = t.indexOf('::');
     if (dc > 0) return (target: 'explore', url: t.substring(dc + 2).trim());
     if (RegExp(r'^https?://').hasMatch(t)) return (target: 'info', url: t);
@@ -158,13 +272,16 @@ class _SourceDebugScreenState extends State<SourceDebugScreen>
   Future<void> _runAll() async {
     final input = _keywordController.text.trim();
     if (input.isEmpty) {
-      _log('请输入 搜索词 / 详情URL / ++目录URL / --正文URL / 发现::URL', level: _LogLevel.error);
+      _log('请输入 搜索词 / 详情URL / ++目录URL / --正文URL / 发现::URL',
+          level: _LogLevel.error);
       return;
     }
     // 每次调试只保留本次产生的请求（含 java.ajax 的原生拦截通道）
     SourceNetworkLog.instance.clear();
     setState(() {
       _running = true;
+      _cancelRequested = false;
+      _timedOut = false;
       _logs.clear();
       _searchSrc = null;
       _bookSrc = null;
@@ -172,11 +289,15 @@ class _SourceDebugScreenState extends State<SourceDebugScreen>
       _contentSrc = null;
       _progress = 0;
     });
+    _abortSignal = Completer<void>();
+    _armTimeout();
     final source = widget.source;
     final parsed = _parseDebugTarget(input);
     _log('===== 开始调试：${source.bookSourceName} =====', level: _LogLevel.stage);
     _log('书源地址: ${source.bookSourceUrl}');
-    _log('调试目标: ${parsed.target}${parsed.url.isNotEmpty ? '  ${parsed.url}' : ''}');
+    _log(
+        '调试目标: ${parsed.target}${parsed.url.isNotEmpty ? '  ${parsed.url}' : ''}');
+    _log('超时: ${_timeoutSeconds <= 0 ? '不限时' : '${_timeoutSeconds}s'}');
 
     try {
       switch (parsed.target) {
@@ -196,13 +317,23 @@ class _SourceDebugScreenState extends State<SourceDebugScreen>
           await _debugContent(source, parsed.url);
           break;
       }
-      _progress = 1;
-      _log('===== 调试完成 =====', level: _LogLevel.stage);
-      _finish(true);
+      if (_cancelRequested) {
+        _dumpEngineLog();
+      } else {
+        _progress = 1;
+        _log('===== 调试完成 =====', level: _LogLevel.stage);
+        _finish(true);
+      }
+    } on _DebugAborted {
+      _dumpEngineLog();
+      _finish(false);
     } catch (e) {
       _dumpEngineLog();
       _log('调试异常: $e', level: _LogLevel.error);
       _finish(false);
+    } finally {
+      _disarmTimeout();
+      _abortSignal = null;
     }
   }
 
@@ -210,7 +341,8 @@ class _SourceDebugScreenState extends State<SourceDebugScreen>
   Future<void> _debugSearch(BookSource source, String keyword) async {
     _progress = 0.1;
     _log('【搜索】「$keyword」…', level: _LogLevel.stage);
-    final results = await _engine.search(source, keyword);
+    final results = await _guard(_engine.search(source, keyword));
+    _checkCancelled();
     _dumpEngineLog();
     _searchSrc = _engine.lastRawResponse;
     if (results.isEmpty) {
@@ -236,7 +368,8 @@ class _SourceDebugScreenState extends State<SourceDebugScreen>
   Future<void> _debugExplore(BookSource source, String exploreUrl) async {
     _progress = 0.1;
     _log('【发现】$exploreUrl', level: _LogLevel.stage);
-    final results = await _engine.exploreByUrl(source, exploreUrl);
+    final results = await _guard(_engine.exploreByUrl(source, exploreUrl));
+    _checkCancelled();
     _dumpEngineLog();
     _searchSrc = _engine.lastRawResponse;
     if (results.isEmpty) {
@@ -267,8 +400,9 @@ class _SourceDebugScreenState extends State<SourceDebugScreen>
       {String? presetName, String? presetAuthor}) async {
     _progress = 0.35;
     _log('【详情】$detailUrl', level: _LogLevel.stage);
-    final info = await _engine.getBookInfo(source, detailUrl,
-        presetName: presetName, presetAuthor: presetAuthor);
+    final info = await _guard(_engine.getBookInfo(source, detailUrl,
+        presetName: presetName, presetAuthor: presetAuthor));
+    _checkCancelled();
     _dumpEngineLog();
     _bookSrc = _engine.lastRawResponse;
     if (info == null) {
@@ -285,13 +419,14 @@ class _SourceDebugScreenState extends State<SourceDebugScreen>
   Future<void> _debugToc(BookSource source, String tocUrl) async {
     _progress = 0.6;
     _log('【目录】$tocUrl', level: _LogLevel.stage);
-    final chapters = await _engine.getToc(source, tocUrl, bookInfo: {
+    final chapters = await _guard(_engine.getToc(source, tocUrl, bookInfo: {
       'bookUrl': tocUrl,
       'name': source.bookSourceName,
       'author': '',
       'tocUrl': tocUrl,
       'durChapterIndex': 0,
-    });
+    }));
+    _checkCancelled();
     _dumpEngineLog();
     _tocSrc = _engine.lastRawResponse;
     if (chapters.isEmpty) {
@@ -319,17 +454,19 @@ class _SourceDebugScreenState extends State<SourceDebugScreen>
   }
 
   /// 目录（详情之后）→ 正文
-  Future<void> _debugTocInternal(BookSource source, Book info, String detailUrl) async {
+  Future<void> _debugTocInternal(
+      BookSource source, Book info, String detailUrl) async {
     final tocUrl = info.noteUrl ?? detailUrl;
     _progress = 0.6;
     _log('【目录】$tocUrl', level: _LogLevel.stage);
-    final chapters = await _engine.getToc(source, tocUrl, bookInfo: {
+    final chapters = await _guard(_engine.getToc(source, tocUrl, bookInfo: {
       'bookUrl': info.bookUrl ?? detailUrl,
       'name': info.name,
       'author': info.author,
       'tocUrl': tocUrl,
       'durChapterIndex': 0,
-    });
+    }));
+    _checkCancelled();
     _dumpEngineLog();
     _tocSrc = _engine.lastRawResponse;
     if (chapters.isEmpty) {
@@ -376,8 +513,9 @@ class _SourceDebugScreenState extends State<SourceDebugScreen>
       Map<String, dynamic> bookInfo, Map<String, dynamic> chapter) async {
     _progress = 0.8;
     _log('【正文】$contentUrl', level: _LogLevel.stage);
-    final content = await _engine.getContent(source, contentUrl,
-        bookInfo: bookInfo, chapter: chapter);
+    final content = await _guard(_engine.getContent(source, contentUrl,
+        bookInfo: bookInfo, chapter: chapter));
+    _checkCancelled();
     _dumpEngineLog();
     _contentSrc = _engine.lastRawResponse;
     if (content == null || content.trim().isEmpty) {
@@ -432,20 +570,23 @@ class _SourceDebugScreenState extends State<SourceDebugScreen>
     });
     // 清空引擎日志，保证提取到的 URL 只属于本步
     _engine.clearDebugLog();
+    _cancelRequested = false;
+    _timedOut = false;
+    _abortSignal = Completer<void>();
+    _armTimeout();
     final sw = Stopwatch()..start();
     try {
       switch (step.key) {
         case 'search':
-          final results = await _engine.search(source, keyword);
+          final results = await _guard(_engine.search(source, keyword));
+          _checkCancelled();
           _pickedBook = results.isNotEmpty ? results.first : null;
           if (results.isEmpty) {
             throw Exception('搜索结果为空（请检查 searchUrl / 登录 / 规则）');
           }
           _fillBookVars(results.first, onlyEmpty: true);
-          step.summary = '共 ${results.length} 本，前 5 本：\n${results
-              .take(5)
-              .map((b) => '  ${b.name} / ${b.author}')
-              .join('\n')}';
+          step.summary =
+              '共 ${results.length} 本，前 5 本：\n${results.take(5).map((b) => '  ${b.name} / ${b.author}').join('\n')}';
           break;
         case 'explore':
           final kindUrl = _selectedKindUrl();
@@ -453,17 +594,16 @@ class _SourceDebugScreenState extends State<SourceDebugScreen>
             throw Exception('书源未配置 exploreUrl / 发现分类');
           }
           final results = kindUrl.isNotEmpty
-              ? await _engine.exploreByUrl(source, kindUrl)
-              : await _engine.explore(source);
+              ? await _guard(_engine.exploreByUrl(source, kindUrl))
+              : await _guard(_engine.explore(source));
+          _checkCancelled();
           _pickedBook = results.isNotEmpty ? results.first : null;
           if (results.isEmpty) {
             throw Exception('发现结果为空（请检查 exploreUrl / ruleExplore）');
           }
           _fillBookVars(results.first, onlyEmpty: true);
-          step.summary = '共 ${results.length} 本，前 5 本：\n${results
-              .take(5)
-              .map((b) => '  ${b.name} / ${b.author}')
-              .join('\n')}';
+          step.summary =
+              '共 ${results.length} 本，前 5 本：\n${results.take(5).map((b) => '  ${b.name} / ${b.author}').join('\n')}';
           break;
         case 'info':
           final book = _pickedBook;
@@ -473,27 +613,32 @@ class _SourceDebugScreenState extends State<SourceDebugScreen>
           }
           final pName = _bookVar('name', book?.name ?? '');
           final pAuthor = _bookVar('author', book?.author ?? '');
-          final info = await _engine.getBookInfo(source, bookUrl,
+          final info = await _guard(_engine.getBookInfo(source, bookUrl,
               presetName: pName.isEmpty ? null : pName,
-              presetAuthor: pAuthor.isEmpty ? null : pAuthor);
+              presetAuthor: pAuthor.isEmpty ? null : pAuthor));
+          _checkCancelled();
           if (info == null) throw Exception('详情解析失败（ruleBookInfo）');
           _bookInfo = info;
           step.url = bookUrl;
-          step.summary = '书名: ${info.name}  作者: ${info.author}\n分类: ${info.kind}\n目录地址: ${info.noteUrl}';
+          step.summary =
+              '书名: ${info.name}  作者: ${info.author}\n分类: ${info.kind}\n目录地址: ${info.noteUrl}';
           break;
         case 'toc':
           final info = _bookInfo;
-          final tocUrl = _bookVar('tocUrl', info?.noteUrl ?? info?.bookUrl ?? '');
+          final tocUrl =
+              _bookVar('tocUrl', info?.noteUrl ?? info?.bookUrl ?? '');
           if (tocUrl.isEmpty) {
             throw Exception('请先执行「详情」，或在「变量」页填写目录地址');
           }
-          final chapters = await _engine.getToc(source, tocUrl, bookInfo: {
+          final chapters =
+              await _guard(_engine.getToc(source, tocUrl, bookInfo: {
             'bookUrl': _bookVar('bookUrl', info?.bookUrl ?? ''),
             'name': _bookVar('name', info?.name ?? ''),
             'author': _bookVar('author', info?.author ?? ''),
             'tocUrl': tocUrl,
             'durChapterIndex': 0,
-          });
+          }));
+          _checkCancelled();
           if (chapters.isEmpty) throw Exception('目录为空（ruleToc.chapterList）');
           _tocChapters = chapters;
           final first = chapters.firstWhere(
@@ -501,16 +646,13 @@ class _SourceDebugScreenState extends State<SourceDebugScreen>
               orElse: () => chapters.first);
           _fillChapterVars(first, onlyEmpty: true);
           step.url = tocUrl;
-          step.summary = '共 ${chapters.length} 章，前 3 章：\n${chapters
-              .take(3)
-              .map((c) => '  ${c.index + 1}. ${c.title} -> ${c.url}')
-              .join('\n')}';
+          step.summary =
+              '共 ${chapters.length} 章，前 3 章：\n${chapters.take(3).map((c) => '  ${c.index + 1}. ${c.title} -> ${c.url}').join('\n')}';
           break;
         case 'content':
           BookChapter? ch;
           if (_tocChapters.isNotEmpty) {
-            ch = _tocChapters.firstWhere(
-                (c) => c.url.isNotEmpty && !c.isVolume,
+            ch = _tocChapters.firstWhere((c) => c.url.isNotEmpty && !c.isVolume,
                 orElse: () => _tocChapters.first);
           }
           final chapterUrl = _bookVar('chapterUrl', ch?.url ?? '');
@@ -521,7 +663,8 @@ class _SourceDebugScreenState extends State<SourceDebugScreen>
           final info = _bookInfo;
           final idxStr = _bookVar('durChapterIndex', '${ch?.index ?? 0}');
           final idx = int.tryParse(idxStr) ?? ch?.index ?? 0;
-          final content = await _engine.getContent(source, chapterUrl, bookInfo: {
+          final content =
+              await _guard(_engine.getContent(source, chapterUrl, bookInfo: {
             'bookUrl': _bookVar('bookUrl', info?.bookUrl ?? ''),
             'name': _bookVar('name', info?.name ?? ''),
             'author': _bookVar('author', info?.author ?? ''),
@@ -532,12 +675,14 @@ class _SourceDebugScreenState extends State<SourceDebugScreen>
             'title': chapterTitle,
             'url': chapterUrl,
             'bookUrl': info?.bookUrl,
-          });
+          }));
+          _checkCancelled();
           if (content == null || content.trim().isEmpty) {
             throw Exception('正文为空（ruleContent.content）');
           }
           step.url = chapterUrl;
-          final preview = content.length > 300 ? content.substring(0, 300) : content;
+          final preview =
+              content.length > 300 ? content.substring(0, 300) : content;
           step.summary = '正文长度 ${content.length} 字符，预览：\n$preview';
           break;
       }
@@ -559,11 +704,15 @@ class _SourceDebugScreenState extends State<SourceDebugScreen>
         setState(() {
           step.durationMs = sw.elapsedMilliseconds;
           step.status = _StepStatus.fail;
-          step.error = e.toString().replaceFirst('Exception: ', '');
+          step.error = e is _DebugAborted
+              ? (_timedOut ? '调试超时，已自动终止' : '调试已被用户终止')
+              : e.toString().replaceFirst('Exception: ', '');
           step.engineLogs = _engine.debugLog.toList();
         });
       }
     } finally {
+      _disarmTimeout();
+      _abortSignal = null;
       if (mounted) setState(() => _stepRunning = false);
     }
   }
@@ -623,8 +772,8 @@ class _SourceDebugScreenState extends State<SourceDebugScreen>
                 const SizedBox(width: AppSpacing.s),
                 // 状态标签
                 Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: AppSpacing.s, vertical: 2),
+                  padding: const EdgeInsets.symmetric(
+                      horizontal: AppSpacing.s, vertical: 2),
                   decoration: BoxDecoration(
                     color: statusColor.withOpacity(0.12),
                     borderRadius: AppRadius.mAll,
@@ -644,8 +793,9 @@ class _SourceDebugScreenState extends State<SourceDebugScreen>
                 FilledButton.tonalIcon(
                   icon: const Icon(Icons.play_arrow, size: 16),
                   label: const Text('执行'),
-                  onPressed:
-                      (_stepRunning || _running || _exploreRunning) ? null : () => _runStep(step),
+                  onPressed: (_stepRunning || _running || _exploreRunning)
+                      ? null
+                      : () => _runStep(step),
                 ),
               ],
             ),
@@ -676,7 +826,8 @@ class _SourceDebugScreenState extends State<SourceDebugScreen>
                     width: double.infinity,
                     padding: const EdgeInsets.all(AppSpacing.s),
                     decoration: BoxDecoration(
-                      color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                      color:
+                          Theme.of(context).colorScheme.surfaceContainerHighest,
                       borderRadius: AppRadius.mAll,
                     ),
                     child: SelectableText(
@@ -702,7 +853,10 @@ class _SourceDebugScreenState extends State<SourceDebugScreen>
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(label, style: TextStyle(fontSize: 11, color: Theme.of(context).colorScheme.onSurfaceVariant)),
+        Text(label,
+            style: TextStyle(
+                fontSize: 11,
+                color: Theme.of(context).colorScheme.onSurfaceVariant)),
         const SizedBox(height: 2),
         SelectableText(
           value,
@@ -725,10 +879,13 @@ class _SourceDebugScreenState extends State<SourceDebugScreen>
       padding: const EdgeInsets.symmetric(vertical: AppSpacing.s),
       children: [
         Padding(
-          padding: const EdgeInsets.symmetric(horizontal: AppSpacing.l, vertical: AppSpacing.xs),
+          padding: const EdgeInsets.symmetric(
+              horizontal: AppSpacing.l, vertical: AppSpacing.xs),
           child: Text(
             '每步可单独执行并统计耗时；「详情 / 目录 / 正文」默认复用前序步骤结果，也可在「变量」页临时覆盖地址后直接执行。',
-            style: TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.onSurfaceVariant),
+            style: TextStyle(
+                fontSize: 12,
+                color: Theme.of(context).colorScheme.onSurfaceVariant),
           ),
         ),
         ..._steps.map(_stepCard),
@@ -752,7 +909,8 @@ class _SourceDebugScreenState extends State<SourceDebugScreen>
       if (kinds.isEmpty) kinds = _engine.getExploreKinds(widget.source);
       if (!mounted) return;
       setState(() {
-        _exploreKinds = kinds.where((k) => (k['url'] ?? '').isNotEmpty).toList();
+        _exploreKinds =
+            kinds.where((k) => (k['url'] ?? '').isNotEmpty).toList();
         if (_selectedKind < 0 || _selectedKind >= _exploreKinds.length) {
           _selectedKind = 0;
         }
@@ -798,10 +956,15 @@ class _SourceDebugScreenState extends State<SourceDebugScreen>
       _exploreStatus = '正在调试分类「$title」…';
       _exploreResults = [];
     });
+    _cancelRequested = false;
+    _timedOut = false;
+    _abortSignal = Completer<void>();
+    _armTimeout();
     final sw = Stopwatch()..start();
     _log('【发现·分类】$title  $url', level: _LogLevel.stage);
     try {
-      final results = await _engine.exploreByUrl(widget.source, url);
+      final results = await _guard(_engine.exploreByUrl(widget.source, url));
+      _checkCancelled();
       sw.stop();
       _dumpEngineLog();
       if (!mounted) return;
@@ -827,9 +990,18 @@ class _SourceDebugScreenState extends State<SourceDebugScreen>
       if (!mounted) return;
       setState(() {
         _exploreRunning = false;
-        _exploreStatus = '调试异常: $e';
+        _exploreStatus = e is _DebugAborted
+            ? (_timedOut ? '调试超时，已自动终止' : '调试已被用户终止')
+            : '调试异常: $e';
       });
-      _log('发现分类调试异常: $e', level: _LogLevel.error);
+      _log(
+          e is _DebugAborted
+              ? (_timedOut ? '发现分类调试超时，已自动终止' : '发现分类调试被用户终止')
+              : '发现分类调试异常: $e',
+          level: _LogLevel.error);
+    } finally {
+      _disarmTimeout();
+      _abortSignal = null;
     }
   }
 
@@ -856,21 +1028,24 @@ class _SourceDebugScreenState extends State<SourceDebugScreen>
       selIdx = _selectedKind;
       if (selIdx < 0 || selIdx >= _exploreKinds.length) selIdx = 0;
     }
-    final selectedUrl = selIdx == null ? '' : (_exploreKinds[selIdx]['url'] ?? '');
+    final selectedUrl =
+        selIdx == null ? '' : (_exploreKinds[selIdx]['url'] ?? '');
     final busy = _exploreRunning || _kindsLoading || _running || _stepRunning;
 
     return ListView(
       padding: const EdgeInsets.symmetric(vertical: AppSpacing.s),
       children: [
         Card(
-          margin: const EdgeInsets.symmetric(horizontal: AppSpacing.m, vertical: 6),
+          margin:
+              const EdgeInsets.symmetric(horizontal: AppSpacing.m, vertical: 6),
           child: Padding(
             padding: const EdgeInsets.all(AppSpacing.m),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 const Text('按分类调试发现页',
-                    style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold)),
+                    style:
+                        TextStyle(fontSize: 13, fontWeight: FontWeight.bold)),
                 const SizedBox(height: 6),
                 Text(
                   '选择书源配置的发现分类，可单独跑该分类，或把分类填入调试目标串起「发现 → 详情 → 目录 → 正文」完整链路。',
@@ -883,7 +1058,8 @@ class _SourceDebugScreenState extends State<SourceDebugScreen>
                       child: DropdownButton<int>(
                         isExpanded: true,
                         value: selIdx,
-                        hint: const Text('暂无发现分类', style: TextStyle(fontSize: 13)),
+                        hint: const Text('暂无发现分类',
+                            style: TextStyle(fontSize: 13)),
                         items: [
                           for (var i = 0; i < _exploreKinds.length; i++)
                             DropdownMenuItem(
@@ -909,15 +1085,21 @@ class _SourceDebugScreenState extends State<SourceDebugScreen>
                     IconButton(
                       icon: const Icon(Icons.refresh),
                       tooltip: '重新加载分类（清缓存）',
-                      onPressed: busy ? null : () => _loadExploreKinds(refresh: true),
+                      onPressed:
+                          busy ? null : () => _loadExploreKinds(refresh: true),
                     ),
                   ],
                 ),
                 if (selectedUrl.isNotEmpty) ...[
                   const SizedBox(height: AppSpacing.xs),
-                  Text('分类地址', style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant)),
+                  Text('分类地址',
+                      style:
+                          TextStyle(fontSize: 11, color: cs.onSurfaceVariant)),
                   SelectableText(selectedUrl,
-                      style: TextStyle(fontSize: 11, fontFamily: 'monospace', color: cs.onSurface)),
+                      style: TextStyle(
+                          fontSize: 11,
+                          fontFamily: 'monospace',
+                          color: cs.onSurface)),
                 ],
                 if (_kindsLoading)
                   const Padding(
@@ -952,7 +1134,8 @@ class _SourceDebugScreenState extends State<SourceDebugScreen>
                   Text(_exploreStatus,
                       style: TextStyle(
                           fontSize: 12,
-                          color: _exploreResults.isEmpty ? cs.error : cs.primary)),
+                          color:
+                              _exploreResults.isEmpty ? cs.error : cs.primary)),
                 ],
               ],
             ),
@@ -971,15 +1154,20 @@ class _SourceDebugScreenState extends State<SourceDebugScreen>
           Builder(builder: (_) {
             final b = _exploreResults[i];
             return Card(
-              margin: const EdgeInsets.symmetric(horizontal: AppSpacing.m, vertical: 3),
+              margin: const EdgeInsets.symmetric(
+                  horizontal: AppSpacing.m, vertical: 3),
               child: ListTile(
                 leading: CircleAvatar(
-                    radius: 14, child: Text('${i + 1}', style: const TextStyle(fontSize: 11))),
-                title: Text('${b.name} / ${b.author}', style: const TextStyle(fontSize: 13)),
+                    radius: 14,
+                    child:
+                        Text('${i + 1}', style: const TextStyle(fontSize: 11))),
+                title: Text('${b.name} / ${b.author}',
+                    style: const TextStyle(fontSize: 13)),
                 subtitle: Text(b.bookUrl ?? '',
                     maxLines: 2,
                     overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(fontSize: 10.5, fontFamily: 'monospace')),
+                    style: const TextStyle(
+                        fontSize: 10.5, fontFamily: 'monospace')),
                 onTap: () {
                   setState(() {
                     _bookVarCtl['bookUrl']!.text = b.bookUrl ?? '';
@@ -1011,6 +1199,7 @@ class _SourceDebugScreenState extends State<SourceDebugScreen>
       if (onlyEmpty && c.text.trim().isNotEmpty) return;
       c.text = v ?? '';
     }
+
     put('bookUrl', b.bookUrl);
     put('name', b.name);
     put('author', b.author);
@@ -1024,6 +1213,7 @@ class _SourceDebugScreenState extends State<SourceDebugScreen>
       if (onlyEmpty && ctl.text.trim().isNotEmpty) return;
       ctl.text = v;
     }
+
     put('chapterTitle', c.title);
     put('chapterUrl', c.url);
     put('durChapterIndex', '${c.index}');
@@ -1035,8 +1225,7 @@ class _SourceDebugScreenState extends State<SourceDebugScreen>
     final info = _bookInfo;
     BookChapter? ch;
     if (_tocChapters.isNotEmpty) {
-      ch = _tocChapters.firstWhere(
-          (c) => c.url.isNotEmpty && !c.isVolume,
+      ch = _tocChapters.firstWhere((c) => c.url.isNotEmpty && !c.isVolume,
           orElse: () => _tocChapters.first);
     }
     setState(() {
@@ -1084,7 +1273,8 @@ class _SourceDebugScreenState extends State<SourceDebugScreen>
       padding: const EdgeInsets.symmetric(vertical: AppSpacing.s),
       children: [
         Card(
-          margin: const EdgeInsets.symmetric(horizontal: AppSpacing.m, vertical: 6),
+          margin:
+              const EdgeInsets.symmetric(horizontal: AppSpacing.m, vertical: 6),
           child: Padding(
             padding: const EdgeInsets.all(AppSpacing.m),
             child: Column(
@@ -1094,7 +1284,8 @@ class _SourceDebugScreenState extends State<SourceDebugScreen>
                   Icon(Icons.tune, size: 20, color: cs.primary),
                   const SizedBox(width: AppSpacing.s),
                   const Text('源变量 source.variable',
-                      style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold)),
+                      style:
+                          TextStyle(fontSize: 13, fontWeight: FontWeight.bold)),
                 ]),
                 const SizedBox(height: 6),
                 Text(
@@ -1112,7 +1303,8 @@ class _SourceDebugScreenState extends State<SourceDebugScreen>
                   controller: _sourceVarController,
                   maxLines: 6,
                   minLines: 3,
-                  style: const TextStyle(fontSize: 11.5, fontFamily: 'monospace'),
+                  style:
+                      const TextStyle(fontSize: 11.5, fontFamily: 'monospace'),
                   decoration: const InputDecoration(
                     labelText: '变量内容（通常为 JSON）',
                     border: OutlineInputBorder(),
@@ -1137,14 +1329,16 @@ class _SourceDebugScreenState extends State<SourceDebugScreen>
                     TextButton.icon(
                       icon: const Icon(Icons.copy_outlined, size: 16),
                       label: const Text('复制'),
-                      onPressed: () => _copyText(_sourceVarController.text, '源变量'),
+                      onPressed: () =>
+                          _copyText(_sourceVarController.text, '源变量'),
                     ),
                   ],
                 ),
                 if (rulePut.isNotEmpty || ruleGet.isNotEmpty)
                   ExpansionTile(
                     tilePadding: EdgeInsets.zero,
-                    title: const Text('书源变量规则（只读）', style: TextStyle(fontSize: 12)),
+                    title: const Text('书源变量规则（只读）',
+                        style: TextStyle(fontSize: 12)),
                     children: [
                       if (rulePut.isNotEmpty) _stepField('rulePut', rulePut),
                       if (ruleGet.isNotEmpty) _stepField('ruleGet', ruleGet),
@@ -1156,7 +1350,8 @@ class _SourceDebugScreenState extends State<SourceDebugScreen>
           ),
         ),
         Card(
-          margin: const EdgeInsets.symmetric(horizontal: AppSpacing.m, vertical: 6),
+          margin:
+              const EdgeInsets.symmetric(horizontal: AppSpacing.m, vertical: 6),
           child: Padding(
             padding: const EdgeInsets.all(AppSpacing.m),
             child: Column(
@@ -1166,7 +1361,8 @@ class _SourceDebugScreenState extends State<SourceDebugScreen>
                   Icon(Icons.menu_book_outlined, size: 20, color: cs.primary),
                   const SizedBox(width: AppSpacing.s),
                   const Text('书籍变量 book / chapter',
-                      style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold)),
+                      style:
+                          TextStyle(fontSize: 13, fontWeight: FontWeight.bold)),
                 ]),
                 const SizedBox(height: 6),
                 Text(
@@ -1180,7 +1376,8 @@ class _SourceDebugScreenState extends State<SourceDebugScreen>
                     padding: const EdgeInsets.only(bottom: AppSpacing.s),
                     child: TextField(
                       controller: _bookVarCtl[entry.key],
-                      style: const TextStyle(fontSize: 11.5, fontFamily: 'monospace'),
+                      style: const TextStyle(
+                          fontSize: 11.5, fontFamily: 'monospace'),
                       decoration: InputDecoration(
                         labelText: entry.value,
                         border: const OutlineInputBorder(),
@@ -1251,8 +1448,7 @@ class _SourceDebugScreenState extends State<SourceDebugScreen>
                       : null),
               title: Text('本次调试共 ${entries.length} 次请求，失败 $failures 次',
                   style: const TextStyle(fontSize: 13)),
-              subtitle: const Text(
-                  '含书源 JS 内 java.ajax 发出的请求，详见「请求响应」页签',
+              subtitle: const Text('含书源 JS 内 java.ajax 发出的请求，详见「请求响应」页签',
                   style: TextStyle(fontSize: 11)),
             ),
           ),
@@ -1288,8 +1484,7 @@ class _SourceDebugScreenState extends State<SourceDebugScreen>
                           TextButton.icon(
                             icon: const Icon(Icons.copy_all_outlined, size: 16),
                             label: const Text('复制原文'),
-                            onPressed: () =>
-                                _copyText(e.$2!, '${e.$1}（原始）'),
+                            onPressed: () => _copyText(e.$2!, '${e.$1}（原始）'),
                           ),
                           const SizedBox(width: 6),
                           TextButton.icon(
@@ -1303,7 +1498,8 @@ class _SourceDebugScreenState extends State<SourceDebugScreen>
                     Container(
                       width: double.infinity,
                       padding: const EdgeInsets.all(AppSpacing.s),
-                      color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                      color:
+                          Theme.of(context).colorScheme.surfaceContainerHighest,
                       child: SelectableText(
                         display,
                         style: TextStyle(
@@ -1342,14 +1538,16 @@ class _SourceDebugScreenState extends State<SourceDebugScreen>
       padding: const EdgeInsets.symmetric(vertical: AppSpacing.s),
       children: [
         Card(
-          margin: const EdgeInsets.symmetric(horizontal: AppSpacing.m, vertical: 6),
+          margin:
+              const EdgeInsets.symmetric(horizontal: AppSpacing.m, vertical: 6),
           child: Padding(
             padding: const EdgeInsets.all(AppSpacing.m),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 const Text('请求概览',
-                    style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold)),
+                    style:
+                        TextStyle(fontSize: 13, fontWeight: FontWeight.bold)),
                 const SizedBox(height: 6),
                 Text(
                     '共 ${entries.length} 次请求 · 成功 $okCount · 失败 $failCount · 累计耗时 ${totalMs}ms',
@@ -1366,13 +1564,15 @@ class _SourceDebugScreenState extends State<SourceDebugScreen>
         ),
         if (headerText.isNotEmpty)
           Card(
-            margin: const EdgeInsets.symmetric(horizontal: AppSpacing.m, vertical: 6),
+            margin: const EdgeInsets.symmetric(
+                horizontal: AppSpacing.m, vertical: 6),
             clipBehavior: Clip.antiAlias,
             child: ExpansionTile(
               leading: const Icon(Icons.input_outlined, size: 20),
               title: const Text('书源配置请求头',
                   style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600)),
-              subtitle: Text(isJsHeader ? 'JS 动态生成（source.header）' : 'source.header',
+              subtitle: Text(
+                  isJsHeader ? 'JS 动态生成（source.header）' : 'source.header',
                   style: const TextStyle(fontSize: 11)),
               children: [
                 Container(
@@ -1381,7 +1581,9 @@ class _SourceDebugScreenState extends State<SourceDebugScreen>
                   color: cs.surfaceContainerHighest,
                   child: SelectableText(headerText,
                       style: TextStyle(
-                          fontSize: 11, fontFamily: 'monospace', color: cs.onSurface)),
+                          fontSize: 11,
+                          fontFamily: 'monospace',
+                          color: cs.onSurface)),
                 ),
                 Align(
                   alignment: Alignment.centerRight,
@@ -1396,7 +1598,8 @@ class _SourceDebugScreenState extends State<SourceDebugScreen>
           ),
         if (lastUrl != null && lastUrl.isNotEmpty)
           Card(
-            margin: const EdgeInsets.symmetric(horizontal: AppSpacing.m, vertical: 6),
+            margin: const EdgeInsets.symmetric(
+                horizontal: AppSpacing.m, vertical: 6),
             child: ListTile(
               leading: const Icon(Icons.alt_route_outlined, size: 20),
               title: const Text('最近请求地址', style: TextStyle(fontSize: 13)),
@@ -1444,7 +1647,8 @@ class _SourceDebugScreenState extends State<SourceDebugScreen>
       child: ExpansionTile(
         leading: Icon(e.ok ? Icons.check_circle_outline : Icons.error_outline,
             size: 20, color: statusColor),
-        title: Text('${e.clock}  ${e.method}  ${e.statusLabel}  ${e.durationMs}ms',
+        title: Text(
+            '${e.clock}  ${e.method}  ${e.statusLabel}  ${e.durationMs}ms',
             style: const TextStyle(fontSize: 12, fontFamily: 'monospace')),
         subtitle: Text('${e.origin} · ${e.responseBytes} B · ${e.shortUrl}',
             maxLines: 2,
@@ -1512,7 +1716,8 @@ class _SourceDebugScreenState extends State<SourceDebugScreen>
   Widget _detailRow(String label, String value, {Color? color}) {
     final cs = Theme.of(context).colorScheme;
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.m, vertical: 3),
+      padding:
+          const EdgeInsets.symmetric(horizontal: AppSpacing.m, vertical: 3),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -1616,11 +1821,13 @@ class _SourceDebugScreenState extends State<SourceDebugScreen>
     final entries = SourceNetworkLog.instance.entries;
     if (entries.isEmpty) sb.writeln('(无)');
     for (final e in entries) {
-      sb.writeln('${e.clock}  ${e.method}  ${e.statusLabel}  ${e.durationMs}ms  '
+      sb.writeln(
+          '${e.clock}  ${e.method}  ${e.statusLabel}  ${e.durationMs}ms  '
           '${e.responseBytes}B  [${e.origin}]');
       sb.writeln('  ${e.url}');
       if (e.finalUrl != null && e.finalUrl!.isNotEmpty) {
-        sb.writeln('  最终地址${e.finalUrl != e.url ? "（重定向）" : ""}: ${e.finalUrl}');
+        sb.writeln(
+            '  最终地址${e.finalUrl != e.url ? "（重定向）" : ""}: ${e.finalUrl}');
       }
       _appendTextSection(sb, '请求头', _headersText(e.requestHeaders));
       _appendTextSection(sb, '响应头', _headersText(e.responseHeaders));
@@ -1663,7 +1870,8 @@ class _SourceDebugScreenState extends State<SourceDebugScreen>
     sb.writeln();
     sb.writeln('----- 分步调试 -----');
     for (final st in _steps) {
-      sb.writeln('[${st.title}] 状态=${_stepStatusText(st.status)} 耗时=${st.durationMs}ms');
+      sb.writeln(
+          '[${st.title}] 状态=${_stepStatusText(st.status)} 耗时=${st.durationMs}ms');
       if (st.url.isNotEmpty) sb.writeln('  请求地址: ${st.url}');
       if (st.summary.isNotEmpty) {
         sb.writeln('  ${st.summary.replaceAll('\n', '\n  ')}');
@@ -1680,7 +1888,8 @@ class _SourceDebugScreenState extends State<SourceDebugScreen>
     sb.writeln('----- 发现分类 -----');
     for (var i = 0; i < _exploreKinds.length; i++) {
       final k = _exploreKinds[i];
-      sb.writeln('${i == _selectedKind ? '*' : ' '} ${k['title'] ?? ''}  ${k['url'] ?? ''}');
+      sb.writeln(
+          '${i == _selectedKind ? '*' : ' '} ${k['title'] ?? ''}  ${k['url'] ?? ''}');
     }
     if (_exploreStatus.isNotEmpty) sb.writeln('状态: $_exploreStatus');
     if (_exploreResults.isNotEmpty) {
@@ -1714,7 +1923,8 @@ class _SourceDebugScreenState extends State<SourceDebugScreen>
       final text = view.text.length > 20000
           ? '${view.text.substring(0, 20000)}\n…（已截断，共 ${view.text.length} 字符）'
           : view.text;
-      sb.writeln('### ${item.$1}（${raw.length} 字符${view.note == null ? '' : '，${view.note}'}）');
+      sb.writeln(
+          '### ${item.$1}（${raw.length} 字符${view.note == null ? '' : '，${view.note}'}）');
       sb.writeln(text);
       sb.writeln();
     }
@@ -1758,7 +1968,8 @@ class _SourceDebugScreenState extends State<SourceDebugScreen>
       final dir = await getTemporaryDirectory();
       final safe = widget.source.bookSourceName
           .replaceAll(RegExp(r'[\\/:*?"<>|\s]'), '_');
-      final ts = DateTime.now().toIso8601String().replaceAll(RegExp(r'[:.]'), '-');
+      final ts =
+          DateTime.now().toIso8601String().replaceAll(RegExp(r'[:.]'), '-');
       final file = File('${dir.path}/书源调试_${safe}_$ts.txt');
       await file.writeAsString(_exportLogText());
       await Share.shareXFiles([XFile(file.path)],
@@ -1790,7 +2001,8 @@ class _SourceDebugScreenState extends State<SourceDebugScreen>
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: Text('调试: ${widget.source.bookSourceName}', maxLines: 1, overflow: TextOverflow.ellipsis),
+        title: Text('调试: ${widget.source.bookSourceName}',
+            maxLines: 1, overflow: TextOverflow.ellipsis),
         actions: [
           PopupMenuButton<String>(
             icon: const Icon(Icons.share),
@@ -1802,6 +2014,12 @@ class _SourceDebugScreenState extends State<SourceDebugScreen>
               PopupMenuItem(value: 'file', child: Text('导出为 txt 文件')),
               PopupMenuItem(value: 'network', child: Text('仅复制网络请求日志')),
             ],
+          ),
+          IconButton(
+            icon: const Icon(Icons.timer_outlined),
+            tooltip:
+                '超时设置（${_timeoutSeconds <= 0 ? '不限时' : '${_timeoutSeconds}s'}）',
+            onPressed: _showTimeoutConfig,
           ),
           IconButton(
             icon: const Icon(Icons.delete_outline),
@@ -1845,11 +2063,27 @@ class _SourceDebugScreenState extends State<SourceDebugScreen>
                 ),
                 const SizedBox(width: AppSpacing.s),
                 FilledButton(
-                  onPressed: (_running || _stepRunning || _exploreRunning) ? null : _runAll,
+                  onPressed: (_running || _stepRunning || _exploreRunning)
+                      ? null
+                      : _runAll,
                   child: _running
-                      ? const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2))
+                      ? const SizedBox(
+                          width: 18,
+                          height: 18,
+                          child: CircularProgressIndicator(strokeWidth: 2))
                       : const Text('开始调试'),
                 ),
+                if (_running || _stepRunning || _exploreRunning) ...[
+                  const SizedBox(width: AppSpacing.s),
+                  FilledButton.tonalIcon(
+                    onPressed: _abort,
+                    icon: const Icon(Icons.stop_circle_outlined, size: 18),
+                    label: const Text('终止'),
+                    style: FilledButton.styleFrom(
+                      foregroundColor: Theme.of(context).colorScheme.error,
+                    ),
+                  ),
+                ],
               ],
             ),
           ),
@@ -1898,8 +2132,9 @@ class _SourceDebugScreenState extends State<SourceDebugScreen>
                                   height: 1.35,
                                   color: _colorOf(line.level),
                                   fontFamily: 'monospace',
-                                  fontWeight:
-                                      line.level == _LogLevel.stage ? FontWeight.bold : FontWeight.normal,
+                                  fontWeight: line.level == _LogLevel.stage
+                                      ? FontWeight.bold
+                                      : FontWeight.normal,
                                 ),
                               ),
                             );

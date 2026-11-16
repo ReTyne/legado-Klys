@@ -10,8 +10,8 @@ import 'package:legado_md3/help/source/js/legado_bridge_js.dart';
 const _optionalApiSource = '/workspace/legado-E/legado-E-main/'
     'app/src/main/java/io/legado/app/help/JsExtensions.kt';
 
-String _src(String rel) => File('/workspace/legado-Klys/legado-Klys-main/$rel')
-    .readAsStringSync();
+String _src(String rel) =>
+    File('/workspace/legado-Klys/legado-Klys-main/$rel').readAsStringSync();
 
 /// 提取 JS 桥中暴露在对象字面量上的键（name: function / name: (..) =>）。
 Set<String> _bridgeKeys(String code) {
@@ -20,9 +20,8 @@ Set<String> _bridgeKeys(String code) {
       .allMatches(code)) {
     keys.add(m.group(1)!);
   }
-  for (final m in
-      RegExp(r'\b([A-Za-z_][A-Za-z0-9_]*)\s*:\s*\([^)]*\)\s*=>')
-          .allMatches(code)) {
+  for (final m in RegExp(r'\b([A-Za-z_][A-Za-z0-9_]*)\s*:\s*\([^)]*\)\s*=>')
+      .allMatches(code)) {
     keys.add(m.group(1)!);
   }
   return keys..removeWhere((k) => k.startsWith('_'));
@@ -31,13 +30,18 @@ Set<String> _bridgeKeys(String code) {
 /// 从方法声明基线中提取公开方法名（即 `java.*` 应暴露的 API）。
 Set<String> _declaredApis(String src) {
   final apis = <String>{};
-  for (final m in
-      RegExp(r'\bfun\s+(?:<[^>]+>\s*)?([A-Za-z_][A-Za-z0-9_]*)\s*\(')
+  for (final m
+      in RegExp(r'\bfun\s+(?:<[^>]+>\s*)?([A-Za-z_][A-Za-z0-9_]*)\s*\(')
           .allMatches(src)) {
     apis.add(m.group(1)!);
   }
   const kotlinInternal = {
-    'getSource', 'getTag', 'getKey', 'equals', 'hashCode', 'toString',
+    'getSource',
+    'getTag',
+    'getKey',
+    'equals',
+    'hashCode',
+    'toString',
   };
   return apis.difference(kotlinInternal)..removeWhere((k) => k.startsWith('_'));
 }
@@ -47,13 +51,10 @@ void main() {
     final declared = _declaredApis(File(_optionalApiSource).readAsStringSync());
     final k = _bridgeKeys(LegadoBridgeJs.code);
     final missing = declared.difference(k).toList()..sort();
-    expect(missing, isEmpty,
-        reason: 'JS 桥缺失 java.* API：$missing');
-  }, skip: File(_optionalApiSource).existsSync()
-      ? false
-      : '声明基线不在本机，跳过动态差集');
+    expect(missing, isEmpty, reason: 'JS 桥缺失 java.* API：$missing');
+  }, skip: File(_optionalApiSource).existsSync() ? false : '声明基线不在本机，跳过动态差集');
 
-  test('本轮补齐的 6 个字节/文件 API 在桥中且辅助函数齐全', () {
+ test('补齐的 6 个字节/文件 API 在桥中且辅助函数齐全', () {
     const code = LegadoBridgeJs.code;
     for (final api in const [
       'getZipByteArrayContent',
@@ -71,8 +72,10 @@ void main() {
     expect(code, contains('legado://file?op=readbytes'));
     expect(code, contains('legado://file?op=stat'));
     // 弃用别名 queryBase64TTF 必须直接委托 queryTTF
-    expect(code, contains('queryBase64TTF: function (data, useCache) { '
-        'return this.queryTTF(data, useCache); }'));
+    expect(
+        code,
+        contains('queryBase64TTF: function (data, useCache) { '
+            'return this.queryTTF(data, useCache); }'));
   });
 
   test('Dart 侧协议实现：zip 字节分支 / 7z-rar 原始字节 / 文件路径白名单', () {

@@ -1,6 +1,6 @@
 import 'package:flutter/foundation.dart';
 
-/// AI Agent 工具注册（对齐 fork AI Agent 工具链）
+/// AI Agent 工具注册（AI Agent 工具链）
 @immutable
 class AiAgentTool {
   final int? id;

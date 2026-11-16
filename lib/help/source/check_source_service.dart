@@ -2,6 +2,7 @@ import 'dart:async';
 import 'dart:io';
 import 'dart:math';
 
+import 'package:legado_md3/constant/app_const.dart';
 import 'package:legado_md3/data/local/app_database.dart';
 import 'package:legado_md3/data/model/book.dart';
 import 'package:legado_md3/data/model/book_source.dart';
@@ -68,52 +69,30 @@ class CheckSourceConfig {
     return '超时 ${timeout ~/ 1000} 秒，校验项：${items.join(' / ')}';
   }
 
-  /// 取校验关键字：优先书源自带的纯文本关键字（E: BookSource.getCheckKeyword）
-  static String checkKeywordOf(BookSource source) {
-    String? pick(String? raw) {
-      final t = raw?.trim() ?? '';
-      if (t.isEmpty) return null;
-      // 判定：含 http /:: / ++ / -- 视为规则片段而非关键字
-      if (t.contains('http') || t.contains('::') ||
-          t.contains('++') || t.contains('--')) {
-        return null;
-      }
-      // Klys 顶层 checkKeyWord 兼作「关键字正则」，带正则特征的不当关键字用
-      if (RegExp(r'[\\\[\](){}^$*+?|]').hasMatch(t)) return null;
-      return t;
-    }
-
-    return pick(source.ruleSearch?['checkKeyWord']?.toString()) ??
-        pick(source.checkKeyWord) ??
-        keyword;
-  }
+  /// 取校验关键字（兼容包装）：委托 BookSource 实例方法，保留可配置回退值。
+  static String checkKeywordOf(BookSource source) =>
+      source.checkKeywordOf(keyword);
 }
 
 /// 书源分组/注释操作
 extension BookSourceCheckExt on BookSource {
-  static final RegExp _splitRegex = RegExp('[,;，；]');
-
-  Set<String> get _groupSet => (bookSourceGroup ?? '')
-      .split(_splitRegex)
-      .map((e) => e.trim())
-      .where((e) => e.isNotEmpty)
-      .toSet();
+  Set<String> get _groupSet => AppConst.splitGroups(bookSourceGroup).toSet();
 
   void _writeGroups(Set<String> set) {
     bookSourceGroup = set.isEmpty ? null : set.join(',');
   }
 
-  /// 添加分组（逗号分隔可批量）
+  /// 添加分组（按统一分隔符拆分，可批量）
   void addGroup(String groups) {
     final set = _groupSet;
-    set.addAll(groups.split(_splitRegex).map((e) => e.trim()).where((e) => e.isNotEmpty));
+    set.addAll(AppConst.splitGroups(groups));
     _writeGroups(set);
   }
 
-  /// 移除分组
+  /// 移除分组（按统一分隔符拆分，可批量）
   void removeGroup(String groups) {
     final set = _groupSet;
-    set.removeAll(groups.split(_splitRegex).map((e) => e.trim()).where((e) => e.isNotEmpty));
+    set.removeAll(AppConst.splitGroups(groups));
     _writeGroups(set);
   }
 
@@ -175,6 +154,7 @@ class CheckResult {
   final String sourceUrl;
   final String sourceName;
   final bool success;
+
   /// 失效分组（E: getInvalidGroupNames），空 = 全部通过
   final String invalidGroups;
   final String? errorMessage;
@@ -253,12 +233,14 @@ class CheckSourceService {
 
   /// 批量校验
   /// 离线时快速失败（E: NetworkUtils.isAvailable 守卫），避免逐源干等超时。
-  Future<CheckSummary> start(List<BookSource> sources, {int? threadCount}) async {
+  Future<CheckSummary> start(List<BookSource> sources,
+      {int? threadCount}) async {
     if (sources.isEmpty) {
       return const CheckSummary(total: 0, valid: 0, invalid: 0);
     }
     if (_running) {
-      return CheckSummary(total: sources.length, valid: 0, invalid: 0, canceled: true);
+      return CheckSummary(
+          total: sources.length, valid: 0, invalid: 0, canceled: true);
     }
     if (!await NetworkMonitor.instance.isOnline) {
       return CheckSummary(
@@ -273,8 +255,8 @@ class CheckSourceService {
     _canceled = false;
     final sw = Stopwatch()..start();
     var done = 0, valid = 0, invalid = 0;
-    final concurrency =
-        min(max(threadCount ?? AppPrefs.threadCount, 1), 9).clamp(1, sources.length);
+    final concurrency = min(max(threadCount ?? AppPrefs.threadCount, 1), 9)
+        .clamp(1, sources.length);
     var cursor = 0;
 
     Future<void> worker() async {

@@ -4,8 +4,7 @@ import java.io.ByteArrayOutputStream
 import java.nio.ByteBuffer
 
 /**
- * MOBI HUFF/CDIC 解压 —— 纯 Kotlin 实现，逐字对齐 Sigma
- * `lib/mobi/decompress/HuffcdicDecompressor.kt` 的算法：
+ * MOBI HUFF/CDIC 解压 —— 纯 Kotlin 实现的 HuffcdicDecompressor 算法：
  *
  *  - HUFF 记录：magic/offset1/offset2，offset1 处 256 个 uint32 码长表 table1，
  *    offset2 处 32 组 (mincode, maxcode) 计算 mincodeTable/maxcodeTable；
@@ -35,7 +34,7 @@ object MobiHuffDecompressor {
         // HUFF 256 组码长表（大端 uint32）
         val table1 = IntArray(256) { i -> readU32(hb, offset1 + i * 4) }
 
-        // 32 组 (mincode, maxcode)，按 Sigma 左移 (32 - i) 归一到 32 位空间
+ // 32 组 (mincode, maxcode)，按 左移 (32 - i) 归一到 32 位空间
         val mincodeTable = LongArray(33)
         val maxcodeTable = LongArray(33)
         for (i in 1..32) {
@@ -125,7 +124,7 @@ object MobiHuffDecompressor {
         return bos.toByteArray()
     }
 
-    /** 对齐 Sigma readUIntX：从 offset 起按大端读最多 maxlen 字节组装成 long */
+ /** ：从 offset 起按大端读最多 maxlen 字节组装成 long */
     private fun readUx(b: ByteArray, offset: Int, maxlen: Int): Long {
         var value = 0L
         var i = maxlen

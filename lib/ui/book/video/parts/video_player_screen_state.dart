@@ -511,7 +511,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   // ==================== 弹幕 ====================
 
   /// 弹幕三路加载：① DanmakuStore 文件缓存 ② B 站 XML ③ 简单 JSON。
-  /// 优先级与 Sigma/B 组约定一致：先命中本地缓存，再解析章节内嵌内容。
+ /// 优先级与/B 组约定一致：先命中本地缓存，再解析章节内嵌内容。
   Future<void> _loadDanmaku(BookChapter ch) async {
     final list = <_DanmakuItem>[];
     final bookUrl =

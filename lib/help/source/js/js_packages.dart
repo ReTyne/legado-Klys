@@ -6,7 +6,7 @@
 /// JS 值/工具（java.*、cookie、__b64Unicode 等），使书源脚本里的
 /// `Packages.xxx` 真正可用，而不是原先恒返回 null 的死 Proxy。
 ///
-/// 未在本映射表中的类（例如某些 fork 特供的
+/// 未在本映射表中的类（例如某些 特供的
 /// `io.legato.kazusa.utils.TimeoutCancellationException`）取值为 undefined，
 /// 书源 `checkEnv()` 之类「取不到即非改版」的环境判定因此仍能正确工作。
 ///
@@ -53,7 +53,7 @@ class JsPackages {
       return new TextDecoder("utf-8").decode(arr);
     } catch (e) { return String(bytes); }
   }
-  // Thread.sleep：V8 没有原生阻塞 sleep，用限时忙等对齐 Android 的节流语义
+  // Thread.sleep：V8 没有原生阻塞 sleep，用限时忙等提供节流语义
   // （上限 60s，避免异常入参把 WebView 卡死；legado 本来也阻塞后台线程）。
   function __pkgSleep(ms) {
     var n = Math.max(0, Math.min(Number(ms) || 0, 60000));

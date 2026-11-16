@@ -7,7 +7,7 @@ import 'package:legado_md3/ui/book/read/read_detail_utils.dart';
 String src(String p) => File(p).readAsStringSync();
 
 void main() {
-  group('批次 3 · 边距过大回退（对齐 ChapterProvider.setFallbackLayout）', () {
+    group('边距过大回退', () {
     test('正常边距不回退，返回原边距与可视区', () {
       final p = resolveReadPadding(
         viewWidth: 360, viewHeight: 800,
@@ -56,7 +56,7 @@ void main() {
       expect(p.visibleWidth, 368);
     });
 
-    test('0 宽高首帧不误判为边距过大（对齐 upViewSize 早退）', () {
+    test('0 宽高首帧不误判为边距过大', () {
       final p = resolveReadPadding(
         viewWidth: 0, viewHeight: 0,
         left: 16, top: 8, right: 16, bottom: 8,
@@ -67,7 +67,7 @@ void main() {
     });
   });
 
-  group('批次 3 · 最小背光 / 尺寸防抖 / 点击状态机', () {
+ group('最小背光 / 尺寸防抖 / 点击状态机', () {
     test('minBacklight：0 抬到 0.004，正常值原样返回', () {
       expect(minBacklight(0.0), 0.004);
       expect(minBacklight(0.002), 0.004); // 低于 1/255
@@ -127,7 +127,7 @@ void main() {
     });
   });
 
-  group('批次 3 · 日/夜/墨水屏三套独立配置（ReadConfig）', () {
+ group('日/夜/墨水屏三套独立配置（ReadConfig）', () {
     test('cur* getter 按 readThemeMode 选取三套各自的值', () {
       final c = ReadConfig();
       expect(c.readThemeMode, 0);
@@ -177,7 +177,7 @@ void main() {
       expect(c.pageAnim, 3); // 夜间那份未被覆盖
     });
 
-    test('toJson/fromJson 往返保留全部批次 3 新字段与批次 1 keepLight', () {
+ test('toJson/fromJson 往返保留全部新字段与keepLight', () {
       final c = ReadConfig(
         readThemeMode: 2,
         textAccentColor: 0xFFABCDEF,
@@ -212,7 +212,7 @@ void main() {
       expect(r.systemTypefaces, 2);
       expect(r.contentSelectSpeakMod, 1);
       expect(r.showAddToShelfAlert, isFalse);
-      expect(r.keepLight, 300); // 批次 1 改动未被回退
+      expect(r.keepLight, 300); // 保持既有默认值
     });
 
     test('fromJson 越界值钳回合法域、兼容数字字符串', () {
@@ -234,7 +234,7 @@ void main() {
       expect(s.pageAnimEInk, 3);
     });
 
-    test('空配置缺省值与上游一致（含批次 1 默认值）', () {
+ test('空配置缺省值与一致（含默认值）', () {
       final d = ReadConfig.fromJson({});
       expect(d.readThemeMode, 0);
       expect(d.pageAnimEInk, 4);
@@ -252,7 +252,7 @@ void main() {
     });
   });
 
-  group('批次 3 · 源码接线契约（避免只写不读的假开关）', () {
+ group('源码接线契约（避免只写不读的假开关）', () {
     test('ReadConfig 暴露三套字段与 cur* 选择器', () {
       final s = src('lib/data/model/read_config.dart');
       expect(s, contains('int get curBgColor'));
@@ -265,7 +265,7 @@ void main() {
       expect(s, contains('void setCurPageAnim(int anim)'));
       expect(s, contains("'pageAnimEInk': pageAnimEInk"));
       expect(s, contains("'readThemeMode': readThemeMode"));
-      expect(s, contains("'keepLight': keepLight")); // 批次 1 保留
+      expect(s, contains("'keepLight': keepLight"));
     });
 
     test('reading_screen 真实消费三套配色/动画', () {
@@ -286,7 +286,7 @@ void main() {
       expect(s, contains('systemFontFamily(config.systemTypefaces)'));
       expect(s, contains('classifyViewSizeChange(')); // 尺寸防抖
       expect(s, contains('viewSizeDebounceMs'));
-      expect(s, contains('setFallbackLayout')); // 上游标注
+      expect(s, contains('setFallbackLayout'));
     });
 
     test('reading_screen 真实消费点击状态机/选择菜单/退出提示/5分钟备份', () {
@@ -317,13 +317,13 @@ void main() {
       expect(s, contains('clickImgWayLabels')); // 图片点击 5 档
     });
 
-    test('纯函数工具带上游行号证据', () {
+    test('纯函数工具提供边距回退、尺寸防抖与点击状态机', () {
       final s = src('lib/ui/book/read/read_detail_utils.dart');
       expect(s, contains('setFallbackLayout'));
       expect(s, contains('0.004'));
-      expect(s, contains('handler.postDelayed(300)'));
-      expect(s, contains('ContentTextView.kt:245-253'));
-      expect(s, contains('ChapterProvider.kt:328-374'));
+      expect(s, contains('viewSizeDebounceMs'));
+      expect(s, contains('class ClickTracker'));
+      expect(s, contains('onTap(int nowMs)'));
     });
   });
 }

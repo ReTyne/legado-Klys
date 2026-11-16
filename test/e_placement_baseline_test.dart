@@ -96,7 +96,7 @@ void main() {
       expect(EPlacement.readAlwaysOnline.length, 3);
       expect(EPlacement.readAlwaysText.length, 1);
       expect(EPlacement.readAlwaysText.first.visibleByDefault, isFalse,
-          reason: 'menu_toc_regex 上游 visible=false，默认不渲染');
+ reason: 'menu_toc_regex visible=false，默认不渲染');
       expect(EPlacement.readAlwaysLocal.length, 1);
     });
 
@@ -116,7 +116,7 @@ void main() {
               .firstWhere((e) => e.id == 'menu_enable_replace')
               .checkedByDefault,
           isTrue,
-          reason: 'menu_enable_replace 上游 checked=true');
+ reason: 'menu_enable_replace checked=true');
     });
 
     test('阅读页底部恰好 4 按钮且顺序为 目录/朗读/界面/设置', () {

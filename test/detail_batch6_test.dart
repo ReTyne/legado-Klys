@@ -1,4 +1,4 @@
-// 批次 6 回归测试：Web 端点参数边界 / 基础层工具 / 原生服务边界契约。
+// 回归测试：Web 端点参数边界 / 基础层工具 / 原生服务边界契约。
 // 定向运行：flutter test --no-pub test/detail_batch6_test.dart
 import 'package:flutter_test/flutter_test.dart';
 
@@ -29,7 +29,7 @@ List<_B> _sorted(List<_B> books, int sortType) => sortBookshelf<_B>(
 
 void main() {
   // ---- 19. Web 端点参数边界 ----
-  group('端口 1024..65530（WebService.kt:185-191）', () {
+ group('端口 1024..65530', () {
     test('越界（<1024 / >65530）回退 1122', () {
       expect(validateWebPort(1023), webPortDefault);
       expect(validateWebPort(65531), webPortDefault);
@@ -48,7 +48,7 @@ void main() {
     });
   });
 
-  group('width 默认 640（BookController.kt:105）', () {
+ group('width 默认 640', () {
     test('缺省 / 非法 / 非正 回退 640', () {
       expect(imageWidthDefault, 640);
       expect(parseImageWidth(null), 640);
@@ -64,7 +64,7 @@ void main() {
     });
   });
 
-  group('bookshelfSort 四分支（BookController.kt:53-61）', () {
+ group('bookshelfSort 四分支', () {
     test('1 = latestChapterTime 降序', () {
       final books = [
         _B('A', latest: 10),
@@ -95,7 +95,7 @@ void main() {
       expect(_sorted(books,99).map((b) => b.name), ['B', 'C', 'A']);
     });
 
-    test('本地 bs_sortType → 上游四分支映射', () {
+ test('本地 bs_sortType → 四分支映射', () {
       expect(mapLocalBookshelfSort(1), 2);
       expect(mapLocalBookshelfSort(4), 3);
       expect(mapLocalBookshelfSort(0), 0);
@@ -103,8 +103,8 @@ void main() {
     });
   });
 
-  group('章节 30×1s 等待（BookController.kt:186-195）', () {
-    test('常量对齐', () {
+ group('章节 30×1s 等待', () {
+    test('常量取值', () {
       expect(chapterWaitMaxAttempts, 30);
       expect(chapterWaitInterval, const Duration(seconds: 1));
     });
@@ -130,7 +130,7 @@ void main() {
     });
   });
 
-  group('封面 3s 超时 + 84×112（BookController.kt:69-94）', () {
+ group('封面 3s 超时 + 84×112', () {
     test('契约常量', () {
       expect(coverLoadTimeout, const Duration(seconds: 3));
       expect(coverWidth, 84);
@@ -139,7 +139,7 @@ void main() {
   });
 
   // ---- 20. 基础层 ----
-  group('Cookie eTLD+1（NetworkUtils.kt:212-236）', () {
+ group('Cookie eTLD+1', () {
     test('多段公共后缀 / 普通域 / IP 特判', () {
       expect(getSubDomain('http://www.biquge.com.cn/x'), 'biquge.com.cn');
       expect(getSubDomain('https://www.content.example.com'), 'example.com');
@@ -225,7 +225,7 @@ void main() {
     });
   });
 
-  group('URL 边界（NetworkUtils.kt:59-190）', () {
+ group('URL 边界', () {
     test('encodedQuery 保留集 / %XX 判定', () {
       expect(encodedQuery('abcABC012'), isTrue);
       expect(encodedQuery('a b'), isFalse);
@@ -273,7 +273,7 @@ void main() {
     });
   });
 
-  group('原生契约常量（对齐 App.kt / NotificationId.kt / AppConst.kt）', () {
+ group('原生契约常量（ / / ）', () {
     test('三渠道 / 通知 ID 分段 / 复制与停止意图', () {
       expect(WebChannelIds.download, 'channel_download');
       expect(WebChannelIds.readAloud, 'channel_read_aloud');

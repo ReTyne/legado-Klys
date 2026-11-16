@@ -38,28 +38,49 @@ class _TxtTocRuleScreenState extends State<TxtTocRuleScreen> {
 
   Future<void> _importNetwork() async {
     final ctl = TextEditingController();
-    final url = await showDialog<String>(context: context, builder: (c) => AlertDialog(
-      title: const Text('网络导入TXT目录规则'),
-      content: TextField(controller: ctl, decoration: const InputDecoration(hintText: '规则URL')),
-      actions: [TextButton(onPressed: () => Navigator.pop(c), child: const Text('取消')), FilledButton(onPressed: () => Navigator.pop(c, ctl.text), child: const Text('导入'))],
-    ));
+    final url = await showDialog<String>(
+        context: context,
+        builder: (c) => AlertDialog(
+              title: const Text('网络导入TXT目录规则'),
+              content: TextField(
+                  controller: ctl,
+                  decoration: const InputDecoration(hintText: '规则URL')),
+              actions: [
+                TextButton(
+                    onPressed: () => Navigator.pop(c), child: const Text('取消')),
+                FilledButton(
+                    onPressed: () => Navigator.pop(c, ctl.text),
+                    child: const Text('导入'))
+              ],
+            ));
     if (url == null || url.isEmpty) return;
     try {
-      final res = await Dio(BaseOptions(responseType: ResponseType.plain)).get<String>(url);
+      final res = await Dio(BaseOptions(responseType: ResponseType.plain))
+          .get<String>(url);
       final n = await _parseAndSave(res.data ?? '');
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('导入 $n 条')));
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('导入 $n 条')));
+      }
       _loadRules();
     } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('导入失败: $e')));
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('导入失败: $e')));
+      }
     }
   }
 
   Future<void> _importLocal() async {
-    final r = await FilePicker.platform.pickFiles(type: FileType.custom, allowedExtensions: ['json', 'txt']);
+    final r = await FilePicker.platform
+        .pickFiles(type: FileType.custom, allowedExtensions: ['json', 'txt']);
     if (r == null) return;
     final text = await File(r.files.first.path!).readAsString();
     final n = await _parseAndSave(text);
-    if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('导入 $n 条')));
+    if (mounted) {
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text('导入 $n 条')));
+    }
     _loadRules();
   }
 
@@ -69,7 +90,11 @@ class _TxtTocRuleScreenState extends State<TxtTocRuleScreen> {
     int n = 0;
     for (final m in list) {
       if (m is Map) {
-        try { await _db.insertTxtTocRule(TxtTocRule.fromJson(Map<String, dynamic>.from(m))); n++; } catch (_) {}
+        try {
+          await _db.insertTxtTocRule(
+              TxtTocRule.fromJson(Map<String, dynamic>.from(m)));
+          n++;
+        } catch (_) {}
       }
     }
     return n;
@@ -79,19 +104,32 @@ class _TxtTocRuleScreenState extends State<TxtTocRuleScreen> {
     final all = await _db.getTxtTocRules();
     final list = all.isEmpty ? _rules : all;
     final file = File('${Directory.systemTemp.path}/txt_toc_rules.json');
-    await file.writeAsString(const JsonEncoder.withIndent('  ').convert(list.map((e) => e.toJson()).toList()));
+    await file.writeAsString(const JsonEncoder.withIndent('  ')
+        .convert(list.map((e) => e.toJson()).toList()));
     await Share.shareXFiles([XFile(file.path)], text: 'TXT目录规则导出');
   }
 
   Future<void> _loadRules() async {
     final builtin = [
-      TxtTocRule(id: 1, name: '默认规则', chapterRule: r'^第[0-9零一二三四五六七八九十百千万]+[章节回卷集部篇].*', enable: true),
+      TxtTocRule(
+          id: 1,
+          name: '默认规则',
+          chapterRule: r'^第[0-9零一二三四五六七八九十百千万]+[章节回卷集部篇].*',
+          enable: true),
       TxtTocRule(id: 2, name: '简单章节', chapterRule: r'^第\d+章.*', enable: false),
-      TxtTocRule(id: 3, name: '中文数字', chapterRule: r'^第[零一二三四五六七八九十百千万]+章.*', enable: false),
+      TxtTocRule(
+          id: 3,
+          name: '中文数字',
+          chapterRule: r'^第[零一二三四五六七八九十百千万]+章.*',
+          enable: false),
     ];
     final dbRules = await _db.getTxtTocRules();
+    if (!mounted) return;
     setState(() {
-      _rules = [...dbRules, ...builtin.where((b) => dbRules.every((d) => d.name != b.name))];
+      _rules = [
+        ...dbRules,
+        ...builtin.where((b) => dbRules.every((d) => d.name != b.name))
+      ];
       _isLoading = false;
     });
   }
@@ -99,34 +137,62 @@ class _TxtTocRuleScreenState extends State<TxtTocRuleScreen> {
   void _showEditDialog({TxtTocRule? rule}) {
     final nameController = TextEditingController(text: rule?.name ?? '');
     final ruleController = TextEditingController(text: rule?.chapterRule ?? '');
-    final volumeController = TextEditingController(text: rule?.volumeRule ?? '');
+    final volumeController =
+        TextEditingController(text: rule?.volumeRule ?? '');
     final exampleController = TextEditingController(text: rule?.example ?? '');
     showDialog(
       context: context,
       builder: (context) => AlertDialog(
         title: Text(rule == null ? '添加规则' : '编辑规则'),
         content: Column(mainAxisSize: MainAxisSize.min, children: [
-          TextField(controller: nameController, decoration: const InputDecoration(labelText: '规则名称', border: OutlineInputBorder())),
+          TextField(
+              controller: nameController,
+              decoration: const InputDecoration(
+                  labelText: '规则名称', border: OutlineInputBorder())),
           const SizedBox(height: AppSpacing.m),
-          TextField(controller: ruleController, maxLines: 3, decoration: const InputDecoration(labelText: '章节规则(正则)', border: OutlineInputBorder(), hintText: '例如: ^第\\d+章.*')),
+          TextField(
+              controller: ruleController,
+              maxLines: 3,
+              decoration: const InputDecoration(
+                  labelText: '章节规则(正则)',
+                  border: OutlineInputBorder(),
+                  hintText: '例如: ^第\\d+章.*')),
           const SizedBox(height: AppSpacing.m),
-          TextField(controller: volumeController, maxLines: 2, decoration: const InputDecoration(labelText: '卷规则(正则)', border: OutlineInputBorder())),
+          TextField(
+              controller: volumeController,
+              maxLines: 2,
+              decoration: const InputDecoration(
+                  labelText: '卷规则(正则)', border: OutlineInputBorder())),
           const SizedBox(height: AppSpacing.m),
-          TextField(controller: exampleController, maxLines: 2, decoration: const InputDecoration(labelText: '示例', border: OutlineInputBorder())),
+          TextField(
+              controller: exampleController,
+              maxLines: 2,
+              decoration: const InputDecoration(
+                  labelText: '示例', border: OutlineInputBorder())),
         ]),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('取消')),
-          FilledButton(onPressed: () {
-            setState(() {
-              if (rule == null) {
-                _rules.add(TxtTocRule(id: DateTime.now().millisecondsSinceEpoch, name: nameController.text, chapterRule: ruleController.text, volumeRule: volumeController.text, example: exampleController.text, enable: true));
-              } else {
-                final index = _rules.indexWhere((r) => r.id == rule.id);
-                if (index >= 0) _rules[index] = TxtTocRule(id: rule.id, name: nameController.text, chapterRule: ruleController.text, volumeRule: volumeController.text, example: exampleController.text, enable: rule.enable);
-              }
-            });
-            Navigator.pop(context);
-          }, child: const Text('保存')),
+          TextButton(
+              onPressed: () => Navigator.pop(context), child: const Text('取消')),
+          FilledButton(
+              onPressed: () async {
+                final name = nameController.text.trim();
+                if (name.isEmpty) return;
+                // 先关闭弹窗，避免跨异步间隙继续使用弹窗的 BuildContext。
+                Navigator.pop(context);
+                final updated = TxtTocRule(
+                  id: rule?.id ?? DateTime.now().millisecondsSinceEpoch,
+                  name: name,
+                  chapterRule: ruleController.text,
+                  volumeRule: volumeController.text,
+                  example: exampleController.text,
+                  enable: rule?.enable ?? true,
+                  serialNumber: rule?.serialNumber ?? -1,
+                );
+                // 编辑结果与内置规则的新增都要落库，否则重进页面即丢失。
+                await _db.insertTxtTocRule(updated);
+                await _loadRules();
+              },
+              child: const Text('保存')),
         ],
       ),
     );
@@ -136,12 +202,18 @@ class _TxtTocRuleScreenState extends State<TxtTocRuleScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(title: const Text('TXT目录规则'), actions: [
-        IconButton(tooltip: '新增规则', icon: const Icon(Icons.add), onPressed: () => _showEditDialog()),
-        PopupMenuButton<String>(tooltip: '更多', onSelected: _onMenu, itemBuilder: (_) => const [
-          PopupMenuItem(value: 'import', child: Text('网络导入')),
-          PopupMenuItem(value: 'local', child: Text('本地导入')),
-          PopupMenuItem(value: 'export', child: Text('导出')),
-        ]),
+        IconButton(
+            tooltip: '新增规则',
+            icon: const Icon(Icons.add),
+            onPressed: () => _showEditDialog()),
+        PopupMenuButton<String>(
+            tooltip: '更多',
+            onSelected: _onMenu,
+            itemBuilder: (_) => const [
+                  PopupMenuItem(value: 'import', child: Text('网络导入')),
+                  PopupMenuItem(value: 'local', child: Text('本地导入')),
+                  PopupMenuItem(value: 'export', child: Text('导出')),
+                ]),
       ]),
       // 三态统一收敛到 AppAsyncState，复用无障碍增强过的公共组件。
       body: AppAsyncState(
@@ -151,30 +223,48 @@ class _TxtTocRuleScreenState extends State<TxtTocRuleScreen> {
         emptyTitle: '暂无 TXT 目录规则',
         emptyMessage: '点击右上角新增，或导入规则',
         child: ListView.builder(
-                  itemCount: _rules.length,
-                  itemBuilder: (context, index) {
-                    final rule = _rules[index];
-                    return ListTile(
-                      title: Text(rule.name),
-                      subtitle: Text(rule.chapterRule, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontFamily: 'monospace', fontSize: 12)),
-                      trailing: Switch(
-                        value: rule.enable,
-                        onChanged: (v) => setState(() => _rules[index] = TxtTocRule(id: rule.id, name: rule.name, chapterRule: rule.chapterRule, enable: v)),
-                      ),
-                      onTap: () => _showEditDialog(rule: rule),
-                      onLongPress: () async {
-                        final ok = await showAppConfirmDialog(
-                          context,
-                          title: '删除规则',
-                          content: '确定删除"${rule.name}"吗？',
-                          confirmText: '删除',
-                          danger: true,
-                        );
-                        if (ok) setState(() => _rules.removeAt(index));
-                      },
-                    );
-                  },
-                ),
+          itemCount: _rules.length,
+          itemBuilder: (context, index) {
+            final rule = _rules[index];
+            return ListTile(
+              title: Text(rule.name),
+              subtitle: Text(rule.chapterRule,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style:
+                      const TextStyle(fontFamily: 'monospace', fontSize: 12)),
+              trailing: Switch(
+                value: rule.enable,
+                onChanged: (v) async {
+                  final updated = TxtTocRule(
+                    id: rule.id,
+                    name: rule.name,
+                    chapterRule: rule.chapterRule,
+                    volumeRule: rule.volumeRule,
+                    example: rule.example,
+                    serialNumber: rule.serialNumber,
+                    enable: v,
+                  );
+                  setState(() => _rules[index] = updated);
+                  await _db.insertTxtTocRule(updated);
+                },
+              ),
+              onTap: () => _showEditDialog(rule: rule),
+              onLongPress: () async {
+                final ok = await showAppConfirmDialog(
+                  context,
+                  title: '删除规则',
+                  content: '确定删除"${rule.name}"吗？',
+                  confirmText: '删除',
+                  danger: true,
+                );
+                if (ok != true) return;
+                setState(() => _rules.removeAt(index));
+                await _db.deleteTxtTocRule(rule.id);
+              },
+            );
+          },
+        ),
       ),
     );
   }

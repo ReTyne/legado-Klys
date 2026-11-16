@@ -1,6 +1,6 @@
 import 'package:legado_md3/help/source/js/js_source.dart';
 
-/// 定时任务「执行自定义脚本」动作所需的最小 JsSource 占位实现。
+/// 定时任务「执行自定义脚本」动作所需的轻量 JsSource 纯内存实现。
 ///
 /// 定时脚本不绑定具体书源（无探索/目录/登录规则），但 JS 运行时
 /// [MiniLegadoJs] 仍需一个 JsSource 提供 getVariable/setVariable 等

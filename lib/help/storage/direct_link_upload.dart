@@ -68,7 +68,7 @@ class DirectLinkUploadService {
   static const String ruleFileName = 'directLinkUploadRule.json';
   static const String _prefKey = 'directLinkUploadRule';
 
-  /// 内置默认规则（E assets/defaultData/directLinkUpload.json）
+  /// 内置默认规则
   static final List<DirectLinkRule> defaultRules = [
     const DirectLinkRule(
       uploadUrl:

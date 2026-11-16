@@ -1,18 +1,18 @@
 /// 「规则串智能补全」。
 ///
 /// 书源里的字段规则常常只写了选择器（如 `class.item`），没写取值方式。
-/// 上游在编辑页开启「自动补全」后，会按字段类型补上 getter：
+/// 在编辑页开启「自动补全」后，会按字段类型补上 getter：
 /// - type 1 文字：`@text` / XPath `//text()`
 /// - type 2 链接：`@href` / XPath `//@href`
 /// - type 3 图片：`@src` / XPath `//@src`
 ///
-/// 易被忽略的细节（本实现逐条复刻）：
+/// 易被忽略的细节：
 /// 1. 尾部 `##正则##替换` 与 `,{...}` 参数原样保留，绝不参与补全；
 /// 2. 含 `{{}}` / `<js>` / `@js:` / `@Json:` / `$.` 或以 `:`、`##` 开头的
-///    复杂规则**不补全**（上游 `notComplete`），避免破坏脚本与 JSONPath；
+/// 复杂规则**不补全**（ `notComplete`），避免破坏脚本与 JSONPath；
 /// 3. `preRule`（列表/初始化规则）含上述复杂语法时，整个字段也不补全；
 /// 4. `&&` / `%%` / `||` 连接的每一段单独判断是否已带 getter，已带则不动；
-/// 5. type 1 时把 `img...text` 修正为取 `@alt`（上游 `fixImgInfo`）；
+/// 5. type 1 时把 `img...text` 修正为取 `@alt`（ `fixImgInfo`）；
 /// 6. XPath 规则以 `//` 或 `@Xpath:` 开头时，getter 用 XPath 形式。
 library;
 
@@ -29,22 +29,22 @@ class RuleComplete {
   /// 3 图片
   static const int typeImage = 3;
 
-  /// 上游 `notComplete`：`^:|^##|\{\{|@js:|<js>|@Json:|\$\.`
+ /// `notComplete`：`^:|^##|\{\{|@js:|<js>|@Json:|\$\.`
   /// 命中即认为规则过于复杂，不做补全。
   static final RegExp _notComplete =
       RegExp(r'^(?::|##)|(?:\{\{|@js:|<js>|@Json:|\$\.)');
 
-  /// 上游 `rules.split("##|,\{", 2)`：尾部正则替换 / 参数的分隔符。
+ /// `rules.split("##|,\{", 2)`：尾部正则替换 / 参数的分隔符。
   static final RegExp _tailSplit = RegExp(r'##|,\{');
 
-  /// 上游 `isXpath`：`^//|^@Xpath:`
+ /// `isXpath`：`^//|^@Xpath:`
   static final RegExp _isXpath =
       RegExp(r'^//|^@Xpath:', caseSensitive: false);
 
-  /// 上游 `needComplete` 的 seq 部分：`&&` / `%%` / `||`
+ /// `needComplete` 的 seq 部分：`&&` / `%%` / `||`
   static final RegExp _connectors = RegExp(r'&&|%%|\|\|');
 
-  /// 上游 `needComplete` 负向后顾里的 getter 名。
+ /// `needComplete` 负向后顾里的 getter 名。
   static const String _getterNames =
       r'attr|text|ownText|textNodes|href|content|html|alt|all|value|src';
 
@@ -53,7 +53,7 @@ class RuleComplete {
   static final RegExp _getterSuffix =
       RegExp(r'(?:@|/|^)(?:' + _getterNames + r')(?:\(\))?$');
 
-  /// 上游 `fixImgInfo`：img 元素 + 可选属性 + `@`/`/` 分隔 + `text()`。
+ /// `fixImgInfo`：img 元素 + 可选属性 + `@`/`/` 分隔 + `text`。
   /// 前瞻保证只匹配到规则单元末尾（连接符之前或整串结尾）。
   static final RegExp _imgText = RegExp(
       r'img((?:\[@?[^\]]+\])|(?:\.[-\w]+))?[@/]+text(?:\(\))?(?=&&|%%|\|\||$)');
@@ -99,8 +99,8 @@ class RuleComplete {
     }
   }
 
-  /// 某个规则组的「前置规则」字段名（上游 preRule 实参）。
-  /// 正文组上游不带 preRule，返回 null。
+ /// 某个规则组的「前置规则」字段名（preRule 实参）。
+ /// 正文组不带 preRule，返回 null。
   static String? preRuleKey(String group) {
     switch (group) {
       case 'ruleSearch':
@@ -118,7 +118,7 @@ class RuleComplete {
   /// 对一条规则串做补全。
   ///
   /// [rules] 字段规则串；[preRule] 该组的前置规则（列表规则 / init），
-  /// 用于上游同样的「前置规则复杂则整体不补全」容错；[type] 见常量。
+ /// 用于同样的「前置规则复杂则整体不补全」容错；[type] 见常量。
   /// 返回补全后的规则，或原规则（不补全时原样返回，可能为 null）。
   static String? autoComplete(
     String? rules, {
@@ -170,7 +170,7 @@ class RuleComplete {
   }
 
   /// 把 [rule] 按 `&&` / `%%` / `||` 切成段，逐段在末尾补 [getter]。
-  /// 等价于上游 `needComplete.replace(cleanedRule, "$getter${seq}")`。
+ /// 等价于 `needComplete.replace(cleanedRule, "$getter${seq}")`。
   static String _completeSegments(String rule, String getter) {
     final buf = StringBuffer();
     var start = 0;
@@ -191,8 +191,8 @@ class RuleComplete {
     return seg + getter;
   }
 
-  /// 上游 `fixImgInfo`：把 `img.xxx@text` / `img[@x]/text()` 改成取 alt。
-  /// 上游用变长后顾限定 `img` 前必须是行首 / `tag.` / 选择器分隔符；
+ /// `fixImgInfo`：把 `img.xxx@text` / `img[@x]/text` 改成取 alt。
+ /// 用变长后顾限定 `img` 前必须是行首 / `tag.` / 选择器分隔符；
   /// Dart RegExp 对变长后顾支持有限，改为在回调里检查匹配起点前缀。
   static String _fixImgText(String rule, {required bool xpath}) {
     if (!rule.contains('img')) return rule;

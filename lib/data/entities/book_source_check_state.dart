@@ -1,4 +1,4 @@
-/// 书源检测状态落库（对齐 Sigma CheckSource 的持久化结果）
+/// 书源检测状态落库（ 的持久化结果）
 class BookSourceCheckState {
   int? id;
   String origin;

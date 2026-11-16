@@ -34,7 +34,7 @@ class WebDavService {
   }
 
   /// 上传备份。[dir] 可指定远程子目录（默认 legado_backup），
-  /// 每书进度复用本方法写入 `bookProgress/`（对齐 Sigma AppWebDav.bookProgressUrl）。
+ /// 每书进度复用本方法写入 `bookProgress/`。
   Future<bool> uploadBackup(
     String fileName,
     List<int> data, {
@@ -211,7 +211,7 @@ class WebDavService {
     return (json['progress'] as List).cast<Map<String, dynamic>>();
   }
 
-  /// 单书进度文件名（对齐 Sigma `AppWebDav.getProgressFileName`）：
+ /// 单书进度文件名：
   /// `${name}_${author}` 先规范化文件名非法字符，再把 URL 保留字符百分号编码，
   /// 与 Kotlin `normalizeFileName()` + `UrlUtil.replaceReservedChar()` 同序。
   static String progressFileName(String name, String author) {

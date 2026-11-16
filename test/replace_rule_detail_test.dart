@@ -4,7 +4,7 @@ import 'package:legado_md3/help/source/replace_rule_service.dart';
 
 void main() {
   group('替换规则模型 ReplaceRule.kt', () {
-    test('fromMap 兼容上游字段别名且不丢 group/excludeScope/timeout', () {
+ test('fromMap 兼容字段别名且不丢 group/excludeScope/timeout', () {
       final r = ReplaceRule.fromMap({
         'name': '去广告',
         'group': '净化',
@@ -32,7 +32,7 @@ void main() {
       expect(r.order, 7);
     });
 
-    test('toMap 持久化新字段，toLegadoJson 输出上游字段名', () {
+ test('toMap 持久化新字段，toLegadoJson 输出字段名', () {
       final r = ReplaceRule(
         replaceSummary: '规则',
         replaceRule: 'abc',
@@ -52,7 +52,7 @@ void main() {
       expect(j['excludeScope'], '源B');
       expect(j['timeoutMillisecond'], 800);
       expect(j['order'], 3);
-      // 上游字段再导入回来应等价
+ // 字段再导入回来应等价
       final back = ReplaceRule.fromMap(Map<String, dynamic>.from(j));
       expect(back.group, '分组A');
       expect(back.excludeScope, '源B');
@@ -60,7 +60,7 @@ void main() {
       expect(back.order, 3);
     });
 
-    test('isValid 与上游一致：空/非法正则/尾部竖线无效', () {
+ test('isValid 与一致：空/非法正则/尾部竖线无效', () {
       expect(ReplaceRule(replaceSummary: '', replaceRule: '', replacement: '').isValid(), isFalse);
       expect(ReplaceRule(replaceSummary: '', replaceRule: '(', replacement: '').isValid(), isFalse);
       expect(ReplaceRule(replaceSummary: '', replaceRule: 'abc|', replacement: '').isValid(), isFalse);

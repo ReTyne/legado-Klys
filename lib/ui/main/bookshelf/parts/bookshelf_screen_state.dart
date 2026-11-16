@@ -290,8 +290,8 @@ class _BookshelfScreenState extends State<BookshelfScreen> {
     }
   }
 
-  /// 书架 AppBar 右上角 overflow 菜单 —— 项与顺序严格对齐
-  ///  `res/menu/main_bookshelf.xml` 的 11 个 showAsAction="never" 项。
+  /// 书架 AppBar 右上角 overflow 菜单 —— 项与顺序固定
+  ///  11 个默认收进 overflow 的菜单项。
   /// 由单一真源 EPlacement 生成，回调逐 id 映射原「更多」底部 sheet 的各动作；
   /// 容器由底部 sheet 改为锚定 AppBar 右上的 EOverflowMenuButton。
   /// 「搜索」为 always 常驻图标，仍独立渲染在 AppBar。

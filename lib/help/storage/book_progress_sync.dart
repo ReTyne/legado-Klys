@@ -5,7 +5,7 @@ import 'package:legado_md3/data/model/book.dart';
 import 'package:legado_md3/data/model/db_models.dart';
 import 'package:legado_md3/help/storage/webdav_service.dart';
 
-/// 云进度同步（对齐 Sigma `syncBookProgress` / `syncBookProgressPlus`
+/// 云进度同步（ / `syncBookProgressPlus`
 /// 与阅读菜单 `menu_get_progress` / `menu_cover_progress`）。
 ///
 /// - [pull]：从 WebDAV 拉取进度，按 `lastReadTime` 与本地比较，较新者写回本地

@@ -3,7 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:legado_md3/data/model/read_config.dart';
 import 'package:legado_md3/ui/book/read/text_paginator.dart';
 
-/// 章节页数估算（对齐 fork `ChapterPageEstimator` / `HeuristicPageEstimator`）。
+/// 章节页数估算（`ChapterPageEstimator` / `HeuristicPageEstimator`）。
 ///
 /// 精确模式直接复用 [TextPaginator.paginate] 的真实分页结果（与阅读页同一套
 /// 测量逻辑，保证估算页数与实际翻页数一致）；未缓存正文或视口尺寸未知时

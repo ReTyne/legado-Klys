@@ -20,7 +20,7 @@ part 'parts/spine_item.dart';
 part 'parts/epub_reader_screen_state.dart';
 
 
-/// EPUB 保版式阅读器（对齐 fork NG 的 EPUB 阅读，采用「EPUB → HTML + WebView」折中）。
+/// EPUB 保版式阅读器（的 EPUB 阅读，采用「EPUB → HTML + WebView」折中）。
 ///
 /// 与「解析成纯文本走通用阅读器」的路线不同，这里：
 /// * 用 `epubx` 读出 XHTML 章节、原书 CSS、图片字节；

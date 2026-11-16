@@ -48,11 +48,11 @@ class ReadConfig {
   double letterSpacing;
   double wordSpacing;
   // 排版数值换算：
-  // 上游存「十分之一单位」整数，绘制前 `lineSpacingExtra / 10f`；字距为 em，
+ // 存「十分之一单位」整数，绘制前 `lineSpacingExtra / 10f`；字距为 em，
   // 缩进宽按 `'　' * N` 整串测量后除以字符数；滑杆显示带偏移（字号=进度+5、
   // 字距=(进度-50)/100）。Flutter 的 TextStyle.height 是行高倍数、letterSpacing
   // 是逻辑像素、缩进用全角空格串，属于不同的单位模型，强行套 /10 会造成
-  // 首屏行距骤变（行为不等价）。此处保留 Flutter 自有换算单位，不伪造换算，
+ // 首屏行距骤变（行为不等价）。此处保留 Flutter 自有换算单位，
   // 换算对照见 lib/ui/book/read/read_detail_utils.dart 的说明。
 
   // 背景
@@ -150,7 +150,7 @@ class ReadConfig {
   bool sysTtsConfig;                     // 系统 TTS 跟随系统语速
   bool ttsFlowSys;                       // 朗读语速跟随系统
 
-  /* ===== 批次 3 · 日/夜/墨水屏三套独立配置 =====
+ /* ===== 日/夜/墨水屏三套独立配置 =====
       日/夜/墨水屏三套独立配置的默认值：
      白天 bgStr/#EEEEEE、textColor/#3E3D3B、textAccentColor/#E53935、
      darkStatusIcon=true、pageAnim=0；夜间 bgStrNight/#000000、
@@ -158,7 +158,7 @@ class ReadConfig {
      EInk bgStrEInk/#FFFFFF、textColorEInk/#000000、textAccentColorEInk/#000000、
      darkStatusIconEInk=true、pageAnimEInk=4（无动画）。
      「同一字段三份存储」：白天调的配色/动画不会覆盖夜间与墨水屏，切回各自还原。 */
-  // 当前生效模式：0 日间 / 1 夜间 / 2 墨水屏（对齐 AppConfig.isNightTheme/isEInkMode）。
+  // 当前生效模式：0 日间 / 1 夜间 / 2 墨水屏。
   int readThemeMode;
   int textAccentColor;              // 白天强调色
   bool darkStatusIcon;              // 白天状态栏暗色图标
@@ -172,7 +172,7 @@ class ReadConfig {
   bool darkStatusIconEInk;          // 墨水屏状态栏暗色图标
   int pageAnimEInk;                 // 墨水屏专用翻页动画（默认 4 无动画）
 
-  /* ===== 批次 3 · 极端值容错 / 文本选择菜单 / 退出提示 ===== */
+ /* ===== 极端值容错 / 文本选择菜单 / 退出提示 ===== */
   int systemTypefaces;              // 0 无衬线 / 1 衬线 / 2 等宽系统字体
   int contentSelectSpeakMod;        // 0 只朗读选中内容 / 1 从选择处一直朗读
   bool showAddToShelfAlert;         // 退出未入架书时弹「加入书架」确认
@@ -264,7 +264,7 @@ class ReadConfig {
     this.streamReadAloudAudio = false,
     this.sysTtsConfig = false,
     this.ttsFlowSys = true,
-    // ===== 批次 3 默认值=====
+ // ===== 默认值=====
     this.readThemeMode = 0,
     this.textAccentColor = 0xFFE53935,
     this.darkStatusIcon = true,
@@ -330,7 +330,7 @@ class ReadConfig {
     'streamReadAloudAudio': streamReadAloudAudio,
     'sysTtsConfig': sysTtsConfig,
     'ttsFlowSys': ttsFlowSys,
-    // ===== 批次 3 字段序列化 =====
+ // ===== 字段序列化 =====
     'readThemeMode': readThemeMode,
     'textAccentColor': textAccentColor,
     'darkStatusIcon': darkStatusIcon,
@@ -441,7 +441,7 @@ class ReadConfig {
     streamReadAloudAudio: json['streamReadAloudAudio'] ?? false,
     sysTtsConfig: json['sysTtsConfig'] ?? false,
     ttsFlowSys: json['ttsFlowSys'] ?? true,
-    // ===== 批次 3 字段反序列化（旧配置缺省时用上游默认值；越界值钳回合法域）=====
+ // ===== 字段反序列化（旧配置缺省时用默认值；越界值钳回合法域）=====
     readThemeMode: _readInt(json['readThemeMode'], 0).clamp(0, 2).toInt(),
     textAccentColor: json['textAccentColor'] ?? 0xFFE53935,
     darkStatusIcon: json['darkStatusIcon'] ?? true,
@@ -466,7 +466,7 @@ class ReadConfig {
     return fallback;
   }
 
-  /* ===== 批次 3 · 三套配置的「当前模式」选择器 =====
+ /* ===== 三套配置的「当前模式」选择器 =====
       Config 的 curBgStr()/curTextColor()/curStatusIconDark()/curPageAnim()
      与 setCurBg()/setCurTextColor()/setCurStatusIconDark()/setCurPageAnim()：
      读取时按当前模式选对应那份，写入时只写当前那份，互不覆盖。 */

@@ -1,4 +1,4 @@
-/// 跨源换源检索缓存（对齐 Sigma SearchBook + SearchBookDao）
+/// 跨源换源检索缓存（ + SearchBookDao）
 class SearchBookTable {
   String bookUrl;
   String name;

@@ -165,7 +165,7 @@ void main() {
     });
 
     test('声明 charset 严格优先', () {
-      // 上游对已声明的 charset 直接 Charset.forName 解码，不回退到探测；
+ // 对已声明的 charset 直接 Charset.forName 解码，不回退到探测；
       // 因此站点错标时按声明解码，这与统计探测结果不同。
       final out = HttpResponseDecoder.decode(utf8.encode('中文'),
           headers: h({'Content-Type': 'text/html; charset=gbk'}));

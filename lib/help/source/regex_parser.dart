@@ -2,7 +2,7 @@
 /// 以 part 形式归属同一库，私有成员互通，外部 import 路径不变。
 part of 'rule_pipeline.dart';
 
-/// 正则工具，对齐 Legado 书源/净化规则常用的正则操作
+/// 正则工具，覆盖书源/净化规则常用的正则操作
 class RegexParser {
   /// 取第一个匹配结果
   static String? firstMatch(String input, String pattern, {int group = 0}) {
@@ -14,7 +14,8 @@ class RegexParser {
   }
 
   /// 取所有匹配结果（默认取整个匹配，group 指定捕获组）
-  static List<String> allMatches(String input, String pattern, {int group = 0}) {
+  static List<String> allMatches(String input, String pattern,
+      {int group = 0}) {
     final re = RegExp(pattern, multiLine: true, dotAll: true);
     final result = <String>[];
     for (final m in re.allMatches(input)) {
@@ -60,6 +61,33 @@ class RegexParser {
     var out = template;
     for (var i = m.groupCount; i >= 0; i--) {
       out = out.replaceAll('\$$i', m.group(i) ?? '');
+    }
+    return out;
+  }
+
+  /// 链式正则求值。
+  ///
+  /// [rules] 为顺序执行的若干正则：中间段把每个全匹配文本用换行拼接，
+  /// 作为下一段的输入内容；末段对最终内容再次匹配，返回每个匹配的
+  /// 分组数组 `[group0, group1, …]`（group0 为全匹配）。
+  /// 规则为空或输入为空时返回空结果。
+  static List<List<String>> matchChain(List<String> rules, String content) {
+    if (rules.isEmpty) return <List<String>>[];
+    var current = content;
+    for (var i = 0; i < rules.length - 1; i++) {
+      if (rules[i].isEmpty) continue;
+      final re = RegExp(rules[i], multiLine: true, dotAll: true);
+      final hits = re.allMatches(current).map((m) => m.group(0) ?? '').toList();
+      current = hits.join('\n');
+    }
+    final last = rules.last;
+    if (last.isEmpty) return <List<String>>[];
+    final re = RegExp(last, multiLine: true, dotAll: true);
+    final out = <List<String>>[];
+    for (final m in re.allMatches(current)) {
+      out.add(<String>[
+        for (var g = 0; g <= m.groupCount; g++) m.group(g) ?? '',
+      ]);
     }
     return out;
   }

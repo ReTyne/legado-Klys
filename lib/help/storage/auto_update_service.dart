@@ -61,13 +61,13 @@ class AutoUpdateService {
   static const String keyAutoCheckUpdate = 'oc_autoCheckUpdate';
   /// 更新通道（default_version / beta_version / none）
   static const String keyUpdateVariant = 'updateToVariant';
-  /// 应用更新源：github（默认）/ gitee（对齐 Sigma AppUpdateGitee）
+ /// 应用更新源：github（默认）/ gitee
   static const String keyUpdateSource = 'update_source';
 
   static const _releasesApi = 'https://api.github.com/repos/ReTyne/legado-Klys/releases';
   static const _releasesPage = 'https://github.com/ReTyne/legado-Klys/releases';
 
-  /// Gitee releases 更新源（对齐 Sigma `AppUpdateGitee.getLatestRelease`）：
+ /// Gitee releases 更新源：
   /// beta 通道取 latest（单个对象），稳定通道取最近 3 个 release 并过滤预发布。
   static const _giteeLatestApi =
       'https://gitee.com/api/v5/repos/lyc486/legado/releases/latest';
@@ -149,7 +149,7 @@ class AutoUpdateService {
         release = data;
       } else if (data is List) {
         // Gitee 稳定通道返回最近 3 个 release：取第一个非预发布
-        // （对齐 Sigma `.first { !it.prerelease }`），全部为预发布时取首个。
+ // ，全部为预发布时取首个。
         for (final e in data) {
           if (e is Map && e['prerelease'] != true) {
             release = e;
@@ -165,7 +165,7 @@ class AutoUpdateService {
       String htmlUrl = (release['html_url'] ?? '').toString();
       if (htmlUrl.isEmpty) htmlUrl = page;
       if (isGitee) {
-        // 对齐 Sigma gitReleaseToAppReleaseInfo：优先用 assets 里的 apk 直链
+ // ：优先用 assets 里的 apk 直链
         final assets = release['assets'];
         if (assets is List) {
           for (final a in assets) {

@@ -3,7 +3,7 @@
 part of '../offline_js_bridge.dart';
 
 
-/// 对齐 java.createSymmetricCrypto(transformation, key, iv)：纯 Dart AES / DES。
+/// 提供 java.createSymmetricCrypto(transformation, key, iv)：纯 Dart AES / DES。
 class JsBridgeCrypto {
   JsBridgeCrypto._();
 
@@ -32,7 +32,7 @@ class JsBridgeCrypto {
   static List<int> _bytesOf(Object v) =>
       v is List<int> ? List<int>.from(v) : utf8.encode(v.toString());
 
-  /// 对齐桥 __aesKeyBytes：key 补零到最近的 16/24/32 字节，超长截断到 32。
+  /// key 补零到最近的 16/24/32 字节，超长截断到 32。
   static List<int> _aesKeyBytes(List<int> kb) {
     for (final size in const [16, 24, 32]) {
       if (kb.length <= size) return _padTo(kb, size);

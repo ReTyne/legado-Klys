@@ -5,7 +5,7 @@ import 'package:legado_md3/data/model/auto_task.dart';
 import 'package:legado_md3/help/storage/auto_task_service.dart';
 import 'package:legado_md3/ui/widgets/app_widgets.dart';
 
-/// 定时任务全链路 UI（对齐官方原版 AutoTaskActivity / AutoTaskEditActivity /
+/// 定时任务全链路 UI（AutoTaskActivity / AutoTaskEditActivity /
 /// AutoTaskDebugActivity）。
 ///
 /// 任务 CRUD 全部走 DatabaseService 的

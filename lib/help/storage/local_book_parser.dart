@@ -149,7 +149,7 @@ class LocalBookParser {
       // 正文用现有 PalmDOC/HTML 提取；HUFF/CDIC 时为 null，但元数据（EXTH）仍可读
       final text = _extractMobiText(bytes);
       final wordCount = text?.length;
-      // 简介：优先 EXTH 描述/主题，缺失时用正文开头兜底（对齐本地 TXT 简介提取思路）
+      // 简介：优先 EXTH 描述/主题，缺失时用正文开头兜底
       final intro = (meta.intro != null && meta.intro!.trim().isNotEmpty)
           ? meta.intro
           : (text != null && text.trim().isNotEmpty ? _introFromText(text) : null);
@@ -932,7 +932,7 @@ class LocalBookParser {
     return null;
   }
 
-  /// 正文开头截取作为简介兜底（对齐本地 TXT 的 extractBookInfo 简介思路）。
+  /// 正文开头截取作为简介兜底。
   static String _introFromText(String text, [int maxLen = 200]) {
     final t = text.trim();
     if (t.length <= maxLen) return t;

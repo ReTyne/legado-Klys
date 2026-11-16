@@ -2,7 +2,7 @@
 //
 // 本文件只保存「功能落在哪里」的权威清单，逐项
 // /workspace//-main/app/src/main/res/{menu,xml,layout}/，
-// 生产代码与各对齐测试共同引用，杜绝多处硬编码漂移。
+// 生产代码与各位置基线测试共同引用，杜绝多处硬编码漂移。
 //
 // 口径（用户拍板）：主界面严格 1:1 —— 导航层级、各页 overflow 项集合与顺序、
 // 长按菜单、设置分组与层级、交互触发点、阅读页底部按钮数/序、默认视图全部；
@@ -12,7 +12,7 @@
 // 注意：本文件放在 lib/constant/ 而非 lib/ui/，是为了不参与
 // test/ui_refactor_contract_test.dart 的「lib/ui 设计令牌覆盖」扫描分母。
 
-/// 一个 菜单项。`id` 为上游 `android:id="@+id/xxx"` 去掉前缀后的名字，
+/// 一个 菜单项。`id` 为 `android:id="@+id/xxx"` 去掉前缀后的名字，
 /// 作为稳定标识（`key`）供顺序断言使用，避免中文文案改动导致误判。
 class EMenuItem {
   const EMenuItem(
@@ -25,10 +25,10 @@ class EMenuItem {
     this.group,
   });
 
-  /// 上游菜单 id（如 `menu_update_toc`）。
+ /// 菜单 id（如 `menu_update_toc`）。
   final String id;
 
-  /// 上游 values-zh/strings.xml 的中文标题（权威文案）。
+ /// values-zh/strings.xml 的中文标题（权威文案）。
   final String zh;
 
   /// showAsAction="always"（常驻 AppBar 图标）为 true；"never"（overflow）为 false。
@@ -40,7 +40,7 @@ class EMenuItem {
   /// android:checked="true" 的默认勾选态。
   final bool checkedByDefault;
 
-  /// android:visible="false" 记为 false —— Flutter 侧默认不渲染，不伪造空壳。
+ /// android:visible="false" 记为 false —— Flutter 侧默认不渲染。
   final bool visibleByDefault;
 
   /// 所属 <group android:id>（如 `menu_group_on_line`、`menu_group_epub`）。
@@ -67,7 +67,7 @@ class EPlacement {
 
   /// 各 tab 顶部工具栏菜单（main_*.xml）的项与顺序。
   static const Map<String, List<EMenuItem>> mainMenus = {
-    // main_bookshelf.xml：搜索常驻，其余 11 项 overflow。
+    // 书架页：搜索常驻，其余 11 项 overflow。
     'bookshelf': [
       EMenuItem('menu_search', '搜索', always: true),
       EMenuItem('menu_update_toc', '更新目录'),
@@ -321,7 +321,7 @@ class EPlacement {
     'reading_secondary_button': ['备忘'],
   };
 
-  // ── 7. 平台/容器降级清单（显式标注，不伪造）──────────────────────────
+ // ── 7. 平台/容器降级清单──────────────────────────
   /// 每项为「E 能力 → Flutter 处理」。基线测试断言降级项默认不渲染。
   static const Map<String, String> degradations = {
     'showAsAction=always/never':
@@ -331,7 +331,7 @@ class EPlacement {
         'visibleByDefault=false，默认不渲染、条件可见，不造假空壳',
     'PreferenceScreen 多级 Category': '独立页面 + 分区标题，层级等价、容器不同',
     'about.xml createHeapDump':
-        'Android 专属（HeapDump），Flutter 无等价能力，平台降级不实现',
+        'Android 专属（HeapDump），当前平台不提供，降级为不实现',
     'exit(SystemNavigator.pop)': 'iOS 行为差异，平台降级',
     '<menu/> 动态子分组': 'PopupMenuButton 动态 itemBuilder，等价',
     'DrawerLayout': '本项无匹配项，无需处理',
@@ -340,7 +340,7 @@ class EPlacement {
   };
 
   /// 可选的菜单定义源码根路径，供菜单常量交叉校验使用。
-  /// 该目录不存在时由测试 `skip` 并显式打印，不静默通过、不伪造。
+ /// 该目录不存在时由测试 `skip` 并显式打印，不静默通过、。
   static const String eSourceRoot =
       '/workspace/legado-E/legado-E-main/app/src/main/res';
 }

@@ -2,16 +2,20 @@
 /// 以 part 归属同一库，私有类型互引保持可用。
 part of '../../utils/crypto_utils.dart';
 
-
 // =====================================================================
-// 对称加密门面（对齐 hutool SymmetricCrypto 被书源调用的方法集）
+// 对称加密门面（书源脚本调用的对称加解密方法集）
 // =====================================================================
 
-/// 对称加密器：java.createSymmetricCrypto(transformation, key, iv)。
+/// 对称加密器：以 transformation + key + iv 构造，提供字节 / hex / base64 加解密。
+/// [key] 为 null 时生成随机密钥，可通过 [getKey] 取回。
 class SymmetricCrypto {
   SymmetricCrypto(String transformation, dynamic key, {dynamic iv}) {
     _t = _Transformation(transformation);
-    _key = _normalizeKey(_t.algorithm, _toBytes(key));
+    if (key == null) {
+      _key = _randomKey(_t.algorithm);
+    } else {
+      _key = _normalizeKey(_t.algorithm, _toBytes(key));
+    }
     if (iv != null) setIv(iv);
   }
 
@@ -25,7 +29,26 @@ class SymmetricCrypto {
     throw ArgumentError('key/iv 仅支持 String 或字节数组');
   }
 
-  static int _blockSizeOf(String alg) => alg == 'DES' || alg == 'DESEDE' ? 8 : 16;
+  static int _blockSizeOf(String alg) =>
+      alg == 'DES' || alg == 'DESEDE' ? 8 : 16;
+
+  /// 按算法生成密码学安全的随机密钥。
+  static Uint8List _randomKey(String alg) {
+    int len;
+    switch (alg) {
+      case 'DES':
+        len = 8;
+        break;
+      case 'DESEDE':
+        len = 24;
+        break;
+      default:
+        len = 16; // AES / SM4 / RC4
+    }
+    final random = Random.secure();
+    return Uint8List.fromList(
+        List<int>.generate(len, (_) => random.nextInt(256)));
+  }
 
   void setIv(dynamic iv) {
     if (_t.algorithm == 'RC4') return; // 流密码无 IV
@@ -37,6 +60,15 @@ class SymmetricCrypto {
     _iv = out;
   }
 
+  /// 取回当前实际使用的密钥（key 为 null 时即生成的随机密钥）。
+  Uint8List getKey() => Uint8List.fromList(_key);
+
+  /// 当前密钥的 hex 形式。
+  String getKeyHex() => _bytesToHex(_key);
+
+  /// 当前密钥的 base64 形式。
+  String getKeyBase64() => base64.encode(_key);
+
   Uint8List _crypt(List<int> data, bool encrypt) {
     final input = Uint8List.fromList(data);
     if (_t.algorithm == 'RC4') {
@@ -45,7 +77,9 @@ class SymmetricCrypto {
       return out;
     }
     final cipher = _createCipher(_t, _key);
-    final buf = _t.padded && encrypt ? _padPkcs7(input, cipher.blockSize) : input;
+    final buf = _t.padded && encrypt
+        ? _pad(input, _t.padding, cipher.blockSize)
+        : input;
     return _applyMode(cipher, _parseMode(_t.mode), _iv, buf, encrypt);
   }
 
@@ -60,7 +94,7 @@ class SymmetricCrypto {
 
   Uint8List decryptBytes(List<int> data) {
     final out = _crypt(data, false);
-    if (_t.padded) return _unpadPkcs7(out, _blockSizeOf(_t.algorithm));
+    if (_t.padded) return _unpad(out, _t.padding, _blockSizeOf(_t.algorithm));
     return out;
   }
 
@@ -71,7 +105,8 @@ class SymmetricCrypto {
   }
 
   /// 解密 → UTF-8 字符串。
-  String decryptStr(dynamic data) => utf8.decode(decrypt(data), allowMalformed: true);
+  String decryptStr(dynamic data) =>
+      utf8.decode(decrypt(data), allowMalformed: true);
 
   /// 解密 Base64 数据 → UTF-8 字符串。
   String decryptBase64(String data) {

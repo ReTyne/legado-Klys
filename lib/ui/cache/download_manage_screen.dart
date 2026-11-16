@@ -6,7 +6,7 @@ import 'package:legado_md3/data/model/download_task.dart';
 import 'package:legado_md3/help/storage/download_service.dart';
 import 'package:legado_md3/ui/widgets/app_widgets.dart';
 
-/// 下载管理（对齐官方原版 CacheActivity + DownloadService）。
+/// 下载管理（CacheActivity + DownloadService）。
 ///
 /// 此前本页只是「查看已缓存章节 + 清理」，名不副实。现在改用
 /// [DownloadService]（ChangeNotifier）展示真实活跃队列：进度条、暂停/继续、

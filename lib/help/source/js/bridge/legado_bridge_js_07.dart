@@ -1,11 +1,17 @@
 /// JS 片段 7/8（按体积均匀切片，拼接顺序不可变）。
-const String legadoBridgeJsPart07 = r'''  function __jsoupResponse(url, text, code, message, headers, cookies) {
+const String legadoBridgeJsPart07 =
+    r'''  function __jsoupResponse(url, text, code, message, headers, cookies, opts) {
     var b = (text === null || text === undefined) ? "" : String(text);
     var hdrs = headers || {};
+    var o = opts || {};
+    var status = code || 200;
+    var ct = Number(o.callTime) || 0;
+    var eb = (o.errorBody === undefined || o.errorBody === null) ? b : String(o.errorBody);
+    var redirects = o.redirects || [];
     return {
       body: function () { return b; },
       bodyAsBytes: function () { return new TextEncoder().encode(b); },
-      statusCode: function () { return code || 200; },
+      statusCode: function () { return status; },
       statusMessage: function () { return message || "OK"; },
       headers: function () { return hdrs; },
       header: function (name) {
@@ -17,25 +23,46 @@ const String legadoBridgeJsPart07 = r'''  function __jsoupResponse(url, text, co
       },
       cookie: function (name) { return (cookies || {})[name] || null; },
       cookies: function () { return cookies || {}; },
-      url: function () { return String(url == null ? "" : url); },
-      charset: function () { return "utf-8"; },
+      url: function () { return String(o.finalUrl || url || ""); },
+      redirects: function () { return redirects; },
+      charset: function () { return o.charset || "utf-8"; },
+      callTime: function () { return ct; },
+      putCallTime: function (t) { ct = Number(t) || 0; return this; },
+      errorBody: function () { return eb; },
       parse: function () { return b; },
       execute: function () { return this; },
       toString: function () { return b; }
     };
   }
 
+  // 由 __doXhr 收集的真实响应元信息构造 Jsoup Response。
+  function __jsoupFromXhr(url, text) {
+    var m = globalThis.__lastXhr || {};
+    return __jsoupResponse(url, text, m.code, m.message, m.headers, m.cookies,
+      { finalUrl: m.finalUrl, redirects: m.redirects, callTime: m.callTime });
+  }
+
   // java.connect(url)：legado 语义为「立即执行并返回 StrResponse」；
   // 同时兼容书源里常见的建造者写法（.method().body().execute()）：
   //   * 直接调用 .body()/.url()/.code() → 触发一次 GET 并返回 StrResponse 字段
   //   * 先配置再 .execute() → 按配置发起请求，返回 StrResponse
-  function __connect(url) {
-    var state = { url: __resolve(url), method: "GET", headers: {}, body: null };
+  function __connect(url, header, callTimeout) {
+    var state = { url: __resolve(url), method: "GET", headers: {}, body: null,
+      followRedirects: undefined, timeout: undefined };
+    if (header && typeof header === "object") Object.assign(state.headers, header);
+    if (callTimeout !== undefined && callTimeout !== null) state.timeout = Number(callTimeout) || 0;
     var executed = null;
     function run() {
       if (executed) return executed;
-      var text = __doXhr(state.url, { method: state.method, headers: state.headers, body: state.body });
-      executed = __strResponse(state.url, text, 200, "OK", state.headers);
+      var opt = { method: state.method, headers: state.headers, body: state.body };
+      if (state.followRedirects !== undefined && state.followRedirects !== null) {
+        opt.followRedirects = state.followRedirects;
+      }
+      if (state.timeout !== undefined && state.timeout !== null) opt.timeout = state.timeout;
+      var text = __doXhr(state.url, opt);
+      var m = globalThis.__lastXhr || {};
+      executed = __strResponse(m.finalUrl || state.url, text, m.code, m.message, m.headers,
+        { callTime: m.callTime });
       return executed;
     }
     function invalidate() { executed = null; }
@@ -56,8 +83,9 @@ const String legadoBridgeJsPart07 = r'''  function __jsoupResponse(url, text, co
       },
       get: function () { state.method = "GET"; invalidate(); return this; },
       post: function (b) { state.method = "POST"; if (b !== undefined) state.body = b; invalidate(); return this; },
-      followRedirects: function () { return this; },
-      timeout: function () { return this; },
+      // 透传到 X-Legado-Follow-Redirects / X-Legado-Timeout。
+      followRedirects: function (v) { state.followRedirects = (v === undefined) ? true : !!v; invalidate(); return this; },
+      timeout: function (ms) { state.timeout = Number(ms) || 0; invalidate(); return this; },
       execute: function () { return run(); },
       url: function () { return run().url(); },
       code: function () { return run().code(); },
@@ -70,15 +98,16 @@ const String legadoBridgeJsPart07 = r'''  function __jsoupResponse(url, text, co
   }
 
   // ============================ 浏览器交互登录 ============================
-  function __openBrowser(url, title, awaitFlag) {
+  function __openBrowser(url, title, awaitFlag, customHtml, mimeType) {
     var id = "b" + Date.now() + Math.floor(Math.random() * 1000);
-    __state.browser.push({ id: id, url: __resolve(url), title: title || "" });
+    __state.browser.push({ id: id, url: __resolve(url), title: title || "", mimeType: mimeType || "" });
     return new Promise(function (resolve) {
       __pendings[id] = resolve;
       try {
         if (window.flutter_inappwebview && window.flutter_inappwebview.callHandler) {
           window.flutter_inappwebview.callHandler("legadoBrowser", JSON.stringify({
-            id: id, url: __resolve(url), title: title || ""
+            id: id, url: __resolve(url), title: title || "",
+            html: customHtml || "", mimeType: mimeType || ""
           }));
         }
       } catch (e) {}
@@ -104,16 +133,20 @@ const String legadoBridgeJsPart07 = r'''  function __jsoupResponse(url, text, co
   // 回传「渲染后的整页 DOM」与页面最终地址，包装为 StrResponse 返回。
   // 书源设置页会把结果写进 DOM 的 script 标签、location.hash 或 Cookie，
   // 因此 .body() 必须是运行后的 DOM、.url() 必须是带 hash 的最终地址。
-  function __openBrowserAwaitHtml(url, title, refetchAfterSuccess, customHtml) {
+  function __openBrowserAwaitHtml(url, title, refetchAfterSuccess, customHtml, preloadJs, config) {
     var resolved = __resolve(url);
     if (!resolved) return __strResponse("", "", 200, "OK", {});
     globalThis.__lastBrowserUrl = "";
     var html = "";
     var finalUrl = resolved;
     try {
+      var cfg = (config == null) ? "" :
+        (typeof config === "string" ? config : JSON.stringify(config));
       var endpoint = "legado://browser?url=" + encodeURIComponent(resolved) +
         "&title=" + encodeURIComponent(title || "登录") +
-        "&refetch=" + (refetchAfterSuccess === false ? "0" : "1");
+        "&refetch=" + (refetchAfterSuccess === false ? "0" : "1") +
+        "&preloadJs=" + encodeURIComponent(preloadJs || "") +
+        "&config=" + encodeURIComponent(cfg);
       var opt = { method: "GET" };
       if (customHtml != null && String(customHtml).length > 0) {
         opt = { method: "POST", body: String(customHtml) };
@@ -392,22 +425,77 @@ const String legadoBridgeJsPart07 = r'''  function __jsoupResponse(url, text, co
     }).join(" ");
   }
 
+  // base64 flags：android.util.Base64 的 NO_WRAP(=2，本实现天然无换行) 与
+  // URL_SAFE(=8，+/→-_ 并去尾部 =)，字符串名与数字值均可识别。
+  function __b64Flags(flags) {
+    if (flags === undefined || flags === null) return 0;
+    if (typeof flags === "number") return flags;
+    var s = String(flags).toUpperCase();
+    var f = 0;
+    if (s.indexOf("URL_SAFE") >= 0 || s === "8" || s.indexOf("URL") >= 0) f |= 8;
+    if (s.indexOf("NO_WRAP") >= 0 || s === "2") f |= 2;
+    return f;
+  }
+  function __b64ApplyFlags(out, flags) {
+    if (__b64Flags(flags) & 8) {
+      return out.replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
+    }
+    return out;
+  }
+  // 摘要 / HMAC 走原生全算法通道；原生不可用时回退纯 JS 家族实现。
+  function __nativeDigest(op, data, algorithm, key, out) {
+    var payload = {
+      op: op,
+      algorithm: String(algorithm || "MD5"),
+      data: String(data == null ? "" : data),
+      key: (key === undefined || key === null) ? "" : String(key),
+      out: out
+    };
+    try {
+      var r = __doXhr("legado://crypto", { method: "POST", body: payload }, null, null);
+      return r == null ? "" : String(r);
+    } catch (e) {
+      try {
+        if (op === "hmac") {
+          var h = __hmacBs(payload.data, payload.algorithm, payload.key);
+          return out === "base64" ? btoa(h) : __bsToHex(h);
+        }
+        var d = __digestBs(payload.data, payload.algorithm);
+        return out === "base64" ? btoa(d) : __bsToHex(d);
+      } catch (e2) { return ""; }
+    }
+  }
+
   var java = {
     // 日志 / 提示：toast 只进提示队列，log 只进日志队列。
     // 早期版本让 toast 同时写入两处，展示层各遍历一次就会把同一条提示
     // 打印两遍（书源 login() 的「正在登录中/登录成功」重复即由此而来）。
     log: function () { var s = __argString(arguments); __state.logs.push(s); return arguments.length ? arguments[0] : undefined; },
-    toast: function (msg) { var s = String(msg == null ? "" : msg); __state.toasts.push(s); },
-    longToast: function (msg) { var s = String(msg == null ? "" : msg); __state.toasts.push(s); },
+    // toast/longToast：加书源名前缀，并用 toastRecords 区分展示时长。
+    toast: function (msg, duration) {
+      var s = (__state.meta.name ? "[" + __state.meta.name + "] " : "") + String(msg == null ? "" : msg);
+      __state.toasts.push(s);
+      if (!__state.toastRecords) __state.toastRecords = [];
+      __state.toastRecords.push({ text: s, duration: Number(duration) || 0, long: false });
+    },
+    longToast: function (msg, duration) {
+      var s = (__state.meta.name ? "[" + __state.meta.name + "] " : "") + String(msg == null ? "" : msg);
+      __state.toasts.push(s);
+      if (!__state.toastRecords) __state.toastRecords = [];
+      __state.toastRecords.push({ text: s, duration: Number(duration) || 1, long: true });
+    },
 
     // 网络
+    // 第二参数为 number 时视为超时（毫秒，透传 X-Legado-Timeout），
+    // 为对象时视为请求选项（method/headers/body/timeout/...）。
     ajax: function (url, options) {
-      var p = __parseUrlOptions(url, options);
+      var extra = (typeof options === "number") ? { timeout: options } : options;
+      var p = __parseUrlOptions(url, extra);
       return __doXhr(p.url, p.opt);
     },
     // get/post/head/put/delete：legado 返回 Jsoup Connection.Response
     // （.body() 为 String、.statusCode()/.headers()/.cookies()/.url()）
-    get: function (url, headers) {
+    get: function (url, headers, timeout) {
       // legado 语义：java.get(url, headers) 为网络方法（Jsoup Connection.Response）。
       // 旧书源兼容：单参调用且形态不像 URL 时按缓存读（如 java.get("book_id")）。
       var looksUrl = typeof url === "string" && (
@@ -417,21 +505,32 @@ const String legadoBridgeJsPart07 = r'''  function __jsoupResponse(url, text, co
         var v = cache.get(url);
         return v === null ? "" : v;
       }
-      return __jsoupResponse(url, __doXhr(url, { method: "GET", headers: headers || {} }));
+      // Jsoup 语义默认不跟随重定向；透传可选超时。
+      var opt = { method: "GET", headers: headers || {}, followRedirects: false };
+      if (timeout !== undefined && timeout !== null) opt.timeout = timeout;
+      return __jsoupFromXhr(url, __doXhr(url, opt));
     },
-    post: function (url, body, headers) {
-      return __jsoupResponse(url, __doXhr(url, { method: "POST", body: body, headers: headers || {} }));
+    post: function (url, body, headers, timeout) {
+      var opt = { method: "POST", body: body, headers: headers || {}, followRedirects: false };
+      if (timeout !== undefined && timeout !== null) opt.timeout = timeout;
+      return __jsoupFromXhr(url, __doXhr(url, opt));
     },
-    put: function (url, body, headers) {
-      return __jsoupResponse(url, __doXhr(url, { method: "PUT", body: body, headers: headers || {} }));
+    put: function (url, body, headers, timeout) {
+      var opt = { method: "PUT", body: body, headers: headers || {}, followRedirects: false };
+      if (timeout !== undefined && timeout !== null) opt.timeout = timeout;
+      return __jsoupFromXhr(url, __doXhr(url, opt));
     },
-    delete: function (url, headers) {
-      return __jsoupResponse(url, __doXhr(url, { method: "DELETE", headers: headers || {} }));
+    delete: function (url, headers, timeout) {
+      var opt = { method: "DELETE", headers: headers || {}, followRedirects: false };
+      if (timeout !== undefined && timeout !== null) opt.timeout = timeout;
+      return __jsoupFromXhr(url, __doXhr(url, opt));
     },
-    head: function (url, headers) {
-      return __jsoupResponse(url, __doXhr(url, { method: "HEAD", headers: headers || {} }));
+    head: function (url, headers, timeout) {
+      var opt = { method: "HEAD", headers: headers || {}, followRedirects: false };
+      if (timeout !== undefined && timeout !== null) opt.timeout = timeout;
+      return __jsoupFromXhr(url, __doXhr(url, opt));
     },
-    connect: function (url) { return __connect(url); },
+    connect: function (url, header, callTimeout) { return __connect(url, header, callTimeout); },
     newResponse: function (url) { return __connect(url); },
     //  JsExtensions.getCookie(tag) / getCookie(tag, key)：
     // 双参按名取单个 cookie 值，书源高频写法；单参返回完整 cookie 串。
@@ -443,14 +542,16 @@ const String legadoBridgeJsPart07 = r'''  function __jsoupResponse(url, text, co
     },
 
     // 编码
-    base64Encode: function (str) { return __b64Unicode(str); },
-    base64Decode: function (str) {
-      try { return __unb64Unicode(str); } catch (e) {
-        try { return atob(str); } catch (e2) { return ""; }
+    base64Encode: function (str, flags) { return __b64ApplyFlags(__b64Unicode(str), flags); },
+    base64Decode: function (str, flags) {
+      var s = String(str == null ? "" : str);
+      if (__b64Flags(flags) & 8) s = s.replace(/-/g, "+").replace(/_/g, "/");
+      try { return __unb64Unicode(s); } catch (e) {
+        try { return atob(s); } catch (e2) { return ""; }
       }
     },
-    encodeBase64: function (str) { return __b64Unicode(str); },
-    decodeBase64: function (str) { return this.base64Decode(str); },
+    encodeBase64: function (str, flags) { return this.base64Encode(str, flags); },
+    decodeBase64: function (str, flags) { return this.base64Decode(str, flags); },
     hexDecodeToString: function (hex) {
       // 书源对「明文 JSON / HTML」与「十六进制响应」都会调用本函数。
       // 仅当整串为合法、偶数长度、可解出 UTF-8 的十六进制时才解码，否则原样返回。
@@ -465,8 +566,12 @@ const String legadoBridgeJsPart07 = r'''  function __jsoupResponse(url, text, co
     },
     hexEncodeToString: function (str) { return __bytesToHex(new TextEncoder().encode(str)); },
     stringToHex: function (str) { return __bytesToHex(new TextEncoder().encode(str)); },
-    base64DecodeToByteArray: function (str) {
-      try { return Array.from(__b64ToBytes(String(str == null ? "" : str))); } catch (e) { return []; }
+    base64DecodeToByteArray: function (str, flags) {
+      try {
+        var s = String(str == null ? "" : str);
+        if (__b64Flags(flags) & 8) s = s.replace(/-/g, "+").replace(/_/g, "/");
+        return Array.from(__b64ToBytes(s));
+      } catch (e) { return []; }
     },
     hexDecodeToByteArray: function (hex) {
       try { return Array.from(__hexToBytes(String(hex == null ? "" : hex))); } catch (e) { return []; }
@@ -476,11 +581,12 @@ const String legadoBridgeJsPart07 = r'''  function __jsoupResponse(url, text, co
     sha1Encode: function (str) { return __sha1(String(str == null ? "" : str)); },
     sha256Encode: function (str) { return __sha256(String(str == null ? "" : str)); },
     // 摘要：java.digestHex(str, "MD5"|"SHA-1"|"SHA-256") / digestBase64Str
-    digestHex: function (data, algorithm) { return __bsToHex(__digestBs(data, algorithm)); },
-    digestBase64Str: function (data, algorithm) { return btoa(__digestBs(data, algorithm)); },
+    // 走 legado://crypto 的 op=digest/hmac，由 Dart 侧全算法门面计算。
+    digestHex: function (data, algorithm) { return __nativeDigest("digest", data, algorithm, null, "hex"); },
+    digestBase64Str: function (data, algorithm) { return __nativeDigest("digest", data, algorithm, null, "base64"); },
     // HMAC：java.HMacHex(data, algorithm, key) / HMacBase64(data, algorithm, key)
-    HMacHex: function (data, algorithm, key) { return __bsToHex(__hmacBs(data, algorithm, key)); },
-    HMacBase64: function (data, algorithm, key) { return btoa(__hmacBs(data, algorithm, key)); },
+    HMacHex: function (data, algorithm, key) { return __nativeDigest("hmac", data, algorithm, key, "hex"); },
+    HMacBase64: function (data, algorithm, key) { return __nativeDigest("hmac", data, algorithm, key, "base64"); },
 
     // AES 对称加解密
     aesBase64DecodeToString: function (data, key, transformation, iv) {

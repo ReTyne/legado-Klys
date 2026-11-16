@@ -70,7 +70,7 @@ void main() {
       expect(p.applyFieldOps('第1章 第2章', ops), '1');
     });
 
-    test('##match##replace### 4 段为 replaceFirst（上游 replaceFirst=true）', () {
+ test('##match##replace### 4 段为 replaceFirst（replaceFirst=true）', () {
       final p = pipeline();
       final ops = p.parseFieldParts('class.a##foo##bar###').ops;
       expect(ops.single.kind, 'replaceFirst');

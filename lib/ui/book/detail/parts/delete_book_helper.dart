@@ -15,7 +15,7 @@ import 'package:legado_md3/ui/widgets/app_widgets.dart';
 ///    确认后把选择结果写回并据此调用 `delBook(deleteBookOriginal)`；
 ///  - `BookInfoViewModel.delBook` 里 `LocalBook.deleteBook(it, deleteOriginal)`
 ///    真正删除源文件。
-/// 批量删除（`BookshelfManageActivity.kt:327-344`）同样带该复选框，故抽成
+/// 批量删除同样带该复选框，故抽成
 /// 公共助手供详情页与书架长按菜单共用。
 
 /// 持久化键。

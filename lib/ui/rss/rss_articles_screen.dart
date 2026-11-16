@@ -42,31 +42,39 @@ class _RssArticlesScreenState extends State<RssArticlesScreen> {
   /// RssSortViewModel.switchLayout 的五档循环），按源持久化。
   int _articleStyle = 0;
   static const _layoutKeyPrefix = 'rss_articles_layout_';
-  static const List<String> layoutNames = [
-    '标准列表', '紧凑列表', '双列网格', '瀑布流', '大图卡片',
-  ];
+  static const layoutNames = ['标准列表', '紧凑列表', '双列网格', '瀑布流', '大图卡片'];
 
   @override
   void initState() {
     super.initState();
     source = widget.source;
     _categories = _service.parseCategories(source);
+    _refreshCategories();
     _loadRecordEnabled();
     _loadLayout();
     _load();
+  }
+
+  /// 用 sortUrls 求值 <js> / @js: 分类地址并按内容哈希缓存；
+  /// initState 里的同步解析只作为首帧兜底。
+  Future<void> _refreshCategories() async {
+    final cats = await _service.sortUrls(source);
+    if (!mounted) return;
+    setState(() => _categories = cats);
   }
 
   Future<void> _loadLayout() async {
     try {
       final prefs = await SharedPreferences.getInstance();
       final v = prefs.getInt('$_layoutKeyPrefix${source.sourceUrl}') ??
-          source.articleStyle ?? 0;
+          source.articleStyle ??
+          0;
       if (mounted) setState(() => _articleStyle = v.clamp(0, 4));
     } catch (_) {}
   }
 
   /// 五档布局循环 0→1→2→3→4→0，同时写 SharedPreferences 与 rss_sources 表，
-  /// 与上游 RssSortViewModel.switchLayout / RssSource.articleStyle 对齐。
+ /// 布局偏好保存到 RssSource.articleStyle。
   Future<void> _switchLayout() async {
     final next = (_articleStyle + 1) % 5;
     setState(() => _articleStyle = next);
@@ -82,8 +90,8 @@ class _RssArticlesScreenState extends State<RssArticlesScreen> {
     try {
       final prefs = await SharedPreferences.getInstance();
       if (mounted) {
-        setState(() =>
-            _recordEnabled = prefs.getBool(_recordEnabledKey) ?? true);
+        setState(
+            () => _recordEnabled = prefs.getBool(_recordEnabledKey) ?? true);
       }
     } catch (_) {}
   }
@@ -155,9 +163,8 @@ class _RssArticlesScreenState extends State<RssArticlesScreen> {
           for (final c in _categories)
             ListTile(
               title: Text(c.name),
-              trailing: _category?.name == c.name
-                  ? const Icon(Icons.check)
-                  : null,
+              trailing:
+                  _category?.name == c.name ? const Icon(Icons.check) : null,
               onTap: () {
                 Navigator.pop(ctx);
                 if (_category?.name != c.name) {
@@ -179,15 +186,14 @@ class _RssArticlesScreenState extends State<RssArticlesScreen> {
       await Navigator.push(
         context,
         MaterialPageRoute(
-          builder: (_) =>
-              RssReadScreen(article: article, source: source),
+          builder: (_) => RssReadScreen(article: article, source: source),
         ),
       );
       _load();
     }
   }
 
-  // ===== 文章页菜单（对齐 res/menu/rss_articles.xml）=====
+  // ===== 文章页菜单 =====
 
   /// 顶栏「更多」菜单分发：文章内搜索 / 刷新排序 / 源变量 / 编辑源 / 登录 / 清空，
   /// 另含阅读记录与时间排序。每一项都真实作用于数据或页面。
@@ -241,7 +247,8 @@ class _RssArticlesScreenState extends State<RssArticlesScreen> {
 
   /// menu_refresh_sort：重新解析分类并重新拉取文章（清掉旧排序缓存）。
   Future<void> _refreshSort() async {
-    setState(() => _categories = _service.parseCategories(source));
+    RssService.removeSortCache();
+    await _refreshCategories();
     await _load();
   }
 
@@ -318,7 +325,7 @@ class _RssArticlesScreenState extends State<RssArticlesScreen> {
     } catch (_) {}
   }
 
-  /// menu_clear：清空该订阅源的全部文章（真实删库），对齐 Sigma clearArticles。
+ /// menu_clear：清空该订阅源的全部文章（真实删库），。
   Future<void> _clearArticles() async {
     final ok = await showAppConfirmDialog(
       context,
@@ -358,7 +365,8 @@ class _RssArticlesScreenState extends State<RssArticlesScreen> {
         builder: (ctx, setSheet) => SafeArea(
           child: Column(mainAxisSize: MainAxisSize.min, children: [
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: AppSpacing.l, vertical: AppSpacing.xs),
+              padding: const EdgeInsets.symmetric(
+                  horizontal: AppSpacing.l, vertical: AppSpacing.xs),
               child: Row(children: [
                 const Expanded(
                     child: Text('阅读记录',
@@ -409,10 +417,8 @@ class _RssArticlesScreenState extends State<RssArticlesScreen> {
                     final rec = current[i];
                     return ListTile(
                       leading: const Icon(Icons.article_outlined),
-                      title: Text(
-                          rec.title.isEmpty ? rec.link : rec.title,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis),
+                      title: Text(rec.title.isEmpty ? rec.link : rec.title,
+                          maxLines: 1, overflow: TextOverflow.ellipsis),
                       subtitle: Text(
                         '${_fmtTime(rec.readTime)} · 位置 ${rec.durPos.toInt()}',
                         style: const TextStyle(fontSize: 11),
@@ -423,8 +429,8 @@ class _RssArticlesScreenState extends State<RssArticlesScreen> {
                           await _db.toggleRssReadRecordEnabled(
                               rec.link, v ? 1 : 0);
                           setSheet(() {
-                            final idx = current
-                                .indexWhere((e) => e.link == rec.link);
+                            final idx =
+                                current.indexWhere((e) => e.link == rec.link);
                             if (idx >= 0) current[idx].enabled = v ? 1 : 0;
                           });
                         },
@@ -510,7 +516,7 @@ class _RssArticlesScreenState extends State<RssArticlesScreen> {
             icon: const Icon(Icons.refresh),
             onPressed: _load,
           ),
-          // 对齐 rss_articles.xml 的溢出菜单：搜索 / 登录 / 刷新排序 /
+          // 溢出菜单：搜索 / 登录 / 刷新排序 /
           // 源变量 / 编辑源 / 切换布局 / 阅读记录 / 清空。
           PopupMenuButton<String>(
             tooltip: '更多',
@@ -627,7 +633,7 @@ class _RssArticlesScreenState extends State<RssArticlesScreen> {
       case 2:
         return _buildGrid(columns: 2);
       case 3:
-        // 上游 style=3 为瀑布流，横屏三列、竖屏两列。
+ // style=3 为瀑布流，横屏三列、竖屏两列。
         return _buildGrid(
           columns: MediaQuery.orientationOf(context) == Orientation.landscape
               ? 3
@@ -711,8 +717,7 @@ class _RssArticlesScreenState extends State<RssArticlesScreen> {
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
                       fontSize: 12,
-                      fontWeight:
-                          read ? FontWeight.normal : FontWeight.bold,
+                      fontWeight: read ? FontWeight.normal : FontWeight.bold,
                     ),
                   ),
                   if ((article.description ?? '').isNotEmpty) ...[
@@ -721,8 +726,8 @@ class _RssArticlesScreenState extends State<RssArticlesScreen> {
                       article.description!,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                          fontSize: 10, color: cs.onSurfaceVariant),
+                      style:
+                          TextStyle(fontSize: 10, color: cs.onSurfaceVariant),
                     ),
                   ],
                   const SizedBox(height: 3),
@@ -744,7 +749,8 @@ class _RssArticlesScreenState extends State<RssArticlesScreen> {
   Widget _gridPlaceholder(ColorScheme cs) => Container(
         color: cs.surfaceContainerHighest,
         alignment: Alignment.center,
-        child: Icon(Icons.article_outlined, size: 32, color: cs.onSurfaceVariant),
+        child:
+            Icon(Icons.article_outlined, size: 32, color: cs.onSurfaceVariant),
       );
 
   Widget _tile(RssArticle article) {

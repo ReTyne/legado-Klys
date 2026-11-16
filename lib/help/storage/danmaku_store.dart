@@ -11,9 +11,9 @@ import 'package:legado_md3/data/model/v14_models.dart';
 /// 一条 B 站弹幕。
 ///
 /// `p` 字段逗号分隔：`time,type,textSize,color,timestamp,pool,userHash,danmakuId`
-///   * [timeMs] 出现时间（秒 × 1000，对齐 Kotlin `(values[0] * 1000).toLong()`）
+///   * [timeMs] 出现时间（秒 × 1000）
 ///   * [type] 1 右→左滚动 / 6 左→右 / 5 顶部固定 / 4 底部固定 / 7 高级 / 8 脚本
-///   * [textSize] 字号；[color] 不透明 ARGB（0xAARRGGBB，对齐 `0xff000000 or color`）
+/// * [textSize] 字号；[color] 不透明 ARGB（0xAARRGGBB，）
 ///   * [text] 已做 XML 实体解码的弹幕正文
 class DanmakuItem {
   DanmakuItem({
@@ -116,7 +116,7 @@ class BiliDanmakuParser {
     final type = n(1, 1);
     final textSize = d(2, 25);
     final colorRaw = n(3, 0xFFFFFF);
-    // 对齐 Kotlin：((0x00000000ff000000L or color) and 0xffffffffL).toInt()
+    // 颜色归一化：((0x00000000ff000000L or color) and 0xffffffffL).toInt()
     final color = 0xFF000000 | (colorRaw & 0x00FFFFFF);
     return DanmakuItem(
       timeMs: (timeSec * 1000).toInt(),
@@ -132,7 +132,7 @@ class BiliDanmakuParser {
   }
 }
 
-/// XML 实体编/解码（对齐 `BiliDanmukuParser.decodeXmlString`）。
+/// XML 实体编/解码。
 class _BiliXml {
   static String decode(String s) {
     var out = s.trim();
@@ -166,7 +166,7 @@ class _BiliXml {
       .replaceAll('"', '&quot;');
 }
 
-/// 弹幕文件存储（对齐 Sigma `RuleBigDataHelp.getDanmakuFile`）。
+/// 弹幕文件存储。
 ///
 /// 文件落在 `<文档目录>/ruleData/book/<md5(bookUrl)>/<md5(chapterUrl)>/<md5("danmaku")>.txt`，
 /// 并同步写 `danmaku_caches` 索引（`DatabaseService().upsertDanmakuCache`）。
@@ -186,7 +186,7 @@ class DanmakuStore {
 
   static String _md5(String s) => md5.convert(utf8.encode(s)).toString();
 
-  /// 根目录 `ruleData/book`（对齐 Sigma `externalFiles/ruleData/book`）。
+ /// 根目录 `ruleData/book`。
   Future<Directory> _root() async {
     final dir = await getApplicationDocumentsDirectory();
     final root = Directory(p.join(dir.path, 'ruleData', 'book'));
@@ -194,7 +194,7 @@ class DanmakuStore {
     return root;
   }
 
-  /// 三级 MD5 路径（对齐 `RuleBigDataHelp.getDanmakuFile`）。
+ /// 三级 MD5 路径。
   Future<File> fileFor(String bookUrl, String chapterUrl) async {
     final root = await _root();
     final bookDir = Directory(p.join(root.path, _md5(bookUrl)));
@@ -212,7 +212,7 @@ class DanmakuStore {
   }) async {
     final f = await fileFor(bookUrl, chapterUrl);
     await f.writeAsString(xml);
-    // 对齐 Sigma putChapterVariable：记录原始 bookUrl，便于 clearInvalid 反查
+ // ：记录原始 bookUrl，便于 clearInvalid 反查
     final bookUrlFile = File(p.join(f.parent.parent.path, 'bookUrl.txt'));
     if (!await bookUrlFile.exists()) {
       await bookUrlFile.writeAsString(bookUrl);
@@ -288,7 +288,7 @@ class DanmakuStore {
     return rows.length;
   }
 
-  /// 按保留时长清理：`deadline = now - ttl`（对齐 `KvCache.deadline` 语义）。
+ /// 按保留时长清理：`deadline = now - ttl`（ 语义）。
   Future<int> clearExpired({
     String? bookUrl,
     Duration ttl = const Duration(days: 30),

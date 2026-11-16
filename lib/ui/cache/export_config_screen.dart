@@ -319,35 +319,35 @@ class _ExportConfigScreenState extends State<ExportConfigScreen> {
               SwitchListTile(
                 dense: true,
                 title: const Text('替换净化'),
-                subtitle: const Text('导出时应用已启用的替换规则（E: menu_enable_replace）', style: TextStyle(fontSize: 11)),
+                subtitle: const Text('导出时应用已启用的替换规则', style: TextStyle(fontSize: 11)),
                 value: _useReplace,
                 onChanged: (v) => _apply(() => AppPrefs.exportUseReplace = v),
               ),
               SwitchListTile(
                 dense: true,
                 title: const Text('不含章节名'),
-                subtitle: const Text('正文直接相连，不插入章节标题（E: menu_export_no_chapter_name）', style: TextStyle(fontSize: 11)),
+                subtitle: const Text('正文直接相连，不插入章节标题', style: TextStyle(fontSize: 11)),
                 value: _noChapterName,
                 onChanged: (v) => _apply(() => AppPrefs.exportNoChapterName = v),
               ),
               SwitchListTile(
                 dense: true,
                 title: const Text('导出到 WebDAV'),
-                subtitle: const Text('导出完成后上传到远程书库（E: menu_export_web_dav）', style: TextStyle(fontSize: 11)),
+                subtitle: const Text('导出完成后上传到远程书库', style: TextStyle(fontSize: 11)),
                 value: _toWebDav,
                 onChanged: (v) => _apply(() => AppPrefs.exportToWebDav = v),
               ),
               SwitchListTile(
                 dense: true,
                 title: const Text('并行导出'),
-                subtitle: const Text('多本书同时导出（E: menu_parallel_export）', style: TextStyle(fontSize: 11)),
+                subtitle: const Text('多本书同时导出', style: TextStyle(fontSize: 11)),
                 value: _parallel,
                 onChanged: (v) => _apply(() => AppPrefs.parallelExportBook = v),
               ),
               SwitchListTile(
                 dense: true,
                 title: const Text('自定义导出章节'),
-                subtitle: const Text('单本导出时选择章节范围（E: menu_enable_custom_export）', style: TextStyle(fontSize: 11)),
+                subtitle: const Text('单本导出时选择章节范围', style: TextStyle(fontSize: 11)),
                 value: _customExport,
                 onChanged: (v) async {
                   final p = await SharedPreferences.getInstance();

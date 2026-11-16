@@ -13,7 +13,7 @@ import android.os.Looper
 import android.provider.Settings
 
 /**
- * 真实电量 + 系统亮度 / 窗口亮度（对齐 Sigma TimeBatteryReceiver 与
+ * 真实电量 + 系统亮度 / 窗口亮度（ 与
  * ui_main §6.2「真实系统亮度 SCREEN_BRIGHTNESS + ContentObserver」）。
  */
 object DeviceInfoHelper {

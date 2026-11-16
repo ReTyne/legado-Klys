@@ -5,7 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:legado_md3/help/storage/book_progress_sync.dart';
 import 'package:legado_md3/ui/widgets/app_widgets.dart';
 
-/// 刷新范围（对齐 Sigma `menu_refresh` 三档：目录 / 当前章 / 全文）
+/// 刷新范围（ 三档：目录 / 当前章 / 全文）
 enum RefreshScope {
   toc,     // 刷新目录（目录/章节/全文 里的「目录」档：重拉目录 + 清全文缓存）
   chapter, // 刷新当前章节

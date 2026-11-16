@@ -26,7 +26,7 @@ class JsSymmetricCrypto {
   /// 单分组 ECB 解密原语（与 [encryptBlock] 互逆）。
   List<int> decryptBlock(List<int> block) => _decBlock(block);
 
-  /// 加密字节（PKCS5/PKCS7 填充 + 可选 CBC），返回字节数组（对齐 encrypt）。
+  /// 加密字节（PKCS5/PKCS7 填充 + 可选 CBC），返回字节数组。
   List<int> encrypt(List<int> data) {
     final padded = _pad(data, _block);
     final out = <int>[];
@@ -43,15 +43,15 @@ class JsSymmetricCrypto {
     return out;
   }
 
-  /// 加密字符串为 base64（对齐 encryptBase64）。
+  /// 加密字符串为 base64。
   String encryptBase64(String text) =>
       JsBridgeCodec.bytesToBase64(encrypt(utf8.encode(text)));
 
-  /// 加密字符串为 hex（对齐 encryptHex）。
+  /// 加密字符串为 hex。
   String encryptHex(String text) =>
       JsBridgeCodec.bytesToHex(encrypt(utf8.encode(text)));
 
-  /// 解密字节数组（可选 CBC + 去填充），返回明文字节（对齐 decrypt）。
+  /// 解密字节数组（可选 CBC + 去填充），返回明文字节。
   List<int> decrypt(List<int> cipher) {
     final out = <int>[];
     var prev = List<int>.from(_iv);

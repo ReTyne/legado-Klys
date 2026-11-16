@@ -1,7 +1,6 @@
 // 功能位置「可验收基线」（B5 重写）。
 //
-// 与旧版区别：旧版用「逐项 find.text ... findsOneWidget」的假顺序断言，
-// 只验存在不验顺序、且锁定 本项目旧文案。本版：
+// 本版用稳定 Key 与坐标做真正的严格顺序断言，并校验分组树平铺归位：
 //   - overflow 项用稳定 Key('e_menu::<id>') + getTopLeft().dy 升序做真正严格顺序断言；
 //   - 我的页断言 pref_main 14 项分组树 + 独有项按语义平铺归位（主界面顺序不变、功能不删、直接可触达）；
 //   - 断言容器是锚定 AppBar 右上的 overflow（而非底部 sheet）。
@@ -70,7 +69,7 @@ Future<void> _scrollUntilVisible(
 void main() {
   setUp(() => SharedPreferences.setMockInitialValues({}));
 
-  testWidgets('书架 overflow 与 E main_bookshelf 严格一致（项集合 + Key 顺序）',
+  testWidgets('书架 overflow 项集合与顺序符合位置基线（Key 顺序）',
       (tester) async {
     final p = BookProvider()..debugSeed(_seedBooks());
     await tester.pumpWidget(_withProvider(p, const BookshelfScreen()));
@@ -95,7 +94,7 @@ void main() {
     // 真正严格顺序：按渲染 y 坐标升序必须等于单一真源顺序
     final ids = overflow.map((e) => e.id).toList();
     expect(_overflowOrderById(tester, ids), ids,
-        reason: '书架 overflow 渲染顺序必须与 E main_bookshelf.xml 一致');
+        reason: '书架 overflow 渲染顺序与单一真源顺序一致');
 
     // 本项目旧文案（已被 标准文案替换）不应出现在 主界面
     for (final old in const ['添加URL', '缓存导出', '导出书架', '导入书架']) {

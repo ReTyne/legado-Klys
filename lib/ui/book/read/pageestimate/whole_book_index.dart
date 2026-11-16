@@ -1,7 +1,7 @@
 import 'package:legado_md3/data/local/app_database.dart';
 import 'package:legado_md3/data/model/v14_models.dart';
 
-/// 全书页数索引（对齐 fork `WholeBookPageIndex` / `PageEstimateCalibrationStore`）。
+/// 全书页数索引（`WholeBookPageIndex` / `PageEstimateCalibrationStore`）。
 ///
 /// 以 v14 `page_estimates` 表为持久层：每章页数估算后落库，汇总出全书页数，
 /// 并把「按章节数均分」的粗略进度校准成「按页数」的真实进度。

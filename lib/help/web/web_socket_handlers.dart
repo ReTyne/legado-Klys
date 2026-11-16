@@ -5,13 +5,13 @@ import 'package:shelf/shelf.dart';
 import 'package:shelf_web_socket/shelf_web_socket.dart';
 import 'package:web_socket_channel/web_socket_channel.dart';
 
-/// WebSocket 端点（对齐 Sigma `WebSocketServer.kt:11-22` 的 handshake.uri 分派）。
+/// WebSocket 端点（handshake.uri 分派）。
 enum WsEndpoint { bookSourceDebug, rssSourceDebug, searchBook }
 
 /// 一条客户端消息触发的真实动作。
 ///
 /// [endpoint] 命中的端点；[message] 为已解析的 JSON 对象；[send] 向该连接
-/// 回推一条文本帧（对应 Sigma 三个 socket 的 `send(...)` / `printLog`）；
+/// 回推一条文本帧（对应 三个 socket 的 `send(...)` / `printLog`）；
 /// [close] 以 NormalClosure(1000) 结束连接（对应 `close(..., "调试结束")`
 /// 与 `close(normalClosure, SEARCH_FINISH, false)`）。
 typedef WsMessageHandler = Future<void> Function(
@@ -24,10 +24,10 @@ typedef WsMessageHandler = Future<void> Function(
 /// 3 个真正的 WebSocket 端点承载器。
 ///
 /// 与降级用的 SSE 不同，这里走标准 RFC6455 升级：
-/// * [pingInterval] = 30s 协议级 ping 保活，对齐
+/// * [pingInterval] = 30s 协议级 ping 保活，
 ///   `BookSourceDebugWebSocket/RssSourceDebugWebSocket/BookSearchWebSocket`
 ///   的 `onOpen() { while(isOpen) { ping("ping"); delay(30000) } }`；
-/// * 书源/RSS 调试端点订阅全局调试日志广播，逐条回推（对齐 `printLog`）；
+/// * 书源/RSS 调试端点订阅全局调试日志广播，逐条回推；
 /// * `/searchBook` 由 [onMessage] 逐批推送搜索结果、结束态关闭连接。
 ///
 /// 注意：shelf 的 `request.hijack` 通过**同步抛出** `HijackException` 接管
@@ -43,13 +43,13 @@ class WebSocketHandlers {
   final Stream<String> _debugStream;
   final WsMessageHandler _onMessage;
 
-  /// 协议级 ping 间隔，对齐 Sigma 三个 socket 的 `delay(30000)`。
+ /// 协议级 ping 间隔， socket 的 `delay(30000)`。
   static const Duration pingInterval = Duration(seconds: 30);
 
   /// 标准正常关闭码（NanoWSD `CloseCode.NormalClosure`）。
   static const int normalClosure = 1000;
 
-  /// 对齐 `WebSocketServer.openWebSocket` 的 `when (handshake.uri)`。
+ /// 的 `when (handshake.uri)`。
   static const Map<String, WsEndpoint> routes = {
     '/bookSourceDebug': WsEndpoint.bookSourceDebug,
     '/rssSourceDebug': WsEndpoint.rssSourceDebug,
@@ -114,7 +114,7 @@ class WebSocketHandlers {
     }
 
     // 调试类端点订阅全局调试日志广播：WebService.logDebug / 书源调试过程
-    // 的每条日志都会实时回推到该连接（对齐 printLog 的 state 分级之外部分）。
+    // 的每条日志都会实时回推到该连接。
     if (endpoint != WsEndpoint.searchBook) {
       debugSub = _debugStream.listen(send, onError: (Object _) {});
     }

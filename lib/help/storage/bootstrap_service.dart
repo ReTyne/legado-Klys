@@ -113,7 +113,7 @@ class BootstrapService {
     }
   }
 
-  /// 耳机/媒体按键 → 朗读控制（对齐 Sigma MediaButton + ReadAloudService）。
+ /// 耳机/媒体按键 → 朗读控制（ + ReadAloudService）。
   void _bindMediaButtons(NativeBridge nb) {
     nb.mediaButtonEvents.stream.listen((event) async {
       final prefs = await SharedPreferences.getInstance();
@@ -123,7 +123,7 @@ class BootstrapService {
       TtsService.stopReadAloudOnExit =
           prefs.getBool('mediaButtonOnExit') ?? true;
       if (!(prefs.getBool('readAloudByMediaButton') ?? false)) {
-        // 上游默认关闭：未开启时媒体键不控制朗读，仅同步通知栏播放状态。
+ // 默认关闭：未开启时媒体键不控制朗读，仅同步通知栏播放状态。
         await nb.setPlaybackState(playing: tts.isPlaying);
         return;
       }
@@ -190,7 +190,7 @@ class BootstrapService {
     nb.getInitialProcessText().then((t) => route(t));
   }
 
-  /// 剪贴板口令导入（对齐 Sigma `readShibboleth`：#L: 前缀 → 分类型导入 → 清剪贴板）。
+ /// 剪贴板口令导入（：#L: 前缀 → 分类型导入 → 清剪贴板）。
   Future<void> _readClipboardShibboleth() async {
     try {
       final data = await Clipboard.getData(Clipboard.kTextPlain);

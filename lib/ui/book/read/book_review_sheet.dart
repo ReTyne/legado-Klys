@@ -4,7 +4,7 @@ import 'package:legado_md3/data/local/app_database.dart';
 import 'package:legado_md3/data/model/v14_models.dart';
 import 'package:legado_md3/ui/widgets/app_widgets.dart';
 
-/// 段评气泡（对齐 Sigma `ReviewColumn`）：正文页脚/段尾展示评论数量，
+/// 段评气泡：正文页脚/段尾展示评论数量，
 /// 超过 999 截断为 `999+`。阅读页每页右下角常驻一个，点开 [BookReviewSheet]。
 class ReviewColumn extends StatelessWidget {
   final int count;

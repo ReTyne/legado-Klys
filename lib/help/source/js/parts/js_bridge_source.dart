@@ -3,7 +3,7 @@
 part of '../offline_js_bridge.dart';
 
 
-/// 对齐 source 对象的登录头 / 变量 / 登录信息管理。
+/// source 对象：登录头 / 变量 / 登录信息管理。
 class JsBridgeSource {
   JsBridgeSource({required this.url, this.variable = ''});
 
@@ -12,10 +12,10 @@ class JsBridgeSource {
   String loginInfo = '';
   String loginHeader = '';
 
-  /// 书源地址（对齐 source.getKey / 全局 getKey）。
+  /// 书源地址（提供 source.getKey / 全局 getKey 能力）。
   String getKey() => url;
 
-  /// 无 key 返回整份变量；有 key 时按 JSON 对象取值（对齐桥 source.getVariable）。
+  /// 无 key 返回整份变量；有 key 时按 JSON 对象取值。
   String getVariable([String? key]) {
     if (key == null || key.isEmpty) return variable;
     try {
@@ -28,7 +28,7 @@ class JsBridgeSource {
     return '';
   }
 
-  /// 写入变量（对象按 JSON 序列化，对齐桥 source.setVariable）。
+  /// 写入变量（对象按 JSON 序列化）。
   String setVariable(Object? v) {
     variable = v is String ? v : jsonEncode(v);
     return variable;
@@ -36,13 +36,13 @@ class JsBridgeSource {
 
   String getLoginInfo() => loginInfo;
 
-  /// 写入登录信息（对齐桥 source.putLoginInfo）。
+  /// 写入登录信息。
   bool putLoginInfo(Object? v) {
     loginInfo = v is String ? v : jsonEncode(v);
     return true;
   }
 
-  /// 登录信息解析为 Map（对齐桥 source.getLoginInfoMap）。
+  /// 登录信息解析为 Map。
   Map<String, dynamic> getLoginInfoMap() {
     try {
       final o = jsonDecode(loginInfo.isEmpty ? '{}' : loginInfo);

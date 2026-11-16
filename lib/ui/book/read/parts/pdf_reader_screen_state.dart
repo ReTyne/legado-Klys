@@ -221,7 +221,7 @@ class _PdfReaderScreenState extends State<PdfReaderScreen>
     _saveTimer = Timer(_saveDebounce, () => _saveProgress(page));
   }
 
-  /// 保存阅读进度：Book 字段（对齐 reading_screen）+ SharedPreferences
+  /// 保存阅读进度：Book 字段（同 reading_screen）+ SharedPreferences
   Future<void> _saveProgress(int page) async {
     if (page <= 0) return;
     try {

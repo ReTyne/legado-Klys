@@ -20,7 +20,7 @@ import 'package:legado_md3/ui/widgets/app_widgets.dart';
 /// 另有 `CustomWebViewClient.shouldOverrideUrlLoading`（L503-529）拦截
 /// `legado`/`yuedu` scheme 跳在线导入、其它 scheme 经确认跳外部 App。
 ///
-/// 平台差异（显式降级，不伪造）：本工程没有 `flutter_html` / `flutter_markdown`
+/// 平台差异（显式降级）：本工程没有 `flutter_html` / `flutter_markdown`
 /// 依赖，也不能改 pubspec，故 `<usehtml>` 与 `<md>` 统一降级为
 /// `flutter_inappwebview` 的 `InAppWebView` 渲染：`<usehtml>` 直接包一层
 /// 带 viewport/暗色 CSS 的 HTML 文档，`<md>` 先用本项目自带的

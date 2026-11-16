@@ -25,7 +25,7 @@ class SearchBook extends Book {
     this.addToShelf = false,
   });
 
-  /// 合并另一来源的同名同作者书籍（对齐 SearchBook.addOrigin）
+  /// 合并另一来源的同名同作者书籍
   void addOrigin(String origin) {
     if (origin.isEmpty) return;
     if (!origins.contains(origin)) origins.add(origin);

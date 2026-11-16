@@ -38,7 +38,13 @@ class ImportBookService {
 
   /// 支持的书籍文件扩展名
   static const supported = [
-    'txt', 'epub', 'umd', 'mobi', 'azw', 'azw3', 'pdf',
+    'txt',
+    'epub',
+    'umd',
+    'mobi',
+    'azw',
+    'azw3',
+    'pdf',
   ];
 
   /// 压缩包扩展名
@@ -101,7 +107,9 @@ class ImportBookService {
     for (final f in extracted) {
       try {
         final res = await _importSingle(
-            f.path, p.extension(f.path).replaceFirst('.', '').toLowerCase(), f.uri.pathSegments.last);
+            f.path,
+            p.extension(f.path).replaceFirst('.', '').toLowerCase(),
+            f.uri.pathSegments.last);
         res.book.origin = 'local::$archiveName';
         await _db.insertBook(res.book);
         count++;
@@ -134,13 +142,21 @@ class ImportBookService {
       chapters = <BookChapter>[];
       for (final ch in toc) {
         chapters.add(BookChapter(
-          index: ch.index, title: ch.title, url: ch.url,
+          index: ch.index,
+          title: ch.title,
+          url: ch.url,
           isVolume: ch.isVolume,
           content: await EpubParser.parseChapterContent(path, ch.url),
         ));
       }
       if (chapters.isEmpty) {
-        chapters = [BookChapter(index: 0, title: '正文', url: '', content: await EpubParser.parseChapterContent(path, '') ?? '')];
+        chapters = [
+          BookChapter(
+              index: 0,
+              title: '正文',
+              url: '',
+              content: await EpubParser.parseChapterContent(path, '') ?? '')
+        ];
       }
       book.lastChapter = chapters.isNotEmpty ? chapters.last.title : null;
     } else if (ext == 'umd') {
@@ -163,13 +179,18 @@ class ImportBookService {
         final text = await MobiHuffDecompressor.decompressFile(path);
         if (text != null && text.trim().isNotEmpty) {
           final info = _txt.extractBookInfo(text, fileName);
-          var cs = _txt.parseChapters(text);
+          final bestRule = TxtParserService.pickBestRule(
+              text, await DatabaseService().getTxtTocRules());
+          var cs = _txt.parseChapters(text, rule: bestRule);
           final b = Book(
             name: info['name'] ?? _stripExt(fileName),
             author: info['author'] ?? '未知',
             intro: info['intro'],
-            origin: 'local', originName: '本地书籍',
-            noteUrl: 'local://$path', bookUrl: 'local://$path', type: 1,
+            origin: 'local',
+            originName: '本地书籍',
+            noteUrl: 'local://$path',
+            bookUrl: 'local://$path',
+            type: 1,
             local: true,
             wordCount: text.length,
           );
@@ -195,7 +216,7 @@ class ImportBookService {
       book.lastChapter = chapters.isNotEmpty ? chapters.last.title : null;
     } else if (ext == 'pdf') {
       // PDF：单章「正文」，阅读路由按 fileName 分流到 PdfReaderScreen，
-      // 进度以 durChapterPos 保存页码（对齐 PdfReaderScreen 约定）。
+      // 进度以 durChapterPos 保存页码。
       book = Book(
         name: _stripExt(fileName),
         author: '未知',
@@ -214,13 +235,18 @@ class ImportBookService {
       // 导入用 UTF-8 硬解码导致标题乱码、位置偏移与读取侧不一致。
       final content = await TxtParserService.readFileAutoDetect(file);
       final info = _txt.extractBookInfo(content, fileName);
-      var chapters = _txt.parseChapters(content);
+      final bestRule = TxtParserService.pickBestRule(
+          content, await DatabaseService().getTxtTocRules());
+      var chapters = _txt.parseChapters(content, rule: bestRule);
       book = Book(
         name: info['name'] ?? fileName,
         author: info['author'] ?? '未知',
         intro: info['intro'],
-        origin: 'local', originName: '本地书籍',
-        noteUrl: 'local://$path', bookUrl: 'local://$path', type: 1,
+        origin: 'local',
+        originName: '本地书籍',
+        noteUrl: 'local://$path',
+        bookUrl: 'local://$path',
+        type: 1,
         local: true,
         lastChapter: chapters.isNotEmpty ? chapters.last.title : null,
         wordCount: content.length,
@@ -239,7 +265,10 @@ class ImportBookService {
     // umd/mobi/pdf 三支上面只造了最小 Book；这里用统一解析器取 EXTH/PDF Info/
     // UMD TLV 里的书名/作者/简介/字数/封面，仅在目标字段为空或占位值时回填，
     // 不覆盖既有解析器已给的正确值，也不改 origin/noteUrl/chapters/type 等导入契约。
-    if (ext == 'umd' || ext == 'mobi' || ext == 'azw' || ext == 'azw3' ||
+    if (ext == 'umd' ||
+        ext == 'mobi' ||
+        ext == 'azw' ||
+        ext == 'azw3' ||
         ext == 'pdf') {
       await enrichMetadataFromParser(book, path, fileName);
     }
@@ -314,7 +343,9 @@ class ImportBookService {
     required bool splitLong,
   }) async {
     final content = await TxtParserService.readFileAutoDetect(File(filePath));
-    final chapters = TxtParserService().parseChapters(content);
+    final bestRule = TxtParserService.pickBestRule(
+        content, await DatabaseService().getTxtTocRules());
+    final chapters = TxtParserService().parseChapters(content, rule: bestRule);
     if (!splitLong) return chapters;
     return TxtParserService.splitLongChapters(
       chapters,
@@ -322,10 +353,11 @@ class ImportBookService {
     );
   }
 
-  /// 切换本地 TXT 书籍的长章节拆分开关（E: menu_split_long_chapter）：
+  /// 切换本地 TXT 书籍的长章节拆分开关：
   /// 更新书籍标记 → 重新解析目录入库 → 按标题迁移阅读进度。
   /// 返回新的 durChapterIndex；非本地 TXT 时原样返回不入库。
-  static Future<int> toggleSplitLongChapter(Book book, DatabaseService db) async {
+  static Future<int> toggleSplitLongChapter(
+      Book book, DatabaseService db) async {
     final filePath = book.fileName;
     if (filePath == null || !book.local) return book.durChapterIndex;
     final oldChapters = await db.getChapters(book.name, book.author);
@@ -335,10 +367,11 @@ class ImportBookService {
     final chapters = await reparseTxtToc(filePath, splitLong: next);
     await db.saveChapters(book.name, book.author, chapters);
     // 阅读进度迁移：章节边界已变，页内偏移失效，章索引按标题重映射
-    book.durChapterIndex =
-        TxtParserService.remapChapterIndex(oldChapters, book.durChapterIndex, chapters);
+    book.durChapterIndex = TxtParserService.remapChapterIndex(
+        oldChapters, book.durChapterIndex, chapters);
     book.durChapterPos = 0;
-    book.lastChapter = chapters.isNotEmpty ? chapters.last.title : book.lastChapter;
+    book.lastChapter =
+        chapters.isNotEmpty ? chapters.last.title : book.lastChapter;
     await db.updateBook(book);
     return book.durChapterIndex;
   }

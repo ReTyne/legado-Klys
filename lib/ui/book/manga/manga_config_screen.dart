@@ -5,9 +5,9 @@ import 'package:legado_md3/help/translate/manga_translate_overlay.dart';
 import 'package:legado_md3/ui/book/reader_router.dart';
 import 'package:legado_md3/ui/widgets/app_widgets.dart';
 
-/// 漫画阅读配置 -  ReadMangaConfig / Sigma MangaColorFilterConfig。
+/// 漫画阅读配置 - ReadMangaConfig / MangaColorFilterConfig。
 ///
-/// Sigma 漫画专属 10 键（全部由 manga_reader_screen 真实消费）：
+/// 漫画专属 10 键（全部由 manga_reader_screen 真实消费）：
 /// 1 manga_gray 灰阶  2 manga_threshold 二值化阈值  3 manga_colorFilter 色彩滤镜
 /// 4 manga_noScale 禁用缩放  5 manga_scaleMax 最大缩放  6 manga_pageAnim 翻页动画
 /// 7 manga_noCrossFade 禁用淡入淡出  8 manga_preDownload 预下载
@@ -35,7 +35,7 @@ class _MangaConfigScreenState extends State<MangaConfigScreen> {
   bool _volumeKeyPage = false;
   bool _reverseVolumeKey = false;
 
-  // Sigma 漫画专属补充键
+ // 漫画专属补充键
   int _threshold = 128;   // manga_threshold 二值化阈值 0~255
   int _colorFilter = 0;   // manga_colorFilter 0 无 / 1 护眼 / 2 复古 / 3 冷色
   int _scaleMax = 4;      // manga_scaleMax 最大缩放倍数 2~8

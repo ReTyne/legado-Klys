@@ -7,14 +7,14 @@ import 'package:legado_md3/utils/encoding_detect.dart';
 
 /// HTTP 响应解码器 —— 三段细节链：
 ///
-/// 1. `help/http/DecompressInterceptor.kt`：请求未带 `Accept-Encoding` 且未带
+/// 1. ：请求未带 `Accept-Encoding` 且未带
 ///    `Range` 时透明解压 `gzip` / `deflate`（含 raw deflate，`Inflater(true)`）；
 ///    `Range` 请求（206 分片）跳过解压；解压后 `Content-Encoding` 与
 ///    `Content-Length` 头失效（本解码器只消费 `content-type`，天然不受影响）。
-/// 2. `utils/Utf8BomUtils.kt`：`removeUTF8BOM(bytes)` 去掉 UTF-8 BOM，
+/// 2. ：`removeUTF8BOM(bytes)` 去掉 UTF-8 BOM，
 ///    同时兼容 UTF-16 LE/BE BOM 并按其字节序解码。
-/// 3. `help/http/OkHttpUtils.kt` 的 `ResponseBody.text()` 与
-///    `utils/EncodingDetect.kt` 的 `getHtmlEncode()`：编码优先级
+/// 3. 的 `ResponseBody.text` 与
+/// 的 `getHtmlEncode`：编码优先级
 ///    `forcedCharset > Content-Type charset > HTML <meta> charset > 统计探测`。
 ///
 /// 全部为纯函数，不发起网络请求，便于单元回归。
@@ -36,10 +36,13 @@ class HttpResponseDecoder {
   }) {
     if (bytes.isEmpty) return '';
     final contentEncoding = _header(headers, 'content-encoding');
+    final contentType = _header(headers, 'content-type');
     final data = skipDecompress
         ? bytes
         : decompress(bytes,
-            contentEncoding: contentEncoding, rangeRequested: rangeRequested);
+            contentEncoding: contentEncoding,
+            contentType: contentType,
+            rangeRequested: rangeRequested);
     final cleaned = removeBom(data);
     final charset = resolveCharset(
       cleaned.bytes,
@@ -71,12 +74,34 @@ class HttpResponseDecoder {
   static List<int> decompress(
     List<int> bytes, {
     String contentEncoding = '',
+    String contentType = '',
     bool rangeRequested = false,
   }) {
     if (rangeRequested || bytes.isEmpty) return bytes;
     final enc = contentEncoding.toLowerCase().trim();
-    final isGzipMagic = bytes.length >= 2 &&
-        bytes[0] == 0x1F && bytes[1] == 0x8B;
+    final ct = contentType.toLowerCase().trim();
+
+    // brotli（Content-Encoding: br）：当前依赖集未提供 brotli 解码器，
+    // 安全降级返回原始字节，不抛异常。
+    if (enc == 'br' || enc.contains('brotli')) {
+      return _tryBrotli(bytes) ?? bytes;
+    }
+
+    // application/zip 响应体：透明解压，取首个文件条目内容。
+    final isZipMagic = bytes.length >= 4 &&
+        bytes[0] == 0x50 &&
+        bytes[1] == 0x4B &&
+        (bytes[2] == 0x03 || bytes[2] == 0x05 || bytes[2] == 0x07);
+    if (enc == 'zip' ||
+        ct.contains('application/zip') ||
+        ct.contains('application/x-zip') ||
+        isZipMagic) {
+      final out = _tryUnzip(bytes);
+      if (out != null) return out;
+    }
+
+    final isGzipMagic =
+        bytes.length >= 2 && bytes[0] == 0x1F && bytes[1] == 0x8B;
     final isZlibMagic = _isZlibHeader(bytes);
 
     if (enc == 'gzip' || enc.contains('gzip') || isGzipMagic) {
@@ -127,11 +152,37 @@ class HttpResponseDecoder {
     }
   }
 
-  /// 细节 2：去 BOM（上游 Utf8BomUtils）。
+  /// application/zip：用 ZipDecoder 解压并取首个文件条目内容。
+  /// 非法 zip 时返回 null，由调用方交回原字节。
+  static List<int>? _tryUnzip(List<int> b) {
+    try {
+      final arc = archive.ZipDecoder().decodeBytes(b);
+      for (final f in arc.files) {
+        if (!f.isFile) continue;
+        final content = f.content;
+        if (content is List<int>) return List<int>.from(content);
+      }
+      if (arc.files.isNotEmpty) {
+        final content = arc.files.first.content;
+        if (content is List<int>) return List<int>.from(content);
+      }
+    } catch (_) {
+      // 非 zip 或损坏数据：安全降级
+    }
+    return null;
+  }
+
+  /// brotli 解码扩展点。当前依赖（archive）不含 BrotliDecoder，故返回 null，
+  /// 由调用方降级为原始字节；接入解码库后可在此返回解压字节，绝不抛异常。
+  static List<int>? _tryBrotli(List<int> bytes) => null;
+
+ /// 细节 2：去 BOM（Utf8BomUtils）。
   /// 返回去掉 BOM 的字节，以及 BOM 隐含的编码（UTF-16 时用于字节序解码）。
   static ({List<int> bytes, String? charset}) removeBom(List<int> bytes) {
     if (bytes.length >= 3 &&
-        bytes[0] == 0xEF && bytes[1] == 0xBB && bytes[2] == 0xBF) {
+        bytes[0] == 0xEF &&
+        bytes[1] == 0xBB &&
+        bytes[2] == 0xBF) {
       return (bytes: bytes.sublist(3), charset: 'utf-8');
     }
     if (bytes.length >= 2 && bytes[0] == 0xFF && bytes[1] == 0xFE) {
@@ -172,13 +223,20 @@ class HttpResponseDecoder {
 
   static String _normalize(String cs) {
     final c = cs.toLowerCase().trim();
-    if (c == 'gb2312' || c == 'gb18030' || c == 'gb_2312' || c == 'cp936' ||
+    if (c == 'gb2312' ||
+        c == 'gb18030' ||
+        c == 'gb_2312' ||
+        c == 'cp936' ||
         c == 'gbk') return 'gbk';
     if (c == 'big-5' || c == 'big5' || c == 'cp950') return 'big5';
     if (c == 'iso-8859-1' || c == 'latin1' || c == 'l1') return 'latin1';
-    if (c == 'utf16le' || c == 'utf-16le' || c == 'unicodefffe') return 'utf-16le';
+    if (c == 'utf16le' || c == 'utf-16le' || c == 'unicodefffe') {
+      return 'utf-16le';
+    }
     if (c == 'utf16be' || c == 'utf-16be') return 'utf-16be';
-    if (c == 'utf8' || c == 'utf-8' || c == 'us-ascii' || c == 'ascii') return 'utf-8';
+    if (c == 'utf8' || c == 'utf-8' || c == 'us-ascii' || c == 'ascii') {
+      return 'utf-8';
+    }
     return c;
   }
 
@@ -186,9 +244,9 @@ class HttpResponseDecoder {
   static String? _metaCharset(List<int> bytes) {
     final head = _ascii(bytes, 4096).toLowerCase();
     // <meta charset="gbk"> / <meta charset=gbk> / <meta charset='gbk'>
-    final direct = RegExp(
-            r'''<meta[^>]*\bcharset\s*=\s*["\x27]?\s*([a-z0-9_\-]+)''')
-        .firstMatch(head);
+    final direct =
+        RegExp(r'''<meta[^>]*\bcharset\s*=\s*["\x27]?\s*([a-z0-9_\-]+)''')
+            .firstMatch(head);
     if (direct != null) return direct.group(1);
     // <meta http-equiv="Content-Type" content="text/html; charset=gbk">
     final equiv = RegExp(

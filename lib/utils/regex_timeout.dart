@@ -3,10 +3,10 @@ import 'dart:isolate';
 
 import 'package:legado_md3/help/exceptions/app_exceptions.dart';
 
-/// 批次 6 · 正则替换超时（ `utils/RegexExtensions.kt:28-89`
-/// 与 `api/controller/ReplaceRuleController.kt:79-92`），防 ReDoS 卡死 Web 服务。
+/// 正则替换超时（
+/// ），防 ReDoS 卡死 Web 服务。
 
-/// 对齐 `data/entities/ReplaceRule.kt:115-120` 的 getValidTimeoutMillisecond()：
+/// 的 getValidTimeoutMillisecond：
 /// `timeoutMillisecond <= 0` 时回退默认 3000ms。
 int validTimeoutMillisecond(int timeoutMillisecond) =>
     timeoutMillisecond <= 0 ? 3000 : timeoutMillisecond;
@@ -44,11 +44,11 @@ void _replaceEntry(_ReplaceTask task) {
 /// [timeoutMillisecond] 即 `kill` 该 isolate 并抛 [RegexTimeoutException]，
 /// 真正阻断灾难性回溯（ReDoS）。
 ///
-/// 上游超时后还需「3 秒未结束则重启应用」（RegexExtensions.kt:74-84），
+/// 超时后还需「3 秒未结束则重启应用」，
 /// Flutter 通过直接 `Isolate.kill(immediate)` 达到更强隔离，无需重启进程。
 ///
 /// [isRegex] 为 false 时退化为字面替换
-/// （对齐 `ReplaceRuleController.kt:88` 的 `text.replace(pattern, replacement)`）。
+/// （`text.replace(pattern, replacement)`）。
 Future<String> replaceRegexWithTimeout({
   required String input,
   required String pattern,
@@ -76,7 +76,7 @@ Future<String> replaceRegexWithTimeout({
     return message as String;
   } on TimeoutException {
     isolate?.kill(priority: Isolate.immediate);
-    // 文案对齐 RegexExtensions.kt:73-75 的「替换超时 / 规则名称 / 替换规则」。
+ // 文案 的「替换超时 / 规则名称 / 替换规则」。
     throw RegexTimeoutException(
         '替换超时(${timeout}ms)\n规则名称:$ruleName\n替换规则:$pattern');
   } finally {

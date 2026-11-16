@@ -1,4 +1,3 @@
-
 import 'dart:convert';
 
 import 'package:html/dom.dart' as dom;
@@ -9,9 +8,8 @@ import 'package:legado_md3/help/source/xpath_selector.dart';
 part 'css_selector.dart';
 part 'regex_parser.dart';
 
-
 /// 规则解析模式
-enum RuleMode { auto, css, xpath, json, js, regex, defaultRule }
+enum RuleMode { auto, css, xpath, json, js, regex, defaultRule, webJs }
 
 /// Legado 书源统一规则管线。
 ///
@@ -44,6 +42,10 @@ class RulePipeline {
 
   /// 清空变量表（引擎在 search / explore / getBookInfo 等入口调用）。
   void clearVariables() => variables.clear();
+
+  /// 最近一次正则匹配结果的捕获组（group0 为全匹配），供规则内 `$N`
+  /// 内联引用使用；链式求值时由前一段正则写入。
+  List<String>? _lastGroups;
 
   /// 扫描规则中的顶层变量语法块（`@put:` / `@get:`，大小写不敏感），
   /// 返回 (起始位置, 结束位置, 花括号内部文本)。
@@ -107,9 +109,9 @@ class RulePipeline {
 
   /// 解析 `@put:` 花括号内部的条目。
   ///
-  /// 先用 **标准 JSON** 解析
-  /// `@put:{"k":"v","k2":"v2"}`（GSONStrict），失败再按宽松
-  /// `key:rule,key2:rule2`（对应 GSON 对非标准 JSON 的兼容回退）按第一个
+  /// 先用标准 JSON 解析
+  /// `@put:{"k":"v","k2":"v2"}`，失败再按宽松
+  /// `key:rule,key2:rule2` 格式（兼容非标准 JSON）按第一个
   /// `:` 切分，value 里的 `:`/`,` 不受影响。
   List<MapEntry<String, String>> parsePutEntries(String inner) {
     final jsonEntries = _parseJsonPut(inner);
@@ -128,7 +130,7 @@ class RulePipeline {
   }
 
   /// 尝试把 `inner`（花括号内部文本，不含外层 `{}`）当作标准 JSON 对象。
-  /// 上游 put 的 value 是规则字符串，因此只接受字符串/数值标量；含内嵌
+  /// put 的 value 是规则字符串，因此只接受字符串/数值标量；含内嵌
   /// `<js>` / `@get:{...}` 等复杂规则时 JSON 解析会失败，自然回退到宽松格式。
   List<MapEntry<String, String>>? _parseJsonPut(String inner) {
     final t = inner.trim();
@@ -140,7 +142,7 @@ class RulePipeline {
         for (final e in decoded.entries) {
           final key = e.key?.toString() ?? '';
           if (key.isEmpty || e.value == null) continue;
-          // 复杂对象/数组不是 put 值（上游 Map<String,String> 会拒绝）
+          // 复杂对象/数组不是 put 值（变量表是 Map<String,String>）
           if (e.value is Map || e.value is List) return null;
           out.add(MapEntry(key, e.value.toString()));
         }
@@ -171,6 +173,21 @@ class RulePipeline {
     return _unquote(inner.substring(sep + 2).trim());
   }
 
+  /// 把规则串里的 `$1`..`$99` 按 [lastGroups] 内联替换为捕获组文本。
+  ///
+  /// [lastGroups] 为上一轮正则匹配的分组数组（下标 0 为全匹配）；越界或
+  /// 空组替换为空串，[lastGroups] 为空时移除所有引用。仅作用于传入的规则
+  /// 串本身，`##` 替换模板内的 `$N` 由后处理负责，不在此处理。
+  String expandCaptures(String rule, List<String>? lastGroups) {
+    if (lastGroups == null || lastGroups.isEmpty) {
+      return rule.replaceAll(RegExp(r'\$\d{1,2}'), '');
+    }
+    return rule.replaceAllMapped(RegExp(r'\$(\d{1,2})'), (m) {
+      final n = int.tryParse(m.group(1)!) ?? 0;
+      return (n >= 0 && n < lastGroups.length) ? lastGroups[n] : '';
+    });
+  }
+
   /// put 值是否“像规则”（含选择器/JS/正则特征）。不像规则时按字面文本
   /// 处理——如 `@put:{x:@get:{a}_c}` / `@put:{u:@get:{host}/a.jpg}`
   /// 期望得到拼接字符串而非选择器。
@@ -188,7 +205,9 @@ class RulePipeline {
     if (t.startsWith(r'$.') || t.startsWith(r'$[')) return true;
     if (t.startsWith('//')) return true; // XPath
     if (t.startsWith(':')) return true; // 正则
-    if (t.startsWith('#') || t.startsWith('.') || t.startsWith('[')) return true;
+    if (t.startsWith('#') || t.startsWith('.') || t.startsWith('[')) {
+      return true;
+    }
     if (t.startsWith('-')) return true; // 目录倒序标记
     if (t.contains('##') || t.contains('{{')) return true;
     if (t.contains('@')) return true; // 取值后缀 / 残留 @get
@@ -251,12 +270,13 @@ class RulePipeline {
 
   /// 从一整段响应文本按规则取“字符串列表”
   ///
-  /// 支持原版三种连接符（同种规则间使用，不含 js/正则）：
+  /// 支持三种连接符（同种规则间使用，不含 js/正则）：
   /// * `||` 或：从左到右取第一个非空分支
   /// * `%%` 交叉：多个分支按位依次取数
   /// * `&&` 合并：多个分支结果拼接
   List<String> extractListFromRaw(String raw, String rule,
       {bool forceJson = false, dom.Element? scope}) {
+    _lastGroups = null;
     if (rule.trim().isEmpty) return raw.isEmpty ? [] : [raw];
     // @put: 变量语法：先执行所有 put（左→右，对当前内容求值）并从规则中
     // 移除，避免 put 段里的连接符/花括号干扰后续 ||/&&/%% 拆分
@@ -269,14 +289,16 @@ class RulePipeline {
       }
       for (final b in puts) {
         for (final e in parsePutEntries(b.$3)) {
-          variables[e.key] = _evalPutValue(raw, substituteGets(e.value), forceJson);
+          variables[e.key] =
+              _evalPutValue(raw, substituteGets(e.value), forceJson);
         }
       }
       effective = rest;
     }
     final alternatives = _splitByConnectors(effective, const ['||']);
     for (final alt in alternatives) {
-      final values = _extractCombined(raw, alt.text.trim(), forceJson, scope: scope);
+      final values =
+          _extractCombined(raw, alt.text.trim(), forceJson, scope: scope);
       if (values.isNotEmpty) {
         return values; // || 取第一个非空
       }
@@ -296,12 +318,25 @@ class RulePipeline {
   }
 
   /// 从一整段响应文本按规则取字符串。
-  /// 多个命中 `AnalyzeByJSoup.getString` 语义以换行拼接——
+  /// 多个命中以换行拼接——
   /// 正文规则（如 `#honbun@p@html`）命中多段时返回全文而非仅第一段。
-  String? extractStringFromRaw(String raw, String rule, {bool forceJson = false}) {
+  /// [unescape] 为真时对结果做 HTML 实体反转义（默认关闭以保持既有行为）。
+  String? extractStringFromRaw(String raw, String rule,
+      {bool forceJson = false, bool unescape = false}) {
     final list = extractListFromRaw(raw, rule, forceJson: forceJson);
     if (list.isEmpty) return null;
-    return list.length == 1 ? list.first : list.join('\n');
+    final joined = list.length == 1 ? list.first : list.join('\n');
+    return unescape ? unescapeHtml4(joined) : joined;
+  }
+
+  /// URL 类字段取首条命中（AnalyUrl.getString0 语义），不做换行拼接。
+  /// [unescape] 为真时对首条做 HTML 实体反转义。
+  String? firstStringFromRaw(String raw, String rule,
+      {bool forceJson = false, bool unescape = false}) {
+    final list = extractListFromRaw(raw, rule, forceJson: forceJson);
+    if (list.isEmpty) return null;
+    final first = list.first;
+    return unescape ? unescapeHtml4(first) : first;
   }
 
   /// 处理不含连接符（`||` / `%%` / `&&`）的单条规则链（仍可能含 @@ / ## / js）
@@ -329,8 +364,17 @@ class RulePipeline {
     final parsed = _splitPostProcess(core);
     core = parsed.selector;
 
+    // 规则内 $N 捕获组引用（仅 selector 段；## 替换模板的 $N 属于后处理）：
+    // 把上一段正则的捕获组内联拼回，并强制该段按正则模式求值。
+    final hasCaptureRef =
+        _lastGroups != null && RegExp(r'\$\d{1,2}').hasMatch(core);
+    if (hasCaptureRef) {
+      core = expandCaptures(core, _lastGroups);
+    }
+    final effectiveMode = hasCaptureRef ? RuleMode.regex : mode;
+
     List<String> values;
-    switch (mode) {
+    switch (effectiveMode) {
       case RuleMode.js:
         final script = core.startsWith('@js:') ? core.substring(4) : core;
         final r = JsMiniEvaluator.eval(script,
@@ -357,23 +401,35 @@ class RulePipeline {
             ? _jsonValues(raw, core, true)
             : _defaultValues(raw, core, scope: scope);
         break;
+      case RuleMode.webJs:
+        // 求值由异步引擎处理，此处仅识别模式、不报错。
+        values = <String>[];
+        break;
     }
 
     // 模板插值 {{...}}
     if (values.isNotEmpty) {
-      values = values.map((v) => _interpolate(v, parsed.hasInterpolation ? core : null)).toList();
+      values = values
+          .map((v) => _interpolate(v, parsed.hasInterpolation ? core : null))
+          .toList();
     }
 
     // ## 正则后处理
     if (values.isNotEmpty && parsed.ops.isNotEmpty) {
-      values = values.map((v) => _applyPostOps(v, parsed.ops)).where((v) => v.isNotEmpty).toList();
+      values = values
+          .map((v) => _applyPostOps(v, parsed.ops))
+          .where((v) => v.isNotEmpty)
+          .toList();
     }
 
     // 结尾 @js: 清洗
     final tailJs = parsed.tailJs;
     if (tailJs != null && values.isNotEmpty) {
       values = values
-          .map((v) => JsMiniEvaluator.eval(tailJs, result: v, key: keyword, page: page, baseUrl: baseUrl) ?? v)
+          .map((v) =>
+              JsMiniEvaluator.eval(tailJs,
+                  result: v, key: keyword, page: page, baseUrl: baseUrl) ??
+              v)
           .toList();
     }
 
@@ -383,7 +439,7 @@ class RulePipeline {
 
   /// 处理 `%%`（按位交叉）与 `&&`（合并）组合，返回字符串列表。
   ///
-  /// 语义 AnalyzeUrl：
+  /// 连接符语义：
   /// * `%%`：各分支先分别取值，再按位依次取数（列表1[0]、列表2[0]…列表1[1]…）
   /// * `&&`：各分支取值后直接合并拼接
   List<String> _extractCombined(String raw, String rule, bool forceJson,
@@ -391,7 +447,8 @@ class RulePipeline {
     final cross = _splitByConnectors(rule, const ['%%']);
     if (cross.length > 1) {
       final lists = cross
-          .map((seg) => _extractMerged(raw, seg.text.trim(), forceJson, scope: scope))
+          .map((seg) =>
+              _extractMerged(raw, seg.text.trim(), forceJson, scope: scope))
           .toList();
       return _crossZip(lists);
     }
@@ -401,12 +458,23 @@ class RulePipeline {
   /// 处理 `&&`（合并）组合。
   List<String> _extractMerged(String raw, String rule, bool forceJson,
       {dom.Element? scope}) {
+    // 链式正则 `:a&&b&&c` 需整体求值，避免被通用 && 合并语义拆成独立段。
+    // 含 $N 捕获引用的链则按 && 分段，让后段引用前段分组，二者不可混淆。
+    final t = rule.trim();
+    if (t.startsWith(':') &&
+        t.contains('&&') &&
+        !RegExp(r'\$\d{1,2}').hasMatch(t)) {
+      return _regexValues(raw, t);
+    }
     final merged = _splitByConnectors(rule, const ['&&']);
-    if (merged.length <= 1) return _valuesFromChain(raw, rule, forceJson, scope: scope);
+    if (merged.length <= 1) {
+      return _valuesFromChain(raw, rule, forceJson, scope: scope);
+    }
     final out = <String>[];
     for (final seg in merged) {
       if (seg.text.trim().isEmpty) continue;
-      out.addAll(_valuesFromChain(raw, seg.text.trim(), forceJson, scope: scope));
+      out.addAll(
+          _valuesFromChain(raw, seg.text.trim(), forceJson, scope: scope));
     }
     return out;
   }
@@ -470,7 +538,7 @@ class RulePipeline {
   }
 
   /// 相对单个 HTML 元素取字段值。
-  /// 多个命中 `AnalyzeByJSoup.getString` 语义以换行拼接
+  /// 多个命中以换行拼接
   /// （如正文规则 `#honbun@p@html` 命中多段时返回全文，而非仅第一段）。
   String? fieldFromElement(dom.Element el, String rule) {
     if (rule.trim().isEmpty) return null;
@@ -533,7 +601,9 @@ class RulePipeline {
       final script = r.startsWith('@js:') ? r.substring(4) : parsed.selector;
       value = JsMiniEvaluator.eval(script,
           result: item is String ? item : jsonEncode(item),
-          key: keyword, page: page, baseUrl: baseUrl);
+          key: keyword,
+          page: page,
+          baseUrl: baseUrl);
     } else if (parsed.selector.isEmpty) {
       value = item?.toString();
     } else {
@@ -547,7 +617,9 @@ class RulePipeline {
     value = _applyPostOps(value, parsed.ops);
     final tail = parsed.tailJs;
     if (tail != null) {
-      value = JsMiniEvaluator.eval(tail, result: value, key: keyword, page: page, baseUrl: baseUrl) ?? value;
+      value = JsMiniEvaluator.eval(tail,
+              result: value, key: keyword, page: page, baseUrl: baseUrl) ??
+          value;
     }
     return value.isEmpty ? null : value;
   }
@@ -646,7 +718,10 @@ class RulePipeline {
     final elements = selector.isEmpty
         ? doc.querySelectorAll('*').where((e) => e.children.isEmpty).toList()
         : CssSelector.selectAll(doc, selector);
-    return elements.map((e) => _getByGetter(e, getter)).where((s) => s.isNotEmpty).toList();
+    return elements
+        .map((e) => _getByGetter(e, getter))
+        .where((s) => s.isNotEmpty)
+        .toList();
   }
 
   List<String> _xpathValues(String raw, String rule) {
@@ -676,7 +751,11 @@ class RulePipeline {
       }
     }
     final getter = steps.last;
-    return current.whereType<dom.Element>().map((e) => _getByGetter(e, getter)).where((s) => s.isNotEmpty).toList();
+    return current
+        .whereType<dom.Element>()
+        .map((e) => _getByGetter(e, getter))
+        .where((s) => s.isNotEmpty)
+        .toList();
   }
 
   /// 默认(JSoup)模式选取元素（不包含取值步骤）
@@ -698,43 +777,32 @@ class RulePipeline {
     return current.whereType<dom.Element>().toList();
   }
 
-  /// 单步选择：class.x / tag.x / id.x / text.x / children / 原生 CSS，支持 .N !N [索引]
+  /// 单步选择：class.x / tag.x / id.x / text.x / children / 原生 CSS，
+  /// 支持 .N / !N / :N / [索引]、[start:end:step] 区间（含负 step 与省略端点）、
+  /// ! 前缀排除，以及 tag.div.-1:10:2 这类旧式多索引。
   List<dom.Element> _elementsSingle(dom.Node temp, String step) {
     var rule = step.trim();
     if (rule.isEmpty) return _childrenOf(temp);
 
-    // 提取尾部索引：.N / !N / :N / [..]
-    final indexes = <int>[];
-    var exclude = false;
     var before = rule;
+    String? spec;
+    var exclude = false;
 
     final bracket = RegExp(r'\[([^\]]*)\]$').firstMatch(rule);
     if (bracket != null) {
       before = rule.substring(0, bracket.start);
-      final inner = bracket.group(1)!;
-      if (inner.startsWith('!')) exclude = true;
-      for (final part in inner.replaceFirst('!', '').split(',')) {
-        final p = part.trim();
-        if (p.isEmpty) continue;
-        if (p.contains(':')) {
-          final seg = p.split(':');
-          final s = int.tryParse(seg[0]) ?? 0;
-          final e = int.tryParse(seg[1]) ?? -1;
-          for (var i = s; i <= e; i++) {
-            indexes.add(i);
-          }
-        } else {
-          final i = int.tryParse(p);
-          if (i != null) indexes.add(i);
-        }
-      }
+      spec = bracket.group(1)!;
     } else {
-      final tailIdx = RegExp(r'([.!:])(-?\d+)$').firstMatch(rule);
+      final tailIdx = RegExp(r'([.!:])([-0-9:,!]+)$').firstMatch(rule);
       if (tailIdx != null) {
         before = rule.substring(0, tailIdx.start);
         exclude = tailIdx.group(1) == '!';
-        indexes.add(int.parse(tailIdx.group(2)!));
+        spec = tailIdx.group(2)!;
       }
+    }
+    if (spec != null && spec.startsWith('!')) {
+      exclude = true;
+      spec = spec.substring(1);
     }
 
     List<dom.Element> elements;
@@ -750,7 +818,9 @@ class RulePipeline {
           elements = _byTagName(temp, parts[1]);
           break;
         case 'id':
-          final el = temp is dom.Document ? temp.getElementById(parts[1]) : _getById(temp as dom.Element, parts[1]);
+          final el = temp is dom.Document
+              ? temp.getElementById(parts[1])
+              : _getById(temp as dom.Element, parts[1]);
           elements = el == null ? [] : [el];
           break;
         case 'text':
@@ -766,17 +836,87 @@ class RulePipeline {
       elements = CssSelector.selectAll(temp, before);
     }
 
-    if (indexes.isEmpty) return elements;
+    if (spec == null || spec.isEmpty) return elements;
+    final indexes = _expandIndexSpec(spec, elements.length);
+    if (indexes.isEmpty) return exclude ? elements : <dom.Element>[];
     final picked = <dom.Element>[];
-    for (var i in indexes) {
-      final real = i < 0 ? elements.length + i : i;
-      if (real >= 0 && real < elements.length) picked.add(elements[real]);
+    for (final i in indexes) {
+      if (i >= 0 && i < elements.length) picked.add(elements[i]);
     }
     if (exclude) {
       final remove = picked.toSet();
       return elements.where((e) => !remove.contains(e)).toList();
     }
     return picked;
+  }
+
+  /// 解析索引表达式（逗号分隔的单索引 / 闭区间 / 切片），返回绝对下标。
+  List<int> _expandIndexSpec(String spec, int total) {
+    final out = <int>[];
+    for (final raw in spec.split(',')) {
+      final part = raw.trim();
+      if (part.isEmpty) continue;
+      if (part.contains(':')) {
+        final seg = part.split(':');
+        int? parseAt(int i) => (i < seg.length && seg[i].trim().isNotEmpty)
+            ? int.tryParse(seg[i].trim())
+            : null;
+        final start = parseAt(0);
+        final end = parseAt(1);
+        final step = parseAt(2);
+        final hasStep = step != null;
+        final hasOmitted = start == null || end == null;
+        final negativeStep = (step ?? 1) < 0;
+        if (!hasStep && !hasOmitted && !negativeStep) {
+          // 两段闭区间 a:b（含端点），保持既有语义
+          var s = start < 0 ? total + start : start;
+          var e = end < 0 ? total + end : end;
+          if (s > e) {
+            final tmp = s;
+            s = e;
+            e = tmp;
+          }
+          for (var i = s; i <= e; i++) {
+            out.add(i);
+          }
+        } else {
+          out.addAll(_sliceIndices(total, start, end, step));
+        }
+      } else {
+        final i = int.tryParse(part);
+        if (i != null) out.add(i < 0 ? total + i : i);
+      }
+    }
+    return out;
+  }
+
+  /// 生成切片下标（半开区间，支持省略端点、负索引与负步长）。
+  List<int> _sliceIndices(int total, int? start, int? end, int? step) {
+    var st = step ?? 1;
+    if (st == 0) st = 1;
+    if (st > 0) {
+      var s = start ?? 0;
+      var e = end ?? total;
+      if (s < 0) s += total;
+      if (e < 0 && end != null) e += total;
+      if (s < 0) s = 0;
+      if (e > total) e = total;
+      final out = <int>[];
+      for (var i = s; i < e && i < total; i += st) {
+        out.add(i);
+      }
+      return out;
+    }
+    var s = start ?? total - 1;
+    var e = end ?? -1;
+    if (s < 0) s += total;
+    if (e < 0 && end != null) e += total;
+    if (s >= total) s = total - 1;
+    final out = <int>[];
+    for (var i = s; i > e && i >= 0; i += st) {
+      out.add(i);
+    }
+    return out;
   }
 
   dom.Element? _getById(dom.Element root, String id) {
@@ -828,10 +968,49 @@ class RulePipeline {
       case 'outerHtml':
         return el.outerHtml.trim();
       default:
-        if (getter.startsWith('attr:')) return el.attributes[getter.substring(5)] ?? '';
+        if (getter.startsWith('attr:')) {
+          return el.attributes[getter.substring(5)] ?? '';
+        }
         // 属性名
         return el.attributes[getter] ?? el.text.trim();
     }
+  }
+
+  /// 整个选中集合的 outerHtml 合并为单值，并剔除其中的 script/style 节点。
+  /// 作为独立方法提供，不改变 [_getByGetter] 的既有语义。
+  String joinedHtmlAll(String raw, String rule) {
+    final doc = html_parser.parse(raw);
+    final clean = _stripCssPrefix(rule);
+    final at = _lastTopAt(clean);
+    final selector = at < 0 ? clean : clean.substring(0, at);
+    final elements = selector.isEmpty
+        ? doc.querySelectorAll('*').where((e) => e.children.isEmpty).toList()
+        : CssSelector.selectAll(doc, selector);
+    return elements.map((e) => _stripScriptStyle(e.outerHtml)).join('');
+  }
+
+  static String _stripScriptStyle(String html) => html
+      .replaceAll(
+          RegExp(r'<script\b[^>]*>[\s\S]*?</script>', caseSensitive: false), '')
+      .replaceAll(
+          RegExp(r'<style\b[^>]*>[\s\S]*?</style>', caseSensitive: false), '');
+
+  /// 只取元素的直系文本节点并拼接（不含后代元素文本）。
+  String ownTextOf(dom.Element el) => el.nodes
+      .where((n) => n.nodeType == dom.Node.TEXT_NODE)
+      .map((n) => n.text ?? '')
+      .join('')
+      .trim();
+
+  /// 收集若干元素的某个属性值，去除空值并按出现顺序去重。
+  List<String> attributeValues(Iterable<dom.Element> elements, String attr) {
+    final seen = <String>{};
+    final out = <String>[];
+    for (final e in elements) {
+      final v = (e.attributes[attr] ?? '').trim();
+      if (v.isNotEmpty && seen.add(v)) out.add(v);
+    }
+    return out;
   }
 
   List<String> _jsonValues(String raw, String rule, bool forceJson) {
@@ -842,24 +1021,57 @@ class RulePipeline {
       return [];
     }
     final values = JsonPath.select(json, _stripJsonPrefix(rule));
-    return values.map((e) => e == null ? '' : e.toString()).where((s) => s.isNotEmpty).toList();
+    return values
+        .map((e) => e == null ? '' : e.toString())
+        .where((s) => s.isNotEmpty)
+        .toList();
   }
 
   List<String> _regexValues(String raw, String rule) {
     var pattern = rule.startsWith(':') ? rule.substring(1) : rule;
+
+    // 链式正则 `:a&&b&&c`：中间段拼全匹配喂下一段，末段返回分组数组。
+    if (pattern.contains('&&')) {
+      final rules = _splitTop(pattern, const ['&&'])
+          .map((s) => s.trim())
+          .where((s) => s.isNotEmpty)
+          .toList();
+      final groups = RegexParser.matchChain(rules, raw);
+      final out = <String>[];
+      List<String>? firstGroups;
+      for (final g in groups) {
+        if (g.isEmpty) continue;
+        final captures = g.length > 1
+            ? g.sublist(1).where((x) => x.isNotEmpty).toList()
+            : <String>[];
+        final v = captures.isNotEmpty ? captures.join('\n') : g[0];
+        if (v.isNotEmpty) out.add(v);
+        firstGroups ??= g;
+      }
+      _lastGroups = firstGroups;
+      return out;
+    }
+
     // :正则$group 或 :正则!!序号
     int group = 0;
-    final gm = RegExp(r'^(.*?)(?:\$(\d+)|!!(\d+))$', dotAll: true).firstMatch(pattern);
+    final gm =
+        RegExp(r'^(.*?)(?:\$(\d+)|!!(\d+))$', dotAll: true).firstMatch(pattern);
     if (gm != null) {
       pattern = gm.group(1)!;
       group = int.tryParse(gm.group(2) ?? gm.group(3) ?? '0') ?? 0;
     }
-    final matches = RegExp(pattern, multiLine: true, dotAll: true).allMatches(raw);
+    final matches =
+        RegExp(pattern, multiLine: true, dotAll: true).allMatches(raw);
     final out = <String>[];
+    List<String>? firstGroups;
     for (final m in matches) {
       final g = group <= m.groupCount ? m.group(group) : m.group(0);
       if (g != null && g.isNotEmpty) out.add(g);
+      firstGroups ??= <String>[
+        for (var i = 0; i <= m.groupCount; i++) m.group(i) ?? '',
+      ];
     }
+    _lastGroups = firstGroups;
     return out;
   }
 
@@ -886,14 +1098,16 @@ class RulePipeline {
     result.selector = parts.first;
     for (var i = 1; i < parts.length;) {
       final p = parts[i];
-      // 上游 `##match##replace###`：split("##") 得到 4 段，第 4 段存在即
+      // `##match##replace###`：split("##") 得到 4 段，第 4 段存在即
       // replaceFirst = true（取第一个匹配文本并替换）。_splitByHash 会把
       // 结尾 `###` 的第三个 '#' 保留为单独一段 "#"，这里据此识别。
-      if (p == '#' && i == parts.length - 1 && result.ops.isNotEmpty &&
+      if (p == '#' &&
+          i == parts.length - 1 &&
+          result.ops.isNotEmpty &&
           result.ops.last.kind == _OpKind.replace) {
         final prev = result.ops.removeLast();
-        result.ops.add(
-            _PostOp.replaceFirst(prev.pattern, prev.replacement ?? ''));
+        result.ops
+            .add(_PostOp.replaceFirst(prev.pattern, prev.replacement ?? ''));
         i += 1;
       } else if (p.startsWith('#')) {
         // ###regex：只保留首个匹配（2 段形式，项目既有语义）
@@ -917,13 +1131,14 @@ class RulePipeline {
     for (final op in ops) {
       switch (op.kind) {
         case _OpKind.remove:
-          v = v.replaceAll(RegExp(op.pattern, multiLine: true, dotAll: true), '');
+          v = v.replaceAll(
+              RegExp(op.pattern, multiLine: true, dotAll: true), '');
           break;
         case _OpKind.replace:
           v = RegexParser.replace(v, op.pattern, op.replacement!);
           break;
         case _OpKind.replaceFirst:
-          // 上游 `##match##replace###`：取第一个匹配文本，再用同一正则对该
+          // `##match##replace###`：取第一个匹配文本，再用同一正则对该
           // 文本替换一次；无匹配返回空串。等价于对首个 match 展开 $N 模板。
           final m =
               RegExp(op.pattern, multiLine: true, dotAll: true).firstMatch(v);
@@ -938,7 +1153,8 @@ class RulePipeline {
           }
           break;
         case _OpKind.match:
-          final m = RegExp(op.pattern, multiLine: true, dotAll: true).firstMatch(v);
+          final m =
+              RegExp(op.pattern, multiLine: true, dotAll: true).firstMatch(v);
           v = m?.group(0) ?? '';
           break;
       }
@@ -951,7 +1167,9 @@ class RulePipeline {
     if (template == null || !template.contains('{{')) return value;
     return template.replaceAllMapped(RegExp(r'\{\{([\s\S]*?)\}\}'), (m) {
       final script = m.group(1)!;
-      return JsMiniEvaluator.eval(script, result: value, key: keyword, page: page, baseUrl: baseUrl) ?? '';
+      return JsMiniEvaluator.eval(script,
+              result: value, key: keyword, page: page, baseUrl: baseUrl) ??
+          '';
     });
   }
 
@@ -963,19 +1181,25 @@ class RulePipeline {
 
   RuleMode _detectMode(String rule, {bool forceJson = false}) {
     final r = rule.trim();
+    if (r.toLowerCase().startsWith('@webjs:')) return RuleMode.webJs;
     if (r.toLowerCase().startsWith('@css:')) return RuleMode.css;
     if (r.toLowerCase().startsWith('@xpath:')) return RuleMode.xpath;
     if (r.toLowerCase().startsWith('@json:')) return RuleMode.json;
-    if (r.toLowerCase().startsWith('@js:') || RegExp(r'^<js>[\s\S]*</js>$').hasMatch(r)) return RuleMode.js;
+    if (r.toLowerCase().startsWith('@js:') ||
+        RegExp(r'^<js>[\s\S]*</js>$').hasMatch(r)) return RuleMode.js;
     if (r.startsWith(r'$.') || r.startsWith(r'$[')) return RuleMode.json;
     if (r.startsWith('//') || r.startsWith('/')) return RuleMode.xpath;
-    if (r.startsWith(':') && RegExp(r'^:.+[\+\*\[\]\(\)\^\$]').hasMatch(r)) return RuleMode.regex;
+    if (r.startsWith(':') && RegExp(r'^:.+[\+\*\[\]\(\)\^\$]').hasMatch(r)) {
+      return RuleMode.regex;
+    }
     if (forceJson) return RuleMode.json;
     return RuleMode.defaultRule;
   }
 
-  String _stripCssPrefix(String r) => r.toLowerCase().startsWith('@css:') ? r.substring(5) : r;
-  String _stripXPathPrefix(String r) => r.toLowerCase().startsWith('@xpath:') ? r.substring(7) : r;
+  String _stripCssPrefix(String r) =>
+      r.toLowerCase().startsWith('@css:') ? r.substring(5) : r;
+  String _stripXPathPrefix(String r) =>
+      r.toLowerCase().startsWith('@xpath:') ? r.substring(7) : r;
   String _stripJsonPrefix(String r) {
     final low = r.toLowerCase();
     if (low.startsWith('@json:')) return r.substring(6);
@@ -1000,7 +1224,11 @@ class RulePipeline {
         if (c == quote) quote = '';
         continue;
       }
-      if (c == "'" || c == '"') { quote = c; sb.write(c); continue; }
+      if (c == "'" || c == '"') {
+        quote = c;
+        sb.write(c);
+        continue;
+      }
       if (c == '[' || c == '(') depth++;
       if (c == ']' || c == ')') depth--;
       if (c == '@' && depth == 0) {
@@ -1021,8 +1249,14 @@ class RulePipeline {
     var idx = -1;
     for (var i = 0; i < rule.length; i++) {
       final c = rule[i];
-      if (quote.isNotEmpty) { if (c == quote) quote = ''; continue; }
-      if (c == "'" || c == '"') { quote = c; continue; }
+      if (quote.isNotEmpty) {
+        if (c == quote) quote = '';
+        continue;
+      }
+      if (c == "'" || c == '"') {
+        quote = c;
+        continue;
+      }
       if (c == '[' || c == '(') depth++;
       if (c == ']' || c == ')') depth--;
       if (c == '@' && depth == 0) idx = i;
@@ -1030,23 +1264,69 @@ class RulePipeline {
     return idx;
   }
 
-  /// 顶层分隔（忽略 [](){} 与引号内部），返回各段
+  /// 平衡切分：校验括号/引号是否配对，并以首个命中的顶层连接符
+  /// （`||` / `%%` / `&&`）统一定性整串语义后切分。
+  ///
+  /// 括号/引号/转义不平衡时抛出带明确信息的 [FormatException]，不做静默错切。
+  /// 无连接符时返回仅含原串的单段列表。
+  List<String> splitRuleBalanced(String rule) {
+    const connectors = <String>['||', '%%', '&&'];
+    final scan = _BalanceScan();
+    String? dominant;
+    for (var i = 0; i < rule.length; i++) {
+      scan.feed(rule[i]);
+      if (dominant == null && scan.isTop && !scan.justSkipped) {
+        for (final c in connectors) {
+          if (i + c.length <= rule.length &&
+              rule.substring(i, i + c.length) == c) {
+            dominant = c;
+            break;
+          }
+        }
+      }
+    }
+    if (!scan.balanced) {
+      throw FormatException('规则括号或引号不平衡：方括号=${scan.square} 圆括号=${scan.paren} '
+          '花括号=${scan.curly} 引号未闭合=${scan.quote.isNotEmpty} '
+          '负深度=${scan.hadNegative}，规则：$rule');
+    }
+    if (dominant == null) return <String>[rule];
+    return _splitTop(rule, <String>[dominant]);
+  }
+
+  /// 返回规则里首个命中的顶层连接符（`||` / `%%` / `&&`），无则 null。
+  String? ruleDominantConnector(String rule) {
+    const connectors = <String>['||', '%%', '&&'];
+    final scan = _BalanceScan();
+    for (var i = 0; i < rule.length; i++) {
+      scan.feed(rule[i]);
+      if (scan.isTop && !scan.justSkipped) {
+        for (final c in connectors) {
+          if (i + c.length <= rule.length &&
+              rule.substring(i, i + c.length) == c) {
+            return c;
+          }
+        }
+      }
+    }
+    return null;
+  }
+
+  /// 顶层分隔（引号/转义感知，`[](){}` 独立深度计数），返回各段。
   List<String> _splitTop(String input, List<String> seps) {
     final result = <String>[];
     final sb = StringBuffer();
-    var depth = 0;
-    var quote = '';
+    final scan = _BalanceScan();
     for (var i = 0; i < input.length; i++) {
       final c = input[i];
-      if (quote.isNotEmpty) { sb.write(c); if (c == quote) quote = ''; continue; }
-      if (c == "'" || c == '"') { quote = c; sb.write(c); continue; }
-      if (c == '[' || c == '(' || c == '{') depth++;
-      if (c == ']' || c == ')' || c == '}') depth--;
+      scan.feed(c);
       String? matched;
-      if (depth == 0) {
+      if (scan.isTop && !scan.justSkipped) {
         for (final s in seps) {
-          if (i + s.length <= input.length && input.substring(i, i + s.length) == s) {
-            matched = s; break;
+          if (i + s.length <= input.length &&
+              input.substring(i, i + s.length) == s) {
+            matched = s;
+            break;
           }
         }
       }
@@ -1062,24 +1342,22 @@ class RulePipeline {
     return result;
   }
 
-  /// 顶层按连接符拆分（忽略 `[](){}` 与引号内部），并保留每个分段右侧的连接符。
-  /// 用于区分 `||` / `%%` / `&&` 三种不同语义的连接。
+  /// 顶层按连接符拆分（引号/转义感知，`[](){}` 独立深度计数），
+  /// 并保留每个分段右侧的连接符。用于区分 `||` / `%%` / `&&` 语义。
   List<_ConnectorSegment> _splitByConnectors(String input, List<String> seps) {
     final result = <_ConnectorSegment>[];
     final sb = StringBuffer();
-    var depth = 0;
-    var quote = '';
+    final scan = _BalanceScan();
     for (var i = 0; i < input.length; i++) {
       final c = input[i];
-      if (quote.isNotEmpty) { sb.write(c); if (c == quote) quote = ''; continue; }
-      if (c == "'" || c == '"') { quote = c; sb.write(c); continue; }
-      if (c == '[' || c == '(' || c == '{') depth++;
-      if (c == ']' || c == ')' || c == '}') depth--;
+      scan.feed(c);
       String? matched;
-      if (depth == 0) {
+      if (scan.isTop && !scan.justSkipped) {
         for (final s in seps) {
-          if (i + s.length <= input.length && input.substring(i, i + s.length) == s) {
-            matched = s; break;
+          if (i + s.length <= input.length &&
+              input.substring(i, i + s.length) == s) {
+            matched = s;
+            break;
           }
         }
       }
@@ -1100,8 +1378,14 @@ class RulePipeline {
     var quote = '';
     for (var i = 0; i <= input.length - token.length; i++) {
       final c = input[i];
-      if (quote.isNotEmpty) { if (c == quote) quote = ''; continue; }
-      if (c == "'" || c == '"') { quote = c; continue; }
+      if (quote.isNotEmpty) {
+        if (c == quote) quote = '';
+        continue;
+      }
+      if (c == "'" || c == '"') {
+        quote = c;
+        continue;
+      }
       if (c == '[' || c == '(' || c == '{') depth++;
       if (c == ']' || c == ')' || c == '}') depth--;
       if (depth == 0 && input.substring(i, i + token.length) == token) return i;
@@ -1117,11 +1401,22 @@ class RulePipeline {
     var quote = '';
     for (var i = 0; i < input.length; i++) {
       final c = input[i];
-      if (quote.isNotEmpty) { sb.write(c); if (c == quote) quote = ''; continue; }
-      if (c == "'" || c == '"') { quote = c; sb.write(c); continue; }
+      if (quote.isNotEmpty) {
+        sb.write(c);
+        if (c == quote) quote = '';
+        continue;
+      }
+      if (c == "'" || c == '"') {
+        quote = c;
+        sb.write(c);
+        continue;
+      }
       if (c == '[' || c == '(' || c == '{') depth++;
       if (c == ']' || c == ')' || c == '}') depth--;
-      if (depth == 0 && i + 1 < input.length && c == '#' && input[i + 1] == '#') {
+      if (depth == 0 &&
+          i + 1 < input.length &&
+          c == '#' &&
+          input[i + 1] == '#') {
         result.add(sb.toString());
         sb.clear();
         i++;
@@ -1184,12 +1479,143 @@ class _PostOp {
   final String? replacement;
   _PostOp._(this.kind, this.pattern, this.replacement);
   factory _PostOp.remove(String p) => _PostOp._(_OpKind.remove, p, null);
-  factory _PostOp.replace(String p, String r) => _PostOp._(_OpKind.replace, p, r);
+  factory _PostOp.replace(String p, String r) =>
+      _PostOp._(_OpKind.replace, p, r);
 
-  /// 上游 `##match##replace###`：第 4 段触发 replaceFirst。
+  /// `##match##replace###`：第 4 段触发 replaceFirst。
   factory _PostOp.replaceFirst(String p, String r) =>
       _PostOp._(_OpKind.replaceFirst, p, r);
 
   factory _PostOp.match(String p) => _PostOp._(_OpKind.match, p, null);
 }
 
+/// 常用 HTML 命名实体表。
+const Map<String, String> _html4Named = <String, String>{
+  'amp': '&',
+  'lt': '<',
+  'gt': '>',
+  'quot': '"',
+  'apos': "'",
+  'nbsp': '\u00A0',
+  'copy': '\u00A9',
+  'reg': '\u00AE',
+  'trade': '\u2122',
+  'hellip': '\u2026',
+  'mdash': '\u2014',
+  'ndash': '\u2013',
+  'lsquo': '\u2018',
+  'rsquo': '\u2019',
+  'ldquo': '\u201C',
+  'rdquo': '\u201D',
+  'middot': '\u00B7',
+  'bull': '\u2022',
+  'times': '\u00D7',
+  'divide': '\u00F7',
+  'euro': '\u20AC',
+  'pound': '\u00A3',
+  'yen': '\u00A5',
+  'cent': '\u00A2',
+  'sect': '\u00A7',
+  'para': '\u00B6',
+  'deg': '\u00B0',
+  'plusmn': '\u00B1',
+  'laquo': '\u00AB',
+  'raquo': '\u00BB',
+  'frac12': '\u00BD',
+  'frac14': '\u00BC',
+  'frac34': '\u00BE',
+  'iexcl': '\u00A1',
+  'iquest': '\u00BF',
+  'acute': '\u00B4',
+  'cedil': '\u00B8',
+  'uml': '\u00A8',
+  'macr': '\u00AF',
+};
+
+/// HTML 实体反转义：覆盖命名实体与十进制/十六进制数字实体。
+/// 未知名实体原样保留；代理对（>0xFFFF）按码点输出。
+String unescapeHtml4(String input) {
+  return input.replaceAllMapped(
+      RegExp(r'&(#x[0-9A-Fa-f]+|#\d+|[A-Za-z][A-Za-z0-9]*);'), (m) {
+    final body = m.group(1)!;
+    if (body.startsWith('#x') || body.startsWith('#X')) {
+      final code = int.tryParse(body.substring(2), radix: 16);
+      return _codePointToString(code) ?? m.group(0)!;
+    }
+    if (body.startsWith('#')) {
+      final code = int.tryParse(body.substring(1));
+      return _codePointToString(code) ?? m.group(0)!;
+    }
+    return _html4Named[body] ?? m.group(0)!;
+  });
+}
+
+String? _codePointToString(int? code) {
+  if (code == null || code < 0 || code > 0x10FFFF) return null;
+  if (code > 0xFFFF) return String.fromCharCodes(<int>[code]);
+  return String.fromCharCode(code);
+}
+
+/// 规则串平衡扫描器：引号/转义感知，`[]()` `{}` 独立深度计数。
+class _BalanceScan {
+  int square = 0;
+  int paren = 0;
+  int curly = 0;
+  String quote = '';
+  bool hadNegative = false;
+
+  bool _pendingEscape = false;
+  bool justSkipped = false;
+
+  void feed(String c) {
+    justSkipped = false;
+    if (_pendingEscape) {
+      _pendingEscape = false;
+      justSkipped = true;
+      return;
+    }
+    if (c == r'\') {
+      _pendingEscape = true;
+      return;
+    }
+    if (quote.isNotEmpty) {
+      if (c == quote) quote = '';
+      return;
+    }
+    if (c == "'" || c == '"') {
+      quote = c;
+      return;
+    }
+    switch (c) {
+      case '[':
+        square++;
+        break;
+      case ']':
+        square--;
+        break;
+      case '(':
+        paren++;
+        break;
+      case ')':
+        paren--;
+        break;
+      case '{':
+        curly++;
+        break;
+      case '}':
+        curly--;
+        break;
+    }
+    if (square < 0 || paren < 0 || curly < 0) hadNegative = true;
+  }
+
+  bool get isTop => square == 0 && paren == 0 && curly == 0 && quote.isEmpty;
+
+  bool get balanced =>
+      !hadNegative &&
+      !_pendingEscape &&
+      square == 0 &&
+      paren == 0 &&
+      curly == 0 &&
+      quote.isEmpty;
+}

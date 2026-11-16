@@ -1,4 +1,4 @@
-/// 弹幕文件缓存索引（对齐 Sigma RuleBigDataHelp.getDanmakuFile 三级 MD5 路径）
+/// 弹幕文件缓存索引（ 三级 MD5 路径）
 class DanmakuCache {
   int? id;
   String bookUrl;

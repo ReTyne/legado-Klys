@@ -13,7 +13,7 @@ class OfflineJsBridge {
   late final JsBridgeSource source;
   String _script = '';
 
-  /// 注入书源脚本（对齐 WebViewLegadoJs.loadSource 的 jsLib + loginUrl 顺序）。
+  /// 注入书源脚本（按 jsLib + loginUrl 顺序）。
   void loadSource(JsSource src) {
     source = JsBridgeSource(url: src.jsUrl, variable: src.variable ?? '');
     final buf = StringBuffer();

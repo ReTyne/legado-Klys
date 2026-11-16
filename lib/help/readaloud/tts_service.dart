@@ -50,7 +50,7 @@ class TtsService {
   // 单段朗读守卫：划词朗读时不自动续播下一章
   bool _onceGuard = false;
 
-  // === 听书进度计入阅读记录（对齐 Sigma 阅读统计闭环） ===
+ // === 听书进度计入阅读记录 ===
   final ReadingRecordService _readingRecord = ReadingRecordService();
   /// 朗读所属书籍：由阅读页在 setChapters 后通过 [bindBook] 注入；
   /// 未注入（如 RSS 朗读）时回退到「最近阅读」的书。
@@ -526,7 +526,7 @@ class TtsService {
   void clearBook() => _boundBook = null;
 
   /// 解析朗读归属书籍：优先显式绑定，否则取「最近阅读」的书
-  /// （对齐 Sigma MediaButtonReceiver 的 appDb.bookDao.lastReadBook 语义）。
+ /// （appDb.bookDao.lastReadBook 语义）。
   Future<Book?> _resolveBook() async {
     final bound = _boundBook;
     if (bound != null) return bound;

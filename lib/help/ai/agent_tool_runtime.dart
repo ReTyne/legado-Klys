@@ -6,7 +6,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:legado_md3/data/local/app_database.dart';
 import 'package:legado_md3/data/model/v14_models.dart';
 
-/// 一次 Agent 回复：正文 + 本轮真实执行过的工具日志（供聊天页展示多轮过程）。
+/// 一次 Agent 回复：正文 + 实际执行过的工具日志（供聊天页展示多轮过程）。
 class AgentReply {
   final String text;
   final List<String> toolLog;
@@ -118,7 +118,8 @@ class AgentToolRegistry {
     if (hits.isEmpty) return '未找到匹配「$keyword」的书籍。';
     final sb = StringBuffer('找到 ${hits.length} 本书：\n');
     for (final b in hits) {
-      sb.writeln('- ${b.name} / ${b.author} [类型${b.type}] 最近：${b.lastChapter ?? "无"}');
+      sb.writeln(
+          '- ${b.name} / ${b.author} [类型${b.type}] 最近：${b.lastChapter ?? "无"}');
     }
     return sb.toString().trim();
   }
@@ -134,14 +135,17 @@ class AgentToolRegistry {
     for (final c in chapters.take(limit.clamp(1, 200))) {
       sb.writeln('${c.index}. ${c.title}');
     }
-    if (chapters.length > limit) sb.writeln('…（其余 ${chapters.length - limit} 章已省略）');
+    if (chapters.length > limit) {
+      sb.writeln('…（其余 ${chapters.length - limit} 章已省略）');
+    }
     return sb.toString().trim();
   }
 
   Future<String> _getChapterContent(Map<String, dynamic> args) async {
     final book = (args['book'] ?? '').toString().trim();
     final author = (args['author'] ?? '').toString().trim();
-    final chapter = (args['chapter'] is num) ? (args['chapter'] as num).toInt() : 0;
+    final chapter =
+        (args['chapter'] is num) ? (args['chapter'] as num).toInt() : 0;
     final maxChars =
         (args['maxChars'] is num) ? (args['maxChars'] as num).toInt() : 2000;
     final chapters = await _db.getChapters(book, author);
@@ -196,7 +200,8 @@ class AgentToolRuntime {
 
   static const _maxRounds = 6;
 
-  Future<AgentReply> chat(String userText, List<({String role, String content})> history) async {
+  Future<AgentReply> chat(
+      String userText, List<({String role, String content})> history) async {
     final p = await SharedPreferences.getInstance();
     final baseUrl = p.getString('ai_base_url') ?? '';
     final apiKey = p.getString('ai_api_key') ?? '';
@@ -271,7 +276,8 @@ class AgentToolRuntime {
             Map<String, dynamic> args;
             try {
               args = rawArgs is String
-                  ? Map<String, dynamic>.from(jsonDecode(rawArgs.isEmpty ? '{}' : rawArgs) as Map)
+                  ? Map<String, dynamic>.from(
+                      jsonDecode(rawArgs.isEmpty ? '{}' : rawArgs) as Map)
                   : Map<String, dynamic>.from((rawArgs as Map?) ?? {});
             } catch (_) {
               args = <String, dynamic>{};
@@ -284,7 +290,8 @@ class AgentToolRuntime {
               }
             }
             final result = await registry.execute(tool?.handler ?? name, args);
-            log.add('$name → ${result.length > 120 ? "${result.substring(0, 120)}…" : result}');
+            log.add(
+                '$name → ${result.length > 120 ? "${result.substring(0, 120)}…" : result}');
             messages.add({
               'role': 'tool',
               'tool_call_id': call['id'] ?? name,
@@ -294,7 +301,8 @@ class AgentToolRuntime {
           continue; // 回填后进入下一轮，直到 LLM 给出最终回答
         }
         final content = msg['content']?.toString().trim() ?? '';
-        return AgentReply(content.isEmpty ? '（模型未返回文本）' : content, toolLog: log);
+        return AgentReply(content.isEmpty ? '（模型未返回文本）' : content,
+            toolLog: log);
       }
       return AgentReply('（工具调用轮次已达上限，已执行 ${log.length} 次工具）', toolLog: log);
     } on DioException catch (e) {
@@ -334,18 +342,25 @@ class AgentToolRuntime {
       return m?.group(1);
     }
 
-    if ((q.contains('书源') || q.contains('源头')) && enabled(BuiltinToolHandlers.listBookSources)) {
+    if ((q.contains('书源') || q.contains('源头')) &&
+        enabled(BuiltinToolHandlers.listBookSources)) {
       final r = await run(BuiltinToolHandlers.listBookSources, {'keyword': ''});
       return AgentReply('【离线工具·查书源】\n$r', toolLog: log);
     }
     if ((q.contains('目录') || q.contains('章节列表') || q.contains('有哪些章')) &&
         enabled(BuiltinToolHandlers.getToc)) {
       final book = bookNameFrom(q) ?? (await _firstBookName());
-      if (book == null) return AgentReply('【离线工具】书架上暂无书籍，无法查询目录。', toolLog: log);
-      final r = await run(BuiltinToolHandlers.getToc, {'book': book, 'limit': 30});
+      if (book == null) {
+        return AgentReply('【离线工具】书架上暂无书籍，无法查询目录。', toolLog: log);
+      }
+      final r =
+          await run(BuiltinToolHandlers.getToc, {'book': book, 'limit': 30});
       return AgentReply('【离线工具·查目录】\n$r', toolLog: log);
     }
-    if ((q.contains('正文') || q.contains('内容') || q.contains('读一下') || q.contains('读第')) &&
+    if ((q.contains('正文') ||
+            q.contains('内容') ||
+            q.contains('读一下') ||
+            q.contains('读第')) &&
         enabled(BuiltinToolHandlers.getChapterContent)) {
       final book = bookNameFrom(q) ?? (await _firstBookName());
       if (book == null) return AgentReply('【离线工具】书架上暂无书籍。', toolLog: log);
@@ -355,12 +370,16 @@ class AgentToolRuntime {
           {'book': book, 'chapter': chapter, 'maxChars': 1500});
       return AgentReply('【离线工具·取章节内容】\n$r', toolLog: log);
     }
-    if ((q.contains('找') || q.contains('搜索') || q.contains('书架') || q.contains('有哪些书')) &&
+    if ((q.contains('找') ||
+            q.contains('搜索') ||
+            q.contains('书架') ||
+            q.contains('有哪些书')) &&
         enabled(BuiltinToolHandlers.searchBooks)) {
       final kw = q
           .replaceAll(RegExp('帮我|搜索|查找|找一下|找找|书架|有哪些|书|的|？|\\?|，|。'), '')
           .trim();
-      final r = await run(BuiltinToolHandlers.searchBooks, {'keyword': kw, 'limit': 10});
+      final r = await run(
+          BuiltinToolHandlers.searchBooks, {'keyword': kw, 'limit': 10});
       return AgentReply('【离线工具·搜索书籍】\n$r', toolLog: log);
     }
     final names = tools.map((t) => t.name).join(' / ');

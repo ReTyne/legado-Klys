@@ -19,8 +19,10 @@ class _RuleSub {
   String url;
   int type; // 0书源 1RSS源 2替换规则 3自动检测
   int? lastUpdate;
-  /// 是否自动更新（对齐 RuleSubAutoUpdate.runDue 读取的 autoUpdate 键）
+
+  /// 是否自动更新
   int autoUpdate;
+
   /// 自动更新间隔（小时，0=每次检查都更新）
   int updateInterval;
 
@@ -57,6 +59,8 @@ class _RuleSub {
 class _RuleSubscriptionScreenState extends State<RuleSubscriptionScreen> {
   static const _typeNames = ['书源', 'RSS源', '替换规则', '自动检测'];
   List<_RuleSub> _subs = [];
+  bool _silent = false;
+  bool _keepLocal = true;
 
   @override
   void initState() {
@@ -67,10 +71,16 @@ class _RuleSubscriptionScreenState extends State<RuleSubscriptionScreen> {
   Future<void> _load() async {
     final p = await SharedPreferences.getInstance();
     final list = p.getStringList(RuleSubAutoUpdate.prefsKey) ?? [];
+    final silent = await RuleSubAutoUpdate.isSilentUpdate();
+    final keepLocal = await RuleSubAutoUpdate.keepLocalOnConflict();
     if (!mounted) return;
-    setState(() => _subs = list
-        .map((s) => _RuleSub.fromJson(jsonDecode(s) as Map<String, dynamic>))
-        .toList());
+    setState(() {
+      _subs = list
+          .map((s) => _RuleSub.fromJson(jsonDecode(s) as Map<String, dynamic>))
+          .toList();
+      _silent = silent;
+      _keepLocal = keepLocal;
+    });
   }
 
   Future<void> _save() async {
@@ -93,17 +103,22 @@ class _RuleSubscriptionScreenState extends State<RuleSubscriptionScreen> {
           title: Text(sub == null ? '添加订阅' : '编辑订阅'),
           content: SingleChildScrollView(
             child: Column(mainAxisSize: MainAxisSize.min, children: [
-              TextField(controller: nameCtl,
+              TextField(
+                  controller: nameCtl,
                   decoration: const InputDecoration(labelText: '名称')),
               const SizedBox(height: AppSpacing.m),
-              TextField(controller: urlCtl, maxLines: 2,
+              TextField(
+                  controller: urlCtl,
+                  maxLines: 2,
                   decoration: const InputDecoration(labelText: '订阅URL')),
               const SizedBox(height: AppSpacing.m),
               DropdownButtonFormField<int>(
                 value: type,
                 decoration: const InputDecoration(labelText: '规则类型'),
-                items: List.generate(4,
-                    (i) => DropdownMenuItem(value: i, child: Text(_typeNames[i]))),
+                items: List.generate(
+                    4,
+                    (i) =>
+                        DropdownMenuItem(value: i, child: Text(_typeNames[i]))),
                 onChanged: (v) => setD(() => type = v ?? 3),
               ),
               const SizedBox(height: AppSpacing.s),
@@ -118,8 +133,8 @@ class _RuleSubscriptionScreenState extends State<RuleSubscriptionScreen> {
               TextField(
                 controller: intervalCtl,
                 keyboardType: TextInputType.number,
-                decoration: const InputDecoration(
-                    labelText: '更新间隔（小时，0=每次检查都更新）'),
+                decoration:
+                    const InputDecoration(labelText: '更新间隔（小时，0=每次检查都更新）'),
               ),
             ]),
           ),
@@ -174,7 +189,8 @@ class _RuleSubscriptionScreenState extends State<RuleSubscriptionScreen> {
       ));
       final resp = await dio.get<String>(sub.url);
       // 直接复用共享服务的解析逻辑，避免与自动更新分叉
-      final count = await _importByType(sub.type, resp.data ?? '');
+      final count = await _importByType(sub.type, resp.data ?? '',
+          keepLocalOnConflict: _keepLocal, silent: _silent);
       sub.lastUpdate = DateTime.now().millisecondsSinceEpoch;
       await _save();
       if (mounted) {
@@ -184,16 +200,160 @@ class _RuleSubscriptionScreenState extends State<RuleSubscriptionScreen> {
       }
     } catch (e) {
       if (mounted) {
-        messenger.showSnackBar(
-            SnackBar(content: Text('${sub.name} 更新失败: $e')));
+        messenger.showSnackBar(SnackBar(content: Text('${sub.name} 更新失败: $e')));
       }
     }
   }
 
   /// 按类型解析并入库：直接复用共享服务 [RuleSubAutoUpdate.importByType]，
   /// 消除订阅页与自动更新的两处解析分叉（type=3 自动检测）。
-  Future<int> _importByType(int type, String body) =>
-      RuleSubAutoUpdate.importByType(type, body);
+  Future<int> _importByType(
+    int type,
+    String body, {
+    bool keepLocalOnConflict = false,
+    bool silent = false,
+  }) =>
+      RuleSubAutoUpdate.importByType(
+        type,
+        body,
+        keepLocalOnConflict: keepLocalOnConflict,
+        silent: silent,
+      );
+
+  /// 导入前对比预览：新增 / 变更 / 删除三类计数，再决定是否导入。
+  Future<void> _preview(_RuleSub sub) async {
+    final messenger = ScaffoldMessenger.of(context);
+    try {
+      final dio = Dio(BaseOptions(
+        connectTimeout: const Duration(seconds: 15),
+        receiveTimeout: const Duration(seconds: 30),
+        headers: {
+          'User-Agent':
+              'Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 Mobile'
+        },
+      ));
+      final resp = await dio.get<String>(sub.url);
+      final body = resp.data ?? '';
+      final preview = await RuleSubAutoUpdate.previewImport(sub.type, body);
+      if (!mounted) return;
+      final d = preview.diff;
+      final ok = await showDialog<bool>(
+        context: context,
+        builder: (c) {
+          final scheme = Theme.of(c).colorScheme;
+          return AlertDialog(
+            title: Text('对比预览：${sub.name}'),
+            content: SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(preview.summary,
+                      style: const TextStyle(fontWeight: FontWeight.bold)),
+                  const SizedBox(height: AppSpacing.s),
+                  _diffSection('新增', d.added, scheme),
+                  _diffSection('变更', d.changed, scheme),
+                  _diffSection('删除', d.deleted, scheme),
+                  const SizedBox(height: AppSpacing.s),
+                  Text('冲突时保留本地修改：${_keepLocal ? '开' : '关'}',
+                      style: const TextStyle(fontSize: 11)),
+                ],
+              ),
+            ),
+            actions: [
+              TextButton(
+                  onPressed: () => Navigator.pop(c, false),
+                  child: const Text('取消')),
+              FilledButton(
+                onPressed: () => Navigator.pop(c, true),
+                child: const Text('按策略导入'),
+              ),
+            ],
+          );
+        },
+      );
+      if (ok != true || !mounted) return;
+      final count = await _importByType(sub.type, body,
+          keepLocalOnConflict: _keepLocal, silent: _silent);
+      sub.lastUpdate = DateTime.now().millisecondsSinceEpoch;
+      await _save();
+      if (mounted) setState(() {});
+      messenger.showSnackBar(SnackBar(content: Text('导入 $count 条')));
+    } catch (e) {
+      messenger.showSnackBar(SnackBar(content: Text('预览失败: $e')));
+    }
+  }
+
+  Widget _diffSection(String label, List<String> ids, ColorScheme cs) {
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 4),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('$label ${ids.length}',
+              style: TextStyle(
+                  fontSize: 12, color: label == '删除' ? cs.error : cs.primary)),
+          if (ids.isNotEmpty)
+            Text(
+              ids.take(8).join('\n') + (ids.length > 8 ? '\n…' : ''),
+              maxLines: 4,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(fontSize: 10.5, fontFamily: 'monospace'),
+            ),
+        ],
+      ),
+    );
+  }
+
+  /// 更新策略设置：静默更新 + 冲突时保留本地修改。
+  Future<void> _showSettings() async {
+    var silent = _silent;
+    var keepLocal = _keepLocal;
+    await showDialog<void>(
+      context: context,
+      builder: (c) => StatefulBuilder(
+        builder: (c, setD) => AlertDialog(
+          title: const Text('更新策略'),
+          content: Column(mainAxisSize: MainAxisSize.min, children: [
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              title: const Text('静默更新'),
+              subtitle:
+                  const Text('自动更新不弹提示、不写更新日志', style: TextStyle(fontSize: 11)),
+              value: silent,
+              onChanged: (v) => setD(() => silent = v),
+            ),
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              title: const Text('冲突时保留本地修改'),
+              subtitle: const Text('订阅内容与本地有差异时不覆盖本地条目',
+                  style: TextStyle(fontSize: 11)),
+              value: keepLocal,
+              onChanged: (v) => setD(() => keepLocal = v),
+            ),
+          ]),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(c), child: const Text('取消')),
+            FilledButton(
+              onPressed: () async {
+                await RuleSubAutoUpdate.setSilentUpdate(silent);
+                await RuleSubAutoUpdate.setKeepLocalOnConflict(keepLocal);
+                if (mounted) {
+                  setState(() {
+                    _silent = silent;
+                    _keepLocal = keepLocal;
+                  });
+                }
+                if (c.mounted) Navigator.pop(c);
+              },
+              child: const Text('保存'),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 
   Future<void> _updateAll() async {
     for (final s in _subs) {
@@ -220,6 +380,11 @@ class _RuleSubscriptionScreenState extends State<RuleSubscriptionScreen> {
       appBar: AppBar(
         title: const Text('规则订阅'),
         actions: [
+          IconButton(
+            tooltip: '更新策略',
+            icon: const Icon(Icons.tune_outlined),
+            onPressed: _showSettings,
+          ),
           IconButton(
             tooltip: '立即检查自动更新',
             icon: const Icon(Icons.update_outlined),
@@ -272,6 +437,7 @@ class _RuleSubscriptionScreenState extends State<RuleSubscriptionScreen> {
                     tooltip: '订阅操作',
                     onSelected: (v) async {
                       if (v == 'update') _update(s);
+                      if (v == 'preview') _preview(s);
                       if (v == 'edit') _edit(s);
                       if (v == 'delete') {
                         setState(() => _subs.removeAt(i));
@@ -280,6 +446,7 @@ class _RuleSubscriptionScreenState extends State<RuleSubscriptionScreen> {
                     },
                     itemBuilder: (_) => const [
                       PopupMenuItem(value: 'update', child: Text('更新')),
+                      PopupMenuItem(value: 'preview', child: Text('对比预览后导入')),
                       PopupMenuItem(value: 'edit', child: Text('编辑')),
                       PopupMenuItem(value: 'delete', child: Text('删除')),
                     ],

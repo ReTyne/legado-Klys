@@ -1,9 +1,9 @@
 import 'package:legado_md3/utils/alphanum_comparator.dart';
 
-/// 批次 6 · Web 端点参数边界（ `service/WebService.kt` 与
-/// `api/controller/BookController.kt`），集中为纯函数以便单元回归。
+/// Web 端点参数边界（ 与
+/// ），集中为纯函数以便单元回归。
 
-// ---- 端口（WebService.kt:185-191）----
+// ---- 端口----
 const int webPortMin = 1024;
 const int webPortMax = 65530;
 const int webPortDefault = 1122;
@@ -12,7 +12,7 @@ const int webPortDefault = 1122;
 int validateWebPort(int port) =>
     (port < webPortMin || port > webPortMax) ? webPortDefault : port;
 
-// ---- 正文图片宽度（BookController.kt:105）----
+// ---- 正文图片宽度----
 const int imageWidthDefault = 640;
 
 /// `width` 缺省/非法（含 <=0）时回退 640。
@@ -21,15 +21,15 @@ int parseImageWidth(String? raw) {
   return (v == null || v <= 0) ? imageWidthDefault : v;
 }
 
-// ---- 封面（BookController.kt:69-94）----
-/// 封面加载 3 秒超时（上游 `ftBitmap.get(3, TimeUnit.SECONDS)`）。
+// ---- 封面----
+/// 封面加载 3 秒超时（ `ftBitmap.get(3, TimeUnit.SECONDS)`）。
 const Duration coverLoadTimeout = Duration(seconds: 3);
 
-/// 上游封面固定 84×112（`.override(84, 112)`）。
+/// 封面固定 84×112（`.override(84, 112)`）。
 const int coverWidth = 84;
 const int coverHeight = 112;
 
-// ---- 章节等待（BookController.kt:186-195）----
+// ---- 章节等待----
 const int chapterWaitMaxAttempts = 30;
 const Duration chapterWaitInterval = Duration(seconds: 1);
 
@@ -48,11 +48,11 @@ Future<T?> pollForValue<T>(
   return null;
 }
 
-// ---- 书架排序四分支（BookController.kt:53-61）----
+// ---- 书架排序四分支----
 /// [sortType]：1=最新章节时间降序，2=书名中文序，3=手动顺序升序，
-/// 其它=阅读时间降序（默认，对齐 `sortedByDescending { durChapterTime }`）。
+/// 其它=阅读时间降序（默认，）。
 ///
-/// 上游分支 2 用 `cnCompare`（依赖中文拼音/笔画 Collator）；纯 Dart 无等价
+/// 分支 2 用 `cnCompare`（依赖中文拼音/笔画 Collator）；纯 Dart 无等价
 /// 排序器，降级为 [AlphanumComparator] 自然序（数字块按数值比较，中文按码点），
 /// 至少避免「书名含数字」时的字典序错乱。
 ///
@@ -86,7 +86,7 @@ List<T> sortBookshelf<T>(
 }
 
 /// Flutter 本地偏好 `bs_sortType`（0最近阅读/1书名/2作者/3添加时间/4手动）
-/// 映射到上游 `bookshelfSort` 四分支取值，保证 Web 与 App 书架顺序一致。
+/// 映射到 `bookshelfSort` 四分支取值，保证 Web 与 App 书架顺序一致。
 int mapLocalBookshelfSort(int local) {
   switch (local) {
     case 1:
@@ -98,7 +98,7 @@ int mapLocalBookshelfSort(int local) {
   }
 }
 
-// ---- 多 IP 严格 IPv4 校验（NetworkUtils.kt:278-283）----
+// ---- 多 IP 严格 IPv4 校验----
 bool isStrictIPv4Address(String? input) {
   if (input == null || input.isEmpty) return false;
   if (input.codeUnitAt(0) < 0x31 || input.codeUnitAt(0) > 0x39) return false;

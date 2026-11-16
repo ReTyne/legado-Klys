@@ -10,7 +10,7 @@ import android.net.NetworkCapabilities
 import android.os.Build
 
 /**
- * 网络变化事件化（对齐 Sigma receiver/NetworkChangedListener.kt）：
+ * 网络变化事件化：
  *  - API >= N：ConnectivityManager.registerDefaultNetworkCallback（onAvailable/onLost/
  *    onCapabilitiesChanged 均推送）；
  *  - API < N：CONNECTIVITY_ACTION 广播兼容分支。

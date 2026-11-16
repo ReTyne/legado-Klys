@@ -12,14 +12,13 @@ import 'package:legado_md3/data/model/db_models.dart';
 
 import 'helpers/lib_source_helper.dart';
 
-/// 本轮（v13）新增子系统的回归测试：
+/// （v13）新增子系统的回归测试：
 /// - 5 张新表在「全新安装」路径下必须建成（_onCreate 的 CREATE TABLE IF NOT EXISTS）；
 /// - 5 个模型的 toMap/fromMap 往返保真；
 /// - RuleSub 自动更新字段不丢；
 /// - 关键调用链用源码契约锁定，防止再次出现「数据孤岛 / 孤儿 UI」。
 void main() {
-  String read(String p) =>
-      File(p).readAsStringSync() + extraLibrarySources(p);
+  String read(String p) => File(p).readAsStringSync() + extraLibrarySources(p);
 
   group('v13 建表', () {
     setUpAll(() {
@@ -43,8 +42,11 @@ void main() {
           "SELECT name FROM sqlite_master WHERE type='table' AND name IN "
           "('auto_tasks','rss_read_records','book_memos','book_highlights','download_tasks')");
       expect(rows.map((r) => r['name']).toSet(), {
-        'auto_tasks', 'rss_read_records', 'book_memos',
-        'book_highlights', 'download_tasks',
+        'auto_tasks',
+        'rss_read_records',
+        'book_memos',
+        'book_highlights',
+        'download_tasks',
       });
     });
 
@@ -62,8 +64,7 @@ void main() {
         final cols = await db.rawQuery('PRAGMA table_info(${entry.key})');
         final names = cols.map((r) => r['name'] as String).toSet();
         for (final key in entry.value.keys) {
-          expect(names.contains(key), isTrue,
-              reason: '${entry.key} 缺列: $key');
+          expect(names.contains(key), isTrue, reason: '${entry.key} 缺列: $key');
         }
       }
     });
@@ -72,14 +73,20 @@ void main() {
   group('模型往返', () {
     test('AutoTask 往返 + 每日定点下次运行时间', () {
       final t = AutoTask(
-          id: 3, name: '每日备份', action: 'backup', hour: 9, minute: 30,
-          enabled: 1, note: '说明');
+          id: 3,
+          name: '每日备份',
+          action: 'backup',
+          hour: 9,
+          minute: 30,
+          enabled: 1,
+          note: '说明');
       final back = AutoTask.fromMap(t.toMap());
       expect(back.id, 3);
       expect(back.action, 'backup');
       expect(back.hour, 9);
       expect(back.scheduleLabel, '每日 09:30');
-      final next = t.nextRunTime(from: DateTime(2026, 1, 1, 8, 0).millisecondsSinceEpoch);
+      final next = t.nextRunTime(
+          from: DateTime(2026, 1, 1, 8, 0).millisecondsSinceEpoch);
       expect(DateTime.fromMillisecondsSinceEpoch(next).hour, 9);
     });
 
@@ -94,8 +101,14 @@ void main() {
 
     test('BookHighlight JSON 往返', () {
       final h = BookHighlight(
-          bookName: 'b', author: 'a', chapterIndex: 2,
-          content: '选中文本', start: 4, end: 8, color: 123, note: '批注');
+          bookName: 'b',
+          author: 'a',
+          chapterIndex: 2,
+          content: '选中文本',
+          start: 4,
+          end: 8,
+          color: 123,
+          note: '批注');
       final back = BookHighlight.fromJson(h.toJson());
       expect(back.content, '选中文本');
       expect(back.start, 4);
@@ -113,8 +126,11 @@ void main() {
 
     test('RuleSub 自动更新字段往返', () {
       final s = RuleSub(
-          name: '源', url: 'https://x', type: 'bookSource',
-          autoUpdate: 1, updateInterval: 12);
+          name: '源',
+          url: 'https://x',
+          type: 'bookSource',
+          autoUpdate: 1,
+          updateInterval: 12);
       final back = RuleSub.fromMap(s.toMap());
       expect(back.autoUpdate, 1);
       expect(back.updateInterval, 12);
@@ -132,7 +148,8 @@ void main() {
 
     test('自定义 HTTP TTS 经适配器进入朗读链路（消除数据孤岛）', () {
       final providers = read('lib/help/readaloud/cloud_tts_providers.dart');
-      expect(providers, contains('class HttpTtsProvider extends CloudTtsProvider'));
+      expect(providers,
+          contains('class HttpTtsProvider extends CloudTtsProvider'));
       expect(providers, contains('{{speakText}}'));
       final tts = read('lib/help/readaloud/tts_service.dart');
       expect(tts, contains('getHttpTTS()'));
@@ -143,7 +160,8 @@ void main() {
       final monitor = read('lib/help/net/network_monitor.dart');
       expect(monitor, contains("MethodChannel('legado/network')"));
       expect(monitor, contains('isWifi'));
-      final kt = read('android/app/src/main/kotlin/com/legado/md3/MainActivity.kt');
+      final kt =
+          read('android/app/src/main/kotlin/com/legado/md3/MainActivity.kt');
       expect(kt, contains('"legado/network"'));
       expect(kt, contains('NetworkCapabilities.TRANSPORT_WIFI'));
       expect(kt, contains('"isWifi" ->'));
@@ -182,8 +200,13 @@ void main() {
 
     test('我的页接入新增管理入口', () {
       final p = read('lib/ui/main/my/profile_screen.dart');
-      for (final cls in ['AutoTaskScreen', 'HomepageModuleScreen',
-          'DownloadManageScreen', 'CloudTtsScreen', 'ReadingStatsScreen']) {
+      for (final cls in [
+        'AutoTaskScreen',
+        'HomepageModuleScreen',
+        'DownloadManageScreen',
+        'CloudTtsScreen',
+        'ReadingStatsScreen'
+      ]) {
         expect(p, contains(cls), reason: '我的页缺入口: $cls');
       }
     });

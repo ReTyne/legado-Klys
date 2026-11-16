@@ -6,12 +6,13 @@ import 'package:share_plus/share_plus.dart';
 import 'package:legado_md3/data/local/app_database.dart';
 import 'package:legado_md3/data/model/rss_source.dart';
 import 'package:legado_md3/ui/rss/rss_source_edit_screen.dart';
+import 'package:legado_md3/ui/rss/rss_source_debug_screen.dart';
 import 'package:legado_md3/ui/widgets/app_widgets.dart';
 
 /// 订阅源管理 ——  `ui/rss/source/RssSourceActivity`。
 ///
 /// 功能分区：
-/// - 列表项：启用开关 + 名称/地址 + 编辑 + 更多菜单（对齐 item_rss_source.xml）
+/// - 列表项：启用开关 + 名称/地址 + 编辑 + 更多菜单
 /// - 更多菜单：登录 / 刷新 / 复制JSON / 分享 / 删除
 /// - 顶栏：新增订阅源 + 分组过滤（全部/启用/禁用/未分组/各分组）
 class RssSourceScreen extends StatefulWidget {
@@ -117,13 +118,21 @@ class _RssSourceScreenState extends State<RssSourceScreen> {
           icon: Icons.edit_outlined,
           onTap: () => _editSource(source)),
       AppMenuSheetItem(
+          title: '调试订阅源',
+          icon: Icons.bug_report_outlined,
+          subtitle: '分类 / 列表 / 正文三段调试',
+          onTap: () => Navigator.push(
+              context,
+              MaterialPageRoute(
+                  builder: (_) => RssSourceDebugScreen(source: source)))),
+      AppMenuSheetItem(
           title: '复制源JSON',
           icon: Icons.content_copy,
           onTap: () async {
             await Clipboard.setData(ClipboardData(text: _encode(source)));
             if (mounted) {
-              ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('订阅源JSON已复制')));
+              ScaffoldMessenger.of(context)
+                  .showSnackBar(const SnackBar(content: Text('订阅源JSON已复制')));
             }
           }),
       AppMenuSheetItem(
@@ -153,8 +162,9 @@ class _RssSourceScreenState extends State<RssSourceScreen> {
               setState(() => _groupFilter = v);
               _applyFilter();
             },
-            itemBuilder: (context) =>
-                _groups.map((g) => PopupMenuItem(value: g, child: Text(g))).toList(),
+            itemBuilder: (context) => _groups
+                .map((g) => PopupMenuItem(value: g, child: Text(g)))
+                .toList(),
           ),
           IconButton(
             icon: const Icon(Icons.add),
@@ -182,10 +192,13 @@ class _RssSourceScreenState extends State<RssSourceScreen> {
                         backgroundColor:
                             Theme.of(context).colorScheme.secondaryContainer,
                         child: Text(
-                          source.sourceName.isNotEmpty ? source.sourceName[0] : '?',
+                          source.sourceName.isNotEmpty
+                              ? source.sourceName[0]
+                              : '?',
                           style: TextStyle(
-                              color:
-                                  Theme.of(context).colorScheme.onSecondaryContainer),
+                              color: Theme.of(context)
+                                  .colorScheme
+                                  .onSecondaryContainer),
                         ),
                       ),
                       title: Text(source.sourceName,

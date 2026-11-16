@@ -1,7 +1,6 @@
-/// 注入到无头 WebView（V8）中的 legado 兼容桥。
+/// 注入到无头 WebView（V8）中的书源脚本运行时桥。
 ///
-/// （legado/app/src/main/java/io/legado/app/help/JsExtensions.kt
-/// 与 AnalyzeUrl / AnalyzeRule）在书源脚本里使用的运行时环境：
+/// 为书源脚本提供以下可用的运行时环境：
 ///
 ///   * 全局对象：java / cookie / source / book / cache / result / key / page / baseUrl
 ///   * java.ajax / get / post / connect —— 以「同步 XHR」实现，由原生
@@ -48,7 +47,8 @@ class LegadoBridgeJs {
   /// java / cookie / cache / __b64Unicode 等工具，而不是恒 null 的死 Proxy。
   static const String code = _codeHead + JsPackages.definition + _codeTail;
 
-  static const String _codeHead = '\n$legadoBridgeJsPart01$legadoBridgeJsPart02$legadoBridgeJsPart03$legadoBridgeJsPart04$legadoBridgeJsPart05$legadoBridgeJsPart06$legadoBridgeJsPart07$legadoBridgeJsPart08';
+  static const String _codeHead =
+      '\n$legadoBridgeJsPart01$legadoBridgeJsPart02$legadoBridgeJsPart03$legadoBridgeJsPart04$legadoBridgeJsPart05$legadoBridgeJsPart06$legadoBridgeJsPart07$legadoBridgeJsPart08';
 
   /// IIFE 闭合：位于 JsPackages.definition 之后，保证 Packages 在 java /
   /// cookie / __b64Unicode 等全部桥工具就绪后才被定义。
@@ -92,7 +92,7 @@ class LegadoBridgeJs {
     }
   }
 
-  /// ReadConfig 关键字段 JSON（对齐 JS 桥 java.getReadBookConfig 的返回结构）。
+  /// ReadConfig 关键字段 JSON（与 JS 桥 java.getReadBookConfig 返回结构一致）。
   static String readConfigJson(ReadConfig config) {
     return jsonEncode({
       'textSize': config.textSize,
@@ -112,12 +112,13 @@ class LegadoBridgeJs {
     });
   }
 
-  /// 主题配置 JSON（对齐 JS 桥 java.getThemeConfig 的返回结构）。
+  /// 主题配置 JSON（与 JS 桥 java.getThemeConfig 返回结构一致）。
   static String themeConfigJson(AppTheme theme) {
     final modeIndex = theme.themeMode.index;
     var isDark = modeIndex == 2;
     if (modeIndex == 0) {
-      isDark = PlatformDispatcher.instance.platformBrightness == Brightness.dark;
+      isDark =
+          PlatformDispatcher.instance.platformBrightness == Brightness.dark;
     }
     return jsonEncode({
       'isDark': isDark,

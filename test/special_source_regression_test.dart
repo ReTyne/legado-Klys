@@ -31,7 +31,8 @@ void main() {
     test('cookie.getKey 支持按书源主键与同注册域兜底查找', () {
       expect(bridge, contains('__registrableDomain'));
       expect(bridge, contains('__hostOf(__state.meta.url)'));
-      expect(bridge, contains('if (__registrableDomain(k) !== base) continue;'));
+      expect(
+          bridge, contains('if (__registrableDomain(k) !== base) continue;'));
     });
 
     test('原生按书源维度持久化完整 cookie jar', () {
@@ -71,8 +72,14 @@ void main() {
     });
 
     test('startBrowserAwait 支持自定义页面内容参数', () {
-      expect(bridge, contains('startBrowserAwait: function (url, title, refetchAfterSuccess, html)'));
-      expect(bridge, contains('__openBrowserAwaitHtml(url, title, refetchAfterSuccess, html)'));
+      expect(
+          bridge,
+          contains(
+              'startBrowserAwait: function (url, title, refetchAfterSuccess, html)'));
+      expect(
+          bridge,
+          contains(
+              '__openBrowserAwaitHtml(url, title, refetchAfterSuccess, html)'));
     });
   });
 
@@ -108,7 +115,8 @@ void main() {
     });
 
     test('登录页保存表单、返回确认、刷新保留输入', () {
-      final login = _src('lib/ui/book/source/parts/source_login_screen_state.dart');
+      final login =
+          _src('lib/ui/book/source/parts/source_login_screen_state.dart');
       expect(login, contains('_draftForm'));
       expect(login, contains('loginForm_'));
       expect(login, contains('_confirmExit'));
@@ -158,7 +166,8 @@ void main() {
       // 兼容把返回值当替换表遍历的书源
       expect(bridge, contains('getReplacementMap: function'));
       final parser = _src('lib/help/source/ttf_parser.dart');
-      expect(parser, contains('buildQueryData()'));
+      expect(parser, contains('buildQueryData('));
+      expect(parser, contains('withOutline'));
       expect(parser, contains("'replacement': replacement"));
     });
 

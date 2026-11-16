@@ -1,5 +1,7 @@
 import 'dart:convert';
 
+import 'package:legado_md3/utils/url_edge.dart' as url_edge;
+
 /// Legado 书源 URL 与请求选项解析。
 ///
 /// 书源的 URL 字段支持在同一行里附带请求选项，本项目此前只支持
@@ -32,13 +34,79 @@ class UrlOptions {
 
   bool get isPost => method == 'POST' || method == 'PUT';
 
-  /// 已知的 URL 选项名（legado AnalyzeUrl 支持）
+  /// 去掉查询串（? 之后）的 URL。
+  String get urlNoQuery {
+    final i = url.indexOf('?');
+    return i < 0 ? url : url.substring(0, i);
+  }
+
+  /// URL 查询串是否已编码（无查询串时视为已编码）。
+  bool get encodedQuery {
+    final i = url.indexOf('?');
+    if (i < 0) return true;
+    return url_edge.encodedQuery(url.substring(i + 1));
+  }
+
+  /// 请求体（表单串）是否已编码（无请求体时视为已编码）。
+  bool get encodedForm {
+    final body = str('body');
+    if (body == null || body.isEmpty) return true;
+    return url_edge.encodedForm(body);
+  }
+
+  /// 解析出的字符集选项（如 gbk / escape）。
+  String? get charset => str('charset');
+
+  /// 是否使用 `escape` 字符集。
+  bool get isEscapeCharset => (charset ?? '').toLowerCase() == 'escape';
+
+  /// `charset='escape'` 时对请求体参数做百分号大写编码；
+  /// 其它字符集返回原始请求体。
+  String? get escapeEncodedBody {
+    final body = str('body');
+    if (!isEscapeCharset || body == null || body.isEmpty) return body;
+    final params = <String, dynamic>{};
+    for (final seg in body.split('&')) {
+      if (seg.isEmpty) continue;
+      final eq = seg.indexOf('=');
+      params[eq < 0 ? seg : seg.substring(0, eq)] =
+          eq < 0 ? '' : seg.substring(eq + 1);
+    }
+    return url_edge.encodeParams(params, charset: 'escape');
+  }
+
+  /// 已知的 URL 选项名
   static const knownOptions = <String>{
-    'method', 'headers', 'body', 'charset', 'type', 'retry', 'webview',
-    'decode', 'cache', 'enforce', 'ua', 'cookie', 'referer', 'host',
-    'js', 'java', 'bodyjs', 'callback', 'strict', 'concurrency',
-    'timeout', 'override', 'needdecode', 'needparse', 'multithread',
-    'webviewasset', 'weblock', 'webviewusejs', 'raw', 'noredirect',
+    'method',
+    'headers',
+    'body',
+    'charset',
+    'type',
+    'retry',
+    'webview',
+    'decode',
+    'cache',
+    'enforce',
+    'ua',
+    'cookie',
+    'referer',
+    'host',
+    'js',
+    'java',
+    'bodyjs',
+    'callback',
+    'strict',
+    'concurrency',
+    'timeout',
+    'override',
+    'needdecode',
+    'needparse',
+    'multithread',
+    'webviewasset',
+    'weblock',
+    'webviewusejs',
+    'raw',
+    'noredirect',
   };
 
   static UrlOptions parse(String urlStr) {
@@ -64,7 +132,9 @@ class UrlOptions {
             .trim();
         try {
           final o = jsonDecode(optStr);
-          if (o is Map) options.addAll(o.map((k, v) => MapEntry(k.toString(), v)));
+          if (o is Map) {
+            options.addAll(o.map((k, v) => MapEntry(k.toString(), v)));
+          }
         } catch (_) {
           // json 非法时忽略选项，URL 仍照常请求
         }
@@ -73,7 +143,9 @@ class UrlOptions {
 
     // 2) `url,POST:body`
     if (!options.containsKey('method')) {
-      final m = RegExp(r'^(.+?),(POST|GET|PUT|DELETE)(?::(.*))?$', caseSensitive: false).firstMatch(url);
+      final m = RegExp(r'^(.+?),(POST|GET|PUT|DELETE)(?::(.*))?$',
+              caseSensitive: false)
+          .firstMatch(url);
       if (m != null) {
         url = m.group(1)!.trim();
         options['method'] = m.group(2)!.toUpperCase();
@@ -102,7 +174,8 @@ class UrlOptions {
         continue;
       }
       var v = expr.substring(eq + 1).trim();
-      if ((v.startsWith('"') && v.endsWith('"')) || (v.startsWith("'") && v.endsWith("'"))) {
+      if ((v.startsWith('"') && v.endsWith('"')) ||
+          (v.startsWith("'") && v.endsWith("'"))) {
         v = v.substring(1, v.length - 1);
       }
       if (key.startsWith('header.')) {

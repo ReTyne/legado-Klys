@@ -469,7 +469,7 @@ class DeepLinkService {
     return count;
   }
 
-  /// 导入定时任务（对齐官方原版 ImportAutoTaskDialog）。
+ /// 导入定时任务（ImportAutoTaskDialog）。
   /// 落库到 auto_tasks，由 AutoTaskService 启动期调度，形成导入→执行闭环。
   Future<int> _importAutoTasks(dynamic data) async {
     final list = data is List ? data : [data];
@@ -487,7 +487,7 @@ class DeepLinkService {
     return count;
   }
 
-  /// 导入高亮规则（对齐官方原版 ImportHighlightRuleDialog）。
+ /// 导入高亮规则（ImportHighlightRuleDialog）。
   /// 落库到 highlight_rules，供阅读页划线着色消费。
   Future<int> _importHighlightRules(dynamic data) async {
     final list = data is List ? data : [data];

@@ -1,7 +1,7 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:legado_md3/help/source/rule_complete.dart';
 
-///   `help/RuleComplete.kt` 的字符串补全行为。
+/// 的字符串补全行为。
 void main() {
   group('autoComplete 三类 getter', () {
     test('type1 文字补 @text', () {
@@ -161,7 +161,7 @@ void main() {
     });
   });
 
-  group('字段类型与前置规则映射（对齐编辑页 ruleComplete 实参）', () {
+  group('字段类型与前置规则映射', () {
     test('图片字段 → 3', () {
       expect(RuleComplete.fieldType('coverUrl'), 3);
       expect(RuleComplete.fieldType('ruleImage'), 3);
@@ -197,7 +197,7 @@ void main() {
       }
     });
 
-    test('preRuleKey 与上游 preRule 实参一致', () {
+ test('preRuleKey 与 preRule 实参一致', () {
       expect(RuleComplete.preRuleKey('ruleSearch'), 'bookList');
       expect(RuleComplete.preRuleKey('ruleExplore'), 'bookList');
       expect(RuleComplete.preRuleKey('ruleBookInfo'), 'init');

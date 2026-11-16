@@ -12,7 +12,9 @@ import 'package:path_provider/path_provider.dart';
 import 'package:share_plus/share_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:archive/archive.dart';
+import 'package:html/parser.dart' as html_parser;
 
+import '../rule_pipeline.dart';
 import 'package:legado_md3/common/app_navigator.dart';
 import 'package:legado_md3/data/local/app_database.dart';
 import 'package:legado_md3/data/model/book_source.dart';
@@ -42,7 +44,6 @@ part 'parts/js_runtime_manager.dart';
 part 'parts/mini_legado_js.dart';
 part 'parts/web_view_legado_js.dart';
 
-
 /// 一次 JS 求值的入参。
 class JsEvalRequest {
   JsEvalRequest({
@@ -57,6 +58,17 @@ class JsEvalRequest {
     this.rssArticle,
     this.infoMap,
     this.isUrlRule = false,
+    this.src,
+    this.title,
+    this.nextChapterUrl,
+    this.isFromBookInfo,
+    this.fromBookInfo,
+    this.speakText,
+    this.speakSpeed,
+    this.event,
+    this.isLongClick,
+    this.content,
+    this.scene,
   });
 
   final JsSource source;
@@ -70,4 +82,19 @@ class JsEvalRequest {
   final Map<String, dynamic>? rssArticle; // RSS 当前文章（rssArticle）
   final Map<String, String>? infoMap; // 发现页控件状态
   final bool isUrlRule;
+
+  // 求值场景注入的全局变量（可选，缺省时保持向后兼容）。
+  final String? src;
+  final String? title;
+  final String? nextChapterUrl;
+  final bool? isFromBookInfo;
+  final bool? fromBookInfo;
+  final String? speakText;
+  final num? speakSpeed;
+  final dynamic event;
+  final bool? isLongClick;
+  final dynamic content;
+
+  /// 场景标识：rule/url/login/rss/webview/replace，用于切换 java 可见方法子集。
+  final String? scene;
 }

@@ -44,7 +44,7 @@ void main() {
     await tester.pumpWidget(_wrap(book));
     await pumpFrames(tester);
 
-    // 批次 3 引入 LayoutBuilder 异步重分页后，全量测试下目录加载可能超过固定 8 帧，
+ // 引入 LayoutBuilder 异步重分页后，全量测试下目录加载可能超过固定 8 帧，
     // 追加有上限的等待直到占位文本出现（不降低断言强度）。
     for (var i = 0; i < 30 && find.textContaining('暂无内容').evaluate().isEmpty; i++) {
       await tester.pump(const Duration(milliseconds: 100));

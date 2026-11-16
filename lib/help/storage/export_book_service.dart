@@ -15,10 +15,13 @@ import 'package:legado_md3/help/source/replace_rule_service.dart';
 class ExportOptions {
   /// 导出编码：UTF-8 / GBK
   final String charset;
+
   /// 不添加章节名（正文直接相连）
   final bool noChapterName;
+
   /// 导出时应用替换净化规则
   final bool useReplace;
+
   /// 应用到此书的替换规则（useReplace 为 true 时生效）
   final List<ReplaceRule> replaceRules;
 
@@ -54,7 +57,9 @@ class ExportBookService {
       var content = ch.content ?? '';
       if (options.useReplace && options.replaceRules.isNotEmpty) {
         content = _replaceService.applyRules(content, options.replaceRules,
-            scope: book.origin ?? 'all');
+            scope: book.origin ?? 'all',
+            bookName: book.name,
+            chapterName: ch.title);
       }
       if (!options.noChapterName) {
         buffer.writeln(ch.title);
@@ -83,7 +88,7 @@ class ExportBookService {
     if (options.useReplace && options.replaceRules.isNotEmpty) {
       contents = contents
           .map((c) => _replaceService.applyRules(c, options.replaceRules,
-              scope: book.origin ?? 'all'))
+              scope: book.origin ?? 'all', bookName: book.name))
           .toList();
     }
     final bytes = buildEpub(
@@ -160,7 +165,8 @@ class ExportBookService {
       items.writeln('    <item id="$id" href="chapters/$id.xhtml" '
           'media-type="application/xhtml+xml"/>');
       spine.writeln('    <itemref idref="$id"/>');
-      navMap.writeln('    <navPoint id="navPoint-$order" playOrder="${order + 1}">'
+      navMap.writeln(
+          '    <navPoint id="navPoint-$order" playOrder="${order + 1}">'
           '<navLabel><text>$escTitle</text></navLabel>'
           '<content src="chapters/$id.xhtml"/></navPoint>');
       order++;
@@ -181,7 +187,8 @@ h2 { font-size: 1.2em; text-align: center; margin: 1em 0; }
 p { text-indent: 2em; margin: 0 0 0.4em; }
 ''');
 
-    final uid = 'urn:uuid:${name.hashCode.abs()}-${seed == 0 ? DateTime.now().millisecondsSinceEpoch : seed}';
+    final uid =
+        'urn:uuid:${name.hashCode.abs()}-${seed == 0 ? DateTime.now().millisecondsSinceEpoch : seed}';
     final nowUtc = DateTime.now().toUtc().toIso8601String().split('.').first;
 
     // 5. content.opf

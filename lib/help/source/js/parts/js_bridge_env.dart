@@ -3,7 +3,7 @@
 part of '../offline_js_bridge.dart';
 
 
-/// 对齐 java.getWebViewUA：无 WebView 时的默认 UA（与桥 __state.ua 默认值一致）。
+/// 无 WebView 时的默认 UA（提供 java.getWebViewUA 能力，与桥 __state.ua 默认值一致）。
 class JsBridgeEnv {
   JsBridgeEnv._();
 

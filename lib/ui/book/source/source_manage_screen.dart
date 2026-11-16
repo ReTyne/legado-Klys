@@ -1,4 +1,3 @@
-
 import 'dart:convert';
 import 'dart:io';
 
@@ -22,12 +21,10 @@ import 'package:share_plus/share_plus.dart';
 import 'package:legado_md3/ui/widgets/app_widgets.dart';
 part 'qr_scanner_screen.dart';
 
-
 /// 书源导入高级选项（7 项菜单：
 /// menu_new_group / menu_select_new_source / menu_select_update_source /
 /// menu_keep_original_name / menu_keep_group / menu_keep_enable / menu_show_comment）。
-/// 另保留 1 项扩展「导入时自动替换同名」（官方原版能力）。
-/// 早期注释所称「12 项菜单」是官方原版口径，不适用于 Sigma 基准。
+/// 另保留 1 项扩展「导入时自动替换同名」。
 ///
 /// 每一项都真实参与 [_SourceManageScreenState._importSourcesFromData] 的落库或渲染：
 /// - [keepOriginalName] / [keepGroup] / [keepEnabled]：更新同名 URL 书源时保留本地字段；
@@ -64,12 +61,15 @@ class SourceImportOptions {
   static Future<SourceImportOptions> load() async {
     final prefs = await SharedPreferences.getInstance();
     return SourceImportOptions(
-      keepOriginalName: prefs.getBool('${_keyPrefix}keep_original_name') ?? false,
+      keepOriginalName:
+          prefs.getBool('${_keyPrefix}keep_original_name') ?? false,
       keepGroup: prefs.getBool('${_keyPrefix}keep_group') ?? false,
       keepEnabled: prefs.getBool('${_keyPrefix}keep_enabled') ?? false,
       selectNewSource: prefs.getBool('${_keyPrefix}select_new_source') ?? true,
-      selectUpdateSource: prefs.getBool('${_keyPrefix}select_update_source') ?? true,
-      autoReplaceSameName: prefs.getBool('${_keyPrefix}auto_replace_same_name') ?? false,
+      selectUpdateSource:
+          prefs.getBool('${_keyPrefix}select_update_source') ?? true,
+      autoReplaceSameName:
+          prefs.getBool('${_keyPrefix}auto_replace_same_name') ?? false,
       showComment: prefs.getBool('${_keyPrefix}show_comment') ?? false,
       newGroup: prefs.getString('${_keyPrefix}new_group') ?? '',
       addGroup: prefs.getBool('${_keyPrefix}add_group') ?? false,
@@ -82,8 +82,10 @@ class SourceImportOptions {
     await prefs.setBool('${_keyPrefix}keep_group', keepGroup);
     await prefs.setBool('${_keyPrefix}keep_enabled', keepEnabled);
     await prefs.setBool('${_keyPrefix}select_new_source', selectNewSource);
-    await prefs.setBool('${_keyPrefix}select_update_source', selectUpdateSource);
-    await prefs.setBool('${_keyPrefix}auto_replace_same_name', autoReplaceSameName);
+    await prefs.setBool(
+        '${_keyPrefix}select_update_source', selectUpdateSource);
+    await prefs.setBool(
+        '${_keyPrefix}auto_replace_same_name', autoReplaceSameName);
     await prefs.setBool('${_keyPrefix}show_comment', showComment);
     await prefs.setString('${_keyPrefix}new_group', newGroup);
     await prefs.setBool('${_keyPrefix}add_group', addGroup);
@@ -111,6 +113,7 @@ class _SourceManageScreenState extends State<SourceManageScreen> {
   bool _sortAsc = true;
   bool _selectMode = false;
   bool _groupByDomain = false;
+
   /// menu_show_comment：书源列表是否显示备注（由导入选项持久化）。
   bool _showComment = false;
   final Set<String> _selectedIds = {};
@@ -139,7 +142,8 @@ class _SourceManageScreenState extends State<SourceManageScreen> {
     _sources = await _db.getAllSources();
     _groups = _sources
         .map((s) => s.bookSourceGroup)
-        .whereType<String>().where((g) => g.isNotEmpty)
+        .whereType<String>()
+        .where((g) => g.isNotEmpty)
         .toSet()
         .toList()
       ..sort();
@@ -151,9 +155,8 @@ class _SourceManageScreenState extends State<SourceManageScreen> {
     // need_login 等特殊过滤
     switch (_specialFilter) {
       case 'need_login':
-        result = result
-            .where((s) => (s.loginUrl ?? '').trim().isNotEmpty)
-            .toList();
+        result =
+            result.where((s) => (s.loginUrl ?? '').trim().isNotEmpty).toList();
         break;
       case 'no_group':
         result = result
@@ -171,24 +174,53 @@ class _SourceManageScreenState extends State<SourceManageScreen> {
         break;
     }
     if (_selectedGroup != null) {
-      result = result.where((s) => s.bookSourceGroup == _selectedGroup).toList();
+      result =
+          result.where((s) => s.bookSourceGroup == _selectedGroup).toList();
     }
     if (_searchQuery.isNotEmpty) {
       result = result
           .where((s) =>
-              s.bookSourceName.toLowerCase().contains(_searchQuery.toLowerCase()) ||
-              s.bookSourceUrl.toLowerCase().contains(_searchQuery.toLowerCase()))
+              s.bookSourceName
+                  .toLowerCase()
+                  .contains(_searchQuery.toLowerCase()) ||
+              s.bookSourceUrl
+                  .toLowerCase()
+                  .contains(_searchQuery.toLowerCase()))
           .toList();
     }
     // 排序
     result = List.from(result);
     switch (_sortBy) {
-      case 1: result.sort((a, b) => _sortAsc ? a.weight.compareTo(b.weight) : b.weight.compareTo(a.weight)); break;
-      case 2: result.sort((a, b) => _sortAsc ? a.bookSourceName.compareTo(b.bookSourceName) : b.bookSourceName.compareTo(a.bookSourceName)); break;
-      case 3: result.sort((a, b) => _sortAsc ? a.bookSourceUrl.compareTo(b.bookSourceUrl) : b.bookSourceUrl.compareTo(a.bookSourceUrl)); break;
-      case 4: result.sort((a, b) => _sortAsc ? (a.lastUpdateTime ?? 0).compareTo(b.lastUpdateTime ?? 0) : (b.lastUpdateTime ?? 0).compareTo(a.lastUpdateTime ?? 0)); break;
-      case 5: result.sort((a, b) => _sortAsc ? (a.respondTime ?? 0).compareTo(b.respondTime ?? 0) : (b.respondTime ?? 0).compareTo(a.respondTime ?? 0)); break;
-      case 6: result.sort((a, b) => _sortAsc ? (a.enabled ? 0 : 1).compareTo(b.enabled ? 0 : 1) : (b.enabled ? 0 : 1).compareTo(a.enabled ? 0 : 1)); break;
+      case 1:
+        result.sort((a, b) => _sortAsc
+            ? a.weight.compareTo(b.weight)
+            : b.weight.compareTo(a.weight));
+        break;
+      case 2:
+        result.sort((a, b) => _sortAsc
+            ? a.bookSourceName.compareTo(b.bookSourceName)
+            : b.bookSourceName.compareTo(a.bookSourceName));
+        break;
+      case 3:
+        result.sort((a, b) => _sortAsc
+            ? a.bookSourceUrl.compareTo(b.bookSourceUrl)
+            : b.bookSourceUrl.compareTo(a.bookSourceUrl));
+        break;
+      case 4:
+        result.sort((a, b) => _sortAsc
+            ? (a.lastUpdateTime ?? 0).compareTo(b.lastUpdateTime ?? 0)
+            : (b.lastUpdateTime ?? 0).compareTo(a.lastUpdateTime ?? 0));
+        break;
+      case 5:
+        result.sort((a, b) => _sortAsc
+            ? (a.respondTime ?? 0).compareTo(b.respondTime ?? 0)
+            : (b.respondTime ?? 0).compareTo(a.respondTime ?? 0));
+        break;
+      case 6:
+        result.sort((a, b) => _sortAsc
+            ? (a.enabled ? 0 : 1).compareTo(b.enabled ? 0 : 1)
+            : (b.enabled ? 0 : 1).compareTo(a.enabled ? 0 : 1));
+        break;
     }
     return result;
   }
@@ -225,6 +257,134 @@ class _SourceManageScreenState extends State<SourceManageScreen> {
   Future<void> _deleteSource(BookSource source) async {
     await _db.deleteSource(source.bookSourceUrl);
     _loadSources();
+  }
+
+  // ==================== 拖拽排序 / 导出到文件 / 校验结果 ====================
+
+  /// 仅在「手动排序 + 无筛选 + 非多选」时开启拖拽，此时列表下标与
+  /// `_sources` 一一对应，重排后可直接回写 customOrder。
+  bool get _dragEnabled =>
+      _sortBy == 0 &&
+      _specialFilter == null &&
+      _selectedGroup == null &&
+      _searchQuery.isEmpty &&
+      !_selectMode;
+
+  Future<void> _onReorder(int oldIndex, int newIndex) async {
+    if (newIndex > oldIndex) newIndex -= 1;
+    setState(() {
+      final moved = _sources.removeAt(oldIndex);
+      _sources.insert(newIndex, moved);
+      for (var i = 0; i < _sources.length; i++) {
+        _sources[i].customOrder = i;
+      }
+    });
+    for (final s in _sources) {
+      await _db.updateSource(s);
+    }
+  }
+
+  /// 导出到用户指定的文件：优先用保存对话框直接落盘，
+  /// 平台不支持时退化为选择目录后写入固定文件名，并把结果路径反馈给用户。
+  Future<void> _exportSourcesToFile() async {
+    try {
+      final sources = await _db.getAllSources();
+      if (sources.isEmpty) {
+        if (mounted) {
+          ScaffoldMessenger.of(context)
+              .showSnackBar(const SnackBar(content: Text('没有可导出的书源')));
+        }
+        return;
+      }
+      final jsonStr = const JsonEncoder.withIndent('  ')
+          .convert(sources.map((s) => s.toJson()).toList());
+      final bytes = Uint8List.fromList(utf8.encode(jsonStr));
+      String? target;
+      try {
+        target = await FilePicker.platform.saveFile(
+          dialogTitle: '导出书源到文件',
+          fileName: 'book_sources.json',
+          type: FileType.custom,
+          allowedExtensions: ['json'],
+          bytes: bytes,
+        );
+      } catch (_) {
+        target = null;
+      }
+      if (target == null) {
+        final dir =
+            await FilePicker.platform.getDirectoryPath(dialogTitle: '选择导出目录');
+        if (dir == null) return;
+        target = '$dir${Platform.pathSeparator}book_sources.json';
+        await File(target).writeAsString(jsonStr);
+      } else {
+        final f = File(target);
+        if (!await f.exists()) await f.writeAsString(jsonStr);
+      }
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('已导出 ${sources.length} 个书源到 $target')));
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('导出失败: $e')));
+      }
+    }
+  }
+
+  /// 校验完成后列出每个书源的通过 / 失效结果与失败原因。
+  void _showCheckResults(CheckSummary summary, List<CheckResult> results) {
+    if (!mounted) return;
+    showDialog<void>(
+      context: context,
+      builder: (c) => AlertDialog(
+        title: Text(
+            '校验结果（有效 ${summary.valid} / 无效 ${summary.invalid} / 共 ${summary.total}）'),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: results.isEmpty
+              ? const Text('无校验结果')
+              : ListView.builder(
+                  shrinkWrap: true,
+                  itemCount: results.length,
+                  itemBuilder: (_, i) {
+                    final r = results[i];
+                    return ListTile(
+                      dense: true,
+                      leading: Icon(
+                        r.success
+                            ? Icons.check_circle_outline
+                            : Icons.error_outline,
+                        size: 18,
+                        color: r.success
+                            ? Colors.green
+                            : Theme.of(c).colorScheme.error,
+                      ),
+                      title: Text(r.sourceName,
+                          maxLines: 1, overflow: TextOverflow.ellipsis),
+                      subtitle: Text(
+                        r.success
+                            ? '通过 · ${r.respondTime}ms'
+                            : (r.errorMessage?.isNotEmpty ?? false)
+                                ? r.errorMessage!
+                                : (r.invalidGroups.isNotEmpty
+                                    ? r.invalidGroups
+                                    : '失效'),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: const TextStyle(fontSize: 11),
+                      ),
+                    );
+                  },
+                ),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(c), child: const Text('关闭')),
+        ],
+      ),
+    );
   }
 
   void _showAddMenu() {
@@ -265,12 +425,20 @@ class _SourceManageScreenState extends State<SourceManageScreen> {
           onTap: _exportSources,
         ),
         AppMenuSheetItem(
+          title: '导出到文件',
+          icon: Icons.save_outlined,
+          subtitle: '选择目标文件，把全部书源写成 JSON 文件',
+          onTap: _exportSourcesToFile,
+        ),
+        AppMenuSheetItem(
           title: '二维码导入',
           icon: Icons.qr_code_scanner_outlined,
           subtitle: '扫描二维码导入书源',
           onTap: () async {
-            final code = await Navigator.push<String>(context,
-                MaterialPageRoute(builder: (_) => const QrScannerScreen(title: '扫描书源二维码')));
+            final code = await Navigator.push<String>(
+                context,
+                MaterialPageRoute(
+                    builder: (_) => const QrScannerScreen(title: '扫描书源二维码')));
             if (code == null || code.isEmpty) return;
             final text = code.trim();
             if (text.startsWith('http')) {
@@ -301,8 +469,8 @@ class _SourceManageScreenState extends State<SourceManageScreen> {
           subtitle: '自动按域名分组显示',
           onTap: () {
             setState(() => _groupByDomain = !_groupByDomain);
-            ScaffoldMessenger.of(context).showSnackBar(SnackBar(
-                content: Text(_groupByDomain ? '已按域名分组' : '已取消域名分组')));
+            ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(content: Text(_groupByDomain ? '已按域名分组' : '已取消域名分组')));
           },
         ),
         AppMenuSheetItem(
@@ -379,11 +547,16 @@ class _SourceManageScreenState extends State<SourceManageScreen> {
       decoded = jsonDecode(text);
     } catch (_) {
       // 可能是 JSONL：逐行一个对象
-      final lines = text.split(RegExp(r'[\r\n]+')).where((l) => l.trim().startsWith('{')).toList();
+      final lines = text
+          .split(RegExp(r'[\r\n]+'))
+          .where((l) => l.trim().startsWith('{'))
+          .toList();
       if (lines.isEmpty) rethrow;
       final arr = [];
       for (final l in lines) {
-        try { arr.add(jsonDecode(l)); } catch (_) {}
+        try {
+          arr.add(jsonDecode(l));
+        } catch (_) {}
       }
       decoded = arr;
     }
@@ -398,7 +571,9 @@ class _SourceManageScreenState extends State<SourceManageScreen> {
         type: FileType.custom,
         allowedExtensions: ['json', 'txt'],
       );
-      if (result == null || result.files.isEmpty || result.files.first.path == null) return;
+      if (result == null ||
+          result.files.isEmpty ||
+          result.files.first.path == null) return;
       final file = File(result.files.first.path!);
       final bytes = await file.readAsBytes();
       // 检测 gzip 压缩
@@ -432,11 +607,13 @@ class _SourceManageScreenState extends State<SourceManageScreen> {
   Future<void> _importFromClipboard() async {
     try {
       final clipboardData = await Clipboard.getData(Clipboard.kTextPlain);
-      if (clipboardData == null || clipboardData.text == null || clipboardData.text!.isEmpty) {
+      if (clipboardData == null ||
+          clipboardData.text == null ||
+          clipboardData.text!.isEmpty) {
         if (mounted && context.mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('剪贴板为空')),
-        );
+            const SnackBar(content: Text('剪贴板为空')),
+          );
         }
         return;
       }
@@ -467,8 +644,8 @@ class _SourceManageScreenState extends State<SourceManageScreen> {
       if (sources.isEmpty) {
         if (mounted && context.mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('没有可导出的书源')),
-        );
+            const SnackBar(content: Text('没有可导出的书源')),
+          );
         }
         return;
       }
@@ -480,7 +657,8 @@ class _SourceManageScreenState extends State<SourceManageScreen> {
       // 同时分享
       final tempFile = File('${Directory.systemTemp.path}/book_sources.json');
       await tempFile.writeAsString(jsonStr);
-      await Share.shareXFiles([XFile(tempFile.path)], text: 'Legado书源导出 (${sources.length}个)');
+      await Share.shareXFiles([XFile(tempFile.path)],
+          text: 'Legado书源导出 (${sources.length}个)');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('已导出 ${sources.length} 个书源（已复制到剪贴板）')),
@@ -502,8 +680,18 @@ class _SourceManageScreenState extends State<SourceManageScreen> {
     // 解包常见订阅格式：{data:[...]} / {bookSources:[...]} / {result:[...]}
     dynamic unwrapped = data;
     if (unwrapped is Map && !unwrapped.containsKey('bookSourceUrl')) {
-      for (final key in ['data', 'bookSources', 'sources', 'result', 'list', 'records']) {
-        if (unwrapped[key] is List) { unwrapped = unwrapped[key]; break; }
+      for (final key in [
+        'data',
+        'bookSources',
+        'sources',
+        'result',
+        'list',
+        'records'
+      ]) {
+        if (unwrapped[key] is List) {
+          unwrapped = unwrapped[key];
+          break;
+        }
       }
     }
     // 现有书源快照：按 URL 精确匹配（更新场景）+ 按名称匹配（同名替换场景）
@@ -527,7 +715,9 @@ class _SourceManageScreenState extends State<SourceManageScreen> {
           } else {
             // 更新源：受「选中更新源」控制，并按选项保留本地字段
             if (!options.selectUpdateSource) continue;
-            if (options.keepOriginalName) source.bookSourceName = old.bookSourceName;
+            if (options.keepOriginalName) {
+              source.bookSourceName = old.bookSourceName;
+            }
             if (options.keepGroup) source.bookSourceGroup = old.bookSourceGroup;
             if (options.keepEnabled) {
               source.enabled = old.enabled;
@@ -535,8 +725,7 @@ class _SourceManageScreenState extends State<SourceManageScreen> {
             }
           }
           // menu_new_group：把导入的书源统一归入指定分组（追加或整体替换）。
-          // 对齐 Sigma ImportBookSourceViewModel.importSelect：groupName 在
-          // keepGroup 之后应用，isAddGroup 时保留原分组并追加新分组。
+          // groupName 在 keepGroup 之后应用，isAddGroup 时保留原分组并追加新分组。
           final group = options.newGroup.trim();
           if (group.isNotEmpty) {
             if (options.addGroup) {
@@ -581,7 +770,6 @@ class _SourceManageScreenState extends State<SourceManageScreen> {
   /// 导入高级选项：7 项菜单
   /// （new_group / select_new_source / select_update_source / keep_original_name /
   /// keep_group / keep_enable / show_comment），另含 1 项扩展「自动替换同名」。
-  /// 早期所写「12 项菜单」是官方原版口径，不适用于 Sigma 基准。
   Future<void> _showImportOptionsDialog() async {
     final current = await SourceImportOptions.load();
     if (!mounted) return;
@@ -668,7 +856,8 @@ class _SourceManageScreenState extends State<SourceManageScreen> {
             ]),
           ),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(d), child: const Text('取消')),
+            TextButton(
+                onPressed: () => Navigator.pop(d), child: const Text('取消')),
             FilledButton(
               onPressed: () async {
                 await SourceImportOptions(
@@ -685,8 +874,8 @@ class _SourceManageScreenState extends State<SourceManageScreen> {
                 if (d.mounted) Navigator.pop(d);
                 await _loadShowComment();
                 if (mounted) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('导入选项已保存')));
+                  ScaffoldMessenger.of(context)
+                      .showSnackBar(const SnackBar(content: Text('导入选项已保存')));
                 }
               },
               child: const Text('保存'),
@@ -700,63 +889,104 @@ class _SourceManageScreenState extends State<SourceManageScreen> {
 
   void _showSortDialog() {
     const sortNames = ['手动排序', '按权重', '按名称', '按URL', '按更新时间', '按响应时间', '按启用状态'];
-    showDialog(context: context, builder: (context) => AlertDialog(
-      title: const Text('排序方式'),
-      content: Column(mainAxisSize: MainAxisSize.min, children: [
-        ...List.generate(sortNames.length, (index) => RadioListTile<int>(
-          title: Text(sortNames[index]),
-          value: index,
-          groupValue: _sortBy,
-          onChanged: (v) => setState(() { _sortBy = v ?? 0; Navigator.pop(context); }),
-        )),
-        const Divider(),
-        SwitchListTile(title: const Text('降序排列'), value: !_sortAsc, onChanged: (v) => setState(() => _sortAsc = !v)),
-      ]),
-    ));
+    showDialog(
+        context: context,
+        builder: (context) => AlertDialog(
+              title: const Text('排序方式'),
+              content: Column(mainAxisSize: MainAxisSize.min, children: [
+                ...List.generate(
+                    sortNames.length,
+                    (index) => RadioListTile<int>(
+                          title: Text(sortNames[index]),
+                          value: index,
+                          groupValue: _sortBy,
+                          onChanged: (v) => setState(() {
+                            _sortBy = v ?? 0;
+                            Navigator.pop(context);
+                          }),
+                        )),
+                const Divider(),
+                SwitchListTile(
+                    title: const Text('降序排列'),
+                    value: !_sortAsc,
+                    onChanged: (v) => setState(() => _sortAsc = !v)),
+              ]),
+            ));
   }
 
   void _showGroupManageDialog() {
-    showDialog(context: context, builder: (dialogContext) => StatefulBuilder(
-      builder: (context, setDialogState) => AlertDialog(
-        title: const Text('分组管理'),
-        content: SizedBox(
-          width: double.maxFinite,
-          child: Column(mainAxisSize: MainAxisSize.min, children: [
-            Padding(
-              padding: const EdgeInsets.only(bottom: AppSpacing.s),
-              child: Text('分组来源于书源；可在此重命名或解散（解散后书源回到未分组）。新建分组请在编辑书源或多选“添加分组”中设置。',
-                  style: TextStyle(fontSize: 12, color: Theme.of(context).colorScheme.onSurfaceVariant)),
-            ),
-            if (_groups.isEmpty)
-              const Padding(padding: EdgeInsets.all(AppSpacing.l), child: Text('暂无分组'))
-            else
-              Flexible(
-                child: ListView(
-                  shrinkWrap: true,
-                  children: _groups.map((g) => ListTile(
-                    dense: true,
-                    title: Text(g),
-                    trailing: Row(mainAxisSize: MainAxisSize.min, children: [
-                      IconButton(icon: const Icon(Icons.drive_file_rename_outline, size: 18), tooltip: '重命名', onPressed: () => _renameGroup(g)),
-                      IconButton(icon: const Icon(Icons.delete_outline, size: 18), tooltip: '解散分组', onPressed: () async {
-                        for (final s in _sources.where((s) => s.bookSourceGroup == g)) {
-                          s.bookSourceGroup = null;
-                          await _db.updateSource(s);
-                        }
-                        await _loadSources();
-                        if (mounted) { setDialogState(() {}); }
-                      }),
-                    ]),
-                  )).toList(),
+    showDialog(
+        context: context,
+        builder: (dialogContext) => StatefulBuilder(
+              builder: (context, setDialogState) => AlertDialog(
+                title: const Text('分组管理'),
+                content: SizedBox(
+                  width: double.maxFinite,
+                  child: Column(mainAxisSize: MainAxisSize.min, children: [
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: AppSpacing.s),
+                      child: Text(
+                          '分组来源于书源；可在此重命名或解散（解散后书源回到未分组）。新建分组请在编辑书源或多选“添加分组”中设置。',
+                          style: TextStyle(
+                              fontSize: 12,
+                              color: Theme.of(context)
+                                  .colorScheme
+                                  .onSurfaceVariant)),
+                    ),
+                    if (_groups.isEmpty)
+                      const Padding(
+                          padding: EdgeInsets.all(AppSpacing.l),
+                          child: Text('暂无分组'))
+                    else
+                      Flexible(
+                        child: ListView(
+                          shrinkWrap: true,
+                          children: _groups
+                              .map((g) => ListTile(
+                                    dense: true,
+                                    title: Text(g),
+                                    trailing: Row(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          IconButton(
+                                              icon: const Icon(
+                                                  Icons
+                                                      .drive_file_rename_outline,
+                                                  size: 18),
+                                              tooltip: '重命名',
+                                              onPressed: () => _renameGroup(g)),
+                                          IconButton(
+                                              icon: const Icon(
+                                                  Icons.delete_outline,
+                                                  size: 18),
+                                              tooltip: '解散分组',
+                                              onPressed: () async {
+                                                for (final s in _sources.where(
+                                                    (s) =>
+                                                        s.bookSourceGroup ==
+                                                        g)) {
+                                                  s.bookSourceGroup = null;
+                                                  await _db.updateSource(s);
+                                                }
+                                                await _loadSources();
+                                                if (mounted) {
+                                                  setDialogState(() {});
+                                                }
+                                              }),
+                                        ]),
+                                  ))
+                              .toList(),
+                        ),
+                      ),
+                  ]),
                 ),
+                actions: [
+                  TextButton(
+                      onPressed: () => Navigator.pop(context),
+                      child: const Text('关闭')),
+                ],
               ),
-          ]),
-        ),
-        actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('关闭')),
-        ],
-      ),
-    ));
+            ));
   }
 
   Future<void> _renameGroup(String oldName) async {
@@ -765,10 +995,16 @@ class _SourceManageScreenState extends State<SourceManageScreen> {
       context: context,
       builder: (context) => AlertDialog(
         title: const Text('重命名分组'),
-        content: TextField(controller: controller, decoration: const InputDecoration(labelText: '新分组名', border: OutlineInputBorder())),
+        content: TextField(
+            controller: controller,
+            decoration: const InputDecoration(
+                labelText: '新分组名', border: OutlineInputBorder())),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('取消')),
-          FilledButton(onPressed: () => Navigator.pop(context, controller.text.trim()), child: const Text('确定')),
+          TextButton(
+              onPressed: () => Navigator.pop(context), child: const Text('取消')),
+          FilledButton(
+              onPressed: () => Navigator.pop(context, controller.text.trim()),
+              child: const Text('确定')),
         ],
       ),
     );
@@ -781,189 +1017,307 @@ class _SourceManageScreenState extends State<SourceManageScreen> {
     if (mounted) {
       // 刷新分组管理弹窗内容
       setState(() {});
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('已重命名为「$newName」')));
+      ScaffoldMessenger.of(context)
+          .showSnackBar(SnackBar(content: Text('已重命名为「$newName」')));
     }
   }
 
   Future<void> _batchAction(String action) async {
-    final selected = _sources.where((s) => _selectedIds.contains(s.bookSourceUrl)).toList();
+    final selected =
+        _sources.where((s) => _selectedIds.contains(s.bookSourceUrl)).toList();
     switch (action) {
       case 'enable_explore':
-        for (final s in selected) { s.enabledExplore = true; await _db.updateSource(s); }
-        if (mounted && context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('已启用${selected.length}个书源的发现')));
+        for (final s in selected) {
+          s.enabledExplore = true;
+          await _db.updateSource(s);
+        }
+        if (mounted && context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text('已启用${selected.length}个书源的发现')));
+        }
         break;
       case 'disable_explore':
-        for (final s in selected) { s.enabledExplore = false; await _db.updateSource(s); }
-        if (mounted && context.mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('已禁用${selected.length}个书源的发现')));
+        for (final s in selected) {
+          s.enabledExplore = false;
+          await _db.updateSource(s);
+        }
+        if (mounted && context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text('已禁用${selected.length}个书源的发现')));
+        }
         break;
       case 'to_top':
-        for (var i = 0; i < selected.length; i++) { selected[i].customOrder = -(i + 1); await _db.updateSource(selected[i]); }
-        if (mounted && context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('已置顶')));
+        for (var i = 0; i < selected.length; i++) {
+          selected[i].customOrder = -(i + 1);
+          await _db.updateSource(selected[i]);
+        }
+        if (mounted && context.mounted) {
+          ScaffoldMessenger.of(context)
+              .showSnackBar(const SnackBar(content: Text('已置顶')));
+        }
         break;
       case 'to_bottom':
-        for (var i = 0; i < selected.length; i++) { selected[i].customOrder = i + 1; await _db.updateSource(selected[i]); }
-        if (mounted && context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('已置底')));
+        for (var i = 0; i < selected.length; i++) {
+          selected[i].customOrder = i + 1;
+          await _db.updateSource(selected[i]);
+        }
+        if (mounted && context.mounted) {
+          ScaffoldMessenger.of(context)
+              .showSnackBar(const SnackBar(content: Text('已置底')));
+        }
         break;
       case 'add_group':
         _showBatchGroupDialog(selected, true);
         return;
       case 'remove_group':
-        for (final s in selected) { s.bookSourceGroup = null; await _db.updateSource(s); }
-        if (mounted && context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('已移除分组')));
+        for (final s in selected) {
+          s.bookSourceGroup = null;
+          await _db.updateSource(s);
+        }
+        if (mounted && context.mounted) {
+          ScaffoldMessenger.of(context)
+              .showSnackBar(const SnackBar(content: Text('已移除分组')));
+        }
         break;
       case 'check':
         Navigator.pop(context);
-        final sel = _sources.where((s) => _selectedIds.contains(s.bookSourceUrl)).toList();
+        final sel = _sources
+            .where((s) => _selectedIds.contains(s.bookSourceUrl))
+            .toList();
         _validateSources(sel.isNotEmpty ? sel : null);
         return;
       case 'invert':
         final all = _filteredSources.map((s) => s.bookSourceUrl).toSet();
-        setState(() { final inverted = all.difference(_selectedIds); _selectedIds.clear(); _selectedIds.addAll(inverted); });
+        setState(() {
+          final inverted = all.difference(_selectedIds);
+          _selectedIds.clear();
+          _selectedIds.addAll(inverted);
+        });
         return;
     }
     await _loadSources();
-    setState(() { _selectMode = false; _selectedIds.clear(); });
+    setState(() {
+      _selectMode = false;
+      _selectedIds.clear();
+    });
   }
 
   void _showBatchGroupDialog(List selected, bool add) {
     final controller = TextEditingController();
-    showDialog(context: context, builder: (context) => AlertDialog(
-      title: Text(add ? '添加到分组' : '移除分组'),
-      content: TextField(controller: controller, decoration: const InputDecoration(labelText: '分组名称')),
-      actions: [
-        TextButton(onPressed: () => Navigator.pop(context), child: const Text('取消')),
-        FilledButton(onPressed: () async {
-          for (final s in selected) { s.bookSourceGroup = controller.text; await _db.updateSource(s); }
-          if (mounted && context.mounted) { Navigator.pop(context); await _loadSources(); setState(() { _selectMode = false; _selectedIds.clear(); }); }
-        }, child: const Text('确定')),
-      ],
-    ));
+    showDialog(
+        context: context,
+        builder: (context) => AlertDialog(
+              title: Text(add ? '添加到分组' : '移除分组'),
+              content: TextField(
+                  controller: controller,
+                  decoration: const InputDecoration(labelText: '分组名称')),
+              actions: [
+                TextButton(
+                    onPressed: () => Navigator.pop(context),
+                    child: const Text('取消')),
+                FilledButton(
+                    onPressed: () async {
+                      for (final s in selected) {
+                        s.bookSourceGroup = controller.text;
+                        await _db.updateSource(s);
+                      }
+                      if (mounted && context.mounted) {
+                        Navigator.pop(context);
+                        await _loadSources();
+                        setState(() {
+                          _selectMode = false;
+                          _selectedIds.clear();
+                        });
+                      }
+                    },
+                    child: const Text('确定')),
+              ],
+            ));
   }
 
   Future<void> _batchEnable(bool enabled) async {
     for (final id in _selectedIds) {
       final source = _sources.where((s) => s.bookSourceUrl == id).firstOrNull;
-      if (source != null) { source.enabled = enabled; await _db.updateSource(source); }
+      if (source != null) {
+        source.enabled = enabled;
+        await _db.updateSource(source);
+      }
     }
     await _loadSources();
-    setState(() { _selectMode = false; _selectedIds.clear(); });
+    setState(() {
+      _selectMode = false;
+      _selectedIds.clear();
+    });
   }
 
   Future<void> _batchDelete() async {
-    for (final id in _selectedIds) { await _db.deleteSource(id); }
+    for (final id in _selectedIds) {
+      await _db.deleteSource(id);
+    }
     await _loadSources();
-    setState(() { _selectMode = false; _selectedIds.clear(); });
+    setState(() {
+      _selectMode = false;
+      _selectedIds.clear();
+    });
   }
 
   Future<void> _batchExport() async {
-    final selected = _sources.where((s) => _selectedIds.contains(s.bookSourceUrl)).toList();
+    final selected =
+        _sources.where((s) => _selectedIds.contains(s.bookSourceUrl)).toList();
     if (selected.isEmpty) return;
-    final jsonStr = const JsonEncoder.withIndent('  ').convert(selected.map((s) => s.toJson()).toList());
+    final jsonStr = const JsonEncoder.withIndent('  ')
+        .convert(selected.map((s) => s.toJson()).toList());
     await Clipboard.setData(ClipboardData(text: jsonStr));
-    if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('已导出${selected.length}个书源到剪贴板')));
+    if (mounted) {
+      ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('已导出${selected.length}个书源到剪贴板')));
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: _selectMode ? Text('已选 ${_selectedIds.length} 个') : Text('书源管理 (${_sources.length})'),
-        leading: _selectMode ? IconButton(icon: const Icon(Icons.close), tooltip: '取消多选', onPressed: () => setState(() { _selectMode = false; _selectedIds.clear(); })) : null,
-        actions: _selectMode ? [
-          IconButton(icon: const Icon(Icons.select_all_outlined), tooltip: '全选', onPressed: () => setState(() => _selectedIds.addAll(_filteredSources.map((s) => s.bookSourceUrl)))),
-          IconButton(icon: const Icon(Icons.check_circle_outline), tooltip: '启用', onPressed: () => _batchEnable(true)),
-          IconButton(icon: const Icon(Icons.remove_circle_outline), tooltip: '禁用', onPressed: () => _batchEnable(false)),
-          IconButton(icon: const Icon(Icons.ios_share_outlined), tooltip: '导出', onPressed: _batchExport),
-          PopupMenuButton<String>(
-            onSelected: (v) => _batchAction(v),
-            itemBuilder: (context) => const [
-              PopupMenuItem(value: 'enable_explore', child: Text('启用发现')),
-              PopupMenuItem(value: 'disable_explore', child: Text('禁用发现')),
-              PopupMenuItem(value: 'to_top', child: Text('选中置顶')),
-              PopupMenuItem(value: 'to_bottom', child: Text('选中置底')),
-              PopupMenuItem(value: 'add_group', child: Text('添加分组')),
-              PopupMenuItem(value: 'remove_group', child: Text('移除分组')),
-              PopupMenuItem(value: 'check', child: Text('校验选中')),
-              PopupMenuItem(value: 'invert', child: Text('反选')),
-            ],
-          ),
-          IconButton(
-            icon: Icon(Icons.delete_outline, color: Theme.of(context).colorScheme.error),
-            tooltip: '删除',
-            onPressed: () async {
-              final ok = await showAppConfirmDialog(
-                context,
-                title: '删除选中',
-                content: '确定删除${_selectedIds.length}个书源吗？',
-                confirmText: '删除',
-                danger: true,
-              );
-              if (ok) _batchDelete();
-            },
-          ),
-        ] : [
-          IconButton(
-            icon: const Icon(Icons.search_outlined),
-            tooltip: '搜索',
-            onPressed: () {
-              showSearch(
-                context: context,
-                delegate: SourceSearchDelegate(_sources, (source) {
-                  Navigator.push(context, MaterialPageRoute(builder: (_) => SourceEditScreen(source: source))).then((_) => _loadSources());
-                }),
-              );
-            },
-          ),
-          PopupMenuButton<String>(
-            onSelected: (value) {
-              switch (value) {
-                case 'enable_all':
-                  for (final s in _sources) { s.enabled = true; _db.updateSource(s); }
-                  setState(() {});
-                  break;
-                case 'disable_all':
-                  for (final s in _sources) { s.enabled = false; _db.updateSource(s); }
-                  setState(() {});
-                  break;
-                case 'select_mode':
-                  setState(() { _selectMode = true; _selectedIds.clear(); });
-                  break;
-                case 'sort':
-                  _showSortDialog();
-                  break;
-                case 'group_manage':
-                  _showGroupManageDialog();
-                  break;
-                // menu_group_* 特殊分组过滤
-                case 'filter_need_login':
-                case 'filter_no_group':
-                case 'filter_enabled':
-                case 'filter_disabled':
-                case 'filter_enabled_explore':
-                  setState(() => _specialFilter = value.substring(7));
-                  break;
-                case 'filter_clear':
-                  setState(() => _specialFilter = null);
-                  break;
-              }
-            },
-            itemBuilder: (context) => const [
-              PopupMenuItem(value: 'select_mode', child: Text('多选模式')),
-              PopupMenuItem(value: 'sort', child: Text('排序')),
-              PopupMenuItem(value: 'group_manage', child: Text('分组管理')),
-              PopupMenuDivider(),
-              PopupMenuItem(value: 'filter_need_login', child: Text('需要登录')),
-              PopupMenuItem(value: 'filter_no_group', child: Text('未分组')),
-              PopupMenuItem(value: 'filter_enabled', child: Text('已启用')),
-              PopupMenuItem(value: 'filter_disabled', child: Text('未启用')),
-              PopupMenuItem(value: 'filter_enabled_explore', child: Text('已启用发现')),
-              PopupMenuItem(value: 'filter_clear', child: Text('清除过滤')),
-              PopupMenuDivider(),
-              PopupMenuItem(value: 'enable_all', child: Text('全部启用')),
-              PopupMenuItem(value: 'disable_all', child: Text('全部禁用')),
-            ],
-          ),
-        ],
+        title: _selectMode
+            ? Text('已选 ${_selectedIds.length} 个')
+            : Text('书源管理 (${_sources.length})'),
+        leading: _selectMode
+            ? IconButton(
+                icon: const Icon(Icons.close),
+                tooltip: '取消多选',
+                onPressed: () => setState(() {
+                      _selectMode = false;
+                      _selectedIds.clear();
+                    }))
+            : null,
+        actions: _selectMode
+            ? [
+                IconButton(
+                    icon: const Icon(Icons.select_all_outlined),
+                    tooltip: '全选',
+                    onPressed: () => setState(() => _selectedIds
+                        .addAll(_filteredSources.map((s) => s.bookSourceUrl)))),
+                IconButton(
+                    icon: const Icon(Icons.check_circle_outline),
+                    tooltip: '启用',
+                    onPressed: () => _batchEnable(true)),
+                IconButton(
+                    icon: const Icon(Icons.remove_circle_outline),
+                    tooltip: '禁用',
+                    onPressed: () => _batchEnable(false)),
+                IconButton(
+                    icon: const Icon(Icons.ios_share_outlined),
+                    tooltip: '导出',
+                    onPressed: _batchExport),
+                PopupMenuButton<String>(
+                  onSelected: (v) => _batchAction(v),
+                  itemBuilder: (context) => const [
+                    PopupMenuItem(value: 'enable_explore', child: Text('启用发现')),
+                    PopupMenuItem(
+                        value: 'disable_explore', child: Text('禁用发现')),
+                    PopupMenuItem(value: 'to_top', child: Text('选中置顶')),
+                    PopupMenuItem(value: 'to_bottom', child: Text('选中置底')),
+                    PopupMenuItem(value: 'add_group', child: Text('添加分组')),
+                    PopupMenuItem(value: 'remove_group', child: Text('移除分组')),
+                    PopupMenuItem(value: 'check', child: Text('校验选中')),
+                    PopupMenuItem(value: 'invert', child: Text('反选')),
+                  ],
+                ),
+                IconButton(
+                  icon: Icon(Icons.delete_outline,
+                      color: Theme.of(context).colorScheme.error),
+                  tooltip: '删除',
+                  onPressed: () async {
+                    final ok = await showAppConfirmDialog(
+                      context,
+                      title: '删除选中',
+                      content: '确定删除${_selectedIds.length}个书源吗？',
+                      confirmText: '删除',
+                      danger: true,
+                    );
+                    if (ok) _batchDelete();
+                  },
+                ),
+              ]
+            : [
+                IconButton(
+                  icon: const Icon(Icons.search_outlined),
+                  tooltip: '搜索',
+                  onPressed: () {
+                    showSearch(
+                      context: context,
+                      delegate: SourceSearchDelegate(_sources, (source) {
+                        Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                    builder: (_) =>
+                                        SourceEditScreen(source: source)))
+                            .then((_) => _loadSources());
+                      }),
+                    );
+                  },
+                ),
+                PopupMenuButton<String>(
+                  onSelected: (value) {
+                    switch (value) {
+                      case 'enable_all':
+                        for (final s in _sources) {
+                          s.enabled = true;
+                          _db.updateSource(s);
+                        }
+                        setState(() {});
+                        break;
+                      case 'disable_all':
+                        for (final s in _sources) {
+                          s.enabled = false;
+                          _db.updateSource(s);
+                        }
+                        setState(() {});
+                        break;
+                      case 'select_mode':
+                        setState(() {
+                          _selectMode = true;
+                          _selectedIds.clear();
+                        });
+                        break;
+                      case 'sort':
+                        _showSortDialog();
+                        break;
+                      case 'group_manage':
+                        _showGroupManageDialog();
+                        break;
+                      // menu_group_* 特殊分组过滤
+                      case 'filter_need_login':
+                      case 'filter_no_group':
+                      case 'filter_enabled':
+                      case 'filter_disabled':
+                      case 'filter_enabled_explore':
+                        setState(() => _specialFilter = value.substring(7));
+                        break;
+                      case 'filter_clear':
+                        setState(() => _specialFilter = null);
+                        break;
+                    }
+                  },
+                  itemBuilder: (context) => const [
+                    PopupMenuItem(value: 'select_mode', child: Text('多选模式')),
+                    PopupMenuItem(value: 'sort', child: Text('排序')),
+                    PopupMenuItem(value: 'group_manage', child: Text('分组管理')),
+                    PopupMenuDivider(),
+                    PopupMenuItem(
+                        value: 'filter_need_login', child: Text('需要登录')),
+                    PopupMenuItem(value: 'filter_no_group', child: Text('未分组')),
+                    PopupMenuItem(value: 'filter_enabled', child: Text('已启用')),
+                    PopupMenuItem(value: 'filter_disabled', child: Text('未启用')),
+                    PopupMenuItem(
+                        value: 'filter_enabled_explore', child: Text('已启用发现')),
+                    PopupMenuItem(value: 'filter_clear', child: Text('清除过滤')),
+                    PopupMenuDivider(),
+                    PopupMenuItem(value: 'enable_all', child: Text('全部启用')),
+                    PopupMenuItem(value: 'disable_all', child: Text('全部禁用')),
+                  ],
+                ),
+              ],
       ),
       body: Column(
         children: [
@@ -972,7 +1326,8 @@ class _SourceManageScreenState extends State<SourceManageScreen> {
             Container(
               width: double.infinity,
               color: Theme.of(context).colorScheme.secondaryContainer,
-              padding: const EdgeInsets.symmetric(horizontal: AppSpacing.m, vertical: 2),
+              padding: const EdgeInsets.symmetric(
+                  horizontal: AppSpacing.m, vertical: 2),
               child: Row(
                 children: [
                   const Icon(Icons.filter_alt, size: 16),
@@ -1000,58 +1355,23 @@ class _SourceManageScreenState extends State<SourceManageScreen> {
                 ? const AppLoadingIndicator()
                 : _filteredSources.isEmpty
                     ? _buildEmptyState()
-                    : ListView.separated(
-                        padding: const EdgeInsets.all(AppSpacing.l),
-                        itemCount: _filteredSources.length,
-                        separatorBuilder: (_, __) => const SizedBox(height: AppSpacing.s),
-                        itemBuilder: (context, index) {
-                          final source = _filteredSources[index];
-                          final selected = _selectedIds.contains(source.bookSourceUrl);
-                    return Card(
-                      color: selected ? Theme.of(context).colorScheme.primaryContainer : null,
-                      child: ListTile(
-                        leading: _selectMode
-                            ? Checkbox(value: selected, onChanged: (_) => setState(() => selected ? _selectedIds.remove(source.bookSourceUrl) : _selectedIds.add(source.bookSourceUrl)))
-                            : CircleAvatar(
-                          backgroundColor: source.enabled == true
-                              ? Theme.of(context).colorScheme.primaryContainer
-                              : Theme.of(context).colorScheme.surfaceContainerHighest,
-                          child: Text(
-                            source.bookSourceName.isNotEmpty ? source.bookSourceName[0] : '?',
-                            style: TextStyle(color: source.enabled == true ? Theme.of(context).colorScheme.primary : Theme.of(context).colorScheme.onSurfaceVariant),
+                    : _dragEnabled
+                        ? ReorderableListView.builder(
+                            buildDefaultDragHandles: false,
+                            padding: const EdgeInsets.all(AppSpacing.l),
+                            itemCount: _filteredSources.length,
+                            onReorder: _onReorder,
+                            itemBuilder: (context, index) => _buildSourceCard(
+                                _filteredSources[index], index, true),
+                          )
+                        : ListView.separated(
+                            padding: const EdgeInsets.all(AppSpacing.l),
+                            itemCount: _filteredSources.length,
+                            separatorBuilder: (_, __) =>
+                                const SizedBox(height: AppSpacing.s),
+                            itemBuilder: (context, index) => _buildSourceCard(
+                                _filteredSources[index], index, false),
                           ),
-                        ),
-                        title: Text(source.bookSourceName, maxLines: 1, overflow: TextOverflow.ellipsis),
-                        subtitle: Column(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            Text(source.bookSourceUrl, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 11)),
-                            if (source.bookSourceGroup != null && source.bookSourceGroup!.isNotEmpty)
-                              Text('分组: ${source.bookSourceGroup}', style: TextStyle(fontSize: 11, color: Theme.of(context).colorScheme.primary)),
-                            // menu_show_comment：开关开启时在书源列表显示备注
-                            if (_showComment && (source.bookSourceComment ?? '').isNotEmpty)
-                              Text('备注: ${source.bookSourceComment}',
-                                  maxLines: 2,
-                                  overflow: TextOverflow.ellipsis,
-                                  style: TextStyle(fontSize: 11, color: Theme.of(context).colorScheme.onSurfaceVariant)),
-                          ],
-                        ),
-                        trailing: _selectMode ? null : Switch(
-                          value: source.enabled == true,
-                          onChanged: (value) => _toggleSource(source, value),
-                        ),
-                        onTap: () {
-                          if (_selectMode) {
-                            setState(() => selected ? _selectedIds.remove(source.bookSourceUrl) : _selectedIds.add(source.bookSourceUrl));
-                          } else {
-                            Navigator.push(context, MaterialPageRoute(builder: (_) => SourceEditScreen(source: source))).then((_) => _loadSources());
-                          }
-                        },
-                        onLongPress: () => _selectMode ? setState(() => selected ? _selectedIds.remove(source.bookSourceUrl) : _selectedIds.add(source.bookSourceUrl)) : _showSourceOptions(source),
-                      ),
-                    );
-                  },
-                ),
           ),
         ],
       ),
@@ -1068,20 +1388,109 @@ class _SourceManageScreenState extends State<SourceManageScreen> {
         message: '点击右下角添加或导入书源',
       );
 
+  Widget _buildSourceCard(BookSource source, int index, bool dragEnabled) {
+    final selected = _selectedIds.contains(source.bookSourceUrl);
+    void toggleSelected() => setState(() => selected
+        ? _selectedIds.remove(source.bookSourceUrl)
+        : _selectedIds.add(source.bookSourceUrl));
+    return Card(
+      key: ValueKey(source.bookSourceUrl),
+      color: selected ? Theme.of(context).colorScheme.primaryContainer : null,
+      child: ListTile(
+        leading: _selectMode
+            ? Checkbox(value: selected, onChanged: (_) => toggleSelected())
+            : CircleAvatar(
+                backgroundColor: source.enabled == true
+                    ? Theme.of(context).colorScheme.primaryContainer
+                    : Theme.of(context).colorScheme.surfaceContainerHighest,
+                child: Text(
+                  source.bookSourceName.isNotEmpty
+                      ? source.bookSourceName[0]
+                      : '?',
+                  style: TextStyle(
+                    color: source.enabled == true
+                        ? Theme.of(context).colorScheme.primary
+                        : Theme.of(context).colorScheme.onSurfaceVariant,
+                  ),
+                ),
+              ),
+        title: Text(source.bookSourceName,
+            maxLines: 1, overflow: TextOverflow.ellipsis),
+        subtitle: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(source.bookSourceUrl,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(fontSize: 11)),
+            if (source.bookSourceGroup != null &&
+                source.bookSourceGroup!.isNotEmpty)
+              Text('分组: ${source.bookSourceGroup}',
+                  style: TextStyle(
+                      fontSize: 11,
+                      color: Theme.of(context).colorScheme.primary)),
+            // menu_show_comment：开关开启时在书源列表显示备注
+            if (_showComment && (source.bookSourceComment ?? '').isNotEmpty)
+              Text('备注: ${source.bookSourceComment}',
+                  maxLines: 2,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                      fontSize: 11,
+                      color: Theme.of(context).colorScheme.onSurfaceVariant)),
+          ],
+        ),
+        trailing: _selectMode
+            ? null
+            : Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Switch(
+                    value: source.enabled == true,
+                    onChanged: (value) => _toggleSource(source, value),
+                  ),
+                  if (dragEnabled)
+                    ReorderableDragStartListener(
+                      index: index,
+                      child: const Padding(
+                        padding: EdgeInsets.only(left: 4),
+                        child: Icon(Icons.drag_handle),
+                      ),
+                    ),
+                ],
+              ),
+        onTap: () {
+          if (_selectMode) {
+            toggleSelected();
+          } else {
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                  builder: (_) => SourceEditScreen(source: source)),
+            ).then((_) => _loadSources());
+          }
+        },
+        onLongPress: () =>
+            _selectMode ? toggleSelected() : _showSourceOptions(source),
+      ),
+    );
+  }
+
   /// 书源校验
   Future<void> _validateSources([List<BookSource>? targets]) async {
     final sources = targets ?? await _db.getAllSources();
     if (sources.isEmpty) return;
     if (_checkService.isRunning) {
       if (mounted && context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('已有书源在校验，等完成后再试')));
+        ScaffoldMessenger.of(context)
+            .showSnackBar(const SnackBar(content: Text('已有书源在校验，等完成后再试')));
       }
       return;
     }
     int done = 0, valid = 0, invalid = 0;
     String current = '';
+    final results = <CheckResult>[];
     final sub = _checkService.progressStream.listen((p) {
+      if (p.lastResult != null) results.add(p.lastResult!);
       if (!mounted) return;
       setState(() {
         done = p.done;
@@ -1090,29 +1499,44 @@ class _SourceManageScreenState extends State<SourceManageScreen> {
         current = p.currentName;
       });
     });
-    if (!mounted) { sub.cancel(); return; }
+    if (!mounted) {
+      sub.cancel();
+      return;
+    }
     showDialog(
       context: context,
       barrierDismissible: false,
       builder: (c) => StatefulBuilder(builder: (c, setS) {
-        void upd() { if (c.mounted) setS(() {}); }
+        void upd() {
+          if (c.mounted) setS(() {});
+        }
+
         upd();
         return AlertDialog(
           title: const Text('书源校验'),
           content: Column(mainAxisSize: MainAxisSize.min, children: [
-            LinearProgressIndicator(value: sources.isEmpty ? 0 : done / sources.length),
+            LinearProgressIndicator(
+                value: sources.isEmpty ? 0 : done / sources.length),
             const SizedBox(height: AppSpacing.m),
-            Text('进度 $done/${sources.length}  有效 $valid  无效 $invalid'),
+            Text('进度 $done/${sources.length}'
+                '（${sources.isEmpty ? 0 : (done * 100 ~/ sources.length)}%）'
+                '  有效 $valid  无效 $invalid'),
             if (current.isNotEmpty) ...[
               const SizedBox(height: AppSpacing.xs),
               Text('正在校验：$current',
-                  maxLines: 1, overflow: TextOverflow.ellipsis,
-                  style: TextStyle(color: Theme.of(context).colorScheme.onSurfaceVariant, fontSize: 12)),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                      color: Theme.of(context).colorScheme.onSurfaceVariant,
+                      fontSize: 12)),
             ],
           ]),
           actions: [
             TextButton(
-              onPressed: () { _checkService.cancel(); Navigator.pop(c); },
+              onPressed: () {
+                _checkService.cancel();
+                Navigator.pop(c);
+              },
               child: const Text('取消校验'),
             ),
             TextButton(
@@ -1136,6 +1560,8 @@ class _SourceManageScreenState extends State<SourceManageScreen> {
               ? '校验已取消：有效 $valid 个，无效 $invalid 个'
               : '校验完成：有效 ${summary.valid} 个，无效 ${summary.invalid} 个'),
     ));
+    // 结果清单：列出每个书源的通过 / 失效状态与失败原因
+    if (results.isNotEmpty) _showCheckResults(summary, results);
   }
 
   /// 校验设置对话框
@@ -1161,15 +1587,18 @@ class _SourceManageScreenState extends State<SourceManageScreen> {
             checkContent = false;
           }
         }
+
         void onInfoChanged() {
           if (!checkInfo) {
             checkCategory = false;
             checkContent = false;
           }
         }
+
         void onCategoryChanged() {
           if (!checkCategory) checkContent = false;
         }
+
         final infoEnabled = checkSearch || checkDiscovery;
         final categoryEnabled = infoEnabled && checkInfo;
         final contentEnabled = categoryEnabled && checkCategory;
@@ -1261,7 +1690,8 @@ class _SourceManageScreenState extends State<SourceManageScreen> {
             ),
           ),
           actions: [
-            TextButton(onPressed: () => Navigator.pop(c), child: const Text('取消')),
+            TextButton(
+                onPressed: () => Navigator.pop(c), child: const Text('取消')),
             TextButton(
               onPressed: () {
                 final text = timeoutCtrl.text.trim();
@@ -1280,8 +1710,8 @@ class _SourceManageScreenState extends State<SourceManageScreen> {
                 AppPrefs.checkCategory = checkCategory;
                 AppPrefs.checkContent = checkContent;
                 Navigator.pop(c);
-                ScaffoldMessenger.of(context).showSnackBar(
-                    SnackBar(content: Text('已保存：${CheckSourceConfig.summary}')));
+                ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+                    content: Text('已保存：${CheckSourceConfig.summary}')));
               },
               child: const Text('确定'),
             ),
@@ -1299,8 +1729,10 @@ class _SourceManageScreenState extends State<SourceManageScreen> {
         AppMenuSheetItem(
           title: '编辑',
           icon: Icons.edit_outlined,
-          onTap: () => Navigator.push(context,
-                  MaterialPageRoute(builder: (_) => SourceEditScreen(source: source)))
+          onTap: () => Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                      builder: (_) => SourceEditScreen(source: source)))
               .then((_) => _loadSources()),
         ),
         AppMenuSheetItem(
@@ -1312,7 +1744,8 @@ class _SourceManageScreenState extends State<SourceManageScreen> {
           title: '复制书源JSON',
           icon: Icons.content_copy_outlined,
           onTap: () async {
-            final jsonStr = const JsonEncoder.withIndent('  ').convert(source.toJson());
+            final jsonStr =
+                const JsonEncoder.withIndent('  ').convert(source.toJson());
             await Clipboard.setData(ClipboardData(text: jsonStr));
             if (mounted) {
               ScaffoldMessenger.of(context).showSnackBar(
@@ -1324,14 +1757,17 @@ class _SourceManageScreenState extends State<SourceManageScreen> {
         AppMenuSheetItem(
           title: '调试书源',
           icon: Icons.bug_report_outlined,
-          onTap: () => Navigator.push(context,
-              MaterialPageRoute(builder: (_) => SourceDebugScreen(source: source))),
+          onTap: () => Navigator.push(
+              context,
+              MaterialPageRoute(
+                  builder: (_) => SourceDebugScreen(source: source))),
         ),
         AppMenuSheetItem(
           title: '分享书源',
           icon: Icons.share_outlined,
           onTap: () async {
-            final jsonStr = const JsonEncoder.withIndent('  ').convert(source.toJson());
+            final jsonStr =
+                const JsonEncoder.withIndent('  ').convert(source.toJson());
             await Share.share(jsonStr, subject: source.bookSourceName);
           },
         ),
@@ -1367,7 +1803,9 @@ class _SourceManageScreenState extends State<SourceManageScreen> {
         ),
         AppMenuSheetItem(
           title: source.enabledExplore ? '禁用发现' : '启用发现',
-          icon: source.enabledExplore ? Icons.explore_off_outlined : Icons.explore_outlined,
+          icon: source.enabledExplore
+              ? Icons.explore_off_outlined
+              : Icons.explore_outlined,
           onTap: () {
             source.enabledExplore = !source.enabledExplore;
             _db.updateSource(source);
@@ -1381,7 +1819,8 @@ class _SourceManageScreenState extends State<SourceManageScreen> {
             context: context,
             builder: (c) => AlertDialog(
               title: Text(source.bookSourceName),
-              content: SingleChildScrollView(child: Column(
+              content: SingleChildScrollView(
+                  child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 mainAxisSize: MainAxisSize.min,
                 children: [
@@ -1389,7 +1828,8 @@ class _SourceManageScreenState extends State<SourceManageScreen> {
                   const SizedBox(height: AppSpacing.s),
                   Text('分组: ${source.bookSourceGroup ?? "默认"}'),
                   const SizedBox(height: AppSpacing.s),
-                  Text('类型: ${source.bookSourceType == 0 ? "文本" : source.bookSourceType == 1 ? "音频" : source.bookSourceType == 2 ? "图片" : source.bookSourceType == 3 ? "文件" : "视频"}'),
+                  Text(
+                      '类型: ${source.bookSourceType == 0 ? "文本" : source.bookSourceType == 1 ? "音频" : source.bookSourceType == 2 ? "图片" : source.bookSourceType == 3 ? "文件" : "视频"}'),
                   const SizedBox(height: AppSpacing.s),
                   Text('搜索URL: ${source.searchUrl ?? "无"}'),
                   const SizedBox(height: AppSpacing.s),
@@ -1402,7 +1842,10 @@ class _SourceManageScreenState extends State<SourceManageScreen> {
                   Text('备注: ${source.bookSourceComment ?? "无"}'),
                 ],
               )),
-              actions: [TextButton(onPressed: () => Navigator.pop(c), child: const Text('关闭'))],
+              actions: [
+                TextButton(
+                    onPressed: () => Navigator.pop(c), child: const Text('关闭'))
+              ],
             ),
           ),
         ),
@@ -1433,15 +1876,18 @@ class SourceSearchDelegate extends SearchDelegate<BookSource> {
 
   @override
   List<Widget> buildActions(BuildContext context) => [
-    IconButton(icon: const Icon(Icons.clear_outlined), tooltip: '清除', onPressed: () => query = ''),
-  ];
+        IconButton(
+            icon: const Icon(Icons.clear_outlined),
+            tooltip: '清除',
+            onPressed: () => query = ''),
+      ];
 
   @override
   Widget buildLeading(BuildContext context) => IconButton(
-    icon: const Icon(Icons.arrow_back),
-    tooltip: '返回',
-    onPressed: () => Navigator.pop(context),
-  );
+        icon: const Icon(Icons.arrow_back),
+        tooltip: '返回',
+        onPressed: () => Navigator.pop(context),
+      );
 
   @override
   Widget buildResults(BuildContext context) => buildSuggestions(context);
@@ -1450,18 +1896,22 @@ class SourceSearchDelegate extends SearchDelegate<BookSource> {
   Widget buildSuggestions(BuildContext context) {
     final results = query.isEmpty
         ? sources
-        : sources.where((s) => s.bookSourceName.contains(query) || s.bookSourceUrl.contains(query)).toList();
+        : sources
+            .where((s) =>
+                s.bookSourceName.contains(query) ||
+                s.bookSourceUrl.contains(query))
+            .toList();
     return ListView.builder(
       itemCount: results.length,
       itemBuilder: (context, index) {
         final source = results[index];
         return ListTile(
           title: Text(source.bookSourceName),
-          subtitle: Text(source.bookSourceUrl, maxLines: 1, overflow: TextOverflow.ellipsis),
+          subtitle: Text(source.bookSourceUrl,
+              maxLines: 1, overflow: TextOverflow.ellipsis),
           onTap: () => onSelect(source),
         );
       },
     );
   }
 }
-

@@ -23,7 +23,7 @@ class _MangaReaderScreenState extends State<MangaReaderScreen> {
   int _preDownload = 3;     // manga_preDownload：预下载后续章节图片数
   double _sidePadding = 0;  // manga_sidePadding：条漫两侧边距
 
-  // Sigma 漫画专属补充键（manga_config_screen 写入，逐项消费到渲染分支）
+ // 漫画专属补充键（manga_config_screen 写入，逐项消费到渲染分支）
   int _threshold = 128;     // manga_threshold：二值化阈值
   int _colorFilter = 0;     // manga_colorFilter：0 无 / 1 护眼 / 2 复古 / 3 冷色
   int _scaleMax = 4;        // manga_scaleMax：InteractiveViewer 最大缩放

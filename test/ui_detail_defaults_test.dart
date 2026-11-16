@@ -33,7 +33,7 @@ void main() {
     });
   });
 
-  group('上游默认值契约（此前 5 项全部反向）', () {
+ group('默认值契约（此前 5 项全部反向）', () {
     test('antiAlias=false / autoClearExpired=true', () {
       expect(src('lib/ui/config/other_config_screen.dart'),
           contains("p.getBool('oc_antiAlias') ?? false"));

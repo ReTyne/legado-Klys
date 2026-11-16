@@ -284,7 +284,7 @@ class _SubscribeScreenState extends State<SubscribeScreen> {
   }
 
   /// 主界面「设置」（main_rss.xml menu_rss_config）：订阅设置弹窗，
-  /// 选择默认排序并真实持久化（复用 _setSortMode），不伪造空壳。
+ /// 选择默认排序并真实持久化（复用 _setSortMode）。
   Future<void> _showRssSettings() async {
     final v = await showAppRadioDialog<int>(
       context,

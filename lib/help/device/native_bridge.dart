@@ -13,7 +13,7 @@ import 'package:legado_md3/data/local/app_database.dart';
 /// 所有方法在桌面 / iOS / 未实现通道时安全降级（返回合理默认值，不抛异常），
 /// 保证 `flutter test` 与桌面调试不崩。
 ///
-/// 通道清单（与 `android/.../MainActivity.kt` 严格一致）：
+/// 通道清单（与 严格一致）：
 /// - `legado/network`      isWifi / getState / startWatch / stopWatch → 事件 onNetworkChanged
 /// - `legado/shortcut`     setShortcuts / removeShortcuts / getInitialShortcut → 事件 onShortcut
 /// - `legado/media_button` activate / deactivate / setPlaybackState / drain / getActive → 事件 onMediaButton

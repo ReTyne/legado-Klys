@@ -31,7 +31,7 @@ class _FakeJs implements LegadoJs {
   Future<JsEvalResult> eval(JsEvalRequest req) async {
     calls.add((script: req.script.trim(), key: req.key, infoMap: req.infoMap));
     final s = req.script.trim();
-    // 7814 URL 模板里的内联表达式：忠实求值（对齐浏览器 encodeURIComponent）
+    // 7814 URL 模板里的内联表达式：按 encodeURIComponent 语义求值
     if (s == 'encodeURIComponent(key)') {
       return JsEvalResult(value: Uri.encodeComponent(req.key ?? ''));
     }

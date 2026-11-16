@@ -3,18 +3,18 @@
 part of '../offline_js_bridge.dart';
 
 
-/// 对齐 cache 对象：put/get 为可回写态，putMemory/getFromMemory 为纯内存态。
+/// cache 对象：put/get 为可回写态，putMemory/getFromMemory 为纯内存态。
 class JsBridgeCache {
   final Map<String, String> _disk = <String, String>{};
   final Map<String, dynamic> _memory = <String, dynamic>{};
 
-  /// 存入持久化态（非字符串按 JSON 序列化，对齐桥 cache.put）。
+  /// 存入持久化态（非字符串按 JSON 序列化）。
   bool put(String key, Object? value) {
     _disk[key] = value is String ? value : jsonEncode(value);
     return true;
   }
 
-  /// 读取持久化态（能解析成 JSON 则还原对象，对齐桥 cache.get）。
+  /// 读取持久化态（能解析成 JSON 则还原对象）。
   Object? get(String key) {
     final v = _disk[key];
     if (v == null) return null;
@@ -38,6 +38,6 @@ class JsBridgeCache {
   Object? getFromMemory(String key) => _memory[key];
   void removeMemory(String key) => _memory.remove(key);
 
-  /// 持久化态快照（供运行时回写 SharedPreferences，对齐 __state.kv）。
+  /// 持久化态快照（供运行时回写 SharedPreferences）。
   Map<String, String> get diskSnapshot => Map<String, String>.unmodifiable(_disk);
 }

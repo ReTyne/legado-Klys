@@ -2,7 +2,6 @@
 /// 作为同一库的 part，私有成员互引保持可用。
 part of '../rss_service.dart';
 
-
 /// RSS订阅服务
 class RssService {
   final Dio _dio = Dio(BaseOptions(
@@ -14,7 +13,8 @@ class RssService {
     headers: {
       'User-Agent':
           'Mozilla/5.0 (Linux; Android 13) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Mobile Safari/537.36',
-      'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+      'Accept':
+          'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
     },
   ));
 
@@ -38,8 +38,8 @@ class RssService {
       if (articles.isEmpty) articles.addAll(_parseAtom(content, source));
       if (articles.isEmpty &&
           (source.ruleArticles?.trim().isNotEmpty ?? false)) {
-        articles.addAll(await _parseByRules(source, content,
-            startUrl: start.url));
+        articles
+            .addAll(await _parseByRules(source, content, startUrl: start.url));
       }
       if (articles.isEmpty) articles.addAll(_parseHtml(content, source));
       return articles;
@@ -117,8 +117,8 @@ class RssService {
     if (js.isEmpty || body.isEmpty) return body;
     try {
       final rt = await JsRuntimeManager.instance.forSource(s);
-      final script = await _applyMustache(s, _stripJs(js),
-          result: body, baseUrl: baseUrl);
+      final script =
+          await _applyMustache(s, _stripJs(js), result: body, baseUrl: baseUrl);
       final res = await rt.eval(JsEvalRequest(
           source: s, script: script, result: body, baseUrl: baseUrl));
       final v = (res.stringValue ?? '').trim();
@@ -154,8 +154,7 @@ class RssService {
 
   /// 取正文下一页链接：
   /// sourceType==0 且 nextContentUrl 规则非空时，逐条解析为绝对地址。
-  List<String> _nextContentUrls(
-      RssSource s, String html, String baseUrl) {
+  List<String> _nextContentUrls(RssSource s, String html, String baseUrl) {
     final rule = _nextContentRuleOf(s);
     if (s.sourceType != 0 || rule.isEmpty || html.isEmpty) return const [];
     _pipeline.baseUrl = baseUrl;
@@ -173,23 +172,132 @@ class RssService {
 
   // ============================ JS 链路 ============================
 
-  /// 解析 sortUrl 为分类列表（`名称::URL`，多个用换行分隔）
-  List<RssCategory> parseCategories(RssSource s) {
-    final raw = (s.sortUrl ?? '').trim();
-    if (raw.isEmpty) return [];
+  /// sortUrl 解析结果缓存：键 = 源 URL + sortUrl 内容哈希。
+  static final Map<String, List<RssCategory>> _sortUrlCache =
+      <String, List<RssCategory>>{};
+
+  /// 缓存键：源 URL 与 sortUrl 内容一起哈希，内容一变缓存即失效。
+  static String sortCacheKey(String sourceUrl, String sortUrl) =>
+      md5.convert(utf8.encode('$sourceUrl\u0000$sortUrl')).toString();
+
+  /// 清空 sortUrl 解析缓存（源规则更新后调用）。
+  static void removeSortCache() => _sortUrlCache.clear();
+
+  /// 纯解析：把已求值的 sortUrl 文本切成分类列表。
+  ///
+  /// - 分隔符：`&&` 与换行混合；
+  /// - 每段 `title::url` 切分，缺少 `title` / `url` 时互相兜底；
+  /// - 空结果回退为单条「指向 sourceUrl」的分类 `(sourceUrl)`。
+  static List<RssCategory> parseSortText(String raw,
+      {required String sourceUrl}) {
     final out = <RssCategory>[];
-    for (final line in raw.split(RegExp(r'[\r\n]+'))) {
-      final seg = line.trim();
-      if (seg.isEmpty) continue;
-      final idx = seg.indexOf('::');
+    for (final seg in raw.split(RegExp(r'(&&|[\r\n]+)'))) {
+      final s = seg.trim();
+      if (s.isEmpty) continue;
+      final idx = s.indexOf('::');
       if (idx < 0) {
-        out.add(RssCategory(seg, seg));
+        out.add(RssCategory(s, s));
       } else {
-        out.add(RssCategory(seg.substring(0, idx).trim(),
-            seg.substring(idx + 2).trim()));
+        final title = s.substring(0, idx).trim();
+        final url = s.substring(idx + 2).trim();
+        out.add(RssCategory(
+          title.isEmpty ? (url.isEmpty ? s : url) : title,
+          url.isEmpty ? (title.isEmpty ? s : title) : url,
+        ));
       }
     }
+    if (out.isEmpty) {
+      out.add(RssCategory(sourceUrl, sourceUrl));
+    }
     return out;
+  }
+
+  /// 完整解析 sortUrl：支持 `<js>...</js>` 与 `@js:` 前缀求值，按
+  /// 源 URL + sortUrl 内容哈希缓存结果。
+  ///
+  /// [jsEval] 为可注入的 JS 求值回调（测试 / 无头环境使用）；不传时走
+  /// 项目 JS 运行时，运行时不可用或异常时安全降级为空串 → 回退 sourceUrl。
+  Future<List<RssCategory>> sortUrls(
+    RssSource s, {
+    Future<String> Function(String script)? jsEval,
+  }) async {
+    final raw = (s.sortUrl ?? '').trim();
+    final key = sortCacheKey(s.sourceUrl, raw);
+    final cached = _sortUrlCache[key];
+    if (cached != null) return List<RssCategory>.unmodifiable(cached);
+    final resolved = await _resolveSortText(s, raw, jsEval);
+    final list = parseSortText(resolved, sourceUrl: s.sourceUrl);
+    _sortUrlCache[key] = list;
+    return List<RssCategory>.unmodifiable(list);
+  }
+
+  /// 求值 sortUrl 里的 JS 片段，返回纯文本。
+  Future<String> _resolveSortText(
+    RssSource s,
+    String raw,
+    Future<String> Function(String script)? jsEval,
+  ) async {
+    if (raw.isEmpty) return '';
+    // 整段 `@js:` 前缀
+    if (raw.toLowerCase().startsWith('@js:')) {
+      return _evalSortJs(s, raw.substring(4).trim(), jsEval);
+    }
+    // 内联 `<js>...</js>` 块逐个求值后替换回文本
+    final blockRe = RegExp(r'<js>([\s\S]*?)</js>', caseSensitive: false);
+    final blocks = blockRe.allMatches(raw).toList();
+    if (blocks.isEmpty) return raw;
+    final buf = StringBuffer();
+    var last = 0;
+    for (final m in blocks) {
+      buf.write(raw.substring(last, m.start));
+      buf.write(await _evalSortJs(s, (m.group(1) ?? '').trim(), jsEval));
+      last = m.end;
+    }
+    buf.write(raw.substring(last));
+    return buf.toString();
+  }
+
+  Future<String> _evalSortJs(
+    RssSource s,
+    String script,
+    Future<String> Function(String script)? jsEval,
+  ) async {
+    if (script.isEmpty) return '';
+    if (jsEval != null) {
+      try {
+        return await jsEval(script);
+      } catch (_) {
+        return '';
+      }
+    }
+    try {
+      final rt = await JsRuntimeManager.instance.forSource(s);
+      final res = await rt.eval(JsEvalRequest(
+        source: s,
+        script: script,
+        result: '',
+        baseUrl: s.jsHttpUrl,
+      ));
+      return res.stringValue ?? '';
+    } catch (_) {
+      return '';
+    }
+  }
+
+  /// 同步解析分类（供列表页使用）：无法同步求值 JS，故先剥离 JS 标记，
+  /// 其余文本走 [parseSortText]，纯 JS 源则回退到 sourceUrl。
+  List<RssCategory> parseCategories(RssSource s) {
+    final raw = _stripJsMarkers((s.sortUrl ?? '').trim());
+    return parseSortText(raw, sourceUrl: s.sourceUrl);
+  }
+
+  /// 剥离 `<js>...</js>` 块与整段 `@js:` 前缀，供同步解析兜底。
+  static String _stripJsMarkers(String raw) {
+    if (raw.isEmpty) return '';
+    if (raw.toLowerCase().startsWith('@js:')) return '';
+    return raw
+        .replaceAll(RegExp(r'<js>[\s\S]*?</js>', caseSensitive: false), '')
+        .trim();
   }
 
   /// 取某个分类的文章（解析分类 URL 中的 mustache，再以该 URL 为基址跑文章规则）
@@ -197,10 +305,10 @@ class RssService {
       RssSource s, RssCategory category) async {
     var url = category.rawUrl;
     if (url.contains('{{')) {
-      url = await _applyMustache(s, url,
-          result: '', baseUrl: s.jsHttpUrl);
+      url = await _applyMustache(s, url, result: '', baseUrl: s.jsHttpUrl);
     }
-    return _fetchJsArticles(s, baseUrl: url.startsWith('http') ? url : s.jsHttpUrl);
+    return _fetchJsArticles(s,
+        baseUrl: url.startsWith('http') ? url : s.jsHttpUrl);
   }
 
   /// JS 方式取文章列表。
@@ -217,8 +325,7 @@ class RssService {
     var pageContent = start.html;
 
     var body = _stripJs(rule);
-    body = await _applyMustache(s, body,
-        result: pageContent, baseUrl: baseUrl);
+    body = await _applyMustache(s, body, result: pageContent, baseUrl: baseUrl);
     final res = await rt.eval(JsEvalRequest(
         source: s, script: body, result: pageContent, baseUrl: baseUrl));
 
@@ -281,11 +388,7 @@ class RssService {
       body = await _applyMustache(s, body,
           result: html, baseUrl: url, rssArticle: am);
       final res = await rt.eval(JsEvalRequest(
-          source: s,
-          script: body,
-          result: html,
-          baseUrl: url,
-          rssArticle: am));
+          source: s, script: body, result: html, baseUrl: url, rssArticle: am));
       return res.stringValue ?? '';
     }
 
@@ -333,7 +436,8 @@ class RssService {
   /// [whitelist] 非空时只保留选择器命中的内容；[blacklist] 删除选择器命中的内容。
   /// 选择器列表支持逗号/中文逗号/换行分隔。
   /// 解析或选择器异常时保留原 HTML，避免破坏正文。
-  String _applyContentFilter(String html, String? whitelist, String? blacklist) {
+  String _applyContentFilter(
+      String html, String? whitelist, String? blacklist) {
     final wl = _splitSelectors(whitelist);
     final bl = _splitSelectors(blacklist);
     if (html.isEmpty || (wl.isEmpty && bl.isEmpty)) return html;
@@ -384,8 +488,7 @@ class RssService {
     if (h.startsWith('@js:') || h.contains('<js') || h.contains('{{')) {
       final rt = await JsRuntimeManager.instance.forSource(s);
       var body = _stripJs(h);
-      body = await _applyMustache(s, body,
-          result: '', baseUrl: s.jsHttpUrl);
+      body = await _applyMustache(s, body, result: '', baseUrl: s.jsHttpUrl);
       final res = await rt.eval(JsEvalRequest(
           source: s, script: body, result: '', baseUrl: s.jsHttpUrl));
       return res.stringValue;
@@ -395,7 +498,9 @@ class RssService {
 
   /// 替换文本中的 {{...}}（逐个求值，从后往前替换以保持索引）。
   Future<String> _applyMustache(RssSource s, String text,
-      {dynamic result, String? baseUrl, Map<String, dynamic>? rssArticle}) async {
+      {dynamic result,
+      String? baseUrl,
+      Map<String, dynamic>? rssArticle}) async {
     final matches = _mustacheRe.allMatches(text).toList();
     if (matches.isEmpty) return text;
     final rt = await JsRuntimeManager.instance.forSource(s);
@@ -453,8 +558,7 @@ class RssService {
         try {
           final v = jsonDecode(headerJson);
           if (v is Map) {
-            headers.addAll(
-                v.map((k, val) => MapEntry(k.toString(), val)));
+            headers.addAll(v.map((k, val) => MapEntry(k.toString(), val)));
           }
         } catch (_) {}
       }
@@ -490,12 +594,15 @@ class RssService {
       final doc = html_parser.parse(content);
       final elements = _pipeline.selectElements(doc, source.ruleArticles!);
       for (final el in elements) {
-        String? f(String? rule) =>
-            (rule == null || rule.trim().isEmpty) ? null : _pipeline.fieldFromElement(el, rule);
+        String? f(String? rule) => (rule == null || rule.trim().isEmpty)
+            ? null
+            : _pipeline.fieldFromElement(el, rule);
         final title = (f(source.ruleTitle) ?? '').trim();
         var link = _resolveUrl(currentUrl, (f(source.ruleLink) ?? '').trim());
         if (title.isEmpty) continue;
-        if (link.isEmpty) link = _resolveUrl(currentUrl, el.attributes['href'] ?? '');
+        if (link.isEmpty) {
+          link = _resolveUrl(currentUrl, el.attributes['href'] ?? '');
+        }
         if (link.isNotEmpty && !seen.add(link)) continue;
         final desc = (f(source.ruleDescription) ?? '').trim();
         final img = _resolveUrl(currentUrl, (f(source.ruleImage) ?? '').trim());
@@ -597,17 +704,28 @@ class RssService {
     try {
       final doc = html_parser.parse(content);
       final selectors = [
-        'article', '.article-item', '.post-item', '.list-item',
-        'li.article', 'div.item', '.news-item',
+        'article',
+        '.article-item',
+        '.post-item',
+        '.list-item',
+        'li.article',
+        'div.item',
+        '.news-item',
       ];
       for (final selector in selectors) {
         final items = doc.querySelectorAll(selector);
         if (items.isNotEmpty) {
           for (final item in items.take(20)) {
-            final titleEl = item.querySelector('h1, h2, h3, h4, a.title, .title a');
+            final titleEl =
+                item.querySelector('h1, h2, h3, h4, a.title, .title a');
             final title = titleEl?.text.trim();
-            final link = titleEl?.attributes['href'] ?? item.querySelector('a')?.attributes['href'] ?? '';
-            final desc = item.querySelector('.summary, .description, .excerpt, p')?.text.trim();
+            final link = titleEl?.attributes['href'] ??
+                item.querySelector('a')?.attributes['href'] ??
+                '';
+            final desc = item
+                .querySelector('.summary, .description, .excerpt, p')
+                ?.text
+                .trim();
 
             if (title != null && title.isNotEmpty) {
               articles.add(RssArticle(

@@ -404,7 +404,7 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
           mainAxisSize: MainAxisSize.min,
           children: [
             // showAsAction="never" 项与顺序
-            // 1. 上传到远程（E: menu_upload，仅本地书可见，对齐 A10 书籍上传 WebDAV）
+            // 1. 上传到远程（仅本地书可见，走 WebDAV）
             if (widget.book.local && (widget.book.fileName?.isNotEmpty ?? false))
               ListTile(
                 leading: const Icon(Icons.cloud_upload_outlined),
@@ -412,52 +412,52 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
                 subtitle: const Text('上传到 WebDAV 远程书库'),
                 onTap: () { Navigator.pop(context); _uploadBook(); },
               ),
-            // 2. 刷新（E: menu_refresh）
+            // 2. 刷新
             ListTile(
               leading: const Icon(Icons.refresh),
               title: const Text('刷新'),
               onTap: () { Navigator.pop(context); _refreshBookInfo(); },
             ),
-            // 3. 登录（E: menu_login，书源有 loginUrl 时可见）
+            // 3. 登录
             if (_detailSource != null && (_detailSource!.loginUrl?.isNotEmpty ?? false))
               ListTile(
                 leading: const Icon(Icons.login),
                 title: const Text('登录'),
                 onTap: () { Navigator.pop(context); Navigator.push(context, MaterialPageRoute(builder: (_) => SourceLoginScreen(source: _detailSource!))); },
               ),
-            // 4. 置顶（E: menu_top）
+            // 4. 置顶
             ListTile(
               leading: const Icon(Icons.push_pin_outlined),
               title: Text((widget.book.customOrder ?? 0) < 0 ? '取消置顶' : '置顶'),
               onTap: () async { Navigator.pop(context); widget.book.customOrder = (widget.book.customOrder ?? 0) < 0 ? 0 : -1; await _db.updateBook(widget.book); if (mounted) setState(() {}); },
             ),
-            // 5. 设置源变量（E: menu_set_source_variable，有书源时可见）
+            // 5. 设置源变量
             if (_detailSource != null)
               ListTile(
                 leading: const Icon(Icons.data_object),
                 title: const Text('设置源变量'),
                 onTap: () { Navigator.pop(context); _editVariable('sourceVar::${widget.book.origin}', '设置源变量'); },
               ),
-            // 6. 设置书籍变量（E: menu_set_book_variable，有书源时可见）
+            // 6. 设置书籍变量
             if (_detailSource != null)
               ListTile(
                 leading: const Icon(Icons.data_object),
                 title: const Text('设置书籍变量'),
                 onTap: () { Navigator.pop(context); _editVariable('bookVar::${widget.book.bookUrl}', '设置书籍变量'); },
               ),
-            // 7. 复制书籍URL（E: menu_copy_book_url）
+            // 7. 复制书籍URL
             ListTile(
               leading: const Icon(Icons.link),
               title: const Text('复制书籍URL'),
               onTap: () async { Navigator.pop(context); await Clipboard.setData(ClipboardData(text: widget.book.bookUrl ?? '')); if (mounted && context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('已复制'))); },
             ),
-            // 8. 复制目录URL（E: menu_copy_toc_url）
+            // 8. 复制目录URL
             ListTile(
               leading: const Icon(Icons.link),
               title: const Text('复制目录URL'),
               onTap: () async { Navigator.pop(context); await Clipboard.setData(ClipboardData(text: widget.book.noteUrl ?? '')); if (mounted && context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('已复制'))); },
             ),
-            // 9. 允许更新（E: menu_can_update → Book.canUpdate，checkable）
+            // 9. 允许更新
             // 关闭「允许更新」时顺手清掉 updateError 标记；
             // canUpdate 才是书架 _updateAllBooks 的真实过滤字段。
             ListTile(
@@ -472,7 +472,7 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
                 if (mounted) setState(() {});
               },
             ),
-            // 10. 长章节拆分（E: menu_split_long_chapter，checkable，仅本地 TXT）
+            // 10. 长章节拆分
             if (_isLocalTxt)
               ListTile(
                 leading: Icon(widget.book.splitLongChapter ? Icons.check_box : Icons.check_box_outline_blank),
@@ -480,7 +480,7 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
                 subtitle: const Text('正文超过 100KB 的章节自动拆分，提升翻页流畅度'),
                 onTap: () { Navigator.pop(context); _toggleSplitLongChapter(); },
               ),
-            // 11. 删除提醒（E: menu_delete_alert，checkable）
+            // 11. 删除提醒
             ListTile(
               leading: Icon(_deleteAlert ? Icons.check_box : Icons.check_box_outline_blank),
               title: const Text('删除提醒'),
@@ -492,7 +492,7 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
                 if (mounted) setState(() => _deleteAlert = next);
               },
             ),
-            // 12. 清理缓存（E: menu_clear_cache）
+            // 12. 清理缓存
             ListTile(
               leading: const Icon(Icons.cleaning_services),
               title: const Text('清理缓存'),
@@ -505,7 +505,7 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
                 if (mounted && context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('缓存已清除')));
               },
             ),
-            // 13. 日志（E: menu_log）
+            // 13. 日志
             ListTile(
               leading: const Icon(Icons.receipt_long),
               title: const Text('日志'),
@@ -757,7 +757,7 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
     );
   }
 
-  /// 头部：封面 + 书名 + 分类标签（对齐 activity_book_info 的 ArcView 区域）
+  /// 头部：封面 + 书名 + 分类标签
   Widget _buildHeader(Book book) {
     final cs = Theme.of(context).colorScheme;
     final cover = (book.customCoverUrl != null && book.customCoverUrl!.isNotEmpty)
@@ -780,7 +780,7 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
       fit: StackFit.expand,
       children: [
         if (blurBg != null) blurBg,
-        // 半透明渐变叠层保证书名/标签可读（对齐 ArcView 遮罩）。
+        // 半透明渐变叠层保证书名/标签可读。
         Container(
           decoration: BoxDecoration(
             gradient: LinearGradient(
@@ -864,7 +864,7 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
         MaterialPageRoute(builder: (_) => IntroImagePreview(url: cover)));
   }
 
-  /// 一行「图标 + 内容 + 右侧强调按钮」（对齐 ll_info 内的各 LinearLayout 行）
+  /// 一行「图标 + 内容 + 右侧强调按钮」
   Widget _infoRow({required IconData icon, required Widget child, Widget? trailing}) {
     final cs = Theme.of(context).colorScheme;
     return Padding(
@@ -880,7 +880,7 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
     );
   }
 
-  /// 右侧小号强调按钮（对齐 AccentBgTextView）
+  /// 右侧小号强调按钮
   Widget _accentButton(String text, VoidCallback onTap) {
     final cs = Theme.of(context).colorScheme;
     return GestureDetector(
@@ -893,7 +893,7 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
     );
   }
 
-  /// 读到进度 / 最新章节文案（对齐 tv_lasted）
+  /// 读到进度 / 最新章节文案
   String _progressText() {
     final book = widget.book;
     if (_chapters.isNotEmpty && _readChapterIndex < _chapters.length) {
@@ -992,7 +992,7 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
     }
   }
 
-  /// 更改分组对话框（对齐 tv_change_group）
+  /// 更改分组对话框
   void _showChangeGroupDialog() async {
     final groups = <String>{};
     final books = await _db.getAllBooks();

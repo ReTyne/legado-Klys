@@ -16,7 +16,7 @@ bool _asBool(dynamic v, bool fallback) {
   return s == 'true' || s == '1';
 }
 
-/// 替换净化规则。字段与  `data/entities/ReplaceRule.kt` 对齐：
+/// 替换净化规则，包含以下字段：
 /// name / group / pattern / replacement / scope / scopeTitle / scopeContent /
 /// excludeScope / isEnabled / isRegex / timeoutMillisecond / sortOrder。
 class ReplaceRule {
@@ -50,17 +50,17 @@ class ReplaceRule {
     this.order,
   });
 
-  /// 与上游 `getValidTimeoutMillisecond()` 一致：<= 0 回退 3000ms。
+ /// 与 `getValidTimeoutMillisecond` 一致：<= 0 回退 3000ms。
   int get validTimeoutMillisecond =>
       timeoutMillisecond <= 0 ? 3000 : timeoutMillisecond;
 
-  /// 与上游 `getDisplayNameGroup()` 一致：有分组时显示 "名称 (分组)"。
+ /// 与 `getDisplayNameGroup` 一致：有分组时显示 "名称 (分组)"。
   String get displayNameWithGroup =>
       (group == null || group!.trim().isEmpty)
           ? replaceSummary
           : '$replaceSummary ($group)';
 
-  /// 与上游 `isValid()` 一致：空 pattern 无效；正则必须可编译；
+ /// 与 `isValid` 一致：空 pattern 无效；正则必须可编译；
   /// 以未转义的 `|` 结尾视为无效（漏删尾部竖线会引发灾难性回溯）。
   bool isValid() {
     if (replaceRule.isEmpty) return false;

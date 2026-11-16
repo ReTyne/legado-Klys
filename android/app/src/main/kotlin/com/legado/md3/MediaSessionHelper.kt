@@ -11,7 +11,7 @@ import android.support.v4.media.session.MediaSessionCompat
 import android.support.v4.media.session.PlaybackStateCompat
 
 /**
- * 朗读媒体会话：MediaSessionCompat + AudioFocusRequest（对齐 Sigma
+ * 朗读媒体会话：MediaSessionCompat + AudioFocusRequest（
  * BaseReadAloudService / AudioPlayService 的媒体会话与音频焦点链路）。
  *
  * 活跃会话通过 setMediaButtonReceiver 把 ACTION_MEDIA_BUTTON 显式路由给

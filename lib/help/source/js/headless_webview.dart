@@ -4,6 +4,7 @@ import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 import 'package:flutter_inappwebview/flutter_inappwebview.dart' as iw;
+import 'package:shared_preferences/shared_preferences.dart';
 
 /// 无头 WebView 抓取工具。
 ///
@@ -51,6 +52,12 @@ class HeadlessWebViewFetcher {
     int timeoutMs = 15000,
     Map<String, String>? headers,
     String? userAgent,
+    String html = '',
+    bool cacheFirst = false,
+    int delayMs = 0,
+    String sourceRegex = '',
+    String encode = 'utf-8',
+    String tag = '',
   }) {
     if (_broken || kIsWeb || url.trim().isEmpty) return Future.value('');
     final completer = Completer<String>();
@@ -65,11 +72,16 @@ class HeadlessWebViewFetcher {
               timeoutMs: timeoutMs,
               headers: headers,
               userAgent: userAgent,
+              html: html,
+              cacheFirst: cacheFirst,
+              delayMs: delayMs,
+              sourceRegex: sourceRegex,
+              encode: encode,
+              tag: tag,
             ))
         .then((v) {
-          if (!completer.isCompleted) completer.complete(v);
-        })
-        .catchError((_) {});
+      if (!completer.isCompleted) completer.complete(v);
+    }).catchError((_) {});
     return completer.future;
   }
 
@@ -80,6 +92,12 @@ class HeadlessWebViewFetcher {
     required int timeoutMs,
     Map<String, String>? headers,
     String? userAgent,
+    String html = '',
+    bool cacheFirst = false,
+    int delayMs = 0,
+    String sourceRegex = '',
+    String encode = 'utf-8',
+    String tag = '',
   }) async {
     try {
       return await _run(
@@ -89,6 +107,12 @@ class HeadlessWebViewFetcher {
         timeoutMs: timeoutMs,
         headers: headers,
         userAgent: userAgent,
+        html: html,
+        cacheFirst: cacheFirst,
+        delayMs: delayMs,
+        sourceRegex: sourceRegex,
+        encode: encode,
+        tag: tag,
       );
     } catch (e) {
       debugPrint('HeadlessWebViewFetcher 失败: $e');
@@ -103,11 +127,23 @@ class HeadlessWebViewFetcher {
     required int timeoutMs,
     Map<String, String>? headers,
     String? userAgent,
+    String html = '',
+    bool cacheFirst = false,
+    int delayMs = 0,
+    String sourceRegex = '',
+    String encode = 'utf-8',
+    String tag = '',
   }) async {
     final done = Completer<String>();
     var settled = false;
     var disposed = false;
     iw.HeadlessInAppWebView? headless;
+    RegExp? regex;
+    if (sourceRegex.trim().isNotEmpty) {
+      try {
+        regex = RegExp(sourceRegex);
+      } catch (_) {}
+    }
 
     void finish(String value) {
       if (settled) return;
@@ -133,6 +169,7 @@ class HeadlessWebViewFetcher {
         injectionTime: iw.UserScriptInjectionTime.AT_DOCUMENT_END,
       ));
     }
+    final useHtml = html.trim().isNotEmpty;
 
     try {
       headless = iw.HeadlessInAppWebView(
@@ -145,23 +182,63 @@ class HeadlessWebViewFetcher {
           javaScriptCanOpenWindowsAutomatically: false,
           // 禁止自动播放音视频，省资源
           mediaPlaybackRequiresUserGesture: true,
+          cacheMode: cacheFirst
+              ? iw.CacheMode.LOAD_CACHE_ELSE_NETWORK
+              : iw.CacheMode.LOAD_DEFAULT,
+          useShouldInterceptRequest: regex != null,
           userAgent: userAgent ?? _defaultUserAgent,
         ),
-        initialUrlRequest: iw.URLRequest(url: iw.WebUri(url), headers: headers),
+        initialUrlRequest: useHtml
+            ? null
+            : iw.URLRequest(url: iw.WebUri(url), headers: headers),
+        initialData: useHtml
+            ? iw.InAppWebViewInitialData(
+                data: html,
+                mimeType: 'text/html',
+                encoding: encode.isEmpty ? 'utf-8' : encode,
+                baseUrl: iw.WebUri(url),
+              )
+            : null,
         initialUserScripts:
             scripts.isEmpty ? null : UnmodifiableListView(scripts),
+        // sourceRegex 嗅探：首个命中该正则的请求地址作为结果返回。
+        shouldInterceptRequest: regex == null
+            ? null
+            : (controller, request) {
+                final reqUrl = request.url.toString();
+                if (!settled && regex!.hasMatch(reqUrl)) {
+                  finish(reqUrl);
+                  unawaited(safeDispose());
+                }
+                return Future<iw.WebResourceResponse?>.value(null);
+              },
         onWebViewCreated: (controller) {
           // 控制器在回调里已可用；此处无需额外处理
         },
         onLoadStop: (controller, loadedUrl) async {
           try {
+            if (delayMs > 0) {
+              await Future<void>.delayed(Duration(milliseconds: delayMs));
+            }
             // 等 JS 渲染（部分站点在 load 后才异步填充 DOM）
             await Future<void>.delayed(_renderDelay);
             final script = (evalJs == null || evalJs.trim().isEmpty)
                 ? 'document.documentElement.outerHTML'
                 : evalJs;
-            final res = await controller.evaluateJavascript(source: script);
-            finish(res?.toString() ?? '');
+            // JS 结果为空时重试轮询：200/400/600/800/1000ms 循环，上限 30 次。
+            const pollDelays = [200, 400, 600, 800, 1000];
+            var result = '';
+            for (var i = 0; i < 30 && result.isEmpty; i++) {
+              final res = await controller.evaluateJavascript(source: script);
+              result = res?.toString() ?? '';
+              if (result.isEmpty && i < 29) {
+                await Future<void>.delayed(
+                    Duration(milliseconds: pollDelays[i % pollDelays.length]));
+              }
+            }
+            await _collectCookies(
+                controller, loadedUrl?.toString() ?? url, tag);
+            finish(result);
           } catch (_) {
             finish('');
           } finally {
@@ -196,6 +273,26 @@ class HeadlessWebViewFetcher {
     return result;
   }
 
+  /// onLoadStop 时回收页面 Cookie 并按 tag 回写 SharedPreferences，
+  /// 供后续带登录态的书源请求复用。
+  static Future<void> _collectCookies(
+      iw.InAppWebViewController controller, String url, String tag) async {
+    try {
+      final cookies =
+          await iw.CookieManager.instance().getCookies(url: iw.WebUri(url));
+      final jar = cookies
+          .where((ck) => ck.name.isNotEmpty && ck.value != null)
+          .map((ck) => '${ck.name}=${ck.value}')
+          .join('; ');
+      if (jar.isEmpty) return;
+      final host = Uri.tryParse(url)?.host ?? '';
+      final key = tag.isNotEmpty ? tag : host;
+      if (key.isEmpty) return;
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString('legadoTagCookie_$key', jar);
+    } catch (_) {}
+  }
+
   /// 用无头 WebView 加载 [url]，捕获页面导航/资源请求中第一个匹配
   /// [urlRegex] 的地址（
   /// `webViewGetOverrideUrl`）；未匹配则返回页面最终落地 URL（重定向结果）。
@@ -210,6 +307,8 @@ class HeadlessWebViewFetcher {
     int timeoutMs = 25000,
     Map<String, String>? headers,
     String? userAgent,
+    String encode = 'utf-8',
+    String tag = '',
   }) {
     if (_broken || kIsWeb || url.trim().isEmpty) return Future.value('');
     final completer = Completer<String>();
@@ -227,11 +326,12 @@ class HeadlessWebViewFetcher {
               timeoutMs: timeoutMs,
               headers: headers,
               userAgent: userAgent,
+              encode: encode,
+              tag: tag,
             ))
         .then((v) {
-          if (!completer.isCompleted) completer.complete(v);
-        })
-        .catchError((_) {});
+      if (!completer.isCompleted) completer.complete(v);
+    }).catchError((_) {});
     return completer.future;
   }
 
@@ -245,6 +345,8 @@ class HeadlessWebViewFetcher {
     required int timeoutMs,
     Map<String, String>? headers,
     String? userAgent,
+    String encode = 'utf-8',
+    String tag = '',
   }) async {
     try {
       return await _captureOverride(
@@ -257,6 +359,8 @@ class HeadlessWebViewFetcher {
         timeoutMs: timeoutMs,
         headers: headers,
         userAgent: userAgent,
+        encode: encode,
+        tag: tag,
       );
     } catch (e) {
       debugPrint('HeadlessWebViewFetcher.fetchOverrideUrl 失败: $e');
@@ -274,6 +378,8 @@ class HeadlessWebViewFetcher {
     required int timeoutMs,
     Map<String, String>? headers,
     String? userAgent,
+    String encode = 'utf-8',
+    String tag = '',
   }) async {
     final done = Completer<String>();
     var settled = false;
@@ -335,13 +441,13 @@ class HeadlessWebViewFetcher {
             ? iw.InAppWebViewInitialData(
                 data: html,
                 mimeType: 'text/html',
-                encoding: 'utf-8',
+                encoding: encode.isEmpty ? 'utf-8' : encode,
                 baseUrl: iw.WebUri(url),
               )
             : null,
         initialUserScripts:
             scripts.isEmpty ? null : UnmodifiableListView(scripts),
-        // 对齐 SnifferWebClient.onLoadResource / shouldOverrideUrlLoading：
+        // 对应 SnifferWebClient.onLoadResource / shouldOverrideUrlLoading 的捕获时机：
         // 任意一个请求命中正则即作为结果返回（返回 null 表示不真正拦截资源）。
         shouldInterceptRequest: (controller, request) {
           final reqUrl = request.url.toString();
@@ -357,6 +463,8 @@ class HeadlessWebViewFetcher {
               await Future<void>.delayed(Duration(milliseconds: delayMs));
             }
             await Future<void>.delayed(_renderDelay);
+            await _collectCookies(
+                controller, loadedUrl?.toString() ?? url, tag);
             // 未命中正则：返回页面最终落地 URL（即重定向结果）
             if (!settled) finish(loadedUrl?.toString() ?? url);
           } catch (_) {
@@ -424,9 +532,8 @@ class HeadlessWebViewFetcher {
               sourceKey: sourceKey,
             ))
         .then((v) {
-          if (!completer.isCompleted) completer.complete(v);
-        })
-        .catchError((_) {});
+      if (!completer.isCompleted) completer.complete(v);
+    }).catchError((_) {});
     return completer.future;
   }
 

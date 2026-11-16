@@ -3,17 +3,17 @@ import 'dart:io';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:legado_md3/help/source/js_text_utils.dart';
 
-///  * `utils/StringUtils.kt`（fullToHalf / stringToInt / chineseNumToInt）
-///  * `constant/AppPattern.kt` + `help/JsExtensions.kt`（toNumChapter）
-///  * `utils/HtmlFormatter.kt`（formatKeepImg）
-///  * `help/JsExtensions.kt`（strToBytes / bytesToStr / replaceFont）
+/// * （fullToHalf / stringToInt / chineseNumToInt）
+/// * + （toNumChapter）
+/// * （formatKeepImg）
+/// * （strToBytes / bytesToStr / replaceFont）
 void main() {
   group('StringUtils 语义', () {
     test('fullToHalf：全角空格与全角 ASCII 转半角', () {
       expect(JsTextUtils.fullToHalf('ＡＢＣ１２３'), 'ABC123');
       expect(JsTextUtils.fullToHalf('Ａ\u3000Ｂ'), 'A B');
       expect(JsTextUtils.fullToHalf('abc'), 'abc');
-      // 上游 if (code in 65281..65374)：全角逗号 U+FF0C 在范围内 → 半角，
+ // if (code in 65281..65374)：全角逗号 U+FF0C 在范围内 → 半角，
       // 全角句号 U+3002 不在范围内 → 原样。
       expect(JsTextUtils.fullToHalf('，'), ',');
       expect(JsTextUtils.fullToHalf('。'), '。');
@@ -23,7 +23,7 @@ void main() {
       expect(JsTextUtils.stringToInt('１２３'), 123);
       expect(JsTextUtils.stringToInt(' 1 2 3 '), 123);
       expect(JsTextUtils.stringToInt(null), -1);
-      // 上游 parseInt("") 失败 → chineseNumToInt("") → 0
+ // parseInt("") 失败 → chineseNumToInt("") → 0
       expect(JsTextUtils.stringToInt(''), 0);
     });
 
@@ -47,8 +47,8 @@ void main() {
     });
   });
 
-  group('toNumChapter（对齐 AppPattern.titleNumPattern = (第)(.+?)(章)）', () {
-    test('中文数字章节转阿拉伯数字（上游只返回 group1+数字+group3，丢后缀）', () {
+  group('toNumChapter', () {
+ test('中文数字章节转阿拉伯数字（只返回 group1+数字+group3，丢后缀）', () {
       expect(JsTextUtils.toNumChapter('第一章 觉醒'), '第1章');
       expect(JsTextUtils.toNumChapter('第一百零二章 风起'), '第102章');
       expect(JsTextUtils.toNumChapter('第一千二章'), '第1200章');
@@ -66,7 +66,7 @@ void main() {
     });
   });
 
-  group('htmlFormat（对齐 HtmlFormatter.formatKeepImg）', () {
+  group('htmlFormat', () {
     test('保留 <img> 并规范化 src', () {
       final s = JsTextUtils.htmlFormat(
           '<p>正文</p><img src="https://x/a.jpg" width="20">');
@@ -84,11 +84,9 @@ void main() {
     });
 
     test('支持 data-original / 任意 data-* 兜底', () {
-      expect(
-          JsTextUtils.htmlFormat('<img data-original="o.jpg">'),
+      expect(JsTextUtils.htmlFormat('<img data-original="o.jpg">'),
           contains('<img src="o.jpg">'));
-      expect(
-          JsTextUtils.htmlFormat('<img data-echo="e.jpg">'),
+      expect(JsTextUtils.htmlFormat('<img data-echo="e.jpg">'),
           contains('<img src="e.jpg">'));
     });
 
@@ -104,7 +102,7 @@ void main() {
     });
 
     test('空输入', () {
-      // 上游 format("")：所有 replace 均无匹配，返回空串（indent2 需 ^[\n\s]+ 命中）。
+ // format("")：所有 replace 均无匹配，返回空串（indent2 需 ^[\n\s]+ 命中）。
       expect(JsTextUtils.htmlFormat(null), '');
       expect(JsTextUtils.htmlFormat(''), '');
     });
@@ -119,7 +117,14 @@ void main() {
     });
 
     test('GBK 家族往返，别名归一化', () {
-      for (final cs in ['GBK', 'GB2312', 'GB_2312', 'gb-2312', 'gb18030', 'cp936']) {
+      for (final cs in [
+        'GBK',
+        'GB2312',
+        'GB_2312',
+        'gb-2312',
+        'gb18030',
+        'cp936'
+      ]) {
         final bytes = JsTextUtils.strToBytes('中文', charset: cs);
         expect(bytes.length, 4, reason: '$cs 应为双字节/字');
         expect(JsTextUtils.bytesToStr(bytes, charset: cs), '中文',
@@ -134,7 +139,9 @@ void main() {
     });
 
     test('UTF-8 别名与未知字符集回退', () {
-      expect(JsTextUtils.bytesToStr(JsTextUtils.strToBytes('中文', charset: 'UTF-8')),
+      expect(
+          JsTextUtils.bytesToStr(
+              JsTextUtils.strToBytes('中文', charset: 'UTF-8')),
           '中文');
       expect(JsTextUtils.strToBytes('中文', charset: 'unknown-xyz').length, 6);
     });
@@ -145,8 +152,8 @@ void main() {
         .readAsStringSync();
     final runtime = File('lib/help/source/js/parts/web_view_legado_js.dart')
         .readAsStringSync();
-    final runtimeLib = File('lib/help/source/js/legado_js_runtime.dart')
-        .readAsStringSync();
+    final runtimeLib =
+        File('lib/help/source/js/legado_js_runtime.dart').readAsStringSync();
 
     test('4 个扩展函数均转交 legado://charset', () {
       expect(bridge, contains('legado://charset?op=htmlFormat'));
@@ -160,12 +167,11 @@ void main() {
       // 旧的「去所有标签」模式 .replace(/<[^>]+>/g, "") 不应再出现。
       expect(bridge.contains(r'.replace(/<[^>]+>/g, "")'), isFalse,
           reason: 'htmlFormat 不应再把所有标签（含 img）一刀切去掉');
-      expect(bridge, contains('(?!img'),
-          reason: '降级路径应用负向前瞻保留 img 标签');
+      expect(bridge, contains('(?!img'), reason: '降级路径应用负向前瞻保留 img 标签');
       expect(bridge.contains('parseInt(m[2], 10)'), isFalse,
           reason: 'toNumChapter 不应只做去前导零');
-      expect(bridge.contains('new TextEncoder().encode(String(str'),
-          isTrue, reason: 'TextEncoder 仅作为协议不可用时的 UTF-8 兜底');
+      expect(bridge.contains('new TextEncoder().encode(String(str'), isTrue,
+          reason: 'TextEncoder 仅作为协议不可用时的 UTF-8 兜底');
       expect(bridge, contains('charset || "UTF-8"'),
           reason: 'strToBytes/bytesToStr 必须把 charset 传给 Dart 侧');
     });
@@ -181,9 +187,11 @@ void main() {
       expect(runtime, contains('JsTextUtils.toNumChapter'));
     });
 
-    test('replaceFont 明确标注 TTF 轮廓反查无法等价实现', () {
+    test('replaceFont 基于字形轮廓签名实现双字体反查', () {
       expect(bridge, contains('QueryTTF'));
-      expect(bridge, contains('Flutter'));
+      expect(bridge, contains('replaceFont: function'));
+      expect(bridge, contains('__fontSignatureMap'));
+      expect(bridge, contains('轮廓'));
     });
   });
 }

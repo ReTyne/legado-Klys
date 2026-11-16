@@ -2,7 +2,6 @@
 /// 以 part 归属同一库，私有类型互引保持可用。
 part of '../../utils/crypto_utils.dart';
 
-
 // =====================================================================
 // RSA（PEM 解析 + PKCS#1 v1.5 签名/验签/加解密）
 // =====================================================================
@@ -15,14 +14,12 @@ class _RsaPrivateKey {
   int get byteLength => (n.bitLength + 7) ~/ 8;
 }
 
-
 class _RsaPublicKey {
   _RsaPublicKey(this.n, this.e);
   final BigInt n;
   final BigInt e;
   int get byteLength => (n.bitLength + 7) ~/ 8;
 }
-
 
 /// 极简 DER 解析器（TLV）。
 class _Der {
@@ -110,7 +107,8 @@ _RsaPrivateKey _parsePrivateKey(String pem) {
       try {
         seq = _derParse(_pemToDer(p, 'RSA PRIVATE KEY'));
       } catch (_) {
-        final raw = _tryBase64ToBytes(p.replaceAll(RegExp(r'\s+'), '')) ?? _utf8Bytes(p);
+        final raw = _tryBase64ToBytes(p.replaceAll(RegExp(r'\s+'), '')) ??
+            _utf8Bytes(p);
         seq = _derParse(raw);
       }
     }
@@ -118,7 +116,8 @@ _RsaPrivateKey _parsePrivateKey(String pem) {
   final fields = seq.children();
   if (fields.length < 4) throw const FormatException('RSA 私钥格式错误');
   // version, n, e, d
-  return _RsaPrivateKey(fields[1].asBigInt(), fields[2].asBigInt(), fields[3].asBigInt());
+  return _RsaPrivateKey(
+      fields[1].asBigInt(), fields[2].asBigInt(), fields[3].asBigInt());
 }
 
 /// 解析 RSA 公钥 PEM（支持 SPKI "PUBLIC KEY" 与 PKCS#1 "RSA PUBLIC KEY"）。
@@ -146,12 +145,127 @@ _RsaPublicKey _parsePublicKey(String pem) {
 
 /// DigestInfo 前缀（PKCS#1 v1.5）。
 const Map<String, List<int>> _digestInfoPrefix = {
-  'MD5': [0x30, 0x20, 0x30, 0x0c, 0x06, 0x08, 0x2a, 0x86, 0x48, 0x86, 0xf7, 0x0d, 0x02, 0x05, 0x05, 0x00, 0x04, 0x10],
-  'SHA1': [0x30, 0x21, 0x30, 0x09, 0x06, 0x05, 0x2b, 0x0e, 0x03, 0x02, 0x1a, 0x05, 0x00, 0x04, 0x14],
-  'SHA224': [0x30, 0x2d, 0x30, 0x0d, 0x06, 0x09, 0x60, 0x86, 0x48, 0x01, 0x65, 0x03, 0x04, 0x02, 0x04, 0x05, 0x00, 0x04, 0x1c],
-  'SHA256': [0x30, 0x31, 0x30, 0x0d, 0x06, 0x09, 0x60, 0x86, 0x48, 0x01, 0x65, 0x03, 0x04, 0x02, 0x01, 0x05, 0x00, 0x04, 0x20],
-  'SHA384': [0x30, 0x41, 0x30, 0x0d, 0x06, 0x09, 0x60, 0x86, 0x48, 0x01, 0x65, 0x03, 0x04, 0x02, 0x02, 0x05, 0x00, 0x04, 0x30],
-  'SHA512': [0x30, 0x51, 0x30, 0x0d, 0x06, 0x09, 0x60, 0x86, 0x48, 0x01, 0x65, 0x03, 0x04, 0x02, 0x03, 0x05, 0x00, 0x04, 0x40],
+  'MD5': [
+    0x30,
+    0x20,
+    0x30,
+    0x0c,
+    0x06,
+    0x08,
+    0x2a,
+    0x86,
+    0x48,
+    0x86,
+    0xf7,
+    0x0d,
+    0x02,
+    0x05,
+    0x05,
+    0x00,
+    0x04,
+    0x10
+  ],
+  'SHA1': [
+    0x30,
+    0x21,
+    0x30,
+    0x09,
+    0x06,
+    0x05,
+    0x2b,
+    0x0e,
+    0x03,
+    0x02,
+    0x1a,
+    0x05,
+    0x00,
+    0x04,
+    0x14
+  ],
+  'SHA224': [
+    0x30,
+    0x2d,
+    0x30,
+    0x0d,
+    0x06,
+    0x09,
+    0x60,
+    0x86,
+    0x48,
+    0x01,
+    0x65,
+    0x03,
+    0x04,
+    0x02,
+    0x04,
+    0x05,
+    0x00,
+    0x04,
+    0x1c
+  ],
+  'SHA256': [
+    0x30,
+    0x31,
+    0x30,
+    0x0d,
+    0x06,
+    0x09,
+    0x60,
+    0x86,
+    0x48,
+    0x01,
+    0x65,
+    0x03,
+    0x04,
+    0x02,
+    0x01,
+    0x05,
+    0x00,
+    0x04,
+    0x20
+  ],
+  'SHA384': [
+    0x30,
+    0x41,
+    0x30,
+    0x0d,
+    0x06,
+    0x09,
+    0x60,
+    0x86,
+    0x48,
+    0x01,
+    0x65,
+    0x03,
+    0x04,
+    0x02,
+    0x02,
+    0x05,
+    0x00,
+    0x04,
+    0x30
+  ],
+  'SHA512': [
+    0x30,
+    0x51,
+    0x30,
+    0x0d,
+    0x06,
+    0x09,
+    0x60,
+    0x86,
+    0x48,
+    0x01,
+    0x65,
+    0x03,
+    0x04,
+    0x02,
+    0x03,
+    0x05,
+    0x00,
+    0x04,
+    0x40
+  ],
 };
 
 /// "SHA256withRSA" → "SHA256"。
@@ -216,6 +330,19 @@ Uint8List _emePkcs1V15(List<int> message, int k, Random random) {
   return em;
 }
 
+/// 剥离 EME-PKCS1-v1_5 块（blockType 2），返回原始明文。
+Uint8List _stripEmePkcs1V15(Uint8List em) {
+  if (em.length < 11 || em[0] != 0x00 || em[1] != 0x02) {
+    throw const FormatException('RSA 解密失败：密文格式错误');
+  }
+  var i = 2;
+  while (i < em.length && em[i] != 0x00) {
+    i++;
+  }
+  if (i >= em.length) throw const FormatException('RSA 解密失败：未找到分隔符');
+  return Uint8List.fromList(em.sublist(i + 1));
+}
+
 /// RSA 签名（PKCS#1 v1.5）。
 Uint8List rsaSignBytes(String algorithm, String privateKeyPem, List<int> data) {
   final hashName = _hashFromSignAlgorithm(algorithm);
@@ -227,7 +354,8 @@ Uint8List rsaSignBytes(String algorithm, String privateKeyPem, List<int> data) {
 }
 
 /// RSA 验签。
-bool rsaVerifyBytes(String algorithm, String publicKeyPem, List<int> data, List<int> signature) {
+bool rsaVerifyBytes(String algorithm, String publicKeyPem, List<int> data,
+    List<int> signature) {
   try {
     final hashName = _hashFromSignAlgorithm(algorithm);
     final key = _parsePublicKey(publicKeyPem);
@@ -266,6 +394,15 @@ Uint8List rsaEncryptBytes(String publicKeyPem, List<int> data) {
   return _i2osp(c, key.byteLength);
 }
 
+/// RSA 私钥加密（PKCS#1 v1.5 blockType 2 + 私钥指数 d）。
+/// 与 [rsaDecryptBytesWithPublic] 配对，用于 usePublicKey = false 的场景。
+Uint8List rsaEncryptBytesWithPrivate(String privateKeyPem, List<int> data) {
+  final key = _parsePrivateKey(privateKeyPem);
+  final em = _emePkcs1V15(data, key.byteLength, Random.secure());
+  final c = _os2ip(em).modPow(key.d, key.n);
+  return _i2osp(c, key.byteLength);
+}
+
 /// RSA 解密（私钥）。
 Uint8List rsaDecryptBytes(String privateKeyPem, List<int> data) {
   final key = _parsePrivateKey(privateKeyPem);
@@ -275,21 +412,25 @@ Uint8List rsaDecryptBytes(String privateKeyPem, List<int> data) {
   final c = _os2ip(data);
   if (c >= key.n) throw ArgumentError('密文超出模数范围');
   final em = _i2osp(c.modPow(key.d, key.n), key.byteLength);
-  if (em.length < 11 || em[0] != 0x00 || em[1] != 0x02) {
-    throw const FormatException('RSA 解密失败：密文格式错误');
-  }
-  var i = 2;
-  while (i < em.length && em[i] != 0x00) {
-    i++;
-  }
-  if (i >= em.length) throw const FormatException('RSA 解密失败：未找到分隔符');
-  return Uint8List.fromList(em.sublist(i + 1));
+  return _stripEmePkcs1V15(em);
 }
 
+/// RSA 公钥解密（配合 [rsaEncryptBytesWithPrivate]：公钥指数 e 还原 EME 块）。
+Uint8List rsaDecryptBytesWithPublic(String publicKeyPem, List<int> data) {
+  final key = _parsePublicKey(publicKeyPem);
+  if (data.length != key.byteLength) {
+    throw ArgumentError('密文长度与密钥不匹配');
+  }
+  final c = _os2ip(data);
+  if (c >= key.n) throw ArgumentError('密文超出模数范围');
+  final em = _i2osp(c.modPow(key.e, key.n), key.byteLength);
+  return _stripEmePkcs1V15(em);
+}
 
-/// RSA 非对称加密门面（对齐 hutool AsymmetricCrypto 常用方法）。
+/// RSA 非对称加密门面（公钥/私钥加解密常用方法集）。
 class AsymmetricCrypto {
-  AsymmetricCrypto(String transformation, {String? publicKey, String? privateKey}) {
+  AsymmetricCrypto(String transformation,
+      {String? publicKey, String? privateKey}) {
     final alg = transformation.split('/').first.trim().toUpperCase();
     if (alg != 'RSA') {
       throw ArgumentError('暂仅支持 RSA 非对称加密（EC 待后续支持）');
@@ -310,37 +451,53 @@ class AsymmetricCrypto {
     throw ArgumentError('仅支持 String 或字节数组');
   }
 
-  Uint8List encrypt(dynamic data) {
-    if (_publicKeyPem == null) throw StateError('未设置公钥');
-    return rsaEncryptBytes(_publicKeyPem!, _toBytes(data));
+  /// 加密 → 字节数组。[usePublicKey] 为 true 用公钥加密，false 用私钥加密。
+  Uint8List encrypt(dynamic data, {bool usePublicKey = true}) {
+    final bytes = _toBytes(data);
+    if (usePublicKey) {
+      if (_publicKeyPem == null) throw StateError('未设置公钥');
+      return rsaEncryptBytes(_publicKeyPem!, bytes);
+    }
+    if (_privateKeyPem == null) throw StateError('未设置私钥');
+    return rsaEncryptBytesWithPrivate(_privateKeyPem!, bytes);
   }
 
-  String encryptBase64(dynamic data) => base64.encode(encrypt(data));
-  String encryptHex(dynamic data) => _bytesToHex(encrypt(data));
+  String encryptBase64(dynamic data, {bool usePublicKey = true}) =>
+      base64.encode(encrypt(data, usePublicKey: usePublicKey));
 
-  Uint8List decrypt(dynamic data) {
-    if (_privateKeyPem == null) throw StateError('未设置私钥');
+  String encryptHex(dynamic data, {bool usePublicKey = true}) =>
+      _bytesToHex(encrypt(data, usePublicKey: usePublicKey));
+
+  /// 解密 → 字节数组。[usePublicKey] 为 true 用公钥解密（配合私钥加密）。
+  Uint8List decrypt(dynamic data, {bool usePublicKey = false}) {
     final bytes = data is String ? _autoDecodeData(data) : _toBytes(data);
+    if (usePublicKey) {
+      if (_publicKeyPem == null) throw StateError('未设置公钥');
+      return rsaDecryptBytesWithPublic(_publicKeyPem!, bytes);
+    }
+    if (_privateKeyPem == null) throw StateError('未设置私钥');
     return rsaDecryptBytes(_privateKeyPem!, bytes);
   }
 
-  String decryptStr(dynamic data) => utf8.decode(decrypt(data), allowMalformed: true);
+  String decryptStr(dynamic data) =>
+      utf8.decode(decrypt(data), allowMalformed: true);
 
   String decryptBase64(String data) {
     if (_privateKeyPem == null) throw StateError('未设置私钥');
     final b = _tryBase64ToBytes(data) ?? _utf8Bytes(data);
-    return utf8.decode(rsaDecryptBytes(_privateKeyPem!, b), allowMalformed: true);
+    return utf8.decode(rsaDecryptBytes(_privateKeyPem!, b),
+        allowMalformed: true);
   }
 
   String decryptHex(String data) {
     if (_privateKeyPem == null) throw StateError('未设置私钥');
     final b = _tryHexToBytes(data) ?? _utf8Bytes(data);
-    return utf8.decode(rsaDecryptBytes(_privateKeyPem!, b), allowMalformed: true);
+    return utf8.decode(rsaDecryptBytes(_privateKeyPem!, b),
+        allowMalformed: true);
   }
 }
 
-
-/// RSA 签名门面（对齐 hutool Sign 常用方法）。
+/// RSA 签名门面（按摘要算法签名/验签的方法集）。
 class RsaSign {
   RsaSign(this.algorithm, {String? privateKey, String? publicKey})
       : _privateKeyPem = privateKey,
@@ -352,6 +509,9 @@ class RsaSign {
 
   void setPrivateKey(String key) => _privateKeyPem = key;
   void setPublicKey(String key) => _publicKeyPem = key;
+
+  /// 由 algorithm 解析出的摘要算法名（如 SHA256withRSA → SHA256），供校验。
+  String get hashAlgorithm => _hashFromSignAlgorithm(algorithm);
 
   static List<int> _toBytes(dynamic v) {
     if (v is List<int>) return v;
@@ -369,8 +529,10 @@ class RsaSign {
 
   bool verify(dynamic data, dynamic signature) {
     if (_publicKeyPem == null) throw StateError('未设置公钥');
+    // 统一走 hex 优先解码：hex 签名（signHex）字符集是 base64 子集，
+    // 若先按 base64 解码会被误判，导致本类签出的 hex 签名无法验回。
     final sig = signature is String
-        ? (_tryBase64ToBytes(signature) ?? _tryHexToBytes(signature) ?? _utf8Bytes(signature))
+        ? _autoDecodeData(signature)
         : (signature as List<int>);
     return rsaVerifyBytes(algorithm, _publicKeyPem!, _toBytes(data), sig);
   }

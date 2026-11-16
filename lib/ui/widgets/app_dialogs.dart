@@ -212,7 +212,7 @@ Future<Color?> showAppColorPicker(
 //     做「严格顺序」断言，避免中文文案改动导致误判。
 //   - checkable 项显示 trailing 勾选框（视觉降级、状态语义等价）。
 //   - visibleByDefault=false 的项默认不渲染，
-//     不伪造空壳。
+// 。
 //   - secondary：扩展功能，收在菜单末尾「更多功能」子分组，不占主界面入口，
 //     以分隔线 + 分区标题区隔，保证功能仍可触达。
 //
@@ -250,7 +250,7 @@ class EOverflowItem {
   /// checkable 项的当前勾选态。
   final bool checked;
 
-  /// visible="false"：false 表示默认不渲染，不伪造空壳。
+ /// visible="false"：false 表示默认不渲染。
   final bool visibleByDefault;
 
   /// 非 null 时该项渲染为不可点击的分区标题（用于给菜单内部分组）。

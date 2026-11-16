@@ -5,7 +5,7 @@ import android.content.Context
 import android.content.pm.PackageManager
 
 /**
- * 动态桌面图标（对齐 Sigma `help/LauncherIconHelp.kt` + AndroidManifest 7 个
+ * 动态桌面图标（ + AndroidManifest 7 个
  * Launcher1..7 别名）。通过 PackageManager.setComponentEnabledSetting 启停别名组件
  * 切换 LAUNCHER 入口；DONT_KILL_APP 避免切换时重启进程。
  */

@@ -7,7 +7,7 @@ import 'package:legado_md3/help/source/source_engine.dart';
 import 'package:legado_md3/ui/main/discover/homepage_module_widgets.dart';
 import 'package:legado_md3/ui/widgets/app_widgets.dart';
 
-/// 首页卡片式模块化 Feed（fork F16）。
+/// 首页卡片式模块化 Feed。
 ///
 /// 数据全部来自现成的 `homepage_modules` / `homepage_custom_sets` 表：
 /// - 消费 [DatabaseService.getHomepageModules]：只渲染 enabled 模块；

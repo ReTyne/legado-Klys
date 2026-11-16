@@ -7,8 +7,8 @@ import androidx.core.content.pm.ShortcutManagerCompat
 import androidx.core.graphics.drawable.IconCompat
 
 /**
- * 动态快捷方式（对齐 Sigma `api/ShortCuts.kt` 的 ShortcutInfoCompat/IconCompat/setIntents
- * 回退栈思路，按本轮要求扩展为 4 个：书架 / 搜索 / 发现 / 继续阅读）。
+ * 动态快捷方式（ShortcutInfoCompat/IconCompat/setIntents
+ * 回退栈思路，按要求扩展为 4 个：书架 / 搜索 / 发现 / 继续阅读）。
  *
  * 所有快捷方式都指向唯一的 MainActivity，用 extra [EXTRA_SHORTCUT] 携带动作 id，
  * MainActivity 经 `legado/shortcut` 通道推给 Dart 侧路由；「继续阅读」用
@@ -49,7 +49,7 @@ object ShortcutHelper {
             builder(context, ID_DISCOVER, "发现")
                 .setIntent(intent(context, ID_DISCOVER))
                 .build(),
-            // 继续阅读：返回栈 = 书架 -> 阅读（对齐 Sigma lastRead 的 setIntents）
+ // 继续阅读：返回栈 = 书架 -> 阅读（setIntents）
             builder(context, ID_LAST_READ, "继续阅读")
                 .setIntents(
                     arrayOf(

@@ -4,6 +4,7 @@ import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:legado_md3/data/local/app_database.dart';
 import 'package:legado_md3/data/model/db_models.dart';
 import 'package:legado_md3/ui/widgets/app_widgets.dart';
+import 'package:legado_md3/ui/config/dict_rule_screen.dart';
 
 /// 阅读页「划词 → 查词」的应用内弹窗。
 ///
@@ -44,7 +45,9 @@ class _DictLookupSheetState extends State<DictLookupSheet> {
 
   Future<void> _load() async {
     final all = await _db.getDictRules();
-    final enabled = all.where((r) => r.enabled == 1 && r.url.contains('{word}')).toList();
+    // 三段规则（urlRule / showRule / clickAction）也能生成查询地址，
+    // 不再要求规则里必须含 {word} 占位符。
+    final enabled = all.where((r) => r.enabled == 1).toList();
     if (!mounted) return;
     setState(() {
       _rules = enabled;
@@ -57,7 +60,7 @@ class _DictLookupSheetState extends State<DictLookupSheet> {
   String get _activeUrl {
     final w = Uri.encodeComponent(widget.word.trim());
     if (_active == null) return 'https://www.baidu.com/s?wd=$w';
-    return _active!.url.replaceAll('{word}', w);
+    return DictRuleEngine().buildUrl(_active!, widget.word);
   }
 
   @override
@@ -70,7 +73,8 @@ class _DictLookupSheetState extends State<DictLookupSheet> {
         children: [
           // 标题 + 被查询词
           Padding(
-            padding: const EdgeInsets.fromLTRB(AppSpacing.l, AppSpacing.m, AppSpacing.s, AppSpacing.s),
+            padding: const EdgeInsets.fromLTRB(
+                AppSpacing.l, AppSpacing.m, AppSpacing.s, AppSpacing.s),
             child: Row(
               children: [
                 Expanded(
@@ -83,7 +87,8 @@ class _DictLookupSheetState extends State<DictLookupSheet> {
                         widget.word.trim(),
                         maxLines: 2,
                         overflow: TextOverflow.ellipsis,
-                        style: theme.textTheme.bodyMedium?.copyWith(color: theme.colorScheme.primary),
+                        style: theme.textTheme.bodyMedium
+                            ?.copyWith(color: theme.colorScheme.primary),
                       ),
                     ],
                   ),
@@ -104,7 +109,8 @@ class _DictLookupSheetState extends State<DictLookupSheet> {
                 scrollDirection: Axis.horizontal,
                 padding: const EdgeInsets.symmetric(horizontal: AppSpacing.m),
                 itemCount: _rules.length,
-                separatorBuilder: (_, __) => const SizedBox(width: AppSpacing.s),
+                separatorBuilder: (_, __) =>
+                    const SizedBox(width: AppSpacing.s),
                 itemBuilder: (context, i) {
                   final r = _rules[i];
                   final selected = r == _active;
@@ -125,11 +131,15 @@ class _DictLookupSheetState extends State<DictLookupSheet> {
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Icon(Icons.menu_book_outlined, size: 44, color: theme.colorScheme.onSurfaceVariant),
+                      Icon(Icons.menu_book_outlined,
+                          size: 44, color: theme.colorScheme.onSurfaceVariant),
                       const SizedBox(height: AppSpacing.s),
                       const Text('还没有可用的词典规则'),
                       const SizedBox(height: AppSpacing.xs),
-                      Text('当前使用在线词典兜底', style: TextStyle(fontSize: 12, color: theme.colorScheme.onSurfaceVariant)),
+                      Text('当前使用在线词典兜底',
+                          style: TextStyle(
+                              fontSize: 12,
+                              color: theme.colorScheme.onSurfaceVariant)),
                     ],
                   ),
                 ),
@@ -158,7 +168,10 @@ class _DictLookupSheetState extends State<DictLookupSheet> {
                   final uri = action.request.url;
                   if (uri == null) return NavigationActionPolicy.CANCEL;
                   final host = uri.host;
-                  if (host.contains('baidu.com') || host.contains('zdic.net') || host.contains('bing.com') || host.contains('youdao.com')) {
+                  if (host.contains('baidu.com') ||
+                      host.contains('zdic.net') ||
+                      host.contains('bing.com') ||
+                      host.contains('youdao.com')) {
                     return NavigationActionPolicy.ALLOW;
                   }
                   return NavigationActionPolicy.CANCEL;

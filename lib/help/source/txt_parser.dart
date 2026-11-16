@@ -4,15 +4,154 @@ import 'dart:typed_data';
 import 'package:enough_convert/enough_convert.dart';
 import 'package:legado_md3/data/model/book_chapter.dart';
 import 'package:legado_md3/data/model/txt_toc_rule.dart';
+import 'package:legado_md3/help/source/js_mini_eval.dart';
 import 'package:legado_md3/utils/encoding_detect.dart';
 
+/// 章节标题净化里 `<js>` / `@js:` 块的求值回调；返回 null 表示无可用运行时。
+typedef TxtTitleJsEvaluator = String? Function(String script, String title);
+
 class TxtParserService {
+  /// 净化降级 / JS 块不可用时留存的诊断日志。
+  static final List<String> debugLog = <String>[];
+
+  static void _log(String message) => debugLog.add(message);
+
+  static void clearDebugLog() => debugLog.clear();
+
+  /// 按章节规则在一行内的命中数给 TocRule 评分（命中越多越可能是最优规则）。
+  static int scoreRule(String content, TxtTocRule rule) {
+    if (rule.chapterRule.isEmpty) return 0;
+    RegExp re;
+    try {
+      re = RegExp(rule.chapterRule, multiLine: true);
+    } catch (_) {
+      return 0;
+    }
+    var hits = 0;
+    for (final line in const LineSplitter().convert(content)) {
+      final t = line.trim();
+      if (t.isEmpty) continue;
+      if (re.hasMatch(t)) hits++;
+    }
+    return hits;
+  }
+
+  /// 从候选规则里按命中数自动选最优规则；无有效规则返回 null。
+  static TxtTocRule? pickBestRule(String content, List<TxtTocRule> rules) {
+    TxtTocRule? best;
+    var bestScore = -1;
+    for (final r in rules) {
+      if (!r.enable || r.chapterRule.isEmpty) continue;
+      final s = scoreRule(content, r);
+      if (s > bestScore) {
+        bestScore = s;
+        best = r;
+      }
+    }
+    return best;
+  }
+
+  /// 示例匹配：规则 example 的任一行能被 chapterRule 命中即通过；
+  /// 未填示例视为不设约束（返回 true）。
+  static bool matchesExample(TxtTocRule rule) {
+    final ex = rule.example?.trim() ?? '';
+    if (ex.isEmpty) return true;
+    if (rule.chapterRule.isEmpty) return false;
+    RegExp re;
+    try {
+      re = RegExp(rule.chapterRule, multiLine: true);
+    } catch (_) {
+      return false;
+    }
+    for (final line in const LineSplitter().convert(ex)) {
+      final t = line.trim();
+      if (t.isEmpty) continue;
+      if (re.hasMatch(t)) return true;
+    }
+    return false;
+  }
+
+  /// 章节标题净化。
+  ///
+  /// - [replacement] 为空：仅去首尾空白；
+  /// - `@js:` / `<js>...</js>`：走 JS 求值，无可用运行时降级为原标题并记日志；
+  /// - 普通文本：按 [pattern]（缺省整行）正则替换，支持 `$1..$9` 分组。
+  static String purifyTitle(
+    String title, {
+    String? pattern,
+    String? replacement,
+    TxtTitleJsEvaluator? jsEval,
+  }) {
+    final raw = title.trim();
+    final r = (replacement ?? '').trim();
+    if (r.isEmpty) return raw;
+    if (_isJs(r)) {
+      final script = _stripJs(r);
+      String? out;
+      if (jsEval != null) {
+        out = jsEval(script, raw);
+      } else {
+        out = _defaultTitleJs(script, raw);
+      }
+      if (out == null) {
+        _log('章节标题净化 JS 块无可用运行时，降级保留原标题：$raw');
+        return raw;
+      }
+      return out;
+    }
+    RegExp re;
+    try {
+      re = (pattern != null && pattern.isNotEmpty)
+          ? RegExp(pattern)
+          : RegExp(r'^([\s\S]*)$');
+    } catch (_) {
+      return raw;
+    }
+    return raw.replaceAllMapped(re, (m) => _expand(r, m));
+  }
+
+  static bool _isJs(String r) {
+    final s = r.toLowerCase();
+    return s.startsWith('@js:') || s.startsWith('<js>');
+  }
+
+  static String _stripJs(String r) {
+    var s = r.trim();
+    if (s.toLowerCase().startsWith('@js:')) s = s.substring(4);
+    if (s.startsWith('<js>')) s = s.substring(4);
+    if (s.endsWith('</js>')) s = s.substring(0, s.length - 5);
+    return s.trim();
+  }
+
+  static String? _defaultTitleJs(String script, String title) {
+    var code = script.trim();
+    if (code.isEmpty) return null;
+    final hasAssignment = RegExp(r'\bresult\s*=[^=]').hasMatch(code) ||
+        code.contains('return') ||
+        code.contains(';');
+    if (!hasAssignment) code = 'result = $code';
+    return JsMiniEvaluator.eval(code, result: title);
+  }
+
+  static String _expand(String template, Match m) {
+    if (!template.contains(r'$')) return template;
+    return template.replaceAllMapped(RegExp(r'\$(\d)'), (g) {
+      final idx = int.parse(g.group(1)!);
+      if (idx == 0) return m.group(0) ?? '';
+      if (idx <= m.groupCount) return m.group(idx) ?? '';
+      return g.group(0)!;
+    });
+  }
+
   /// 自动识别编码并解码 TXT 字节（支持 UTF-8 / UTF-16 LE/BE / GBK / Big5）
   static String decodeBytes(List<int> bytes) {
     if (bytes.isEmpty) return '';
     final b = Uint8List.fromList(bytes);
     // BOM 检测
-    if (bytes.length >= 3 && bytes[0] == 0xEF && bytes[1] == 0xBB && bytes[2] == 0xBF) {
+    if (bytes.length >= 3 &&
+        bytes[0] == 0xEF &&
+        bytes[1] == 0xBB &&
+        bytes[2] == 0xBF) {
       return utf8.decode(bytes.sublist(3), allowMalformed: true);
     }
     if (bytes.length >= 2 && bytes[0] == 0xFF && bytes[1] == 0xFE) {
@@ -78,7 +217,12 @@ class TxtParserService {
   /// 规范化方式还原，保证偏移精确可复现）。长章节拆分后的子章节同样带区间，
   /// 使 `LocalBookParser.readTxtChapter` 能按位置直取正文（标题匹配对
   /// `原标题(n)` 子章节会失效，必须走位置）。
-  List<BookChapter> parseChapters(String content, {TxtTocRule? rule}) {
+  List<BookChapter> parseChapters(
+    String content, {
+    TxtTocRule? rule,
+    String? replacement,
+    TxtTitleJsEvaluator? jsEval,
+  }) {
     final chapters = <BookChapter>[];
     final lines = const LineSplitter().convert(content);
 
@@ -89,14 +233,22 @@ class TxtParserService {
       lineStarts.add(p);
       p += line.length + 1;
     }
-    final normalizedLength = lines.isEmpty ? 0 : (lineStarts.last + lines.last.length);
+    final normalizedLength =
+        lines.isEmpty ? 0 : (lineStarts.last + lines.last.length);
 
-    // 确定匹配规则
+    // 章节规则与卷规则分开：卷规则命中的行插入 isVolume 卷标章节。
     List<RegExp> patterns;
+    RegExp? volumeRe;
     if (rule != null && rule.chapterRule.isNotEmpty) {
-      patterns = [RegExp(rule.chapterRule, multiLine: true)];
+      try {
+        patterns = [RegExp(rule.chapterRule, multiLine: true)];
+      } catch (_) {
+        patterns = defaultPatterns.map((p) => RegExp(p)).toList();
+      }
       if (rule.volumeRule.isNotEmpty) {
-        patterns.add(RegExp(rule.volumeRule, multiLine: true));
+        try {
+          volumeRe = RegExp(rule.volumeRule, multiLine: true);
+        } catch (_) {}
       }
     } else {
       patterns = defaultPatterns.map((p) => RegExp(p)).toList();
@@ -104,36 +256,52 @@ class TxtParserService {
 
     int chapterStart = 0;
     String? currentTitle;
-    int index = 0;
+    bool currentIsVolume = false;
+    var index = 0;
+
+    String clean(String title) => purifyTitle(
+          title,
+          pattern: rule?.chapterRule,
+          replacement: replacement,
+          jsEval: jsEval,
+        );
 
     for (var i = 0; i < lines.length; i++) {
       final line = lines[i].trim();
       if (line.isEmpty) continue;
 
-      // 检查是否匹配章节标题
-      bool isChapter = false;
-      for (final pattern in patterns) {
-        if (pattern.hasMatch(line)) {
-          isChapter = true;
-          break;
+      // 卷规则优先，命中即为卷标章节
+      final isVolume = volumeRe?.hasMatch(line) ?? false;
+      var isChapter = isVolume;
+      if (!isChapter) {
+        for (final pattern in patterns) {
+          if (pattern.hasMatch(line)) {
+            isChapter = true;
+            break;
+          }
         }
       }
 
       if (isChapter) {
-        // 保存上一个章节
+        // 保存上一个章节（按是否为卷标设置 isVolume / url）
         if (currentTitle != null) {
-          final chapterContent = lines.sublist(chapterStart, i).join('\n').trim();
+          final chapterContent =
+              lines.sublist(chapterStart, i).join('\n').trim();
           chapters.add(BookChapter(
             index: index,
             title: currentTitle,
-            url: 'local://chapter/$index',
+            url: currentIsVolume
+                ? 'local://volume/$index'
+                : 'local://chapter/$index',
+            isVolume: currentIsVolume,
             content: chapterContent,
             startPos: lineStarts[chapterStart],
             endPos: lineStarts[i],
           ));
           index++;
         }
-        currentTitle = line;
+        currentTitle = clean(line);
+        currentIsVolume = isVolume;
         chapterStart = i + 1;
       }
     }
@@ -144,10 +312,15 @@ class TxtParserService {
       chapters.add(BookChapter(
         index: index,
         title: currentTitle,
-        url: 'local://chapter/$index',
+        url: currentIsVolume
+            ? 'local://volume/$index'
+            : 'local://chapter/$index',
+        isVolume: currentIsVolume,
         content: chapterContent,
         // 标题是最后一行时 chapterStart == lines.length（空正文），区间取全文末尾
-        startPos: chapterStart < lines.length ? lineStarts[chapterStart] : normalizedLength,
+        startPos: chapterStart < lines.length
+            ? lineStarts[chapterStart]
+            : normalizedLength,
         endPos: normalizedLength,
       ));
     }
@@ -168,10 +341,10 @@ class TxtParserService {
   }
 
   /// 长章节拆分：
-  /// 超过 [maxChapterBytes]（E: maxLengthWithToc=102400）的章节按
-  /// [chunkBytes]（E: maxLengthWithNoToc=10240）在换行处切分为多个子章节，
-  /// 子章节命名为 `原标题(n)`（E 从 1 开始编号），原章节转为卷标（isVolume）。
-  /// [enabled] 为 false 时原样返回（E: Book.splitLongChapter 开关）。
+  /// 超过 [maxChapterBytes]（默认 102400 字节）的章节按
+  /// [chunkBytes]（默认 10240 字节）在换行处切分为多个子章节，
+  /// 子章节命名为 `原标题(n)`（n 从 1 开始编号），原章节转为卷标（isVolume）。
+  /// [enabled] 为 false 时原样返回。
   ///
   /// [fullText] 为规范化全文（`LineSplitter.convert(content).join('\n')`）：
   /// 传入且章节带 startPos/endPos 时，子章节按全文字符区间切分并继承区间，
@@ -216,7 +389,7 @@ class TxtParserService {
         ));
         continue;
       }
-      // 超长章节：原章节转为卷标（E: it.end = it.start，零长度区间）
+      // 超长章节：原章节转为卷标（零长度区间）
       if (hasRange) {
         result.add(BookChapter(
           title: ch.title,
@@ -319,7 +492,8 @@ class TxtParserService {
       if (line.isEmpty) continue;
 
       // 匹配 "书名 作者" 格式
-      final authorMatch = RegExp(r'[《【](.+?)[》】]\s*作者[：:]\s*(.+)').firstMatch(line);
+      final authorMatch =
+          RegExp(r'[《【](.+?)[》】]\s*作者[：:]\s*(.+)').firstMatch(line);
       if (authorMatch != null) {
         name = authorMatch.group(1);
         author = authorMatch.group(2);
@@ -335,7 +509,9 @@ class TxtParserService {
     // 简介：取正文前几段
     final contentLines = lines.where((l) => l.trim().isNotEmpty).toList();
     if (contentLines.length > 2) {
-      intro = contentLines.sublist(0, contentLines.length > 5 ? 5 : contentLines.length).join('\n');
+      intro = contentLines
+          .sublist(0, contentLines.length > 5 ? 5 : contentLines.length)
+          .join('\n');
       if (intro.length > 200) intro = '${intro.substring(0, 200)}...';
     }
 

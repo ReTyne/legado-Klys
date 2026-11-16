@@ -3,7 +3,7 @@
 part of '../offline_js_bridge.dart';
 
 
-/// 对齐 java.timeFormat / timeFormatUTC（桥侧 __timeFormat 的 yyyy/MM/dd/HH/mm/ss）。
+/// 时间格式化，提供 java.timeFormat / timeFormatUTC 能力（yyyy/MM/dd/HH/mm/ss）。
 class JsBridgeTime {
   JsBridgeTime._();
 
