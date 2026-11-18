@@ -31,12 +31,7 @@ import 'package:legado_md3/ui/config/app_icon_screen.dart';
 import 'package:legado_md3/ui/config/video_setting_screen.dart';
 import 'package:legado_md3/ui/widgets/app_widgets.dart';
 import 'package:package_info_plus/package_info_plus.dart';
-import 'package:share_plus/share_plus.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:url_launcher/url_launcher.dart';
-
-/// 本项目 GitHub 仓库
-const _kRepoUrl = 'https://github.com/ReTyne/legado-Klys';
 
 class ProfileScreen extends StatefulWidget {
   const ProfileScreen({super.key});
@@ -258,8 +253,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
           '· 在「我的」页管理书源、TXT 目录规则、替换净化与字典规则；\n'
           '· 通过「设置」分区进入备份与恢复、主题设置、其它设置；\n'
           '· 开启 Web 服务后可在浏览器中管理书架、书源与 RSS；\n'
-          '· 增强功能已按相似度聚合为「设置与外观 / 阅读与内容 / '
-          '视听与 AI / 关于与项目」四组，直接在本页向下滚动即可找到。',
+          '· 所有设置集中在唯一的「设置」页，单层平铺、无下级嵌套；\n'
+          '· 增强功能按语义归位为「设置与外观 / 阅读与内容」两组，'
+          'GitHub、分享、评分见「关于」页，向下滚动即可找到。',
         ),
         actions: [
           TextButton(onPressed: () => Navigator.pop(c), child: const Text('知道了')),
@@ -269,16 +265,16 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   /// 扩展功能（[EPlacement.kSecondary] 的 'profile' 清单）：
-  /// 功能一项不删、类名与跳转原样保留；按「相似度」聚合归位，避免同类功能
-  /// 被拆散到不同分区、以及重复入口各自为政。主界面（顶层6/设置3/其它5）
-  /// 三张卡片顺序与 Key 完全不动，本组全部位于其后。
+  /// 功能一项不删、类名与跳转原样保留，按语义归位到最贴近的分区卡片。
+  /// 层级只有「我的」这一层：设置项集中在唯一的「设置」页（单层平铺），
+  /// 不再有「全部设置 → 完整设置（旧版单页）」的套娃。
   ///
-  /// 聚合依据（用户反馈「调功能位置时，有些功能是很类似的」）：
-  ///  · 设置与外观：汇总设置入口 + 欢迎页 / 桌面图标，与 E「自定义主题」同类；
-  ///    「应用设置」本就是「全部设置」的子集，故用副标题点明包含关系，消除双入口困惑。
-  ///  · 阅读与内容：阅读统计与 E「每本书的阅读明细」同类，副标题互相指引；
-  ///  · 视听与 AI：合并原来两个只有 2 项的小卡，减少碎片；
-  ///  · 关于与项目：评分改为应用内星级反馈，不再与「GitHub项目」重复跳同一 URL。
+  /// 归位依据：
+  ///  · 设置类（全部设置 / 视频设置 / 欢迎页 / 桌面图标）→「设置与外观」；
+  ///  · 阅读与内容类（阅读统计 / 首页模块 / 定时任务 / 下载管理 / 朗读引擎 /
+  ///    AI 助手 / 智能体工具）→「阅读与内容」，AI 与朗读都是阅读的辅助能力；
+  ///  · 原「关于与项目」的 GitHub 项目 / 分享应用 / 评分并入「关于」页，
+  ///    消除与 E「关于」重复的第二分区。
   List<Widget> _buildFeatureSections() {
     return [
       _sectionCard(
@@ -286,11 +282,12 @@ class _ProfileScreenState extends State<ProfileScreen> {
         icon: Icons.tune,
         title: '设置与外观',
         children: [
-          _buildMenuItem(context, Icons.tune, '全部设置（汇总全部分项）',
-              '汇总上方「应用设置」及主题、备份、缓存等所有分项',
+          _buildMenuItem(context, Icons.tune, '全部设置',
+              '所有设置项集中一处、单层平铺，无下级嵌套',
               () => Navigator.push(context, MaterialPageRoute(builder: (_) => const SettingsScreen()))),
           _buildMenuItem(context, Icons.waving_hand_outlined, '欢迎页设置', '首次启动引导与展示配置', () => Navigator.push(context, MaterialPageRoute(builder: (_) => const WelcomeConfigScreen()))),
           _buildMenuItem(context, Icons.apps_outlined, '桌面图标', '切换应用图标样式', () => Navigator.push(context, MaterialPageRoute(builder: (_) => const AppIconScreen()))),
+          _buildMenuItem(context, Icons.video_settings_outlined, '视频设置', '播放、弹幕与画中画', () => Navigator.push(context, MaterialPageRoute(builder: (_) => const VideoSettingScreen()))),
         ],
       ),
       _sectionCard(
@@ -303,25 +300,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
           _buildMenuItem(context, Icons.dashboard_customize_outlined, '首页模块', '自定义发现首页的模块与排序', () => Navigator.push(context, MaterialPageRoute(builder: (_) => const HomepageModuleScreen()))),
           _buildMenuItem(context, Icons.schedule_outlined, '定时任务', '定时刷新书架 / 缓存 / 备份 / 脚本', () => Navigator.push(context, MaterialPageRoute(builder: (_) => const AutoTaskScreen()))),
           _buildMenuItem(context, Icons.download_outlined, '下载管理', '离线缓存队列与进度', () => Navigator.push(context, MaterialPageRoute(builder: (_) => const DownloadManageScreen()))),
-        ],
-      ),
-      _sectionCard(
-        icon: Icons.record_voice_over_outlined,
-        title: '视听与 AI',
-        children: [
           _buildMenuItem(context, Icons.record_voice_over_outlined, '朗读引擎', '云端 / 自定义 HTTP TTS 与语音', () => Navigator.push(context, MaterialPageRoute(builder: (_) => const CloudTtsScreen()))),
-          _buildMenuItem(context, Icons.video_settings_outlined, '视频设置', '播放、弹幕与画中画', () => Navigator.push(context, MaterialPageRoute(builder: (_) => const VideoSettingScreen()))),
           _buildMenuItem(context, Icons.smart_toy_outlined, 'AI 助手', '对话与智能体', () => Navigator.push(context, MaterialPageRoute(builder: (_) => const AiChatScreen()))),
           _buildMenuItem(context, Icons.build_circle_outlined, '智能体工具', 'AI 工具注册与启停', () => Navigator.push(context, MaterialPageRoute(builder: (_) => const AgentToolScreen()))),
-        ],
-      ),
-      _sectionCard(
-        icon: Icons.info_outline,
-        title: '关于与项目',
-        children: [
-          _buildMenuItem(context, Icons.code, 'GitHub项目', '打开项目仓库主页', () => launchUrl(Uri.parse(_kRepoUrl), mode: LaunchMode.externalApplication)),
-          _buildMenuItem(context, Icons.share, '分享应用', '分享给好友', () => _shareApp()),
-          _buildMenuItem(context, Icons.star_outline, '评分', '应用内星级反馈与意见', () => _rateApp()),
         ],
       ),
     ];
@@ -414,84 +395,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
   }
 
-  /// 分享应用：应用名 + GitHub 仓库链接
-  Future<void> _shareApp() async {
-    await Share.share('$appDisplayName —— Material 3 风格的跨平台开源阅读器\n$_kRepoUrl',
-        subject: appDisplayName);
-  }
-
-  /// 评分：应用内星级反馈，与「GitHub项目」动作区分开（二者原先都跳同一个
-  /// 仓库主页，属于重复入口）。评分与意见真实落盘，可选再去仓库提 issue。
-  Future<void> _rateApp() async {
-    var stars = 5;
-    final feedback = TextEditingController();
-    final prefs = await SharedPreferences.getInstance();
-    final saved = prefs.getInt('app_rating') ?? 0;
-    if (saved > 0) stars = saved;
-    // 回显上次提交的意见，避免 app_feedback 成为「只写不消费」的假设置
-    feedback.text = prefs.getString('app_feedback') ?? '';
-    if (!mounted) {
-      feedback.dispose();
-      return;
-    }
-    final ok = await showDialog<bool>(
-      context: context,
-      builder: (c) => StatefulBuilder(
-        builder: (c, setLocal) => AlertDialog(
-          title: const Text('给个评分'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Text(saved > 0 ? '上次评分：$saved 星' : '还没有评过分',
-                  style: const TextStyle(fontSize: 12)),
-              const SizedBox(height: AppSpacing.xs),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: List.generate(5, (i) => IconButton(
-                  icon: Icon(i < stars ? Icons.star : Icons.star_border,
-                      color: Colors.amber),
-                  onPressed: () => setLocal(() => stars = i + 1),
-                )),
-              ),
-              const SizedBox(height: AppSpacing.s),
-              TextField(
-                controller: feedback,
-                maxLines: 3,
-                decoration: const InputDecoration(
-                  labelText: '意见与建议（可选）',
-                  isDense: true,
-                  border: OutlineInputBorder(),
-                ),
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(
-                onPressed: () => Navigator.pop(c, false),
-                child: const Text('取消')),
-            TextButton(
-              onPressed: () async {
-                await prefs.setInt('app_rating', stars);
-                if (feedback.text.trim().isNotEmpty) {
-                  await prefs.setString('app_feedback', feedback.text.trim());
-                }
-                if (c.mounted) Navigator.pop(c, true);
-              },
-              child: const Text('提交'),
-            ),
-          ],
-        ),
-      ),
-    );
-    feedback.dispose();
-    if (ok != true || !mounted) return;
-    ScaffoldMessenger.of(context)
-        .showSnackBar(SnackBar(content: Text('感谢评分：$stars 星')));
-  }
-
-  // 关于页 9 项能力已迁至 AboutScreen（lib/ui/about/about_screen.dart）；
-  // 旧 _showAbout 弹窗移除，扩展的 GitHub 项目 / 分享应用 / 评分入口已迁至
-  // 下方「关于与项目」分区卡片（原「更多功能」默认折叠分区已按相似度聚合归位）。
+  // 关于页能力（含 GitHub 项目 / 分享应用 / 评分）均已迁至
+  // AboutScreen（lib/ui/about/about_screen.dart）；旧 _showAbout 弹窗已移除。
 
   Widget _buildMenuItem(BuildContext context, IconData icon, String title, String subtitle, VoidCallback onTap, {Key? key}) {
     return ListTile(

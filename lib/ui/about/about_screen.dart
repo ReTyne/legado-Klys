@@ -4,6 +4,7 @@ import 'package:dio/dio.dart';
 import 'package:flutter/material.dart';
 import 'package:package_info_plus/package_info_plus.dart';
 import 'package:share_plus/share_plus.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:legado_md3/common/app_name.dart';
 import 'package:legado_md3/constant/e_placement.dart';
@@ -77,6 +78,28 @@ class _AboutScreenState extends State<AboutScreen> {
           // 分区「其它」6 项
           _buildSectionHeader('其它'),
           for (final e in EPlacement.aboutOtherCategory) _buildAboutTile(e),
+          // 项目与支持：由「我的」页「关于与项目」栏目归并而来，
+          // 与「关于」语义一致，集中到本页避免重复分区。
+          _buildSectionHeader('项目与支持'),
+          ListTile(
+            leading: const Icon(Icons.code),
+            title: const Text('GitHub项目'),
+            subtitle: const Text('打开项目仓库主页'),
+            onTap: () => launchUrl(Uri.parse(_kRepoUrl),
+                mode: LaunchMode.externalApplication),
+          ),
+          ListTile(
+            leading: const Icon(Icons.share),
+            title: const Text('分享应用'),
+            subtitle: const Text('分享给好友'),
+            onTap: _shareApp,
+          ),
+          ListTile(
+            leading: const Icon(Icons.star_outline),
+            title: const Text('评分'),
+            subtitle: const Text('应用内星级反馈与意见'),
+            onTap: _rateApp,
+          ),
           const SizedBox(height: AppSpacing.xl),
         ],
       ),
@@ -150,6 +173,79 @@ class _AboutScreenState extends State<AboutScreen> {
         ],
       ),
     );
+  }
+
+  /// 分享应用：应用名 + GitHub 仓库链接
+  Future<void> _shareApp() async {
+    await Share.share('$appDisplayName —— Material 3 风格的跨平台开源阅读器\n$_kRepoUrl',
+        subject: appDisplayName);
+  }
+
+  /// 评分：应用内星级反馈，评分与意见真实落盘，可选再去仓库提 issue。
+  Future<void> _rateApp() async {
+    var stars = 5;
+    final feedback = TextEditingController();
+    final prefs = await SharedPreferences.getInstance();
+    final saved = prefs.getInt('app_rating') ?? 0;
+    if (saved > 0) stars = saved;
+    feedback.text = prefs.getString('app_feedback') ?? '';
+    if (!mounted) {
+      feedback.dispose();
+      return;
+    }
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (c) => StatefulBuilder(
+        builder: (c, setLocal) => AlertDialog(
+          title: const Text('给个评分'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Text(saved > 0 ? '上次评分：$saved 星' : '还没有评过分',
+                  style: const TextStyle(fontSize: 12)),
+              const SizedBox(height: AppSpacing.xs),
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: List.generate(5, (i) => IconButton(
+                  icon: Icon(i < stars ? Icons.star : Icons.star_border,
+                      color: Colors.amber),
+                  onPressed: () => setLocal(() => stars = i + 1),
+                )),
+              ),
+              const SizedBox(height: AppSpacing.s),
+              TextField(
+                controller: feedback,
+                maxLines: 3,
+                decoration: const InputDecoration(
+                  labelText: '意见与建议（可选）',
+                  isDense: true,
+                  border: OutlineInputBorder(),
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(c, false),
+                child: const Text('取消')),
+            TextButton(
+              onPressed: () async {
+                await prefs.setInt('app_rating', stars);
+                if (feedback.text.trim().isNotEmpty) {
+                  await prefs.setString('app_feedback', feedback.text.trim());
+                }
+                if (c.mounted) Navigator.pop(c, true);
+              },
+              child: const Text('提交'),
+            ),
+          ],
+        ),
+      ),
+    );
+    feedback.dispose();
+    if (ok != true || !mounted) return;
+    ScaffoldMessenger.of(context)
+        .showSnackBar(SnackBar(content: Text('感谢评分：$stars 星')));
   }
 
   /// 依据 [EPlacement.degradations] 的 'about.xml createHeapDump' 配置：

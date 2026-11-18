@@ -132,18 +132,20 @@ void main() {
       ]) {
         expect(s, contains(cls), reason: '独有功能 $cls 不应被删');
       }
-      // 相似度聚合分区（不再是单个「更多功能」折叠黑洞，也不把同类功能拆散）
+      // 按语义归位到「设置与外观 / 阅读与内容」两组
       for (final t in const [
         '设置与外观',
         '阅读与内容',
-        '视听与 AI',
-        '关于与项目',
       ]) {
-        expect(s, contains(t), reason: '缺少相似度聚合分区 $t');
+        expect(s, contains(t), reason: '缺少语义归位分区 $t');
       }
-      // 评分改为应用内反馈，与 GitHub 项目主页动作去重
-      expect(s, contains('app_rating'));
-      expect(s, contains('全部设置（汇总全部分项）'));
+      // 「视听与 AI」「关于与项目」栏目移除：功能分散/并入关于页，评分落盘迁至 about_screen
+      expect(RegExp(r"'视听与 AI'").hasMatch(s), isFalse);
+      expect(RegExp(r"'关于与项目'").hasMatch(s), isFalse);
+      final a = _src('lib/ui/about/about_screen.dart');
+      expect(a, contains('app_rating'));
+      expect(a, contains('GitHub项目'));
+      expect(s, contains('全部设置'));
       expect(s, contains('_sectionCard'));
       expect(s, contains('_buildFeatureSections'));
     });

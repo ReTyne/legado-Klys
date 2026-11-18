@@ -109,16 +109,17 @@ void main() {
     });
   });
 
-  group('设置层级：多级分类入口 + 旧单页沉折叠（不删功能）', () {
-    test('settings_screen 有分类入口页与折叠次级分区', () {
+  group('设置层级：单层平铺（不删功能）', () {
+    test('settings_screen 所有设置项单层平铺、无折叠套娃', () {
       final s = _src('lib/ui/config/settings_screen.dart');
       expect(s, contains('EPlacement.settingEntryCategories'));
-      expect(s, contains('ExpansionTile('),
-          reason: '旧版 17 分区应沉入默认折叠的次级分区');
+      expect(s, contains('_buildEntryPageChildren'));
       expect(s, contains('_buildAllSettingSections'),
           reason: '原全部设置项应保留可触达');
-      expect(s, contains('initiallyExpanded: false'),
-          reason: '次级分区应默认折叠，不占主界面入口');
+      expect(s, contains('..._buildAllSettingSections(context)'),
+          reason: '全部分区应直接平铺到设置主页，无下级折叠');
+      expect(RegExp(r'ExpansionTile\s*\(').hasMatch(s), isFalse,
+          reason: '不应再有「完整设置（旧版单页）」折叠层');
     });
 
     test('关于页为独立页面（about.xml 9 项），非弹窗', () {
@@ -169,18 +170,20 @@ void main() {
       ]) {
         expect(s, contains(cls), reason: '独有功能 $cls 不应被删');
       }
-      // 用户反馈「我的页太丑、把更多功能里的功能调到较适合的位置」：
-      // 由「单个默认折叠的更多功能」改为按语义平铺的分区卡片；再按
-      // 「有些功能很类似」把相似项聚合为 4 组，仍位于 主界面之后，功能一项不删。
+      // 按语义归位到「设置与外观 / 阅读与内容」两组，位于主界面之后，功能一项不删。
       expect(s, contains('_buildFeatureSections'));
       expect(s, contains('_sectionCard'));
       for (final t in const [
-        '设置与外观', '阅读与内容', '视听与 AI', '关于与项目',
+        '设置与外观', '阅读与内容',
       ]) {
-        expect(s, contains(t), reason: '缺少相似度聚合分区 $t');
+        expect(s, contains(t), reason: '缺少语义归位分区 $t');
       }
-      // 重复入口去重：「GitHub项目」与「评分」不再跳同一个 URL
-      expect(s, contains('app_rating'));
+      // 「关于与项目」「视听与 AI」栏目已移除：前者并入关于页，后者功能分散
+      expect(RegExp(r"'关于与项目'").hasMatch(s), isFalse);
+      expect(RegExp(r"'视听与 AI'").hasMatch(s), isFalse);
+      // 评分落盘逻辑已随「关于与项目」并入 about_screen
+      final a = _src('lib/ui/about/about_screen.dart');
+      expect(a, contains('app_rating'));
     });
 
     test('EPlacement.kSecondary 覆盖各页独有项且降级清单完整', () {

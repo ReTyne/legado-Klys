@@ -334,11 +334,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
-  /// 主界面：设置多级分类入口页（pref_config_* 子页）。
-  /// 本项目旧版单页 17 分区完整设置沉入底部默认折叠的次级分区，功能不删。
+  /// 设置主页：所有设置项单层平铺，一处可尽览。
+  /// 原先「入口分类页 + 折叠的旧版单页」两层合并为本页，功能一项不删。
   List<Widget> _buildEntryPageChildren(BuildContext context) {
     const cats = EPlacement.settingEntryCategories;
     return [
+      _buildSectionHeader('常用设置'),
       _jump(icon: Icons.backup_outlined, title: cats[0],
           sub: 'WebDAV 云同步与本地备份', page: const BackupScreen()),
       _jump(icon: Icons.palette_outlined, title: cats[1],
@@ -352,28 +353,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
       _jump(icon: Icons.waving_hand_outlined, title: '欢迎页设置',
           sub: '欢迎语 / 背景 / 展示次数', page: const WelcomeConfigScreen()),
       const Divider(),
-      ExpansionTile(
-        initiallyExpanded: false,
-        leading: const Icon(Icons.tune),
-        title: const Text('完整设置（旧版单页）'),
-        children: _buildAllSettingSections(context),
-      ),
+      ..._buildAllSettingSections(context),
       const SizedBox(height: AppSpacing.xl),
     ];
   }
 
-  /// 旧版单页 17 分区完整 children（原 build() 内容，逐行抽出，未改动）。
+  /// 全部分区设置项（原「旧版单页」内容，逐行保留，未删改），现已直接平铺到设置主页。
   List<Widget> _buildAllSettingSections(BuildContext context) {
     final theme = Provider.of<AppTheme>(context);
     return [
-          // 主题设置
-          ListTile(
-            leading: const Icon(Icons.tune),
-            title: const Text('其他设置'),
-            subtitle: const Text('语言/更新/密码/阅读偏好'),
-            trailing: const Icon(Icons.chevron_right),
-            onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const OtherConfigScreen())),
-          ),
           ..._buildBooksSection(),
           _buildSectionHeader('主题设置'),
           ListTile(
