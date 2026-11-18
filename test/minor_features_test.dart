@@ -104,7 +104,8 @@ void main() {
       expect(src.contains('Clipboard.setData(ClipboardData(text: url))'), isTrue);
       expect(src.contains("'已复制播放地址'"), isTrue);
       expect(src.contains("'暂无播放地址'"), isTrue);
-      expect(src.contains("if (_lines.isEmpty) return '';"), isTrue);
+      expect(src.contains('resolveCurrentPlayUrl'), isTrue);
+      expect(src.contains("if (lines.isEmpty) return '';"), isTrue);
       expect(src.contains("if (v == 'copyUrl') await _copyPlayUrl();"), isTrue);
     });
 

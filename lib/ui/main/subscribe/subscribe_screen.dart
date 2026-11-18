@@ -14,6 +14,7 @@ import 'package:legado_md3/ui/stats/read_record_screen.dart';
 import 'package:legado_md3/ui/rss/rss_source_login_screen.dart';
 import 'package:legado_md3/data/local/app_database.dart';
 import 'package:legado_md3/help/http/rss_service.dart';
+import 'package:legado_md3/help/source/url_guard.dart';
 import 'package:legado_md3/ui/widgets/app_widgets.dart';
 import 'package:legado_md3/constant/e_placement.dart';
 
@@ -142,16 +143,23 @@ class _SubscribeScreenState extends State<SubscribeScreen> {
   Future<void> _parseAndSave(String raw) async {
     if (raw.trim().isEmpty) return;
     try {
+      await UrlGuard.instance.init();
       final data = jsonDecode(raw);
       final list = data is List ? data : [data];
       int n = 0;
+      int blocked = 0;
       for (final m in list) {
         if (m is Map) {
+          final url = (m['sourceUrl'] ?? m['url'] ?? '').toString();
+          if (UrlGuard.instance.isBlocked(url)) { blocked++; continue; }
           try { await _db.insertRssSource(RssSource.fromJson(Map<String, dynamic>.from(m))); n++; } catch (_) {}
         }
       }
       await _loadData();
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('导入 $n 个订阅源')));
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(
+          blocked > 0 ? '导入 $n 个订阅源（已拦截 $blocked 个网址）' : '导入 $n 个订阅源')));
+      }
     } catch (e) { if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('解析失败: $e'))); }
   }
 

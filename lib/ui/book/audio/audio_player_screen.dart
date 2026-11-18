@@ -4,6 +4,7 @@ import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:url_launcher/url_launcher.dart';
 import 'package:legado_md3/data/model/book.dart';
 import 'package:legado_md3/data/model/book_chapter.dart';
 import 'package:legado_md3/data/local/app_database.dart';
@@ -554,6 +555,31 @@ class _AudioPlayerScreenState extends State<AudioPlayerScreen> {
     _toast('已复制播放地址');
   }
 
+  /// 把当前播放地址交给系统其它应用播放。
+  Future<void> _openInOtherPlayer() async {
+    final url = _currentPlayUrl;
+    if (url.isEmpty) {
+      _toast('暂无播放地址');
+      return;
+    }
+    Uri? uri;
+    try {
+      uri = Uri.parse(url.trim());
+    } catch (_) {
+      _toast('播放地址无效');
+      return;
+    }
+    try {
+      if (await canLaunchUrl(uri)) {
+        await launchUrl(uri, mode: LaunchMode.externalApplication);
+      } else {
+        _toast('没有可用的播放器');
+      }
+    } catch (_) {
+      _toast('打开其它播放器失败');
+    }
+  }
+
   // ==================== 退出（后台继续播放 / 停止） ====================
 
   void _handlePop(bool didPop) {
@@ -648,6 +674,9 @@ class _AudioPlayerScreenState extends State<AudioPlayerScreen> {
                   case 'copyUrl':
                     await _copyPlayUrl();
                     break;
+                  case 'openOtherPlayer':
+                    await _openInOtherPlayer();
+                    break;
                 }
               },
               itemBuilder: (c) => [
@@ -655,6 +684,7 @@ class _AudioPlayerScreenState extends State<AudioPlayerScreen> {
                 const PopupMenuItem(value: 'skip', child: Text('跳过片头片尾')),
                 const PopupMenuItem(value: 'mini', child: Text('迷你悬浮窗')),
                 const PopupMenuItem(value: 'copyUrl', child: Text('复制播放地址')),
+                const PopupMenuItem(value: 'openOtherPlayer', child: Text('其它播放器打开')),
                 CheckedPopupMenuItem(
                   value: 'background',
                   checked: _backgroundPlay,

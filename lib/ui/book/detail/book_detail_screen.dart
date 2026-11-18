@@ -25,6 +25,7 @@ import 'package:legado_md3/ui/book/chapter/chapter_list_screen.dart';
 import 'package:legado_md3/ui/book/detail/change_source_screen.dart';
 import 'package:legado_md3/ui/book/detail/change_cover_screen.dart';
 import 'package:legado_md3/data/model/book_source.dart';
+import 'package:legado_md3/help/source/source_event_callback.dart';
 import 'package:legado_md3/ui/book/source/source_login_screen.dart';
 
 class BookDetailScreen extends StatefulWidget {
@@ -94,6 +95,14 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
     if (kw.isEmpty) return;
     Navigator.push(context,
         MaterialPageRoute(builder: (_) => SearchScreen(initialKeyword: kw)));
+  }
+
+  /// 交互事件回调：书源脚本返回假值时拦截默认跳转。
+  Future<bool> _allowBtn(String event) async {
+    final source = _detailSource;
+    if (source == null) return true;
+    return SourceEventCallback.callBackBtn(source, event,
+        extra: <String, dynamic>{'book': widget.book.jsContext()});
   }
 
   /// 分类字符串拆成可点标签。
@@ -449,13 +458,23 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
             ListTile(
               leading: const Icon(Icons.link),
               title: const Text('复制书籍URL'),
-              onTap: () async { Navigator.pop(context); await Clipboard.setData(ClipboardData(text: widget.book.bookUrl ?? '')); if (mounted && context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('已复制'))); },
+              onTap: () async {
+                Navigator.pop(context);
+                if (!await _allowBtn(SourceEventCallback.copyBookUrl)) return;
+                await Clipboard.setData(ClipboardData(text: widget.book.bookUrl ?? ''));
+                if (mounted && context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('已复制')));
+              },
             ),
             // 8. 复制目录URL
             ListTile(
               leading: const Icon(Icons.link),
               title: const Text('复制目录URL'),
-              onTap: () async { Navigator.pop(context); await Clipboard.setData(ClipboardData(text: widget.book.noteUrl ?? '')); if (mounted && context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('已复制'))); },
+              onTap: () async {
+                Navigator.pop(context);
+                if (!await _allowBtn(SourceEventCallback.copyTocUrl)) return;
+                await Clipboard.setData(ClipboardData(text: widget.book.noteUrl ?? ''));
+                if (mounted && context.mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('已复制')));
+              },
             ),
             // 9. 允许更新
             // 关闭「允许更新」时顺手清掉 updateError 标记；
@@ -537,7 +556,11 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
                       if (_inShelf)
                         IconButton(icon: const Icon(Icons.edit), tooltip: '编辑', onPressed: _showEditBookDialog),
                       IconButton(icon: const Icon(Icons.share), tooltip: '分享',
-                        onPressed: () => Share.share('《${book.name}》 - ${book.author}\n${book.intro ?? ''}')),
+                        onPressed: () async {
+                          if (await _allowBtn(SourceEventCallback.share)) {
+                            await Share.share('《${book.name}》 - ${book.author}\n${book.intro ?? ''}');
+                          }
+                        }),
                       IconButton(tooltip: '更多', icon: const Icon(Icons.more_vert), onPressed: _showMoreMenu),
                     ],
                     flexibleSpace: FlexibleSpaceBar(
@@ -558,8 +581,18 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
                                 child: Expanded(
                                   //  tvAuthor 点击/长按 → SearchActivity.start(author)。
                                   child: GestureDetector(
-                                    onTap: () => _searchKeyword(book.author),
-                                    onLongPress: () => _searchKeyword(book.author),
+                                    onTap: () async {
+                                      if (await _allowBtn(
+                                          SourceEventCallback.clickAuthor)) {
+                                        _searchKeyword(book.author);
+                                      }
+                                    },
+                                    onLongPress: () async {
+                                      if (await _allowBtn(
+                                          SourceEventCallback.clickAuthor)) {
+                                        _searchKeyword(book.author);
+                                      }
+                                    },
                                     child: Text(book.author, maxLines: 1, overflow: TextOverflow.ellipsis,
                                         style: TextStyle(fontSize: 13, color: cs.onSurfaceVariant)),
                                   ),
@@ -694,7 +727,21 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
                     Expanded(
                       child: TextButton(
                         style: TextButton.styleFrom(shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero)),
-                        onPressed: _toggleShelf,
+                        onPressed: () async {
+                          final source = _detailSource;
+                          if (source == null) {
+                            _toggleShelf();
+                            return;
+                          }
+                          final event = _inShelf
+                              ? SourceEventCallback.removeBookshelf
+                              : SourceEventCallback.addBookshelf;
+                          if (await SourceEventCallback.callBackBook(source,
+                              event,
+                              book: book.jsContext())) {
+                            _toggleShelf();
+                          }
+                        },
                         child: Text(
                           _inShelf ? '移出书架' : '加入书架',
                           style: const TextStyle(fontSize: 15),
@@ -811,8 +858,16 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
                 padding: const EdgeInsets.symmetric(horizontal: AppSpacing.xl),
                 //  tvName 点击/长按 → SearchActivity.start(book.name)。
                 child: GestureDetector(
-                  onTap: () => _searchKeyword(book.name),
-                  onLongPress: () => _searchKeyword(book.name),
+                  onTap: () async {
+                    if (await _allowBtn(SourceEventCallback.clickBookName)) {
+                      _searchKeyword(book.name);
+                    }
+                  },
+                  onLongPress: () async {
+                    if (await _allowBtn(SourceEventCallback.clickBookName)) {
+                      _searchKeyword(book.name);
+                    }
+                  },
                   child: Text(book.name,
                       textAlign: TextAlign.center,
                       maxLines: 1,
@@ -851,8 +906,11 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
   }
 
   /// 可点击的分类标签。
-  Widget _searchableTag(String text) =>
-      AppTag(text, onTap: () => _searchKeyword(text));
+  Widget _searchableTag(String text) => AppTag(text, onTap: () async {
+        if (await _allowBtn(SourceEventCallback.clickBookLabel)) {
+          _searchKeyword(text);
+        }
+      });
 
   /// 封面长按看大图。
   void _showCoverFullImage(Book book) {

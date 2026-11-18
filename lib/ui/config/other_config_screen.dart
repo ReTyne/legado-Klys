@@ -4,6 +4,7 @@ import 'package:flutter_inappwebview/flutter_inappwebview.dart';
 import 'package:legado_md3/data/local/app_database.dart';
 import 'package:legado_md3/help/config/app_config.dart';
 import 'package:legado_md3/help/readaloud/tts_service.dart';
+import 'package:legado_md3/help/source/url_guard.dart';
 import 'package:legado_md3/ui/book/reader_router.dart';
 import 'package:legado_md3/help/device/native_bridge.dart';
 import 'package:legado_md3/help/storage/download_service.dart';
@@ -25,7 +26,7 @@ class OtherConfigScreen extends StatefulWidget {
 }
 
 class _OtherConfigScreenState extends State<OtherConfigScreen> {
-  final Map<String, dynamic> _prefs = {};
+  final Map<String, dynamic> _prefs = {'urlBlockEnabled': true};
 
   @override
   void initState() { super.initState(); _load(); }
@@ -34,8 +35,10 @@ class _OtherConfigScreenState extends State<OtherConfigScreen> {
     final p = await SharedPreferences.getInstance();
     // 全局持久化配置加载进 AppPrefs 内存（静态 getter 同步读取）
     AppPrefs.loadFrom(p);
+    await UrlGuard.instance.init();
     setState(() {
       _prefs['autoCheckUpdate'] = p.getBool('oc_autoCheckUpdate') ?? true;
+      _prefs['urlBlockEnabled'] = UrlGuard.instance.enabled;
       _prefs['webAutoStart'] = p.getBool('oc_webAutoStart') ?? false;
       _prefs['autoRefresh'] = p.getBool('oc_autoRefresh') ?? false;
       _prefs['defaultRead'] = p.getBool('oc_defaultRead') ?? false;
@@ -69,6 +72,7 @@ class _OtherConfigScreenState extends State<OtherConfigScreen> {
     if (key == 'showMangaUi') showMangaUi = v;
     if (key == 'mediaButtonOnExit') TtsService.stopReadAloudOnExit = v;
     if (key == 'ignoreAudioFocus') TtsService.ignoreAudioFocus = v;
+    if (key == 'urlBlockEnabled') await UrlGuard.instance.setEnabled(v);
   }
 
   Future<void> _setString(String key, String prefKey, String v) async {
@@ -127,6 +131,70 @@ class _OtherConfigScreenState extends State<OtherConfigScreen> {
     return result;
   }
 
+  /// 编辑拦截网址名单：内置名单只读展示，自定义名单可增删后保存。
+  Future<void> _showUrlBlockListDialog() async {
+    final ctl = TextEditingController(
+      text: UrlGuard.instance.customDomains.join('\n'),
+    );
+    final builtIn = UrlGuard.instance.builtInDomains;
+    final saved = await showDialog<bool>(
+      context: context,
+      builder: (c) => AlertDialog(
+        title: const Text('拦截网址名单'),
+        content: SizedBox(
+          width: double.maxFinite,
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                const Text('内置名单（只读，按主域+后缀匹配）',
+                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                const SizedBox(height: 6),
+                Container(
+                  width: double.maxFinite,
+                  padding: const EdgeInsets.all(AppSpacing.s),
+                  decoration: BoxDecoration(
+                    border: Border.all(color: Theme.of(c).colorScheme.outlineVariant),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Text(
+                    builtIn.isEmpty ? '无' : builtIn.join('\n'),
+                    style: const TextStyle(fontSize: 11),
+                  ),
+                ),
+                const SizedBox(height: AppSpacing.m),
+                const Text('自定义名单（每行一个域名）',
+                    style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                const SizedBox(height: 6),
+                TextField(
+                  controller: ctl,
+                  maxLines: 6,
+                  decoration: const InputDecoration(
+                    hintText: 'example.com',
+                    border: OutlineInputBorder(),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(c, false), child: const Text('取消')),
+          FilledButton(onPressed: () => Navigator.pop(c, true), child: const Text('保存')),
+        ],
+      ),
+    );
+    if (saved != true) return;
+    final domains = ctl.text
+        .split(RegExp(r'[\r\n]+'))
+        .map((s) => s.trim())
+        .where((s) => s.isNotEmpty)
+        .toList();
+    await UrlGuard.instance.setCustomDomains(domains);
+    _tip('拦截网址名单已保存（${domains.length} 条）');
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -173,6 +241,18 @@ class _OtherConfigScreenState extends State<OtherConfigScreen> {
               SnackBar(content: Text(v.isEmpty ? '已清除本地密码' : '本地密码已保存')),
             );
           }),
+        _sw('网址拦截', 'urlBlockEnabled', 'oc_urlBlockEnabled',
+          sub: '按域名黑名单拦截不良书源/订阅源网址，命中则不导入'),
+        if (_prefs['urlBlockEnabled'] ?? true)
+          ListTile(
+            dense: true,
+            leading: const Icon(Icons.block_outlined),
+            title: const Text('拦截网址名单'),
+            subtitle: const Text('内置名单只读，可增删自定义域名（每行一个）',
+                style: TextStyle(fontSize: 11)),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: _showUrlBlockListDialog,
+          ),
         _section('网络和封面'),
         _sw('仅WiFi下加载封面', 'loadCoverOnlyWifi', 'cover_onlyWifi',
           sub: '移动数据下不加载网络封面（cover_onlyWifi，Android 原生判断）'),

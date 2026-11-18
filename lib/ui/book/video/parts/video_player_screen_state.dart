@@ -2,6 +2,22 @@
 /// 作为同一库的 part，私有成员互引保持可用。
 part of '../video_player_screen.dart';
 
+/// 按当前线路索引从线路列表取出播放地址（去首尾空白）；无地址返回空串。
+String resolveCurrentPlayUrl(List<String> lines, int lineIndex) {
+  if (lines.isEmpty) return '';
+  final i = lineIndex.clamp(0, lines.length - 1);
+  return lines[i].trim();
+}
+
+/// 解析播放地址为 Uri；地址非法（无法构成 Uri）时返回 null。
+Uri? parsePlayUrl(String url) {
+  try {
+    return Uri.parse(url.trim());
+  } catch (_) {
+    return null;
+  }
+}
+
 
 class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   static const List<double> _rates = [0.5, 0.75, 1.0, 1.25, 1.5, 2.0, 3.0];
@@ -766,11 +782,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   }
 
   /// 当前选中的播放地址（解析后的真实直链）。
-  String get _currentPlayUrl {
-    if (_lines.isEmpty) return '';
-    final i = _lineIndex.clamp(0, _lines.length - 1);
-    return _lines[i].trim();
-  }
+  String get _currentPlayUrl => resolveCurrentPlayUrl(_lines, _lineIndex);
 
   Future<void> _copyPlayUrl() async {
     final url = _currentPlayUrl;
@@ -780,6 +792,29 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     }
     await Clipboard.setData(ClipboardData(text: url));
     _toast('已复制播放地址');
+  }
+
+  /// 把当前播放地址交给系统其它应用播放。
+  Future<void> _openInOtherPlayer() async {
+    final url = _currentPlayUrl;
+    if (url.isEmpty) {
+      _toast('暂无播放地址');
+      return;
+    }
+    final uri = parsePlayUrl(url);
+    if (uri == null) {
+      _toast('播放地址无效');
+      return;
+    }
+    try {
+      if (await canLaunchUrl(uri)) {
+        await launchUrl(uri, mode: LaunchMode.externalApplication);
+      } else {
+        _toast('没有可用的播放器');
+      }
+    } catch (_) {
+      _toast('打开其它播放器失败');
+    }
   }
 
   static String _fmt(Duration d) {
@@ -1035,9 +1070,11 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
           color: Colors.grey.shade900,
           onSelected: (v) async {
             if (v == 'copyUrl') await _copyPlayUrl();
+            if (v == 'openOtherPlayer') await _openInOtherPlayer();
           },
           itemBuilder: (ctx) => const [
             PopupMenuItem(value: 'copyUrl', child: Text('复制播放地址', style: TextStyle(color: Colors.white))),
+            PopupMenuItem(value: 'openOtherPlayer', child: Text('其它播放器打开', style: TextStyle(color: Colors.white))),
           ],
         ),
       ]),

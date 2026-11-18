@@ -38,6 +38,8 @@ class BookSource implements JsSource {
   String? charset;
   String? coverDecodeJs;
   bool eventListener;
+  /// 事件回调脚本：读者交互/生命周期事件发生时由引擎执行。
+  String callBackJs;
   bool customButton;
   @override
   bool enabledCookieJar;
@@ -123,6 +125,7 @@ class BookSource implements JsSource {
     this.charset,
     this.coverDecodeJs,
     this.eventListener = false,
+    this.callBackJs = '',
     this.customButton = false,
     this.enabledCookieJar = true,
     this.concurrentRate,
@@ -177,6 +180,7 @@ class BookSource implements JsSource {
       charset: json['charset'],
       coverDecodeJs: json['coverDecodeJs'],
       eventListener: json['eventListener'] ?? false,
+      callBackJs: json['callBackJs'] ?? '',
       customButton: json['customButton'] ?? false,
       enabledCookieJar: json['enabledCookieJar'] ?? true,
       concurrentRate: json['concurrentRate']?.toString(),
@@ -234,6 +238,7 @@ class BookSource implements JsSource {
         'charset': charset,
         'coverDecodeJs': coverDecodeJs,
         'eventListener': eventListener,
+        'callBackJs': callBackJs,
         'customButton': customButton,
         'enabledCookieJar': enabledCookieJar,
         'concurrentRate': concurrentRate,
@@ -280,6 +285,7 @@ class BookSource implements JsSource {
         'charset': charset,
         'coverDecodeJs': coverDecodeJs,
         'eventListener': eventListener ? 1 : 0,
+        'callBackJs': callBackJs,
         'customButton': customButton ? 1 : 0,
         'enabledCookieJar': enabledCookieJar ? 1 : 0,
         'concurrentRate': concurrentRate,
@@ -327,6 +333,7 @@ class BookSource implements JsSource {
         charset: map['charset'],
         coverDecodeJs: map['coverDecodeJs'],
         eventListener: (map['eventListener'] ?? 0) == 1,
+        callBackJs: map['callBackJs'] ?? '',
         customButton: (map['customButton'] ?? 0) == 1,
         enabledCookieJar: (map['enabledCookieJar'] ?? 1) == 1,
         concurrentRate: map['concurrentRate']?.toString(),
@@ -467,6 +474,7 @@ class BookSource implements JsSource {
         'charset': charset,
         'coverDecodeJs': coverDecodeJs,
         'eventListener': eventListener,
+        'callBackJs': callBackJs,
         'customButton': customButton,
         'enabledCookieJar': enabledCookieJar,
         'concurrentRate': concurrentRate,

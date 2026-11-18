@@ -46,6 +46,7 @@ import 'package:legado_md3/help/source/chapter_relocator.dart';
 import 'package:legado_md3/help/source/content_services.dart';
 import 'package:legado_md3/help/source/replace_rule_service.dart';
 import 'package:legado_md3/help/source/source_engine.dart';
+import 'package:legado_md3/help/source/source_event_callback.dart';
 import 'package:legado_md3/help/storage/local_book_parser.dart';
 import 'package:legado_md3/help/translate/translation_service.dart';
 import 'package:legado_md3/ui/book/chapter/chapter_list_screen.dart';
@@ -184,6 +185,8 @@ class _ReadingScreenState extends State<ReadingScreen>
   final Set<int> _prefetching = {};
   // 当前书籍来源书源
   BookSource? _currentBookSource;
+  // 阅读开始事件仅在首次拿到书源时派发一次
+  bool _startReadFired = false;
 
   /* ===== 第十轮 C 组：新增真实消费状态（全部只追加，不改动上方既有字段） ===== */
   // 电量/亮度：监听 NativeBridge 的 ValueNotifier，真实读数替代静态图标/假遮罩
@@ -228,8 +231,26 @@ class _ReadingScreenState extends State<ReadingScreen>
           break;
         }
       }
-      if (mounted) setState(() => _currentBookSource = s);
+      if (mounted) {
+        setState(() => _currentBookSource = s);
+        if (s != null && !_startReadFired) {
+          _startReadFired = true;
+          unawaited(SourceEventCallback.callBackBook(
+            s,
+            SourceEventCallback.startRead,
+            book: widget.book.jsContext(),
+            chapter: _currentChapterContext(),
+          ));
+        }
+      }
     } catch (_) {}
+  }
+
+  /// 当前章节上下文，供事件回调脚本读取。
+  Map<String, dynamic>? _currentChapterContext() {
+    final i = _currentChapterIndex;
+    if (i < 0 || i >= _chapters.length) return null;
+    return _chapters[i].jsContext(widget.book.bookUrl);
   }
 
   /// 书源操作菜单
@@ -758,6 +779,15 @@ class _ReadingScreenState extends State<ReadingScreen>
 
   @override
   void dispose() {
+    final source = _currentBookSource;
+    if (source != null) {
+      unawaited(SourceEventCallback.callBackBook(
+        source,
+        SourceEventCallback.endRead,
+        book: widget.book.jsContext(),
+        chapter: _currentChapterContext(),
+      ));
+    }
     _autoReadTimer?.cancel();
     _clockTimer?.cancel();
     _repaginateTimer?.cancel();
@@ -1768,6 +1798,15 @@ class _ReadingScreenState extends State<ReadingScreen>
   }
 
   Future<void> _saveCurrentProgress() async {
+    final source = _currentBookSource;
+    if (source != null) {
+      unawaited(SourceEventCallback.callBackBook(
+        source,
+        SourceEventCallback.saveRead,
+        book: widget.book.jsContext(),
+        chapter: _currentChapterContext(),
+      ));
+    }
     try {
       final provider = context.read<BookProvider>();
       await provider.saveReadingProgress(

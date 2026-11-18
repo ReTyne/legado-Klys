@@ -11,6 +11,7 @@ import 'package:legado_md3/data/local/app_database.dart';
 import 'package:legado_md3/data/model/book_source.dart';
 import 'package:legado_md3/help/config/app_config.dart';
 import 'package:legado_md3/help/source/check_source_service.dart';
+import 'package:legado_md3/help/source/url_guard.dart';
 import 'package:legado_md3/help/storage/shibboleth.dart';
 import 'package:legado_md3/ui/book/import/online_import_screen.dart';
 import 'package:legado_md3/ui/book/source/source_debug_screen.dart';
@@ -119,6 +120,13 @@ class _SourceManageScreenState extends State<SourceManageScreen> {
   bool _showComment = false;
   final Set<String> _selectedIds = {};
   List<String> _groups = [];
+
+  /// 最近一次导入被网址拦截跳过的条数，供导入结果提示使用。
+  int _lastBlockedCount = 0;
+
+  /// 在导入结果后追加拦截提示。
+  String _importTip(String base) =>
+      _lastBlockedCount > 0 ? '$base（已拦截 $_lastBlockedCount 个网址）' : base;
 
   @override
   void initState() {
@@ -452,8 +460,8 @@ class _SourceManageScreenState extends State<SourceManageScreen> {
                 task: _importSourcesFromString(text),
               );
               if (mounted) {
-                ScaffoldMessenger.of(context)
-                    .showSnackBar(SnackBar(content: Text('导入 $n 个书源')));
+                ScaffoldMessenger.of(context).showSnackBar(
+                    SnackBar(content: Text(_importTip('导入 $n 个书源'))));
               }
             }
           },
@@ -523,7 +531,7 @@ class _SourceManageScreenState extends State<SourceManageScreen> {
         );
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text(count > 0 ? '成功导入 $count 个书源' : '未识别到有效书源')),
+            SnackBar(content: Text(_importTip(count > 0 ? '成功导入 $count 个书源' : '未识别到有效书源'))),
           );
         }
       }
@@ -592,7 +600,7 @@ class _SourceManageScreenState extends State<SourceManageScreen> {
       );
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('成功导入 $count 个书源')),
+          SnackBar(content: Text(_importTip('成功导入 $count 个书源'))),
         );
       }
       _loadSources();
@@ -626,7 +634,7 @@ class _SourceManageScreenState extends State<SourceManageScreen> {
       );
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('成功导入 $count 个书源')),
+          SnackBar(content: Text(_importTip('成功导入 $count 个书源'))),
         );
       }
       _loadSources();
@@ -678,6 +686,8 @@ class _SourceManageScreenState extends State<SourceManageScreen> {
   /// insertSource 使用 ConflictAlgorithm.replace，故同名 URL 天然为覆盖更新。
   Future<int> _importSourcesFromData(
       dynamic data, SourceImportOptions options) async {
+    await UrlGuard.instance.init();
+    _lastBlockedCount = 0;
     // 解包常见订阅格式：{data:[...]} / {bookSources:[...]} / {result:[...]}
     dynamic unwrapped = data;
     if (unwrapped is Map && !unwrapped.containsKey('bookSourceUrl')) {
@@ -708,6 +718,10 @@ class _SourceManageScreenState extends State<SourceManageScreen> {
           final m = Map<String, dynamic>.from(item);
           final url = (m['bookSourceUrl'] ?? '').toString();
           if (url.isEmpty) continue;
+          if (UrlGuard.instance.isBlocked(url)) {
+            _lastBlockedCount++;
+            continue;
+          }
           final source = BookSource.fromJson(m);
           final old = existingByUrl[url];
           if (old == null) {
