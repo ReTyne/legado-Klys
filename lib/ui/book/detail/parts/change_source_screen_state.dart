@@ -42,64 +42,66 @@ class _ChangeSourceScreenState extends State<ChangeSourceScreen> {
       if (g.isNotEmpty) groupSet.add(g);
     }
     _groups = groupSet.toList()..sort();
+    // 评分内存缓存随本次检索刷新，供三态显示与多级排序使用。
+    await SourceScore.load();
     if (mounted) setState(() => _loading = false);
 
-    // 并发池检索，每源最多 15s
-    const concurrency = 8;
-    int cursor = 0;
-    Future<void> worker() async {
-      while (true) {
-        final i = cursor++;
-        if (i >= _results.length) return;
-        final r = _results[i];
-        try {
-          final sw = Stopwatch()..start();
-          final list = await _engine
-              .search(r.source, widget.book.name)
-              .timeout(const Duration(seconds: 15), onTimeout: () => []);
-          sw.stop();
-          // 优先同名，作者也匹配最佳；同时给出匹配质量评分。
-          final target = widget.book.name.replaceAll(RegExp(r'\s'), '');
-          SearchBook? best;
-          var score = 0;
-          for (final b in list) {
-            if (b.name.replaceAll(RegExp(r'\s'), '') == target) {
-              final authorMatch = widget.book.author.isEmpty ||
-                  b.author.contains(widget.book.author) ||
-                  widget.book.author.contains(b.author);
-              best = b;
-              score = authorMatch ? 100 : 80;
-              if (authorMatch) break;
-            }
+    // 每源最多 15s；按批次并发检索，批次之间按用户设置的间隔等待（0 不等待）。
+    const batchSize = 8;
+    final delayMs = AppPrefs.batchChangeSourceDelay;
+    Future<void> searchOne(_SourceResult r) async {
+      try {
+        final sw = Stopwatch()..start();
+        final list = await _engine
+            .search(r.source, widget.book.name)
+            .timeout(const Duration(seconds: 15), onTimeout: () => []);
+        sw.stop();
+        // 优先同名，作者也匹配最佳；同时给出匹配质量评分。
+        final target = widget.book.name.replaceAll(RegExp(r'\s'), '');
+        SearchBook? best;
+        var score = 0;
+        for (final b in list) {
+          if (b.name.replaceAll(RegExp(r'\s'), '') == target) {
+            final authorMatch = widget.book.author.isEmpty ||
+                b.author.contains(widget.book.author) ||
+                widget.book.author.contains(b.author);
+            best = b;
+            score = authorMatch ? 100 : 80;
+            if (authorMatch) break;
           }
-          if (best == null && list.isNotEmpty) {
-            best = list.first;
-            score = 50;
-          }
-          if (mounted) {
-            setState(() {
-              r.match = best;
-              r.score = score;
-              r.responseMs = sw.elapsedMilliseconds;
-              r.searching = false;
-              _done++;
-            });
-          }
-        } catch (e) {
-          if (mounted) {
-            setState(() {
-              r.searching = false;
-              r.error = '$e';
-              _done++;
-            });
-          }
+        }
+        if (best == null && list.isNotEmpty) {
+          best = list.first;
+          score = 50;
+        }
+        if (mounted) {
+          setState(() {
+            r.match = best;
+            r.score = score;
+            r.responseMs = sw.elapsedMilliseconds;
+            r.searching = false;
+            _done++;
+          });
+        }
+      } catch (e) {
+        if (mounted) {
+          setState(() {
+            r.searching = false;
+            r.error = '$e';
+            _done++;
+          });
         }
       }
     }
 
-    await Future.wait(List.generate(
-        concurrency.clamp(1, _results.isEmpty ? 1 : _results.length),
-        (_) => worker()));
+    for (var start = 0; start < _results.length; start += batchSize) {
+      if (start > 0 && delayMs > 0) {
+        await Future.delayed(Duration(milliseconds: delayMs));
+      }
+      final end = (start + batchSize).clamp(0, _results.length);
+      await Future.wait(
+          List.generate(end - start, (k) => searchOne(_results[start + k])));
+    }
     if (_loadTocWordCount) await _loadAllWordCounts();
   }
 
@@ -183,9 +185,12 @@ class _ChangeSourceScreenState extends State<ChangeSourceScreen> {
     return int.tryParse(m.group(0)!);
   }
 
-  /// 在新目录里按「归一化标题」匹配最接近的章节下标；找不到返回 -1。
-  /// 策略：精确归一化 > 互相包含 > 章节号数值最接近（§4-6）。
-  int _matchChapterIndex(List<BookChapter> chapters, String oldTitle) {
+  /// 在新目录里重新定位章节下标；先用智能重定位，未命中再走标题兜底。
+  /// 兜底策略：精确归一化 > 互相包含 > 章节号数值最接近（§4-6）。
+  int _matchChapterIndex(int oldIndex, String oldTitle,
+      List<BookChapter> chapters, int oldSize) {
+    final relocated = getDurChapter(oldIndex, oldTitle, chapters, oldSize);
+    if (relocated >= 0) return relocated;
     final t = _normalizeTitle(oldTitle);
     if (t.isEmpty) return -1;
     // 1) 精确归一化匹配
@@ -296,8 +301,9 @@ class _ChangeSourceScreenState extends State<ChangeSourceScreen> {
     if (!mounted) return;
 
  // 4) 统计可迁移数据，弹出迁移选项 sheet
-    final matched =
-        newChapters.isNotEmpty ? _matchChapterIndex(newChapters, oldTitle) : -1;
+    final matched = newChapters.isNotEmpty
+        ? _matchChapterIndex(oldIndex, oldTitle, newChapters, oldChapters.length)
+        : -1;
     final bookmarks =
         await _db.getBookmarks(widget.book.name, widget.book.author);
     final highlights =
@@ -330,10 +336,10 @@ class _ChangeSourceScreenState extends State<ChangeSourceScreen> {
 
     // 5) 按章节标题把书签 / 高亮重映射到新源目录索引
     if (options.migrateBookmarks && bookmarks.isNotEmpty) {
-      await _migrateBookmarks(bookmarks, newChapters);
+      await _migrateBookmarks(bookmarks, newChapters, oldChapters.length);
     }
     if (options.migrateHighlights && highlights.isNotEmpty) {
-      await _migrateHighlights(highlights, newChapters);
+      await _migrateHighlights(highlights, newChapters, oldChapters.length);
     }
 
     // 6) 目录落库：拉到新目录则直接保存（阅读页无需重复联网），否则清空让阅读页重拉
@@ -364,11 +370,12 @@ class _ChangeSourceScreenState extends State<ChangeSourceScreen> {
   }
 
   /// 书签按章节标题重映射：能匹配到新章节才迁移，匹配不到保留原记录不丢数据。
-  Future<void> _migrateBookmarks(
-      List<Bookmark> bookmarks, List<BookChapter> newChapters) async {
+  Future<void> _migrateBookmarks(List<Bookmark> bookmarks,
+      List<BookChapter> newChapters, int oldSize) async {
     if (newChapters.isEmpty) return;
     for (final b in bookmarks) {
-      final idx = _matchChapterIndex(newChapters, b.chapterTitle);
+      final idx = _matchChapterIndex(
+          b.chapterIndex, b.chapterTitle, newChapters, oldSize);
       if (idx < 0) continue;
       if (b.id != null) await _db.deleteBookmark(b.id!);
       b.id = null;
@@ -379,11 +386,12 @@ class _ChangeSourceScreenState extends State<ChangeSourceScreen> {
   }
 
   /// 划线 / 高亮按章节标题重映射（BookHighlight.id 为 final，重建对象）。
-  Future<void> _migrateHighlights(
-      List<BookHighlight> hs, List<BookChapter> newChapters) async {
+  Future<void> _migrateHighlights(List<BookHighlight> hs,
+      List<BookChapter> newChapters, int oldSize) async {
     if (newChapters.isEmpty) return;
     for (final h in hs) {
-      final idx = _matchChapterIndex(newChapters, h.chapterTitle);
+      final idx = _matchChapterIndex(
+          h.chapterIndex, h.chapterTitle, newChapters, oldSize);
       if (idx < 0) continue;
       if (h.id != null) await _db.deleteBookHighlight(h.id!);
       await _db.insertBookHighlight(BookHighlight(
@@ -427,7 +435,17 @@ class _ChangeSourceScreenState extends State<ChangeSourceScreen> {
       if (a.pin != b.pin) return a.pin.compareTo(b.pin);
       switch (_sort) {
         case _ChangeSourceSort.score:
-          return b.score.compareTo(a.score);
+          // 多级：单书评分 → 来源总分 → 原字面匹配分 → 书源顺序（末尾 tie-break）。
+          final ab = SourceScore.getBookScore(
+              a.source.bookSourceUrl, widget.book.name, widget.book.author);
+          final bb = SourceScore.getBookScore(
+              b.source.bookSourceUrl, widget.book.name, widget.book.author);
+          if (ab != bb) return bb.compareTo(ab);
+          final as = SourceScore.getSourceScore(a.source.bookSourceUrl);
+          final bs = SourceScore.getSourceScore(b.source.bookSourceUrl);
+          if (as != bs) return bs.compareTo(as);
+          if (a.score != b.score) return b.score.compareTo(a.score);
+          return 0;
         case _ChangeSourceSort.responseTime:
           final at = a.responseMs ?? 1 << 30;
           final bt = b.responseMs ?? 1 << 30;
@@ -563,6 +581,54 @@ class _ChangeSourceScreenState extends State<ChangeSourceScreen> {
     if (mounted) setState(() => _results.remove(r));
   }
 
+  /// 当前书对某结果的用户评分（从内存缓存读取）。
+  int _bookScoreOf(_SourceResult r) => SourceScore.getBookScore(
+      r.source.bookSourceUrl, widget.book.name, widget.book.author);
+
+  /// 给某条换源结果打分（+1 赞 / 0 中性 / -1 踩），落盘并刷新列表排序。
+  Future<void> _rateResult(_SourceResult r, int score) async {
+    await SourceScore.setBookScore(
+      r.source.bookSourceUrl,
+      widget.book.name,
+      widget.book.author,
+      score,
+    );
+    if (mounted) setState(() {});
+  }
+
+  /// 换源间隔设置：0~9999 毫秒，持久化到偏好层。
+  Future<void> _showDelayConfig() async {
+    final ctl =
+        TextEditingController(text: '${AppPrefs.batchChangeSourceDelay}');
+    final value = await showDialog<int>(
+      context: context,
+      builder: (c) => AlertDialog(
+        title: const Text('换源间隔'),
+        content: TextField(
+          controller: ctl,
+          keyboardType: TextInputType.number,
+          decoration: const InputDecoration(
+            labelText: '批次间隔（毫秒，0~9999，0 = 不等待）',
+            border: OutlineInputBorder(),
+          ),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(c), child: const Text('取消')),
+          FilledButton(
+            onPressed: () =>
+                Navigator.pop(c, int.tryParse(ctl.text.trim()) ?? 0),
+            child: const Text('确定'),
+          ),
+        ],
+      ),
+    );
+    ctl.dispose();
+    if (value != null) {
+      setState(() => AppPrefs.batchChangeSourceDelay = value);
+    }
+  }
+
   /// 长按结果弹出的单源操作面板。
   void _showResultActions(_SourceResult r) {
     showModalBottomSheet<void>(
@@ -571,6 +637,48 @@ class _ChangeSourceScreenState extends State<ChangeSourceScreen> {
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
+            Padding(
+              padding: const EdgeInsets.fromLTRB(
+                  AppSpacing.l, AppSpacing.m, AppSpacing.l, AppSpacing.s),
+              child: Text(
+                '来源总分 ${SourceScore.getSourceScore(r.source.bookSourceUrl)}  ·  为本书打分',
+                style: const TextStyle(fontSize: 12),
+              ),
+            ),
+            ListTile(
+              leading: const Icon(Icons.thumb_up_outlined),
+              title: const Text('赞（+1）'),
+              trailing: _bookScoreOf(r) == 1
+                  ? const Icon(Icons.check, size: 18)
+                  : null,
+              onTap: () {
+                Navigator.pop(c);
+                _rateResult(r, 1);
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.remove_circle_outline),
+              title: const Text('中性（0）'),
+              trailing: _bookScoreOf(r) == 0
+                  ? const Icon(Icons.check, size: 18)
+                  : null,
+              onTap: () {
+                Navigator.pop(c);
+                _rateResult(r, 0);
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.thumb_down_outlined),
+              title: const Text('踩（-1）'),
+              trailing: _bookScoreOf(r) == -1
+                  ? const Icon(Icons.check, size: 18)
+                  : null,
+              onTap: () {
+                Navigator.pop(c);
+                _rateResult(r, -1);
+              },
+            ),
+            const Divider(height: 1),
             ListTile(
               leading: const Icon(Icons.list_alt_outlined),
               title: const Text('预览目录'),
@@ -716,6 +824,11 @@ class _ChangeSourceScreenState extends State<ChangeSourceScreen> {
       appBar: AppBar(
         title: Text('换源 - ${widget.book.name}'),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.timer_outlined),
+            tooltip: '换源间隔',
+            onPressed: _showDelayConfig,
+          ),
           if (_done < _total)
             Padding(
                 padding: const EdgeInsets.symmetric(horizontal: AppSpacing.l),
@@ -792,6 +905,9 @@ class _ChangeSourceScreenState extends State<ChangeSourceScreen> {
           final info = StringBuffer();
           if (!r.searching) {
             info.write('评分 ${r.score}');
+            if (_bookScoreOf(r) != 0) {
+              info.write('  ·  我的评分 ${_bookScoreOf(r)}');
+            }
             if (r.responseMs != null) info.write('  ·  ${r.responseMs}ms');
             if (r.chapterCount != null) {
               info.write('  ·  ${r.chapterCount}章  ·  目录字数 ${r.tocWordCount}');

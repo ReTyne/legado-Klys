@@ -187,7 +187,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
       _keepScreenOn = cfg.keepScreenOn;
       _showMenuOnTap = cfg.showMenuOnTap;
       _autoNextPage = cfg.autoNextPage;
-      // translate_enabled / simulatedReading 为 E 外功能，入口下架后不再读取其状态
+      // 本页只读取 autoNextPage（自动翻页）；simulatedReading（模拟追读）入口在
+      // 「阅读设置-翻页」，它按开始日期逐日解锁章节，与自动翻页无关，本页不读取。
       _boldText = cfg.boldText;
       _showStatusBar = cfg.statusBarVisibility;
       _showTitle = cfg.titleVisibility;

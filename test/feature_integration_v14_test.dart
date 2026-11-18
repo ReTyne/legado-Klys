@@ -161,7 +161,11 @@ void main() {
       expect(boot, contains('registerExternalDecoder'));
       expect(boot, contains('mediaButtonEvents'));
       expect(boot, contains('readClipboardShibboleth'));
-      expect(boot, contains("startsWith('#L:')"));
+      expect(
+        boot.contains("startsWith('#L:')") ||
+            boot.contains('startsWith(Shibboleth.prefix)'),
+        isTrue,
+      );
       expect(boot, contains('setShortcuts'));
     });
 

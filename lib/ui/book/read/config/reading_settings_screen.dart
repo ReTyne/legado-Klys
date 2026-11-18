@@ -11,6 +11,7 @@ import 'package:legado_md3/data/model/book.dart';
 import 'package:legado_md3/data/model/read_config.dart';
 import 'package:legado_md3/data/model/v14_models.dart';
 import 'package:legado_md3/di/book_provider.dart';
+import 'package:legado_md3/help/reading/click_area_guard.dart';
 import 'package:legado_md3/ui/book/read/read_prefs.dart';
 import 'package:legado_md3/ui/book/read/read_detail_utils.dart';
 import 'package:legado_md3/ui/widgets/app_widgets.dart';
@@ -233,7 +234,7 @@ class _ReadingSettingsScreenState extends State<ReadingSettingsScreen>
         SwitchListTile(title: const Text('音量键反向'), value: config.volumeKeyReverse, onChanged: (v) => rp.updateConfig((c) => c.volumeKeyReverse = v)),
         SwitchListTile(title: const Text('自动翻页'), value: config.autoNextPage, onChanged: (v) => rp.updateConfig((c) => c.autoNextPage = v)),
         if (config.autoNextPage) ListTile(title: const Text('自动翻页速度'), trailing: Slider(value: config.autoNextPageSpeed.toDouble(), min: 1, max: 20, divisions: 19, label: '${config.autoNextPageSpeed}秒', onChanged: (v) => rp.updateConfig((c) => c.autoNextPageSpeed = v.toInt()))),
-        SwitchListTile(title: const Text('模拟阅读'), value: config.simulatedReading, onChanged: (v) => rp.updateConfig((c) => c.simulatedReading = v)),
+        SwitchListTile(title: const Text('模拟阅读'), subtitle: const Text('按开始日期逐日解锁章节，不自动翻页', style: TextStyle(fontSize: 11)), value: config.simulatedReading, onChanged: (v) => rp.updateConfig((c) => c.simulatedReading = v)),
         SwitchListTile(title: const Text('上下颠倒'), value: config.invertPage, onChanged: (v) => rp.updateConfig((c) => c.invertPage = v)),
         SwitchListTile(title: const Text('竖排(横屏竖握)'), value: config.verticalLayout == 1, onChanged: (v) => rp.updateConfig((c) => c.verticalLayout = v ? 1 : 0)),
         SwitchListTile(title: const Text('禁用返回键'), subtitle: const Text('已接线：阅读界面由 PopScope 拦截系统返回键', style: TextStyle(fontSize: 11)), value: config.disableReturnKey, onChanged: (v) => rp.updateConfig((c) => c.disableReturnKey = v)),

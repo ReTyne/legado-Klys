@@ -10,6 +10,7 @@ import 'package:legado_md3/ui/widgets/app_widgets.dart';
 import 'package:legado_md3/help/source/content_services.dart';
 import 'package:legado_md3/help/source/rule_pipeline.dart';
 import 'package:legado_md3/help/source/js_mini_eval.dart';
+import 'package:legado_md3/help/storage/shibboleth.dart';
 import 'package:flutter/services.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'package:share_plus/share_plus.dart';
@@ -433,6 +434,23 @@ class _DictSourceTabState extends State<_DictSourceTab> {
         .showSnackBar(const SnackBar(content: Text('已删除')));
   }
 
+  /// 把词典规则的查询地址混淆成分享口令，复制到剪贴板。
+  Future<void> _shareShibboleth(DictRule rule) async {
+    final url = rule.url.trim();
+    if (url.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('该词典规则未配置查询地址')),
+      );
+      return;
+    }
+    final code = generateShareCode(url, ShareType.dictRule);
+    await Clipboard.setData(ClipboardData(text: code));
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      const SnackBar(content: Text('词典规则分享口令已复制')),
+    );
+  }
+
   Future<void> _reorder(int oldIndex, int newIndex) async {
     if (newIndex > oldIndex) newIndex -= 1;
     final item = _rules.removeAt(oldIndex);
@@ -589,6 +607,11 @@ class _DictSourceTabState extends State<_DictSourceTab> {
                       Switch(
                         value: r.enabled == 1,
                         onChanged: (v) => _save(r.copyWith(enabled: v ? 1 : 0)),
+                      ),
+                      IconButton(
+                        tooltip: '生成分享口令',
+                        icon: const Icon(Icons.key_outlined, size: 18),
+                        onPressed: () => _shareShibboleth(r),
                       ),
                       IconButton(
                         tooltip: '删除',

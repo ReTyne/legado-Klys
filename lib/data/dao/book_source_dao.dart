@@ -52,6 +52,8 @@ extension DatabaseServiceBookSourceDao on DatabaseService {
     final db = await database;
     await db
         .delete('book_sources', where: 'bookSourceUrl = ?', whereArgs: [url]);
+    // 级联清理该来源的用户评分（单书评分 + 来源总分）。
+    await SourceScore.removeSource(url);
   }
 
   Future<List<String>> getSourceGroups() async {

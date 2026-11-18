@@ -621,6 +621,18 @@ class _SourceEditScreenState extends State<SourceEditScreen> with SingleTickerPr
     Share.share(jsonEncode(source.toJson()));
   }
 
+  /// 把书源访问地址混淆成带类型标记/有效期的分享口令，复制到剪贴板。
+  Future<void> _shareShibboleth() async {
+    final url = _c['bookSourceUrl']?.text.trim() ?? '';
+    if (url.isEmpty) {
+      _toast('请先填写书源URL');
+      return;
+    }
+    final code = generateShareCode(url, ShareType.bookSource);
+    await Clipboard.setData(ClipboardData(text: code));
+    _toast('书源分享口令已复制');
+  }
+
   void _showMoreMenu() {
     showAppMenuSheet(
       context,
@@ -644,6 +656,12 @@ class _SourceEditScreenState extends State<SourceEditScreen> with SingleTickerPr
         AppMenuSheetItem(title: '复制书源', icon: Icons.content_copy_outlined, onTap: _copySource),
         AppMenuSheetItem(title: '粘贴书源', icon: Icons.content_paste_outlined, onTap: _pasteSource),
         AppMenuSheetItem(title: '分享书源', icon: Icons.ios_share_outlined, onTap: _shareSource),
+        AppMenuSheetItem(
+          title: '生成分享口令',
+          icon: Icons.key_outlined,
+          subtitle: '复制带类型标记与有效期的口令',
+          onTap: _shareShibboleth,
+        ),
         AppMenuSheetItem(title: '规则帮助', icon: Icons.help_outline, onTap: _showHelp),
       ],
     );

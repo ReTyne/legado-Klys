@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 
 import 'package:legado_md3/data/local/app_database.dart';
 import 'package:legado_md3/data/model/db_models.dart';
 import 'package:legado_md3/help/readaloud/cloud_tts_providers.dart';
+import 'package:legado_md3/help/storage/shibboleth.dart';
 import 'package:legado_md3/ui/widgets/app_widgets.dart';
 
 /// TTS 引擎管理：内置 / 云端引擎 + 自定义 HTTP TTS（§4-1 / §4-2）。
@@ -231,6 +233,18 @@ class _CloudTtsScreenState extends State<CloudTtsScreen> {
     await _load();
   }
 
+  /// 把 HTTP 朗读引擎的访问地址混淆成分享口令，复制到剪贴板。
+  Future<void> _shareShibboleth(HttpTTS tts) async {
+    final url = tts.url.trim();
+    if (url.isEmpty) {
+      _tip('该朗读引擎未配置访问地址');
+      return;
+    }
+    final code = generateShareCode(url, ShareType.ttsRule);
+    await Clipboard.setData(ClipboardData(text: code));
+    _tip('朗读引擎分享口令已复制');
+  }
+
   Future<void> _confirmDeleteHttpTts(HttpTTS tts) async {
     final ok = await showAppConfirmDialog(
       context,
@@ -338,6 +352,11 @@ class _CloudTtsScreenState extends State<CloudTtsScreen> {
               tooltip: '编辑',
               icon: const Icon(Icons.edit_outlined, size: 20),
               onPressed: () => _editHttpTts(tts),
+            ),
+            IconButton(
+              tooltip: '生成分享口令',
+              icon: const Icon(Icons.key_outlined, size: 20),
+              onPressed: () => _shareShibboleth(tts),
             ),
             IconButton(
               tooltip: '删除',

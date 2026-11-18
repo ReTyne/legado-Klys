@@ -6,7 +6,10 @@ import 'package:legado_md3/data/model/book_highlight.dart';
 import 'package:legado_md3/data/model/book_source.dart';
 import 'package:legado_md3/data/model/search_book.dart';
 import 'package:legado_md3/data/local/app_database.dart';
+import 'package:legado_md3/help/config/app_config.dart';
+import 'package:legado_md3/help/source/chapter_relocator.dart';
 import 'package:legado_md3/help/source/source_engine.dart';
+import 'package:legado_md3/help/source/source_score.dart';
 import 'package:legado_md3/ui/widgets/app_widgets.dart';
 
 part 'parts/source_result.dart';

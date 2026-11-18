@@ -71,7 +71,14 @@ class ReadConfig {
   bool volumeKeyReverse;
   bool autoNextPage;
   int autoNextPageSpeed;
+  /// 模拟追读开关：开启后按开始日期逐日解锁章节（与自动翻页无关）
   bool simulatedReading;
+  /// 模拟追读起始章（章数为 1-based 计数，默认 0）
+  int simulatedStartChapter;
+  /// 模拟追读开始日期，格式 yyyy-MM-dd；非法时不限制章节
+  String simulatedStartDate;
+  /// 模拟追读每日解锁章节数；<=0 时不限制章节
+  int simulatedDailyChapters;
 
   // 显示
   bool statusBarVisibility;
@@ -203,6 +210,9 @@ class ReadConfig {
     this.autoNextPage = false,
     this.autoNextPageSpeed = 5,
     this.simulatedReading = false,
+    this.simulatedStartChapter = 0,
+    this.simulatedStartDate = '',
+    this.simulatedDailyChapters = 0,
     this.statusBarVisibility = true,
     this.titleVisibility = true,
     this.timeVisibility = true,
@@ -291,6 +301,9 @@ class ReadConfig {
     'pageAnim': pageAnim, 'invertPage': invertPage, 'clickAreaNext': clickAreaNext, 'clickAreaPrev': clickAreaPrev,
     'clickTurnPage': clickTurnPage, 'volumeKeyPage': volumeKeyPage, 'volumeKeyReverse': volumeKeyReverse,
     'autoNextPage': autoNextPage, 'autoNextPageSpeed': autoNextPageSpeed, 'simulatedReading': simulatedReading,
+    'simulatedStartChapter': simulatedStartChapter,
+    'simulatedStartDate': simulatedStartDate,
+    'simulatedDailyChapters': simulatedDailyChapters,
     'statusBarVisibility': statusBarVisibility, 'titleVisibility': titleVisibility, 'timeVisibility': timeVisibility,
     'batteryVisibility': batteryVisibility, 'pageNumberVisibility': pageNumberVisibility, 'showProgress': showProgress,
     'immersiveMode': immersiveMode, 'fullScreen': fullScreen, 'screenOrientation': screenOrientation,
@@ -374,6 +387,11 @@ class ReadConfig {
     autoNextPage: json['autoNextPage'] ?? false,
     autoNextPageSpeed: json['autoNextPageSpeed'] ?? 5,
     simulatedReading: json['simulatedReading'] ?? false,
+    simulatedStartChapter: _readInt(json['simulatedStartChapter'], 0),
+    simulatedStartDate: json['simulatedStartDate'] is String
+        ? json['simulatedStartDate'] as String
+        : '',
+    simulatedDailyChapters: _readInt(json['simulatedDailyChapters'], 0),
     statusBarVisibility: json['statusBarVisibility'] ?? true,
     titleVisibility: json['titleVisibility'] ?? true,
     timeVisibility: json['timeVisibility'] ?? true,

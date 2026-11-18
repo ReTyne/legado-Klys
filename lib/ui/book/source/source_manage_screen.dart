@@ -11,6 +11,7 @@ import 'package:legado_md3/data/local/app_database.dart';
 import 'package:legado_md3/data/model/book_source.dart';
 import 'package:legado_md3/help/config/app_config.dart';
 import 'package:legado_md3/help/source/check_source_service.dart';
+import 'package:legado_md3/help/storage/shibboleth.dart';
 import 'package:legado_md3/ui/book/import/online_import_screen.dart';
 import 'package:legado_md3/ui/book/source/source_debug_screen.dart';
 import 'package:legado_md3/ui/book/source/source_edit_screen.dart';
@@ -1769,6 +1770,22 @@ class _SourceManageScreenState extends State<SourceManageScreen> {
             final jsonStr =
                 const JsonEncoder.withIndent('  ').convert(source.toJson());
             await Share.share(jsonStr, subject: source.bookSourceName);
+          },
+        ),
+        AppMenuSheetItem(
+          title: '生成分享口令',
+          icon: Icons.key_outlined,
+          subtitle: '复制带类型标记与有效期的口令',
+          onTap: () async {
+            final url = source.bookSourceUrl.trim();
+            if (url.isEmpty) return;
+            final code = generateShareCode(url, ShareType.bookSource);
+            await Clipboard.setData(ClipboardData(text: code));
+            if (mounted) {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('书源分享口令已复制')),
+              );
+            }
           },
         ),
         AppMenuSheetItem(

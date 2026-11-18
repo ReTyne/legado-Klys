@@ -1,8 +1,13 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
+import 'dart:ui' as ui;
 
 import 'package:collection/collection.dart';
+import 'package:dio/dio.dart';
+import 'package:file_picker/file_picker.dart';
+import 'package:path/path.dart' as p;
+import 'package:path_provider/path_provider.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/gestures.dart';
@@ -17,6 +22,8 @@ import 'package:legado_md3/data/model/book_highlight.dart';
 import 'package:legado_md3/data/model/db_models.dart';
 import 'package:legado_md3/data/model/read_config.dart';
 import 'package:legado_md3/di/book_provider.dart';
+import 'package:legado_md3/help/reading/click_area_guard.dart';
+import 'package:legado_md3/help/reading/simulated_reading.dart';
 import 'package:legado_md3/ui/book/read/text_paginator.dart';
 import 'package:legado_md3/ui/book/read/read_detail_utils.dart';
 import 'package:legado_md3/ui/widgets/app_widgets.dart';
@@ -30,10 +37,12 @@ import 'package:legado_md3/ui/book/read/bottom_web_view_dialog.dart';
 import 'package:legado_md3/ui/book/read/refresh_progress_sheet.dart';
 import 'package:legado_md3/ui/book/read/pageestimate/page_estimator.dart';
 import 'package:legado_md3/ui/book/read/pageestimate/whole_book_index.dart';
+import 'package:legado_md3/help/config/app_config.dart';
 import 'package:legado_md3/help/config/read_menu_config.dart';
 import 'package:legado_md3/help/readaloud/chinese_converter.dart';
 import 'package:legado_md3/help/readaloud/reading_record.dart';
 import 'package:legado_md3/help/readaloud/tts_service.dart';
+import 'package:legado_md3/help/source/chapter_relocator.dart';
 import 'package:legado_md3/help/source/content_services.dart';
 import 'package:legado_md3/help/source/replace_rule_service.dart';
 import 'package:legado_md3/help/source/source_engine.dart';
@@ -75,13 +84,38 @@ class _ReadingScreenState extends State<ReadingScreen>
   final TtsService _ttsService = TtsService();
   static const _wakeChannel = MethodChannel('legado/wakelock');
   bool _wakeEnabled = false;
-  List<int> _clickActions = [1, 3, 2, 1, 3, 2, 1, 3, 2];
+  List<int> _clickActions = List<int>.from(defaultClickActions);
   Future<void> _loadClickActions() async {
     final p = await SharedPreferences.getInstance();
-    final raw = p.getString('click_actions');
-    if (raw != null) {
-      final l = raw.split(',').map((e) => int.tryParse(e) ?? 2).toList();
-      if (l.length == 9) _clickActions = l;
+    final stored = readClickActions(p);
+    if (stored != null) _clickActions = stored;
+    // 守卫：九区全无菜单时自动把中心区恢复为菜单并逐区持久化。
+    if (!await detectClickArea(p)) return;
+    final fixed = readClickActions(p);
+    if (fixed != null && mounted) setState(() => _clickActions = fixed);
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+        content: Text('当前没有配置菜单区域，自动恢复中间区域为菜单'),
+      ));
+    });
+  }
+
+  /// 模拟追读按日期解锁后的可访问章节数（1-based 章数）。
+  /// 未开启模拟追读、无章节或配置非法时等于目录实际章节数。
+  int get _accessibleChapterCount {
+    final total = _chapters.length;
+    try {
+      final cfg = context.read<ReadProvider>().config;
+      if (!cfg.simulatedReading) return total;
+      return simulatedTotalChapterNum(
+        total,
+        startChapter: cfg.simulatedStartChapter,
+        startDate: cfg.simulatedStartDate,
+        dailyChapters: cfg.simulatedDailyChapters,
+      );
+    } catch (_) {
+      return total;
     }
   }
 
@@ -1310,7 +1344,10 @@ class _ReadingScreenState extends State<ReadingScreen>
     }
 
     if (_chapters.isNotEmpty) {
-      if (_currentChapterIndex >= _chapters.length) _currentChapterIndex = 0;
+      // 模拟追读：按开始日期解锁的章节数限制可访问上限，越界进度钳回已解锁范围。
+      final accessible = _accessibleChapterCount;
+      final maxIndex = accessible <= 0 ? 0 : accessible - 1;
+      if (_currentChapterIndex > maxIndex) _currentChapterIndex = maxIndex;
       await _loadChapterContent(_currentChapterIndex);
     } else {
       // 没有章节，显示书籍信息
@@ -1320,11 +1357,12 @@ class _ReadingScreenState extends State<ReadingScreen>
 
     if (mounted) setState(() => _isLoading = false);
 
-    // 自动翻页 / 实验室「模拟阅读」：进入阅读页后自动开始翻页
+    // 自动翻页（仅 autoNextPage）：进入阅读页后自动开始翻页。
+    // 模拟追读 simulatedReading 只负责按日期解锁章节，不参与自动翻页。
     try {
       if (!mounted || !context.mounted) return;
       final cfg = context.read<ReadProvider>().config;
-      if (cfg.autoNextPage || cfg.simulatedReading) {
+      if (cfg.autoNextPage) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (mounted && !_autoReadOn) _startAutoRead();
         });
@@ -1370,7 +1408,11 @@ class _ReadingScreenState extends State<ReadingScreen>
   /// [forceSource] 章节换源时传入新书源：跳过本地旧源缓存，强制用新源的章节 URL 走网络拉取。
   Future<void> _loadChapterContent(int index,
       {int? targetPage, BookSource? forceSource}) async {
-    if (index < 0 || index >= _chapters.length) return;
+    // 所有章节切换与进度跳转的统一边界：按模拟追读解锁上限钳制。
+    final accessible = _accessibleChapterCount;
+    final maxIndex = accessible <= 0 ? 0 : accessible - 1;
+    index = index.clamp(0, maxIndex);
+    if (_chapters.isEmpty || index >= _chapters.length) return;
     setState(() => _isLoadingChapter = true);
 
     final chapter = _chapters[index];
@@ -1561,8 +1603,9 @@ class _ReadingScreenState extends State<ReadingScreen>
         return '新书源未获取到目录，换源失败';
       }
 
-      // 3) 在新源目录中重新定位当前章节：先按标题匹配，失败回退为原下标
-      var newIndex = _matchChapterIndex(newChapters, oldTitle);
+      // 3) 在新源目录中重新定位当前章节：先智能重定位，失败回退为原下标
+      // _chapters 此刻仍是旧目录，oldSize 取其长度。
+      var newIndex = _matchChapterIndex(oldIndex, oldTitle, newChapters, _chapters.length);
       if (newIndex < 0) newIndex = oldIndex < newChapters.length ? oldIndex : 0;
       _chapters = newChapters;
       await _db.saveChapters(widget.book.name, widget.book.author, newChapters);
@@ -1581,10 +1624,13 @@ class _ReadingScreenState extends State<ReadingScreen>
     return null;
   }
 
-  /// 在新书源目录中按章节标题重新定位当前章节；找不到返回 -1
-  int _matchChapterIndex(List<BookChapter> chapters, String title) {
-    if (title.trim().isEmpty) return -1;
-    final t = title.trim();
+  /// 在新书源目录中重新定位当前章节；先用智能重定位，未命中再走标题精确/包含兜底。
+  int _matchChapterIndex(int oldIndex, String oldTitle,
+      List<BookChapter> chapters, int oldSize) {
+    final relocated = getDurChapter(oldIndex, oldTitle, chapters, oldSize);
+    if (relocated >= 0) return relocated;
+    if (oldTitle.trim().isEmpty) return -1;
+    final t = oldTitle.trim();
     // 1) 标题精确匹配
     var i = chapters.indexWhere((c) => c.title.trim() == t);
     if (i >= 0) return i;
@@ -1695,7 +1741,7 @@ class _ReadingScreenState extends State<ReadingScreen>
       }
       setState(() => _currentPage = next);
       _saveCurrentProgress();
-    } else if (_currentChapterIndex < _chapters.length - 1) {
+    } else if (_currentChapterIndex < _accessibleChapterCount - 1) {
       _loadChapterContent(_currentChapterIndex + 1);
     }
   }
@@ -1730,7 +1776,7 @@ class _ReadingScreenState extends State<ReadingScreen>
   }
 
   void _nextChapter() {
-    if (_currentChapterIndex < _chapters.length - 1) {
+    if (_currentChapterIndex < _accessibleChapterCount - 1) {
       _loadChapterContent(_currentChapterIndex + 1);
     }
   }
@@ -1748,8 +1794,8 @@ class _ReadingScreenState extends State<ReadingScreen>
         _autoReadTimer?.cancel();
         return;
       }
-      // 读到最后一章最后一页则停止
-      if (_currentChapterIndex >= _chapters.length - 1 &&
+      // 读到已解锁的最后一章最后一页则停止（模拟追读不越过按日期解锁的上限）
+      if (_currentChapterIndex >= _accessibleChapterCount - 1 &&
           _currentPage >= _pages.length - 1) {
         _stopAutoRead();
       } else {
@@ -1773,6 +1819,23 @@ class _ReadingScreenState extends State<ReadingScreen>
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
           content: Text('自动阅读已开启，再次点击菜单可关闭'), duration: Duration(seconds: 1)));
     }
+  }
+
+  /// 切换模拟追读：只影响按日期解锁的章节上限，绝不启动自动翻页。
+  Future<void> _toggleSimulatedReading() async {
+    final rp = context.read<ReadProvider>();
+    final next = !rp.config.simulatedReading;
+    rp.updateConfig((c) => c.simulatedReading = next);
+    final accessible = _accessibleChapterCount;
+    final maxIndex = accessible <= 0 ? 0 : accessible - 1;
+    if (_currentChapterIndex > maxIndex) {
+      _currentChapterIndex = maxIndex;
+      await _loadChapterContent(_currentChapterIndex);
+    }
+    if (!mounted || !context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+      content: Text(next ? '模拟追读已开启：章节按开始日期逐日解锁' : '模拟追读已关闭'),
+    ));
   }
 
   Future<void> _addMarking(String text) async {
@@ -1975,12 +2038,17 @@ class _ReadingScreenState extends State<ReadingScreen>
                             break;
                         }
                       },
+                      // 正文图片长按菜单（页级近似：正文为纯文本，按当前页首个图片地址操作）
+                      onLongPress: _onContentLongPress,
                       child: Stack(
                         children: [
                           if (config.bgImage != null)
                             Positioned.fill(
-                                child: Image.file(File(config.bgImage!),
-                                    fit: BoxFit.cover)),
+                              child: _blurredBg(
+                                Image.file(File(config.bgImage!),
+                                    fit: BoxFit.cover),
+                              ),
+                            ),
                           Column(
                             children: [
                               if (config.statusBarVisibility)
@@ -2061,6 +2129,233 @@ class _ReadingScreenState extends State<ReadingScreen>
           ),
         ),
       ),
+    );
+  }
+
+  // ==================== 正文图片长按菜单（页级近似） ====================
+  // 说明：Flutter 版正文以纯文本渲染，图片以 <img>/链接形式留在文本里，
+  // 没有 inline Image widget，无法精确命中某一张图；故在正文整页加长按，
+  // 对「当前页提取到的第一张图片地址」执行动作，其余图片需通过重新定位再操作。
+
+  static const _prefImageSaveFolder = 'read_image_save_folder';
+  static final RegExp _imgTagRe = RegExp(r'<img[^>]*>', caseSensitive: false);
+  static final RegExp _imgSrcRe =
+      RegExp(r'''(?:src|data-src)=["']?([^"'\s>]+)''', caseSensitive: false);
+  static final RegExp _bareImgRe = RegExp(
+    r'''https?://[^\s"'<>\\]+\.(?:png|jpe?g|gif|webp)(?:\?[^\s"'<>\\]*)?''',
+    caseSensitive: false,
+  );
+
+  /// 当前页文本（图片地址从中提取）。
+  String get _currentPageText => _pages.isNotEmpty
+      ? _pages[_currentPage.clamp(0, _pages.length - 1)]
+      : (_content ?? '');
+
+  List<String> _imageUrlsInCurrentPage() {
+    final text = _currentPageText;
+    final urls = <String>[];
+    for (final m in _imgTagRe.allMatches(text)) {
+      final src = _imgSrcRe.firstMatch(m.group(0)!)?.group(1);
+      if (src != null && src.isNotEmpty && !urls.contains(src)) urls.add(src);
+    }
+    for (final m in _bareImgRe.allMatches(text)) {
+      final u = m.group(0)!;
+      if (!urls.contains(u)) urls.add(u);
+    }
+    return urls;
+  }
+
+  void _imageToast(String msg) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+  }
+
+  void _onContentLongPress() {
+    final urls = _imageUrlsInCurrentPage();
+    if (urls.isEmpty) {
+      _imageToast('当前页面没有图片');
+      return;
+    }
+    _showImageActionsSheet(urls);
+  }
+
+  /// 图片操作菜单：显示大图 / 刷新图片 / 保存图片 / 选择保存文件夹。
+  void _showImageActionsSheet(List<String> urls) {
+    final url = urls.first;
+    showModalBottomSheet<void>(
+      context: context,
+      builder: (ctx) => SafeArea(
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          Padding(
+            padding: const EdgeInsets.all(AppSpacing.l),
+            child: Text('正文图片（共 ${urls.length} 张，当前操作第 1 张）',
+                style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
+          ),
+          ListTile(
+            leading: const Icon(Icons.zoom_in),
+            title: const Text('显示大图'),
+            onTap: () {
+              Navigator.pop(ctx);
+              _showImagePreview(url);
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.refresh),
+            title: const Text('刷新图片'),
+            onTap: () {
+              Navigator.pop(ctx);
+              _refreshImages();
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.save_alt),
+            title: const Text('保存图片'),
+            onTap: () {
+              Navigator.pop(ctx);
+              unawaited(_saveBodyImage(url));
+            },
+          ),
+          ListTile(
+            leading: const Icon(Icons.folder_open),
+            title: const Text('选择保存文件夹'),
+            onTap: () {
+              Navigator.pop(ctx);
+              unawaited(_pickImageSaveFolder());
+            },
+          ),
+        ]),
+      ),
+    );
+  }
+
+  /// 显示大图弹窗（InteractiveViewer 缩放）。
+  void _showImagePreview(String url) {
+    showDialog<void>(
+      context: context,
+      builder: (ctx) => Dialog(
+        backgroundColor: Colors.black,
+        child: Stack(children: [
+          Positioned.fill(
+            child: InteractiveViewer(
+              minScale: 1,
+              maxScale: 5,
+              child: Center(child: _bodyImageWidget(url)),
+            ),
+          ),
+          Positioned(
+            top: 8,
+            right: 8,
+            child: IconButton(
+              icon: const Icon(Icons.close, color: Colors.white),
+              onPressed: () => Navigator.pop(ctx),
+            ),
+          ),
+        ]),
+      ),
+    );
+  }
+
+  Widget _bodyImageWidget(String url) {
+    if (url.startsWith('data:')) {
+      try {
+        final comma = url.indexOf(',');
+        if (comma >= 0) {
+          return Image.memory(base64Decode(url.substring(comma + 1)),
+              fit: BoxFit.contain);
+        }
+      } catch (_) {}
+    }
+    if (!url.startsWith('http')) {
+      return Image.file(File(url),
+          fit: BoxFit.contain,
+          errorBuilder: (_, __, ___) => const Center(
+              child: Text('图片加载失败', style: TextStyle(color: Colors.white))));
+    }
+    return Image.network(
+      url,
+      fit: BoxFit.contain,
+      errorBuilder: (_, __, ___) => const Center(
+          child: Text('图片加载失败', style: TextStyle(color: Colors.white))),
+    );
+  }
+
+  /// 刷新图片：清空 Flutter 图片内存缓存后触发重排。
+  void _refreshImages() {
+    PaintingBinding.instance.imageCache.clear();
+    PaintingBinding.instance.imageCache.clearLiveImages();
+    _scheduleRepaginate();
+    _imageToast('已刷新图片缓存');
+  }
+
+  Future<String?> _loadImageSaveFolder() async {
+    final prefs = await SharedPreferences.getInstance();
+    return prefs.getString(_prefImageSaveFolder);
+  }
+
+  Future<void> _pickImageSaveFolder() async {
+    final picked = await FilePicker.platform.getDirectoryPath(
+        dialogTitle: '选择图片保存文件夹');
+    if (picked == null || picked.isEmpty) return;
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_prefImageSaveFolder, picked);
+    _imageToast('已设置保存文件夹：$picked');
+  }
+
+  Future<void> _saveBodyImage(String url) async {
+    if (url.isEmpty) {
+      _imageToast('暂无图片地址');
+      return;
+    }
+    try {
+      final resp = await Dio().get<List<int>>(
+        url,
+        options: Options(
+          responseType: ResponseType.bytes,
+          receiveTimeout: const Duration(seconds: 20),
+        ),
+      );
+      final bytes = Uint8List.fromList(resp.data ?? <int>[]);
+      if (bytes.isEmpty) {
+        _imageToast('图片为空，保存失败');
+        return;
+      }
+      var folderPath = await _loadImageSaveFolder() ?? '';
+      if (folderPath.isEmpty) {
+        final docs = await getApplicationDocumentsDirectory();
+        folderPath = p.join(docs.path, 'reading_images');
+      }
+      final folder = Directory(folderPath);
+      if (!await folder.exists()) await folder.create(recursive: true);
+      final file = File(p.join(
+          folder.path, 'img_${DateTime.now().millisecondsSinceEpoch}.${_guessImageExt(url)}'));
+      await file.writeAsBytes(bytes, flush: true);
+      _imageToast('图片已保存：${file.path}');
+    } catch (e) {
+      _imageToast('保存图片失败：$e');
+    }
+  }
+
+  String _guessImageExt(String url) {
+    final lower = url.toLowerCase().split('?').first;
+    if (lower.endsWith('.png')) return 'png';
+    if (lower.endsWith('.webp')) return 'webp';
+    if (lower.endsWith('.gif')) return 'gif';
+    return 'jpg';
+  }
+
+  /// 按当前明暗模式给背景图加模糊滤镜（强度 0 不套）。
+  Widget _blurredBg(Widget child) {
+    final dark = Theme.of(context).brightness == Brightness.dark;
+    final blurring = dark
+        ? AppPrefs.backgroundImageNightBlurring
+        : AppPrefs.backgroundImageBlurring;
+    if (blurring <= 0) return child;
+    return ImageFiltered(
+      imageFilter: ui.ImageFilter.blur(
+        sigmaX: blurring.toDouble(),
+        sigmaY: blurring.toDouble(),
+      ),
+      child: child,
     );
   }
 
@@ -2657,6 +2952,8 @@ class _ReadingScreenState extends State<ReadingScreen>
     final config = readProvider.config;
     // progressBarBehavior：'page' 章内按页拖动 / 'chapter' 按章拖动
     final pageMode = _progressBarBehavior == 'page';
+    // 模拟追读按日期解锁后的可访问章节数：进度滑块不得越过未解锁章节
+    final chapterCount = _accessibleChapterCount;
     // 底部设置栏背景/文字跟随页面背景
     final barBg = config.readBarStyleFollowPage
         ? Color(config.curBgColor)
@@ -2700,10 +2997,10 @@ class _ReadingScreenState extends State<ReadingScreen>
                           ? (_pages.length <= 1
                               ? 0
                               : _currentPage / (_pages.length - 1))
-                          : (_chapters.length <= 1
+                          : (chapterCount <= 1
                               ? 0
                               : (_dragChapterIndex ?? _currentChapterIndex) /
-                                  (_chapters.length - 1)),
+                                  (chapterCount - 1)),
                       // 拖动中只更新局部状态，不触发章节加载/落库/重排
                       onChanged: pageMode
                           ? (_pages.length <= 1
@@ -2715,11 +3012,11 @@ class _ReadingScreenState extends State<ReadingScreen>
                                     setState(() => _currentPage = p);
                                   }
                                 })
-                          : (_chapters.length <= 1
+                          : (chapterCount <= 1
                               ? null
                               : (value) {
                                   final index =
-                                      (value * (_chapters.length - 1)).round();
+                                      (value * (chapterCount - 1)).round();
                                   if (index !=
                                       (_dragChapterIndex ??
                                           _currentChapterIndex)) {
@@ -2740,11 +3037,11 @@ class _ReadingScreenState extends State<ReadingScreen>
                                   _saveCurrentProgress();
                                   setState(() {});
                                 })
-                          : (_chapters.length <= 1
+                          : (chapterCount <= 1
                               ? null
                               : (value) {
                                   final index =
-                                      (value * (_chapters.length - 1)).round();
+                                      (value * (chapterCount - 1)).round();
                                   setState(() => _dragChapterIndex = index);
                                   _loadChapterContent(index).whenComplete(() {
                                     if (mounted) {
@@ -2761,7 +3058,7 @@ class _ReadingScreenState extends State<ReadingScreen>
                         ? (_currentPage < _pages.length - 1
                             ? () => _nextPage()
                             : null)
-                        : (_currentChapterIndex < _chapters.length - 1
+                        : (_currentChapterIndex < chapterCount - 1
                             ? () =>
                                 _loadChapterContent(_currentChapterIndex + 1)
                             : null),
@@ -3192,12 +3489,7 @@ class _ReadingScreenState extends State<ReadingScreen>
       case 'menu_reverse_content':
         return _reverseContent;
       case 'menu_simulated_reading':
-        return () {
-          final rp = context.read<ReadProvider>();
-          final next = !rp.config.simulatedReading;
-          rp.updateConfig((c) => c.simulatedReading = next);
-          if (next && !_autoReadOn) _startAutoRead();
-        };
+        return _toggleSimulatedReading;
       case 'menu_enable_replace':
         return _togglePurify;
       case 'menu_same_title_removed':

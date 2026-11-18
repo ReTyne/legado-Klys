@@ -54,7 +54,16 @@ class _ClickActionConfigScreenState extends State<ClickActionConfigScreen> {
 
   Future<void> _save() async {
     final p = await SharedPreferences.getInstance();
-    await p.setString('click_actions', _grid.join(','));
+    // 逐区持久化：单键 CSV + Android 互通的九个 clickAction* 独立键。
+    await persistClickActions(p, _grid);
+    // 守卫：九区全无菜单时自动把中心区恢复为菜单并提示。
+    if (!await detectClickArea(p)) return;
+    final fixed = readClickActions(p);
+    if (fixed != null && mounted) setState(() => _grid = fixed);
+    if (!mounted || !context.mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+      content: Text('当前没有配置菜单区域，自动恢复中间区域为菜单'),
+    ));
   }
 
   void _editCell(int i) {

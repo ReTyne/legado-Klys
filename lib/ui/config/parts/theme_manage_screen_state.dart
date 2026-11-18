@@ -674,6 +674,20 @@ class _ThemeManageScreenState extends State<ThemeManageScreen> {
         onTap: _pickBackgroundImage,
       ),
       if (hasImage)
+        _buildBlurringSlider(
+          icon: Icons.wb_sunny_outlined,
+          label: '日间模糊强度',
+          value: AppPrefs.backgroundImageBlurring,
+          onChanged: (v) => setState(() => AppPrefs.backgroundImageBlurring = v),
+        ),
+      if (hasImage)
+        _buildBlurringSlider(
+          icon: Icons.nights_stay_outlined,
+          label: '夜间模糊强度',
+          value: AppPrefs.backgroundImageNightBlurring,
+          onChanged: (v) => setState(() => AppPrefs.backgroundImageNightBlurring = v),
+        ),
+      if (hasImage)
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: AppSpacing.l, vertical: AppSpacing.xs),
           child: ClipRRect(
@@ -704,6 +718,35 @@ class _ThemeManageScreenState extends State<ThemeManageScreen> {
         onTap: _pickBottomBackground,
       ),
     ]);
+  }
+
+  /// 背景图模糊强度滑杆（0~25 整数），日间/夜间各一条。
+  Widget _buildBlurringSlider({
+    required IconData icon,
+    required String label,
+    required int value,
+    required ValueChanged<int> onChanged,
+  }) {
+    final cs = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: AppSpacing.l),
+      child: Row(children: [
+        Icon(icon, size: 18, color: cs.onSurfaceVariant),
+        const SizedBox(width: AppSpacing.s),
+        SizedBox(width: 84, child: Text(label, style: const TextStyle(fontSize: 12))),
+        Expanded(
+          child: Slider(
+            min: 0,
+            max: 25,
+            divisions: 25,
+            label: value.toString(),
+            value: value.clamp(0, 25).toDouble(),
+            onChanged: (v) => onChanged(v.round()),
+          ),
+        ),
+        SizedBox(width: 28, child: Text('$value', textAlign: TextAlign.end, style: const TextStyle(fontSize: 12))),
+      ]),
+    );
   }
 
   /// 选择书架背景图（本地图片文件，存路径）

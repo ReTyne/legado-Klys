@@ -765,6 +765,23 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
   }
 
+  /// 当前选中的播放地址（解析后的真实直链）。
+  String get _currentPlayUrl {
+    if (_lines.isEmpty) return '';
+    final i = _lineIndex.clamp(0, _lines.length - 1);
+    return _lines[i].trim();
+  }
+
+  Future<void> _copyPlayUrl() async {
+    final url = _currentPlayUrl;
+    if (url.isEmpty) {
+      _toast('暂无播放地址');
+      return;
+    }
+    await Clipboard.setData(ClipboardData(text: url));
+    _toast('已复制播放地址');
+  }
+
   static String _fmt(Duration d) {
     String two(int n) => n.toString().padLeft(2, '0');
     return '${two(d.inMinutes.remainder(60))}:${two(d.inSeconds.remainder(60))}';
@@ -1011,6 +1028,17 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
           icon: const Icon(Icons.tune, color: Colors.white),
           tooltip: '播放设置',
           onPressed: _showVideoSettingsDialog,
+        ),
+        PopupMenuButton<String>(
+          icon: const Icon(Icons.more_vert, color: Colors.white),
+          tooltip: '更多',
+          color: Colors.grey.shade900,
+          onSelected: (v) async {
+            if (v == 'copyUrl') await _copyPlayUrl();
+          },
+          itemBuilder: (ctx) => const [
+            PopupMenuItem(value: 'copyUrl', child: Text('复制播放地址', style: TextStyle(color: Colors.white))),
+          ],
         ),
       ]),
     );

@@ -76,6 +76,8 @@ class AppPrefs {
   // 搜索范围
   static const String keySearchScope = 'searchScope';
   static const String keySearchGroup = 'searchGroup';
+  // 换源：两次源检索批次之间的间隔（毫秒），0~9999，0 = 不等待
+  static const String keyBatchChangeSourceDelay = 'batchChangeSourceDelay';
   // 封面（沿用本项目已有键，bookshelf_screen 直接消费，勿改键名）
   static const String keyUseDefaultCover = 'cover_useDefault';
   static const String keyCoverShowName = 'cover_showName';
@@ -85,6 +87,8 @@ class AppPrefs {
   static const String keyImmNavigationBar = 'immNavigationBar';
   static const String keyBarElevation = 'barElevation';
   static const String keyBackgroundImage = 'backgroundImage';
+  static const String keyBackgroundImageBlurring = 'backgroundImageBlurring';
+  static const String keyBackgroundImageNightBlurring = 'backgroundImageNightBlurring';
   static const String keyColorBottomBackground = 'colorBottomBackground';
   // 备份
   static const String keyWebDavDeviceName = 'webDavDeviceName';
@@ -118,6 +122,7 @@ class AppPrefs {
   static bool _checkContent = true;
   static String _searchScope = '';
   static String _searchGroup = '';
+  static int _batchChangeSourceDelay = 0;
   static bool _useDefaultCover = false;
   static bool _coverShowName = true;
   static bool _coverShowAuthor = true;
@@ -125,6 +130,8 @@ class AppPrefs {
   static bool _immNavigationBar = true;
   static int _barElevation = 0;
   static String _backgroundImage = '';
+  static int _backgroundImageBlurring = 0; // 日间背景图模糊度 0~25
+  static int _backgroundImageNightBlurring = 0; // 夜间背景图模糊度 0~25
   static int _colorBottomBackground = 0; // 0 = 未设置（用主题默认色）
   static String _webDavDeviceName = '';
   static List<String> _restoreIgnore = const [];
@@ -185,6 +192,8 @@ class AppPrefs {
   static String get searchScope => _searchScope;
   /// 单选分组时的分组名（E: searchGroup）
   static String get searchGroup => _searchGroup;
+  /// 换源批次间隔（毫秒），0 = 不等待
+  static int get batchChangeSourceDelay => _batchChangeSourceDelay;
   /// 无封面时使用默认封面（bookshelf_screen 消费）
   static bool get useDefaultCover => _useDefaultCover;
   /// 封面显示书名（bookshelf_screen 消费）
@@ -199,6 +208,10 @@ class AppPrefs {
   static int get barElevation => _barElevation;
   /// 书架背景图路径（空 = 不使用）
   static String get backgroundImage => _backgroundImage;
+  /// 日间背景图模糊度（0~25）
+  static int get backgroundImageBlurring => _backgroundImageBlurring;
+  /// 夜间背景图模糊度（0~25）
+  static int get backgroundImageNightBlurring => _backgroundImageNightBlurring;
   /// 底部背景色（0 = 未设置，用主题默认）
   static int get colorBottomBackground => _colorBottomBackground;
   /// WebDAV 设备名（标识备份来源设备）
@@ -363,6 +376,11 @@ class AppPrefs {
     _save(keySearchGroup, _searchGroup);
   }
 
+  static set batchChangeSourceDelay(int v) {
+    _batchChangeSourceDelay = v.clamp(0, 9999);
+    _save(keyBatchChangeSourceDelay, _batchChangeSourceDelay);
+  }
+
   static set useDefaultCover(bool v) {
     _useDefaultCover = v;
     _save(keyUseDefaultCover, _useDefaultCover);
@@ -400,6 +418,16 @@ class AppPrefs {
     } else {
       _save(keyBackgroundImage, _backgroundImage);
     }
+  }
+
+  static set backgroundImageBlurring(int v) {
+    _backgroundImageBlurring = v.clamp(0, 25);
+    _save(keyBackgroundImageBlurring, _backgroundImageBlurring);
+  }
+
+  static set backgroundImageNightBlurring(int v) {
+    _backgroundImageNightBlurring = v.clamp(0, 25);
+    _save(keyBackgroundImageNightBlurring, _backgroundImageNightBlurring);
   }
 
   static set colorBottomBackground(int v) {
@@ -465,6 +493,8 @@ class AppPrefs {
     _checkContent = p.getBool(keyCheckContent) ?? true;
     _searchScope = p.getString(keySearchScope) ?? '';
     _searchGroup = p.getString(keySearchGroup) ?? '';
+    _batchChangeSourceDelay =
+        (p.getInt(keyBatchChangeSourceDelay) ?? 0).clamp(0, 9999);
     _useDefaultCover = _readBool(p, keyUseDefaultCover, false);
     _coverShowName = _readBool(p, keyCoverShowName, true);
     _coverShowAuthor = _readBool(p, keyCoverShowAuthor, true);
@@ -472,6 +502,10 @@ class AppPrefs {
     _immNavigationBar = p.getBool(keyImmNavigationBar) ?? true;
     _barElevation = (p.getInt(keyBarElevation) ?? 0).clamp(0, 8);
     _backgroundImage = p.getString(keyBackgroundImage) ?? '';
+    _backgroundImageBlurring =
+        (p.getInt(keyBackgroundImageBlurring) ?? 0).clamp(0, 25);
+    _backgroundImageNightBlurring =
+        (p.getInt(keyBackgroundImageNightBlurring) ?? 0).clamp(0, 25);
     _colorBottomBackground = p.getInt(keyColorBottomBackground) ?? 0;
     _webDavDeviceName = p.getString(keyWebDavDeviceName) ?? '';
     _restoreIgnore = p.getStringList(keyRestoreIgnore) ?? const [];

@@ -314,6 +314,18 @@ class _RssSourceEditScreenState extends State<RssSourceEditScreen>
     Share.share(jsonEncode(_collect().toJson()));
   }
 
+  /// 把订阅源访问地址混淆成可分享口令，复制到剪贴板。
+  Future<void> _shareShibboleth() async {
+    final url = _c['sourceUrl']?.text.trim() ?? '';
+    if (url.isEmpty) {
+      _toast('请先填写源URL');
+      return;
+    }
+    final code = generateShareCode(url, ShareType.rssSource);
+    await Clipboard.setData(ClipboardData(text: code));
+    _toast('订阅源分享口令已复制');
+  }
+
   void _showMoreMenu() {
     showAppMenuSheet(context, title: '更多操作', items: [
       AppMenuSheetItem(
@@ -339,6 +351,11 @@ class _RssSourceEditScreenState extends State<RssSourceEditScreen>
           title: '粘贴RSS源', icon: Icons.content_paste, onTap: _paste),
       AppMenuSheetItem(
           title: '分享RSS源', icon: Icons.ios_share, onTap: _share),
+      AppMenuSheetItem(
+          title: '生成分享口令',
+          icon: Icons.key_outlined,
+          subtitle: '复制带类型标记与有效期的口令',
+          onTap: _shareShibboleth),
     ]);
   }
 

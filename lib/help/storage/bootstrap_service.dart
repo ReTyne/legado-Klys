@@ -13,6 +13,7 @@ import 'package:legado_md3/help/net/network_monitor.dart';
 import 'package:legado_md3/help/readaloud/tts_service.dart';
 import 'package:legado_md3/help/source/archive_native.dart';
 import 'package:legado_md3/help/storage/book_progress_sync.dart';
+import 'package:legado_md3/help/storage/shibboleth.dart';
 import 'package:legado_md3/help/web/web_service.dart';
 import 'package:legado_md3/ui/book/epub/local_book_import_helper.dart';
 import 'package:legado_md3/ui/book/search/search_screen.dart';
@@ -190,19 +191,43 @@ class BootstrapService {
     nb.getInitialProcessText().then((t) => route(t));
   }
 
- /// 剪贴板口令导入（：#L: 前缀 → 分类型导入 → 清剪贴板）。
+ /// 剪贴板口令导入（#L: 前缀 → 解口令/兼容旧格式 → 分类型导入 → 清剪贴板）。
   Future<void> _readClipboardShibboleth() async {
     try {
       final data = await Clipboard.getData(Clipboard.kTextPlain);
       final text = data?.text?.trim() ?? '';
-      if (!text.startsWith('#L:')) return;
-      final body = text.substring(3).trim();
+      if (!text.startsWith(Shibboleth.prefix)) return;
+      final body = text.substring(Shibboleth.prefix.length).trim();
       if (body.isEmpty) return;
-      await DeepLinkService.instance.importRaw(body);
+
+      final payload = Shibboleth.tryParse(body);
+      if (payload != null) {
+        // 新格式：带类型标记与有效期的混淆口令，用统一类型名还原。
+        if (payload.isExpired) {
+          _tipShibboleth('分享口令已过期');
+        } else {
+          await DeepLinkService.instance.importRaw(
+            payload.url,
+            type: payload.importType,
+          );
+        }
+      } else {
+        // 兼容旧格式：body 直接是 URL 或 JSON。
+        await DeepLinkService.instance.importRaw(body);
+      }
       await Clipboard.setData(const ClipboardData(text: ''));
     } catch (_) {
       // 桌面/测试无剪贴板：忽略
     }
+  }
+
+  void _tipShibboleth(String message) {
+    final ctx = appNavigatorKey.currentContext;
+    if (ctx == null) return;
+    try {
+      ScaffoldMessenger.of(ctx)
+          .showSnackBar(SnackBar(content: Text(message)));
+    } catch (_) {}
   }
 
   /// 启动期云进度拉取（WebDAV 单书进度由阅读页按需拉取，避免启动期遍历全书）。

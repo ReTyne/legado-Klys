@@ -1465,21 +1465,56 @@ class _BookshelfScreenState extends State<BookshelfScreen> {
                 child: _buildGroupTabs(provider))
             : null,
       ),
-      body: _isUpdating
-          ? const Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [CircularProgressIndicator(), SizedBox(height: AppSpacing.l), Text('正在更新...')]))
-          : books.isEmpty
-              ? AppEmptyState(
-                  icon: Icons.menu_book_outlined,
-                  title: '书架为空',
-                  message: '去搜索或发现页面添加书籍',
-                  action: FilledButton.icon(
-                    onPressed: () => Navigator.push(context,
-                        MaterialPageRoute(builder: (_) => const SearchScreen())),
-                    icon: const Icon(Icons.search_outlined),
-                    label: const Text('去搜索'),
-                  ),
-                )
-              : _wrapFastScroller(_buildBody(provider, books, layout)),
+      body: _withBackground(
+        _isUpdating
+            ? const Center(child: Column(mainAxisAlignment: MainAxisAlignment.center, children: [CircularProgressIndicator(), SizedBox(height: AppSpacing.l), Text('正在更新...')]))
+            : books.isEmpty
+                ? AppEmptyState(
+                    icon: Icons.menu_book_outlined,
+                    title: '书架为空',
+                    message: '去搜索或发现页面添加书籍',
+                    action: FilledButton.icon(
+                      onPressed: () => Navigator.push(context,
+                          MaterialPageRoute(builder: (_) => const SearchScreen())),
+                      icon: const Icon(Icons.search_outlined),
+                      label: const Text('去搜索'),
+                    ),
+                  )
+                : _wrapFastScroller(_buildBody(provider, books, layout)),
+      ),
+    );
+  }
+
+  /// 在书架内容下方铺一层背景图（主题管理页设置）。
+  /// 按当前主题明暗模式取日间/夜间模糊强度，强度为 0 时不加滤镜。
+  Widget _withBackground(Widget body) {
+    final path = AppPrefs.backgroundImage;
+    if (path.isEmpty) return body;
+    final dark = Theme.of(context).brightness == Brightness.dark;
+    final blurring = dark
+        ? AppPrefs.backgroundImageNightBlurring
+        : AppPrefs.backgroundImageBlurring;
+    Widget bg = Image.file(
+      File(path),
+      fit: BoxFit.cover,
+      width: double.infinity,
+      height: double.infinity,
+      errorBuilder: (_, __, ___) => const SizedBox.shrink(),
+    );
+    if (blurring > 0) {
+      bg = ImageFiltered(
+        imageFilter: ui.ImageFilter.blur(
+          sigmaX: blurring.toDouble(),
+          sigmaY: blurring.toDouble(),
+        ),
+        child: bg,
+      );
+    }
+    return Stack(
+      children: [
+        Positioned.fill(child: bg),
+        body,
+      ],
     );
   }
 

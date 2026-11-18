@@ -7,6 +7,7 @@ import 'package:legado_md3/data/model/book_chapter.dart';
 import 'package:legado_md3/data/model/book_source.dart';
 import 'package:legado_md3/data/model/book_source_part.dart';
 import 'package:legado_md3/constant/app_const.dart';
+import 'package:legado_md3/help/source/source_score.dart';
 import 'package:legado_md3/data/model/db_models.dart';
 import 'package:legado_md3/data/model/bookmark.dart';
 import 'package:legado_md3/data/model/read_record.dart';

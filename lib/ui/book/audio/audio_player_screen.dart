@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:legado_md3/data/model/book.dart';
 import 'package:legado_md3/data/model/book_chapter.dart';
@@ -536,6 +537,23 @@ class _AudioPlayerScreenState extends State<AudioPlayerScreen> {
     ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
   }
 
+  /// 当前正在播放的分段地址（控制器解析后的真实直链）。
+  String get _currentPlayUrl {
+    if (_segments.isEmpty) return '';
+    final i = _segIndex.clamp(0, _segments.length - 1);
+    return _segments[i].trim();
+  }
+
+  Future<void> _copyPlayUrl() async {
+    final url = _currentPlayUrl;
+    if (url.isEmpty) {
+      _toast('暂无播放地址');
+      return;
+    }
+    await Clipboard.setData(ClipboardData(text: url));
+    _toast('已复制播放地址');
+  }
+
   // ==================== 退出（后台继续播放 / 停止） ====================
 
   void _handlePop(bool didPop) {
@@ -627,12 +645,16 @@ class _AudioPlayerScreenState extends State<AudioPlayerScreen> {
                     setState(() => _backgroundPlay = nv);
                     await _persistBool(_prefBackground, nv);
                     break;
+                  case 'copyUrl':
+                    await _copyPlayUrl();
+                    break;
                 }
               },
               itemBuilder: (c) => [
                 const PopupMenuItem(value: 'rate', child: Text('播放倍速')),
                 const PopupMenuItem(value: 'skip', child: Text('跳过片头片尾')),
                 const PopupMenuItem(value: 'mini', child: Text('迷你悬浮窗')),
+                const PopupMenuItem(value: 'copyUrl', child: Text('复制播放地址')),
                 CheckedPopupMenuItem(
                   value: 'background',
                   checked: _backgroundPlay,
