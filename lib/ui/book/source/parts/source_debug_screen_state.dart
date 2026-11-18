@@ -33,6 +33,11 @@ class _SourceDebugScreenState extends State<SourceDebugScreen>
 
   // 页签：一键调试 / 分步调试 / 发现分类 / 请求响应 / 变量 / 原始源码
   late final TabController _tabController;
+  // 布局：默认 E 版一页式（搜索框 + 帮助示例 + 单一日志列表）；
+  // 打开「高级调试」后切到 K 版的 6 页签增强视图（功能一项不删）。
+  bool _advancedMode = false;
+  // E 版帮助示例区（默认隐藏，菜单「帮助」切换）
+  bool _showHelp = false;
   // 分步调试各步骤状态
   final List<_DebugStep> _steps = [];
   bool _stepRunning = false;
@@ -151,6 +156,103 @@ class _SourceDebugScreenState extends State<SourceDebugScreen>
   void _copyText(String text, String what) {
     Clipboard.setData(ClipboardData(text: text));
     _toast('已复制$what');
+  }
+
+  // ==================== E 版一页式布局支持 ====================
+
+  /// E 版帮助示例：点击后填入调试目标输入框。示例语义与阅读 App 一致。
+  static const List<(String label, String value)> _kHelpSamples = [
+    ('我的', '我的'),
+    ('系统', '系统'),
+    ('发现：系统::URL', '系统::http://'),
+    ('详情：书籍URL', 'https://'),
+    ('目录：++URL', '++https://'),
+    ('正文：--URL', '--https://'),
+  ];
+
+  /// 填入示例并聚焦输入（不立即执行，便于用户补全 URL）。
+  void _fillSample(String value) {
+    _keywordController.text = value;
+    _keywordController.selection =
+        TextSelection.fromPosition(TextPosition(offset: value.length));
+    _toast('已填入示例，可修改后点「开始调试」');
+  }
+
+  /// E 版帮助示例区（可点击 chip），背景与阅读 App 一致。
+  Widget _buildHelpSection() {
+    final cs = Theme.of(context).colorScheme;
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(
+          AppSpacing.m, AppSpacing.s, AppSpacing.m, AppSpacing.m),
+      color: cs.surfaceContainerLowest,
+      child: Wrap(
+        spacing: 8,
+        runSpacing: 4,
+        children: [
+          for (final (label, value) in _kHelpSamples)
+            ActionChip(
+              label: Text(label, style: const TextStyle(fontSize: 12)),
+              onPressed: (_running || _stepRunning || _exploreRunning)
+                  ? null
+                  : () => _fillSample(value),
+            ),
+        ],
+      ),
+    );
+  }
+
+  /// E 版菜单动作：查看某阶段原始源码（搜索/详情/目录/正文）。
+  String? _sourceOf(String phase) {
+    switch (phase) {
+      case 'search':
+        return _searchSrc;
+      case 'book':
+        return _bookSrc;
+      case 'toc':
+        return _tocSrc;
+      case 'content':
+        return _contentSrc;
+    }
+    return null;
+  }
+
+  /// 弹出某阶段源码查看器（E 版 menu_*_src 行为）：全屏可选文本 + 复制。
+  void _showSourceDialog(String phase, String title) {
+    final text = _sourceOf(phase);
+    if (text == null || text.isEmpty) {
+      _toast('尚未抓取到$title，请先执行调试');
+      return;
+    }
+    showDialog<void>(
+      context: context,
+      builder: (c) => AlertDialog(
+        title: Text(title),
+        content: SizedBox(
+          width: double.maxFinite,
+          height: MediaQuery.sizeOf(c).height * 0.6,
+          child: Scrollbar(
+            child: SingleChildScrollView(
+              child: SelectableText(text, style: const TextStyle(fontSize: 11)),
+            ),
+          ),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => _copyText(text, title), child: const Text('复制')),
+          TextButton(
+              onPressed: () => Navigator.pop(c), child: const Text('关闭')),
+        ],
+      ),
+    );
+  }
+
+  /// E 版「刷新发现」：清缓存后重新加载发现分类并切到高级视图。
+  Future<void> _menuRefreshExplore() async {
+    await _loadExploreKinds(refresh: true);
+    if (!mounted) return;
+    setState(() => _advancedMode = true);
+    _toast('发现分类已刷新（已进入高级调试）');
   }
 
   // ==================== 主动终止 / 超时 ====================
@@ -1998,6 +2100,7 @@ class _SourceDebugScreenState extends State<SourceDebugScreen>
   }
 
   @override
+  @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
@@ -2005,10 +2108,19 @@ class _SourceDebugScreenState extends State<SourceDebugScreen>
             maxLines: 1, overflow: TextOverflow.ellipsis),
         actions: [
           PopupMenuButton<String>(
-            icon: const Icon(Icons.share),
-            tooltip: '导出日志',
-            onSelected: _onExportAction,
+            tooltip: '菜单',
+            onSelected: _onMenuAction,
             itemBuilder: (_) => const [
+              PopupMenuItem(value: 'search_src', child: Text('搜索源码')),
+              PopupMenuItem(value: 'book_src', child: Text('详情源码')),
+              PopupMenuItem(value: 'toc_src', child: Text('目录源码')),
+              PopupMenuItem(value: 'content_src', child: Text('正文源码')),
+              PopupMenuDivider(),
+              PopupMenuItem(value: 'refresh_explore', child: Text('刷新发现')),
+              PopupMenuItem(value: 'help', child: Text('帮助')),
+              PopupMenuDivider(),
+              PopupMenuItem(value: 'advanced', child: Text('高级调试 / 返回')),
+              PopupMenuDivider(),
               PopupMenuItem(value: 'copy', child: Text('复制全部日志')),
               PopupMenuItem(value: 'share', child: Text('分享全部日志（纯文本）')),
               PopupMenuItem(value: 'file', child: Text('导出为 txt 文件')),
@@ -2042,6 +2154,7 @@ class _SourceDebugScreenState extends State<SourceDebugScreen>
       ),
       body: Column(
         children: [
+          // E 版 TitleBar 内嵌搜索框（view_search）
           Padding(
             padding: const EdgeInsets.all(AppSpacing.m),
             child: Row(
@@ -2053,8 +2166,7 @@ class _SourceDebugScreenState extends State<SourceDebugScreen>
                     textInputAction: TextInputAction.search,
                     onSubmitted: (_) => _runAll(),
                     decoration: const InputDecoration(
-                      labelText: '调试目标',
-                      hintText: '搜索词 / 详情URL / ++目录URL / --正文URL / 发现::URL',
+                      hintText: '调试地址 / 关键词（默认「我的」）',
                       border: OutlineInputBorder(),
                       isDense: true,
                       prefixIcon: Icon(Icons.search),
@@ -2087,75 +2199,175 @@ class _SourceDebugScreenState extends State<SourceDebugScreen>
               ],
             ),
           ),
+          // E 版帮助示例区（点菜单「帮助」切换）
+          if (_showHelp && !_advancedMode) _buildHelpSection(),
           if (_running || _stepRunning || _exploreRunning)
             LinearProgressIndicator(
               value: _running && _progress > 0 ? _progress : null,
               minHeight: 2,
             ),
-          // 页签：一键调试 / 分步调试 / 发现分类 / 请求响应 / 变量 / 原始源码
-          TabBar(
-            controller: _tabController,
-            isScrollable: true,
-            tabs: const [
-              Tab(text: '一键调试'),
-              Tab(text: '分步调试'),
-              Tab(text: '发现分类'),
-              Tab(text: '请求响应'),
-              Tab(text: '变量'),
-              Tab(text: '原始源码'),
-            ],
-          ),
           Expanded(
-            child: TabBarView(
-              controller: _tabController,
-              children: [
-                // 一键调试：统一日志输出
-                Container(
-                  color: Theme.of(context).colorScheme.surfaceContainerHighest,
-                  child: _logs.isEmpty
-                      ? const AppEmptyState(
-                          icon: Icons.terminal_outlined,
-                          title: '暂无调试日志',
-                          message: '输入关键词后点击「开始调试」',
-                        )
-                      : ListView.builder(
-                          padding: const EdgeInsets.all(10),
-                          itemCount: _logs.length,
-                          itemBuilder: (_, i) {
-                            final line = _logs[i];
-                            return Padding(
-                              padding: const EdgeInsets.symmetric(vertical: 1),
-                              child: SelectableText(
-                                line.text,
-                                style: TextStyle(
-                                  fontSize: 11.5,
-                                  height: 1.35,
-                                  color: _colorOf(line.level),
-                                  fontFamily: 'monospace',
-                                  fontWeight: line.level == _LogLevel.stage
-                                      ? FontWeight.bold
-                                      : FontWeight.normal,
-                                ),
-                              ),
-                            );
-                          },
-                        ),
-                ),
-                // 分步调试：每步单独执行 + 耗时 + URL/摘要
-                _buildStepView(),
-                // 发现分类：下拉选择 + 单独调试 / 完整链路
-                _buildExploreView(),
-                // 请求响应：状态码 / 耗时 / 请求地址 / 书源请求头
-                _buildNetworkView(),
-                // 变量：源变量 / 书籍变量临时编辑
-                _buildVariableView(),
-                // 原始源码：查看各阶段抓到的 HTML/JSON 原文（hex 自动解码）
-                _buildSourceView(),
-              ],
-            ),
+            child: _advancedMode
+                ? _buildAdvancedView()
+                : _buildELogView(),
           ),
         ],
       ),
     );
+  }
+
+  /// E 版单一日志列表（item_log：textIsSelectable + autoLink=web）。
+  Widget _buildELogView() {
+    final cs = Theme.of(context).colorScheme;
+    return Stack(
+      children: [
+        Container(
+          color: cs.surfaceContainerHighest,
+          child: _logs.isEmpty
+              ? Center(
+                  child: Padding(
+                    padding: const EdgeInsets.all(AppSpacing.m),
+                    child: Text(
+                      '输入调试地址或关键词后点击「开始调试」。\n'
+                      '试试「我的」「系统」，或点右上角菜单「帮助」查看示例。',
+                      textAlign: TextAlign.center,
+                      style: TextStyle(
+                          fontSize: 13, color: cs.onSurfaceVariant),
+                    ),
+                  ),
+                )
+              : ListView.builder(
+                  padding: const EdgeInsets.all(AppSpacing.m),
+                  itemCount: _logs.length,
+                  itemBuilder: (_, i) {
+                    final line = _logs[i];
+                    return Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 1),
+                      child: SelectableText.rich(
+                        TextSpan(
+                          text: line.text,
+                          style: TextStyle(
+                            fontSize: 12,
+                            height: 1.4,
+                            color: _colorOf(line.level),
+                            fontWeight: line.level == _LogLevel.stage
+                                ? FontWeight.bold
+                                : FontWeight.normal,
+                          ),
+                          recognizer: null,
+                        ),
+                      ),
+                    );
+                  },
+                ),
+        ),
+        // E 版 RotateLoading：36dp 居中
+        if (_running || _stepRunning || _exploreRunning)
+          Center(
+            child: Container(
+              width: 36,
+              height: 36,
+              padding: const EdgeInsets.all(6),
+              decoration: BoxDecoration(
+                color: cs.surface.withOpacity(0.8),
+                borderRadius: BorderRadius.circular(18),
+              ),
+              child: const CircularProgressIndicator(strokeWidth: 2),
+            ),
+          ),
+      ],
+    );
+  }
+
+  /// K 版 6 页签增强视图（完整保留：一键/分步/发现/请求响应/变量/源码）。
+  Widget _buildAdvancedView() {
+    return Column(
+      children: [
+        TabBar(
+          controller: _tabController,
+          isScrollable: true,
+          tabs: const [
+            Tab(text: '一键调试'),
+            Tab(text: '分步调试'),
+            Tab(text: '发现分类'),
+            Tab(text: '请求响应'),
+            Tab(text: '变量'),
+            Tab(text: '原始源码'),
+          ],
+        ),
+        Expanded(
+          child: TabBarView(
+            controller: _tabController,
+            children: [
+              Container(
+                color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                child: _logs.isEmpty
+                    ? const AppEmptyState(
+                        icon: Icons.terminal_outlined,
+                        title: '暂无调试日志',
+                        message: '输入关键词后点击「开始调试」',
+                      )
+                    : ListView.builder(
+                        padding: const EdgeInsets.all(10),
+                        itemCount: _logs.length,
+                        itemBuilder: (_, i) {
+                          final line = _logs[i];
+                          return Padding(
+                            padding: const EdgeInsets.symmetric(vertical: 1),
+                            child: SelectableText(
+                              line.text,
+                              style: TextStyle(
+                                fontSize: 11.5,
+                                height: 1.35,
+                                color: _colorOf(line.level),
+                                fontFamily: 'monospace',
+                                fontWeight: line.level == _LogLevel.stage
+                                    ? FontWeight.bold
+                                    : FontWeight.normal,
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+              ),
+              _buildStepView(),
+              _buildExploreView(),
+              _buildNetworkView(),
+              _buildVariableView(),
+              _buildSourceView(),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  /// 菜单统一处理：E 版源码/刷新/帮助 + K 版导出/高级切换。
+  void _onMenuAction(String action) {
+    switch (action) {
+      case 'search_src':
+        _showSourceDialog('search', '搜索源码');
+        break;
+      case 'book_src':
+        _showSourceDialog('book', '详情源码');
+        break;
+      case 'toc_src':
+        _showSourceDialog('toc', '目录源码');
+        break;
+      case 'content_src':
+        _showSourceDialog('content', '正文源码');
+        break;
+      case 'refresh_explore':
+        _menuRefreshExplore();
+        break;
+      case 'help':
+        setState(() => _showHelp = !_showHelp);
+        break;
+      case 'advanced':
+        setState(() => _advancedMode = !_advancedMode);
+        break;
+      default:
+        _onExportAction(action);
+    }
   }
 }

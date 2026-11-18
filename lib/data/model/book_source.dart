@@ -77,6 +77,11 @@ class BookSource implements JsSource {
   @override
   String? variable;
 
+  /// 未知扩展字段透传：社区书源常携带模型未显式声明的字段（如
+  /// httpUserAgent / _conflux_version / 自定义元数据）。导入时原样保留，
+  /// 导出/分享时回写，保证 fromJson → toJson 往返零丢失。
+  Map<String, dynamic> extraFields;
+
   // ---- JsSource 适配 ----
   @override
   String get jsUrl => bookSourceUrl;
@@ -146,7 +151,8 @@ class BookSource implements JsSource {
     this.variableComment,
     this.jsLib,
     this.variable,
-  });
+    Map<String, dynamic>? extraFields,
+  }) : extraFields = extraFields ?? const <String, dynamic>{};
 
   /// 从JSON Map创建书源（兼容原版格式）
   factory BookSource.fromJson(Map<String, dynamic> json) {
@@ -172,23 +178,23 @@ class BookSource implements JsSource {
       weight: json['weight'] is int
           ? json['weight']
           : int.tryParse(json['weight']?.toString() ?? '0') ?? 0,
-      header: json['header'],
-      loginUrl: json['loginUrl'],
-      loginUi: json['loginUi'],
-      loginCheckJs: json['loginCheckJs'],
-      bookUrlPattern: json['bookUrlPattern'],
-      charset: json['charset'],
-      coverDecodeJs: json['coverDecodeJs'],
+      header: _asRuleString(json['header']),
+      loginUrl: _asRuleString(json['loginUrl']),
+      loginUi: _asRuleString(json['loginUi']),
+      loginCheckJs: _asRuleString(json['loginCheckJs']),
+      bookUrlPattern: _asRuleString(json['bookUrlPattern']),
+      charset: _asRuleString(json['charset']),
+      coverDecodeJs: _asRuleString(json['coverDecodeJs']),
       eventListener: json['eventListener'] ?? false,
       callBackJs: json['callBackJs'] ?? '',
       customButton: json['customButton'] ?? false,
       enabledCookieJar: json['enabledCookieJar'] ?? true,
       concurrentRate: json['concurrentRate']?.toString(),
       homepageModules: json['homepageModules'],
-      searchUrl: json['searchUrl'],
-      checkKeyWord: json['checkKeyWord'],
-      exploreUrl: json['exploreUrl'],
-      exploreScreen: json['exploreScreen'],
+      searchUrl: _asRuleString(json['searchUrl']),
+      checkKeyWord: _asRuleString(json['checkKeyWord']),
+      exploreUrl: _asRuleString(json['exploreUrl']),
+      exploreScreen: _asRuleString(json['exploreScreen']),
       ruleSearch: _parseRule(json['ruleSearch']),
       ruleExplore: _parseRule(json['ruleExplore']),
       ruleBookInfo: _parseRule(json['ruleBookInfo']),
@@ -196,24 +202,82 @@ class BookSource implements JsSource {
       ruleContent: _parseRule(json['ruleContent']),
       ruleReview: _parseRule(json['ruleReview']),
       ruleImage: _parseRule(json['ruleImage']),
-      rulePut: json['rulePut'],
-      ruleGet: json['ruleGet'],
-      variableComment: json['variableComment'],
-      jsLib: json['jsLib'],
-      variable: json['variable'],
+      rulePut: _asRuleString(json['rulePut']),
+      ruleGet: _asRuleString(json['ruleGet']),
+      variableComment: _asRuleString(json['variableComment']),
+      jsLib: _asRuleString(json['jsLib']),
+      variable: _asRuleString(json['variable']),
+      extraFields: _collectExtra(json),
     );
+  }
+
+  /// 规则/脚本文本字段有时以 JSON 对象/数组形态出现在社区书源里（如
+  /// header 直接写成对象），统一转为 JSON 字符串，避免强转崩溃。
+  static String? _asRuleString(dynamic v) {
+    if (v == null) return null;
+    if (v is String) return v;
+    if (v is Map || v is List) return jsonEncode(v);
+    return v.toString();
   }
 
   static Map<String, dynamic>? _parseRule(dynamic rule) {
     if (rule == null) return null;
     if (rule is Map<String, dynamic>) return rule;
+    if (rule is Map) return Map<String, dynamic>.from(rule);
     if (rule is String) {
       try {
         final decoded = jsonDecode(rule);
         if (decoded is Map<String, dynamic>) return decoded;
       } catch (_) {}
     }
+    // 空列表 / 其他形态：规约成空规则 Map，引擎按「无规则」处理。
+    if (rule is List && rule.isEmpty) return <String, dynamic>{};
     return null;
+  }
+
+  /// 模型未显式声明的键原样收集（含自定义元数据），供导出时回写。
+  static const Set<String> _knownKeys = {
+    'bookSourceUrl', 'bookSourceName', 'bookSourceGroup', 'bookSourceType',
+    'bookSourceComment', 'lastUpdateTime', 'enabled', 'enabledExplore',
+    'customOrder', 'respondTime', 'weight', 'header', 'loginUrl', 'loginUi',
+    'loginCheckJs', 'bookUrlPattern', 'charset', 'coverDecodeJs',
+    'eventListener', 'callBackJs', 'customButton', 'enabledCookieJar',
+    'concurrentRate', 'homepageModules', 'searchUrl', 'checkKeyWord',
+    'exploreUrl', 'exploreScreen', 'ruleSearch', 'ruleExplore', 'ruleBookInfo',
+    'ruleToc', 'ruleContent', 'ruleReview', 'ruleImage', 'rulePut', 'ruleGet',
+    'variableComment', 'jsLib', 'variable',
+  };
+
+  static Map<String, dynamic> _collectExtra(Map<String, dynamic> json) {
+    final extra = <String, dynamic>{};
+    for (final entry in json.entries) {
+      final k = entry.key;
+      final v = entry.value;
+      if (!_knownKeys.contains(k)) {
+        extra[k] = v; // 未知键原样
+        continue;
+      }
+      // 已知键若原始形态与模型规范化后的形态不同，也保留原值，
+      // 使 toJson 能无损还原原版书源格式（分享/导入往返一致）。
+      if (k == 'ruleSearch' || k == 'ruleExplore' || k == 'ruleBookInfo' ||
+          k == 'ruleToc' || k == 'ruleContent' || k == 'ruleReview' ||
+          k == 'ruleImage') {
+        final normalized = _parseRule(v);
+        if (normalized == null ||
+            (v is List && v.isEmpty) ||
+            v is String) {
+          extra[k] = v; // 空数组 / JSON字符串形态 → 保留原始
+        }
+      } else if (k == 'header' || k == 'loginUrl' || k == 'loginUi' ||
+          k == 'loginCheckJs' || k == 'bookUrlPattern' || k == 'charset' ||
+          k == 'coverDecodeJs' || k == 'rulePut' || k == 'ruleGet' ||
+          k == 'variableComment' || k == 'jsLib' || k == 'variable' ||
+          k == 'searchUrl' || k == 'checkKeyWord' || k == 'exploreUrl' ||
+          k == 'exploreScreen') {
+        if (v is Map || v is List) extra[k] = v; // 非字符串形态 → 保留原始
+      }
+    }
+    return Map.unmodifiable(extra);
   }
 
   /// 转为JSON Map（导出/分享用）
@@ -259,6 +323,8 @@ class BookSource implements JsSource {
         'variableComment': variableComment,
         'jsLib': jsLib,
         'variable': variable,
+        // 未知扩展字段原样回写（键集合与上面已知字段互斥，无覆盖风险）
+        ...extraFields,
       };
 
   String toJsonString() => jsonEncode(toJson());
