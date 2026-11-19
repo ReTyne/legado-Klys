@@ -1,0 +1,1230 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=5.0">
+            <!-- Google tag (gtag.js) -->
+        <script async src="https://www.googletagmanager.com/gtag/js?id=G-Z1QJNJMJ71"></script>
+        <script>
+            window.dataLayer = window.dataLayer || [];
+
+            function gtag() {
+                dataLayer.push(arguments);
+            }
+            gtag('js', new Date());
+            gtag('config', 'G-Z1QJNJMJ71');
+        </script>
+                            <script>
+            (function() {
+                var loaded = false;
+                var evts = ['scroll', 'mousemove', 'touchstart', 'click', 'keydown'];
+                var MIN_STAY = 5000;
+                var start = Date.now();
+
+                var pv = 0;
+                try {
+                    pv = parseInt(localStorage.getItem('ad_pv'), 10) || 0;
+                    if (pv < 99) localStorage.setItem('ad_pv', String(pv + 1));
+                    pv++;
+                } catch (e) {
+                    pv = 0;
+                }
+                if (pv < 2) return;
+
+                function loadAds(evt) {
+                    if (loaded) return;
+                    if (evt && evt.isTrusted === false) return;
+                    loaded = true;
+                    evts.forEach(function(e) {
+                        window.removeEventListener(e, loadAds, {
+                            passive: true
+                        });
+                    });
+                    var wait = MIN_STAY - (Date.now() - start);
+                    if (wait > 0) {
+                        setTimeout(injectAds, wait);
+                    } else {
+                        injectAds();
+                    }
+                }
+
+                function injectAds() {
+                    if (document.visibilityState === 'hidden') {
+                        document.addEventListener('visibilitychange', function onVisible() {
+                            if (document.visibilityState === 'hidden') return;
+                            document.removeEventListener('visibilitychange', onVisible);
+                            injectAds();
+                        });
+                        return;
+                    }
+                    var s = document.createElement('script');
+                    s.async = true;
+                    s.crossOrigin = 'anonymous';
+                    s.src = 'https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-1540402663488945';
+                    document.head.appendChild(s);
+                }
+                evts.forEach(function(e) {
+                    window.addEventListener(e, loadAds, {
+                        passive: true
+                    });
+                });
+            })();
+        </script>
+        <title>三体搜索结果_土豆小说网</title>
+    <meta name="keywords" content="土豆小说网,干净小说,全本小说,免费小说,创意小说,玄幻小说,都市小说,历史小说,网络小说,言情小说,原创小说,热门小说,精品小说,小说连载,小说排行榜,小说在线阅读,小说下载">
+    <meta name="description" content="土豆小说网是干净无弹窗的免费小说网站，海量双男主、双女主、言情、玄幻、都市、全本小说在线阅读，每日更新，手机电脑都能看，登录自动保存阅读进度。">
+    <meta property="og:title" content="三体搜索结果_土豆小说网">
+    <meta property="og:description" content="土豆小说网是干净无弹窗的免费小说网站，海量双男主、双女主、言情、玄幻、都市、全本小说在线阅读，每日更新，手机电脑都能看，登录自动保存阅读进度。">
+    <meta property="og:url" content="https://spudnovel.com/site/list?q=%E4%B8%89%E4%BD%93">
+    <meta property="og:type" content="website">
+                <link rel="canonical" href="https://spudnovel.com/site/list?page=1" /><meta name="robots" content="noindex, follow" />            <link rel="preload" href="/static/css/font-awesome.min.css" as="style" onload="this.onload=null;this.rel='stylesheet'">
+    <noscript>
+        <link rel="stylesheet" href="/static/css/font-awesome.min.css">
+    </noscript>
+    <link rel="apple-touch-icon" href="/apple-touch-icon.png" sizes="180x180">
+    <link rel="manifest" href="/manifest.json">
+    <meta name="theme-color" content="#8c4000">
+            <script type="text/javascript">
+            (function(c, l, a, r, i, t, y) {
+                c[a] = c[a] || function() {
+                    (c[a].q = c[a].q || []).push(arguments)
+                };
+                t = l.createElement(r);
+                t.async = 1;
+                t.src = "https://www.clarity.ms/tag/" + i;
+                y = l.getElementsByTagName(r)[0];
+                y.parentNode.insertBefore(t, y);
+            })(window, document, "clarity", "script", "tptl8lslb8");
+        </script>
+        <script type="text/javascript">
+        (function() {
+            try {
+                var html = document.documentElement;
+                // 向后兼容：旧版 eyeProtection=true 迁移到新主题键
+                if (localStorage.getItem('eyeProtection') === 'true' && !localStorage.getItem('reading_theme')) {
+                    localStorage.setItem('reading_theme', 'theme-night');
+                    localStorage.removeItem('eyeProtection');
+                }
+                // 恢复主题
+                var theme = localStorage.getItem('reading_theme') || '';
+                if (theme && ['theme-eye', 'theme-night', 'theme-blue', 'theme-brown'].indexOf(theme) !== -1) {
+                    html.classList.add(theme);
+                }
+                // 恢复字号
+                var fontSize = localStorage.getItem('fontSize') || '';
+                if (fontSize && ['font-smaller', 'font-bigger'].indexOf(fontSize) !== -1) {
+                    html.classList.add(fontSize);
+                }
+                // 恢复行距
+                var lh = localStorage.getItem('lineHeight') || '';
+                if (lh && ['lh-compact', 'lh-loose'].indexOf(lh) !== -1) {
+                    html.classList.add(lh);
+                }
+                // 恢复宽度
+                var rw = localStorage.getItem('readingWidth') || '';
+                if (rw && ['width-narrow', 'width-wide'].indexOf(rw) !== -1) {
+                    html.classList.add(rw);
+                }
+            } catch (e) {}
+        })();
+    </script>
+    <meta name="csrf-token" content="w6Gyrzv1QfjZ9Lof3P-tlKkXYrcZMe1SBQTxu4ketDW219bObKUYu7Og90y0m-zEkFAs-SpongdBQoSI3lTufQ==">
+    <style>
+        #search-suggest-box {
+            position: absolute;
+            top: 100%;
+            left: 0;
+            min-width: 220px;
+            max-width: 320px;
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            box-shadow: 0 4px 12px rgba(0, 0, 0, .15);
+            z-index: 9999;
+            overflow: hidden;
+        }
+
+        #search-suggest-box a.sg-item {
+            display: flex;
+            align-items: center;
+            padding: 8px 12px;
+            text-decoration: none;
+            color: var(--text);
+            border-bottom: 1px solid var(--border);
+        }
+
+        #search-suggest-box a.sg-item:last-child {
+            border-bottom: none;
+        }
+
+        #search-suggest-box a.sg-item:hover {
+            background: var(--bg);
+        }
+
+        #search-suggest-box .sg-name {
+            flex: 1;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            font-size: 13px;
+        }
+
+        #search-suggest-box .sg-tag {
+            font-size: 10px;
+            padding: 1px 5px;
+            border-radius: 3px;
+            margin-left: 6px;
+            flex-shrink: 0;
+            color: #fff;
+        }
+
+        #search-suggest-box .sg-tag-book {
+            background: var(--link);
+        }
+
+        #search-suggest-box .sg-tag-author {
+            background: #888;
+        }
+
+        @keyframes book-img-shimmer {
+            from {
+                background-position: -300px 0
+            }
+
+            to {
+                background-position: 300px 0
+            }
+        }
+
+        .book-img.img-loading {
+            background: linear-gradient(90deg, var(--border) 25%, var(--bg-card) 50%, var(--border) 75%);
+            background-size: 600px 100%;
+            animation: book-img-shimmer 1.2s infinite linear;
+            border-radius: 4px;
+        }
+
+        .book-img.img-loading img {
+            opacity: 0;
+        }
+    </style>
+    <link href="/static/css/bootstrap.min.css?v=1768268952" rel="stylesheet">
+<link href="/static/style.css?v=1782975707" rel="stylesheet">
+<link href="/static/css/responsive.css?v=1780746124" rel="stylesheet">
+<link href="/static/css/modern.css?v=1792470827" rel="stylesheet"></head>
+
+<body><a href="https://spudnovel.com/cdn-cgi/content?id=CcN06RsGBiEEvZ1yvwl6VTc8apEA_O.IWC0tp2oXJA0-1795064438.456501-1.2.1.1-b0J7aSptYFbLD1u.BUG_.T3yCaaBZmgeDAUMau0.FG24DRA0ZcLskQpNhKOhqqzn" aria-hidden="true" rel="nofollow noopener" style="display: none !important; visibility: hidden !important"></a>
+    <script src="/static/js/jquery-3.7.1.min.js?v=1768268952"></script>            <header id="header">
+            <div class="header-top mt20 mb20">
+                <div class="container">
+                    <div class="header-logo pull-left">
+                                                    <h1>
+                                <a title="土豆小说网" href="/">
+                                    土豆小说网
+                                </a>
+                            </h1>
+                                            </div>
+                    <div class="search-box pull-left">
+                                                    <a class="btn btn-success btn-xs" href="/site/login?returnUrl=%2Fsite%2Flist%3Fq%3D%25E4%25B8%2589%25E4%25BD%2593">登录</a>
+                            <a class="btn btn-success btn-xs" href="/site/register?returnUrl=%2Fsite%2Flist%3Fq%3D%25E4%25B8%2589%25E4%25BD%2593">注册</a>
+                            <a style="color:var(--link);margin-left:5px;" href="/site/forget?returnUrl=%2Fsite%2Flist%3Fq%3D%25E4%25B8%2589%25E4%25BD%2593">忘记密码?</a>
+                                            </div>
+                    <div class="search-box pull-right" style="position:relative;">
+                        <form method="get" action="/site/list">
+                            <input type="text" name="q" id="main-search-input" value="三体"
+                                class="text" autocomplete="off" placeholder="支持搜索作者、书籍名称...">
+                            <button aria-label="搜索" class="btn-search"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                    <circle cx="11" cy="11" r="8" />
+                                    <line x1="21" y1="21" x2="16.65" y2="16.65" />
+                                </svg></button>
+                        </form>
+                        <div id="search-suggest-box" style="display:none;"></div>
+                    </div>
+                    <div class="button visible-xs-block">
+                        <div class="menu-toggle">
+                            <span></span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <div class="header-menu">
+                                <ul class="container">
+                    <li class="">
+                        <a href="/">首页</a>
+                    </li>
+                    <li class="">
+                        <a href="/site/list?sex=2">男生小说</a>
+                    </li>
+                    <li class="">
+                        <a href="/site/list?sex=1">女生小说</a>
+                    </li>
+                    <li class="">
+                        <a href="/site/list?finish=1">全本小说</a>
+                    </li>
+                    <li class="active">
+                        <a href="/site/list">书库大全</a>
+                    </li>
+                    <li class="">
+                        <a href="/site/ranking">收藏榜单</a>
+                    </li>
+                    <li class="">
+                        <a href="/site/collect">我的书架</a>
+                    </li>
+                </ul>
+            </div>
+        </header>
+            
+    <style>
+    .empty-list-wrap {
+        padding: 40px 16px;
+        background: #f7f8fa;
+    }
+
+    .empty-list-box {
+        max-width: 680px;
+        margin: 0 auto;
+        padding: 32px 24px;
+        background: #fff;
+        border-radius: 12px;
+        box-shadow: 0 8px 24px rgba(0, 0, 0, .06);
+        text-align: center;
+    }
+
+    .empty-icon {
+        font-size: 48px;
+        margin-bottom: 16px;
+    }
+
+    .empty-title {
+        font-size: 22px;
+        color: #333;
+        margin-bottom: 12px;
+    }
+
+    .empty-desc {
+        font-size: 14px;
+        color: #666;
+        line-height: 1.6;
+        margin-bottom: 24px;
+    }
+
+    .search-recommend {
+        padding: 8px 16px 24px;
+    }
+
+    .search-miss-hint {
+        text-align: center;
+        font-size: 14px;
+        margin: 0 16px 16px;
+    }
+
+    .search-recommend h3 {
+        font-size: 16px;
+        color: var(--text);
+        margin: 0 0 12px;
+    }
+
+    .search-recommend-grid {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+        gap: 10px;
+    }
+
+    .search-recommend-item {
+        display: flex;
+        align-items: flex-start;
+        gap: 10px;
+        padding: 10px;
+        border: 1px solid var(--border);
+        border-radius: 10px;
+        background: var(--bg-card);
+        text-decoration: none !important;
+    }
+
+    .search-recommend-item img {
+        flex: none;
+        width: 60px;
+        height: 80px;
+        object-fit: cover;
+        border-radius: 4px;
+    }
+
+    .search-recommend-text {
+        display: flex;
+        flex-direction: column;
+        gap: 4px;
+        min-width: 0;
+    }
+
+    .search-recommend-name {
+        color: var(--link);
+        font-size: 14px;
+        overflow: hidden;
+        display: -webkit-box;
+        -webkit-line-clamp: 2;
+        -webkit-box-orient: vertical;
+    }
+
+    .search-recommend-author {
+        color: var(--text-meta);
+        font-size: 12px;
+    }
+</style>
+<section id="main">
+    <div class="container mt10">
+        <div class="filter">
+            <ul class="nav nav-pills">
+                <li
+                    class="active">
+                    <a href="/site/list?sex=all&q=%E4%B8%89%E4%BD%93">全部</a>
+                </li>
+                <li class="">
+                    <a href="/site/list?sex=2&q=%E4%B8%89%E4%BD%93">男生</a>
+                </li>
+                <li class="">
+                    <a href="/site/list?sex=1&q=%E4%B8%89%E4%BD%93">女生</a>
+                </li>
+            </ul>
+            <ul class="nav nav-pills">
+                <li class="active">
+                    <a href="/site/list?cid=all&q=%E4%B8%89%E4%BD%93">全部</a>
+                </li>
+                                        <li class=" ">
+                            <a
+                                href="/site/list?cid=1&q=%E4%B8%89%E4%BD%93">都市高武</a>
+                        </li>
+                                                            <li class=" ">
+                            <a
+                                href="/site/list?cid=4&q=%E4%B8%89%E4%BD%93">悬疑脑洞</a>
+                        </li>
+                                                            <li class=" ">
+                            <a
+                                href="/site/list?cid=12&q=%E4%B8%89%E4%BD%93">豪门总裁</a>
+                        </li>
+                                                            <li class=" ">
+                            <a
+                                href="/site/list?cid=19&q=%E4%B8%89%E4%BD%93">传统玄幻</a>
+                        </li>
+                                                            <li class=" ">
+                            <a
+                                href="/site/list?cid=24&q=%E4%B8%89%E4%BD%93">年代</a>
+                        </li>
+                                                            <li class=" ">
+                            <a
+                                href="/site/list?cid=34&q=%E4%B8%89%E4%BD%93">玄幻脑洞</a>
+                        </li>
+                                                            <li class=" ">
+                            <a
+                                href="/site/list?cid=46&q=%E4%B8%89%E4%BD%93">都市脑洞</a>
+                        </li>
+                                                            <li class=" ">
+                            <a
+                                href="/site/list?cid=49&q=%E4%B8%89%E4%BD%93">星光璀璨</a>
+                        </li>
+                                                            <li class=" ">
+                            <a
+                                href="/site/list?cid=54&q=%E4%B8%89%E4%BD%93">都市修真</a>
+                        </li>
+                                                            <li class=" ">
+                            <a
+                                href="/site/list?cid=58&q=%E4%B8%89%E4%BD%93">悬疑灵异</a>
+                        </li>
+                                                            <li
+                            class="hidden-cate hidden ">
+                            <a
+                                href="/site/list?cid=61&q=%E4%B8%89%E4%BD%93">宫斗宅斗</a>
+                        </li>
+                                                            <li
+                            class="hidden-cate hidden ">
+                            <a
+                                href="/site/list?cid=73&q=%E4%B8%89%E4%BD%93">抗战谍战</a>
+                        </li>
+                                                            <li
+                            class="hidden-cate hidden ">
+                            <a
+                                href="/site/list?cid=78&q=%E4%B8%89%E4%BD%93">历史脑洞</a>
+                        </li>
+                                                            <li
+                            class="hidden-cate hidden ">
+                            <a
+                                href="/site/list?cid=84&q=%E4%B8%89%E4%BD%93">历史古代</a>
+                        </li>
+                                                            <li
+                            class="hidden-cate hidden ">
+                            <a
+                                href="/site/list?cid=85&q=%E4%B8%89%E4%BD%93">都市日常</a>
+                        </li>
+                                                            <li
+                            class="hidden-cate hidden ">
+                            <a
+                                href="/site/list?cid=86&q=%E4%B8%89%E4%BD%93">职场婚恋</a>
+                        </li>
+                                                            <li
+                            class="hidden-cate hidden ">
+                            <a
+                                href="/site/list?cid=90&q=%E4%B8%89%E4%BD%93">玄幻言情</a>
+                        </li>
+                                                            <li
+                            class="hidden-cate hidden ">
+                            <a
+                                href="/site/list?cid=93&q=%E4%B8%89%E4%BD%93">都市种田</a>
+                        </li>
+                                                            <li
+                            class="hidden-cate hidden ">
+                            <a
+                                href="/site/list?cid=100&q=%E4%B8%89%E4%BD%93">种田</a>
+                        </li>
+                                                            <li
+                            class="hidden-cate hidden ">
+                            <a
+                                href="/site/list?cid=106&q=%E4%B8%89%E4%BD%93">科幻末世</a>
+                        </li>
+                                                            <li
+                            class="hidden-cate hidden ">
+                            <a
+                                href="/site/list?cid=114&q=%E4%B8%89%E4%BD%93">男频衍生</a>
+                        </li>
+                                                            <li
+                            class="hidden-cate hidden ">
+                            <a
+                                href="/site/list?cid=124&q=%E4%B8%89%E4%BD%93">现言脑洞</a>
+                        </li>
+                                                            <li
+                            class="hidden-cate hidden ">
+                            <a
+                                href="/site/list?cid=126&q=%E4%B8%89%E4%BD%93">游戏体育</a>
+                        </li>
+                                                            <li
+                            class="hidden-cate hidden ">
+                            <a
+                                href="/site/list?cid=129&q=%E4%B8%89%E4%BD%93">双男主</a>
+                        </li>
+                                                            <li
+                            class="hidden-cate hidden ">
+                            <a
+                                href="/site/list?cid=130&q=%E4%B8%89%E4%BD%93">古言脑洞</a>
+                        </li>
+                                                            <li
+                            class="hidden-cate hidden ">
+                            <a
+                                href="/site/list?cid=133&q=%E4%B8%89%E4%BD%93">动漫衍生</a>
+                        </li>
+                                                            <li
+                            class="hidden-cate hidden ">
+                            <a
+                                href="/site/list?cid=140&q=%E4%B8%89%E4%BD%93">战神赘婿</a>
+                        </li>
+                                                            <li
+                            class="hidden-cate hidden ">
+                            <a
+                                href="/site/list?cid=144&q=%E4%B8%89%E4%BD%93">青春甜宠</a>
+                        </li>
+                                                            <li
+                            class="hidden-cate hidden ">
+                            <a
+                                href="/site/list?cid=172&q=%E4%B8%89%E4%BD%93">快穿</a>
+                        </li>
+                                                            <li
+                            class="hidden-cate hidden ">
+                            <a
+                                href="/site/list?cid=201&q=%E4%B8%89%E4%BD%93">民国言情</a>
+                        </li>
+                                                            <li
+                            class="hidden-cate hidden ">
+                            <a
+                                href="/site/list?cid=222&q=%E4%B8%89%E4%BD%93">都市生活</a>
+                        </li>
+                                                            <li
+                            class="hidden-cate hidden ">
+                            <a
+                                href="/site/list?cid=233&q=%E4%B8%89%E4%BD%93">女频衍生</a>
+                        </li>
+                                                            <li
+                            class="hidden-cate hidden ">
+                            <a
+                                href="/site/list?cid=234&q=%E4%B8%89%E4%BD%93">双女主</a>
+                        </li>
+                                                            <li
+                            class="hidden-cate hidden ">
+                            <a
+                                href="/site/list?cid=668&q=%E4%B8%89%E4%BD%93">先婚后爱</a>
+                        </li>
+                                                            <li
+                            class="hidden-cate hidden ">
+                            <a
+                                href="/site/list?cid=671&q=%E4%B8%89%E4%BD%93">其他</a>
+                        </li>
+                                                            <li
+                            class="hidden-cate hidden ">
+                            <a
+                                href="/site/list?cid=677&q=%E4%B8%89%E4%BD%93">女频悬疑</a>
+                        </li>
+                                                            <li
+                            class="hidden-cate hidden ">
+                            <a
+                                href="/site/list?cid=680&q=%E4%B8%89%E4%BD%93">东方仙侠</a>
+                        </li>
+                                                            <li
+                            class="hidden-cate hidden ">
+                            <a
+                                href="/site/list?cid=681&q=%E4%B8%89%E4%BD%93">西方奇幻</a>
+                        </li>
+                                                            <li
+                            class="hidden-cate hidden ">
+                            <a
+                                href="/site/list?cid=683&q=%E4%B8%89%E4%BD%93">古风世情</a>
+                        </li>
+                                                            <li
+                            class="hidden-cate hidden ">
+                            <a
+                                href="/site/list?cid=692&q=%E4%B8%89%E4%BD%93">历史人物</a>
+                        </li>
+                                                            <li
+                            class="hidden-cate hidden ">
+                            <a
+                                href="/site/list?cid=693&q=%E4%B8%89%E4%BD%93">精品小说</a>
+                        </li>
+                                                            <li
+                            class="hidden-cate hidden ">
+                            <a
+                                href="/site/list?cid=694&q=%E4%B8%89%E4%BD%93">武侠小说</a>
+                        </li>
+                                                            <li
+                            class="hidden-cate hidden ">
+                            <a
+                                href="/site/list?cid=695&q=%E4%B8%89%E4%BD%93">政治人物</a>
+                        </li>
+                                                            <li
+                            class="hidden-cate hidden ">
+                            <a
+                                href="/site/list?cid=696&q=%E4%B8%89%E4%BD%93">战争军旅</a>
+                        </li>
+                                                            <li
+                            class="hidden-cate hidden ">
+                            <a
+                                href="/site/list?cid=697&q=%E4%B8%89%E4%BD%93">情感小说</a>
+                        </li>
+                                                            <li
+                            class="hidden-cate hidden ">
+                            <a
+                                href="/site/list?cid=700&q=%E4%B8%89%E4%BD%93">国内影视</a>
+                        </li>
+                                                            <li
+                            class="hidden-cate hidden ">
+                            <a
+                                href="/site/list?cid=702&q=%E4%B8%89%E4%BD%93">绘画</a>
+                        </li>
+                                                            <li
+                            class="hidden-cate hidden ">
+                            <a
+                                href="/site/list?cid=704&q=%E4%B8%89%E4%BD%93">文学经典</a>
+                        </li>
+                                                            <li
+                            class="hidden-cate hidden ">
+                            <a
+                                href="/site/list?cid=706&q=%E4%B8%89%E4%BD%93">家庭育儿</a>
+                        </li>
+                                                            <li
+                            class="hidden-cate hidden ">
+                            <a
+                                href="/site/list?cid=707&q=%E4%B8%89%E4%BD%93">童书童话</a>
+                        </li>
+                                                            <li
+                            class="hidden-cate hidden ">
+                            <a
+                                href="/site/list?cid=708&q=%E4%B8%89%E4%BD%93">玄幻小说</a>
+                        </li>
+                                                            <li
+                            class="hidden-cate hidden ">
+                            <a
+                                href="/site/list?cid=710&q=%E4%B8%89%E4%BD%93">励志提升</a>
+                        </li>
+                                                            <li
+                            class="hidden-cate hidden ">
+                            <a
+                                href="/site/list?cid=712&q=%E4%B8%89%E4%BD%93">教育学习</a>
+                        </li>
+                                                            <li
+                            class="hidden-cate hidden ">
+                            <a
+                                href="/site/list?cid=713&q=%E4%B8%89%E4%BD%93">基础教育</a>
+                        </li>
+                                                            <li
+                            class="hidden-cate hidden ">
+                            <a
+                                href="/site/list?cid=714&q=%E4%B8%89%E4%BD%93">生活百科</a>
+                        </li>
+                                                            <li
+                            class="hidden-cate hidden ">
+                            <a
+                                href="/site/list?cid=718&q=%E4%B8%89%E4%BD%93">养生健康</a>
+                        </li>
+                                                            <li
+                            class="hidden-cate hidden ">
+                            <a
+                                href="/site/list?cid=719&q=%E4%B8%89%E4%BD%93">养生</a>
+                        </li>
+                                                            <li
+                            class="hidden-cate hidden ">
+                            <a
+                                href="/site/list?cid=721&q=%E4%B8%89%E4%BD%93">医学</a>
+                        </li>
+                                                            <li
+                            class="hidden-cate hidden ">
+                            <a
+                                href="/site/list?cid=725&q=%E4%B8%89%E4%BD%93">传统文化</a>
+                        </li>
+                                                                        <li id="more">
+                        <a href="#">更多...</a>
+                    </li>
+                            </ul>
+            <ul class="nav nav-pills">
+                <li
+                    class="active">
+                    <a href="/site/list?finish=all&q=%E4%B8%89%E4%BD%93">全部</a>
+                </li>
+                <li class="">
+                    <a href="/site/list?finish=0&q=%E4%B8%89%E4%BD%93">连载中</a>
+                </li>
+                <li class="">
+                    <a href="/site/list?finish=1&q=%E4%B8%89%E4%BD%93">已完结</a>
+                </li>
+            </ul>
+            <ul class="nav nav-pills">
+                <li
+                    class="active">
+                    <a href="/site/list?x=all&d=all&q=%E4%B8%89%E4%BD%93">全部</a>
+                </li>
+                <li class="">
+                    <a href="/site/list?x=30&d=0&q=%E4%B8%89%E4%BD%93">30万以下</a>
+                </li>
+                <li class="">
+                    <a href="/site/list?x=50&d=30&q=%E4%B8%89%E4%BD%93">30-50万</a>
+                </li>
+                <li class="">
+                    <a href="/site/list?x=100&d=50&q=%E4%B8%89%E4%BD%93">50-100万</a>
+                </li>
+                <li class="">
+                    <a href="/site/list?x=200&d=100&q=%E4%B8%89%E4%BD%93">100-200万</a>
+                </li>
+                <li class="">
+                    <a href="/site/list?x=100000&d=200&q=%E4%B8%89%E4%BD%93">200万以上</a>
+                </li>
+            </ul>
+        </div>
+        <div class="section1 inner">
+            <h2>所有书籍</h2>
+            <ul>
+                                    <li>
+                        <div class="book-img">
+                            <a href="/site/detail?id=5302" target="_blank">
+                                                                    <img width="75" height="100" loading="lazy" alt="让你当面壁者：你反手投靠三体？" src="/resource/book/2025/06/14/74e41ace7cb45b30c3c2220da3e5a70b">
+                                                            </a>
+                        </div>
+                        <div class="book-info">
+                            <h3 style="font-size: 14px;"><a
+                                    href="/site/detail?id=5302" target="_blank">《让你当面壁者：你反手投靠三体？》</a>
+                            </h3>
+                            <p class="author">作者：<a href="/site/list?q=%E6%96%B9%E8%8E%AB%E6%B3%8A">方莫泊</a></p>
+                            <p class="author">
+                                状态：<a href="/site/list?finish=0"class="btn-info btn-xs">连载中</a>                                                            </p>
+                            <p class="author">
+                                更新：2026-11-14 00:31:38                            </p>
+                            <p class="author">最新：<a href="/site/chapter?id=13534624">第515章 大戏</a></p>
+                            <p class="author">
+                                <span style="color: #8c4000;"
+                                    class="author">127万字</span>
+                                                                        <span style="color: #0062ff;" class="type"><a href="/site/list?cid=3">穿越</a></span>
+                                                                        <span style="color: #0062ff;" class="type"><a href="/site/list?cid=35">系统</a></span>
+                                                                        <span style="color: #0062ff;" class="type"><a href="/site/list?cid=74">同人</a></span>
+                                                                        <span style="color: #0062ff;" class="type"><a href="/site/list?cid=133">动漫衍生</a></span>
+                                                                        <span style="color: #0062ff;" class="type"><a href="/site/list?cid=134">二次元</a></span>
+                                                                        <span style="color: #0062ff;" class="type"><a class="hidden-xs"
+                                                href="/site/list?cid=136">衍生</a></span>
+                                                                </p>
+                            <p class="author">
+    <span style="font-size:13px;color:var(--text);">读者评分：</span>
+        <i class="fa fa-star"
+       style="font-size:14px;color:#f0a500;margin:0 1px;"></i>
+        <i class="fa fa-star"
+       style="font-size:14px;color:#f0a500;margin:0 1px;"></i>
+        <i class="fa fa-star"
+       style="font-size:14px;color:#f0a500;margin:0 1px;"></i>
+        <i class="fa fa-star-o"
+       style="font-size:14px;color:var(--border);margin:0 1px;"></i>
+        <i class="fa fa-star-o"
+       style="font-size:14px;color:var(--border);margin:0 1px;"></i>
+        <span style="font-size:13px;color:var(--text);margin-left:4px;">3.1分 (310人评分)</span>
+</p>
+                            <p style="float: left;">简介：【不熟悉三体世界观也可放心食用】【轻松➕少量系统➕不无脑】
+林璇穿越到了三体世界，并意外的成为了继罗辑之后的第五位面壁者。
+但令他蛋疼的是，自己却获得了一个极其冤种的系统，需要收集他人对自己的震惊值，来向系统兑换各类物品。
+而林璇很快就想到了一个收集震惊值的最快方式。
+他选择直接投靠了三体人！
+这一操作，既搞懵了对手，也搞懵了队友、
+联合国秘书长：不是，让你当面壁者，你怎么加入ETO了？
+史强：坏了，我再不收网，这小子快成降临派领袖了！
+罗辑：不是哥们，你到底是哪边的啊，你都快搞死三个面壁者了，不能连我也要弄死吧？
+PDC：怎么办，他这到底是在执行面壁计划，还是真的背叛了？</p>
+                        </div>
+                    </li>
+                                    <li>
+                        <div class="book-img">
+                            <a href="/site/detail?id=11515" target="_blank">
+                                                                    <img width="75" height="100" loading="lazy" alt="诸天：奥特面壁者，三体你慌啥？" src="/resource/book/2026/01/28/4f22feb4a4a749bbad3ae941a3eac2c3">
+                                                            </a>
+                        </div>
+                        <div class="book-info">
+                            <h3 style="font-size: 14px;"><a
+                                    href="/site/detail?id=11515" target="_blank">《诸天：奥特面壁者，三体你慌啥？》</a>
+                            </h3>
+                            <p class="author">作者：<a href="/site/list?q=%E6%AD%A3%E5%9C%A8%E5%96%9D%E6%A9%99%E6%B1%81">正在喝橙汁</a></p>
+                            <p class="author">
+                                状态：<a href="/site/list?finish=0"class="btn-info btn-xs">连载中</a>                                                            </p>
+                            <p class="author">
+                                更新：2026-04-23 20:55:28                            </p>
+                            <p class="author">最新：<a href="/site/chapter?id=10392092">第129章 迪迦——结束。</a></p>
+                            <p class="author">
+                                <span style="color: #8c4000;"
+                                    class="author">49万字</span>
+                                                                        <span style="color: #0062ff;" class="type"><a href="/site/list?cid=3">穿越</a></span>
+                                                                        <span style="color: #0062ff;" class="type"><a href="/site/list?cid=36">诸天万界</a></span>
+                                                                        <span style="color: #0062ff;" class="type"><a href="/site/list?cid=74">同人</a></span>
+                                                                        <span style="color: #0062ff;" class="type"><a href="/site/list?cid=114">男频衍生</a></span>
+                                                                        <span style="color: #0062ff;" class="type"><a href="/site/list?cid=134">二次元</a></span>
+                                                                        <span style="color: #0062ff;" class="type"><a class="hidden-xs"
+                                                href="/site/list?cid=136">衍生</a></span>
+                                                                </p>
+                            <p class="author">
+    <span style="font-size:13px;color:var(--text);">读者评分：</span>
+        <i class="fa fa-star"
+       style="font-size:14px;color:#f0a500;margin:0 1px;"></i>
+        <i class="fa fa-star"
+       style="font-size:14px;color:#f0a500;margin:0 1px;"></i>
+        <i class="fa fa-star"
+       style="font-size:14px;color:#f0a500;margin:0 1px;"></i>
+        <i class="fa fa-star-o"
+       style="font-size:14px;color:var(--border);margin:0 1px;"></i>
+        <i class="fa fa-star-o"
+       style="font-size:14px;color:var(--border);margin:0 1px;"></i>
+        <span style="font-size:13px;color:var(--text);margin-left:4px;">3.5分 (159人评分)</span>
+</p>
+                            <p style="float: left;">简介：【三体】+【幕后】+【奥特宇宙】+【穿梭诸天】
+当奥特曼抛去特摄片经费的限制，出现在现实中，出现在不属于特摄的宇宙中，究竟会展现出什么样的实力？
+为了迪迦被借走了光，秦阳穿越到三体世界，获得新奥特曼的力量。
+但当他出了特摄片场，来到其他宇宙，却发现，原来你们都这么弱啊！
+三体世界：我只是碰一下，水滴怎么碎了？
+所有的明天：QU，你改造人类只是你的恶趣吗？我倒是有个人想找你，赛文！
+哥斯拉世界：行星哥斯拉？我只是一拳而已，你怎么睡了？
+崩铁宇宙：“白厄兄弟，你可以休息了，当人间再次陷入绝望，光之巨人将会屹立在大地——赛迦！”</p>
+                        </div>
+                    </li>
+                                    <li>
+                        <div class="book-img">
+                            <a href="/site/detail?id=12369" target="_blank">
+                                                                    <img width="75" height="100" loading="lazy" alt="超神：我靠系统抽爆三体科技" src="/resource/book/2026/01/28/d70fe47f78b111c8f236d41543d4579a">
+                                                            </a>
+                        </div>
+                        <div class="book-info">
+                            <h3 style="font-size: 14px;"><a
+                                    href="/site/detail?id=12369" target="_blank">《超神：我靠系统抽爆三体科技》</a>
+                            </h3>
+                            <p class="author">作者：<a href="/site/list?q=%E9%9B%BE%E5%B2%9B%E7%BA%B1">雾岛纱</a></p>
+                            <p class="author">
+                                状态：<a href="/site/list?finish=0"class="btn-info btn-xs">连载中</a>                                                            </p>
+                            <p class="author">
+                                更新：2026-05-07 14:56:03                            </p>
+                            <p class="author">最新：<a href="/site/chapter?id=10921134">第316章 第316章</a></p>
+                            <p class="author">
+                                <span style="color: #8c4000;"
+                                    class="author">104万字</span>
+                                                                        <span style="color: #0062ff;" class="type"><a href="/site/list?cid=3">穿越</a></span>
+                                                                        <span style="color: #0062ff;" class="type"><a href="/site/list?cid=35">系统</a></span>
+                                                                        <span style="color: #0062ff;" class="type"><a href="/site/list?cid=74">同人</a></span>
+                                                                        <span style="color: #0062ff;" class="type"><a href="/site/list?cid=133">动漫衍生</a></span>
+                                                                        <span style="color: #0062ff;" class="type"><a href="/site/list?cid=134">二次元</a></span>
+                                                                        <span style="color: #0062ff;" class="type"><a class="hidden-xs"
+                                                href="/site/list?cid=136">衍生</a></span>
+                                                                            <span style="color: #0062ff;" class="type"><a class="hidden-xs"
+                                                href="/site/list?cid=175">黑科技</a></span>
+                                                                </p>
+                            <p class="author">
+    <span style="font-size:13px;color:var(--text);">读者评分：</span>
+        <i class="fa fa-star"
+       style="font-size:14px;color:#f0a500;margin:0 1px;"></i>
+        <i class="fa fa-star"
+       style="font-size:14px;color:#f0a500;margin:0 1px;"></i>
+        <i class="fa fa-star"
+       style="font-size:14px;color:#f0a500;margin:0 1px;"></i>
+        <i class="fa fa-star"
+       style="font-size:14px;color:#f0a500;margin:0 1px;"></i>
+        <i class="fa fa-star-o"
+       style="font-size:14px;color:var(--border);margin:0 1px;"></i>
+        <span style="font-size:13px;color:var(--text);margin-left:4px;">4分 (367人评分)</span>
+</p>
+                            <p style="float: left;">简介：穿越超神宇宙，太一成为星河帝国帝君，绑定文明升级系统。别人靠基因造神，他偏要靠抽奖逆天改命！沙皇氢弹、自然选择号、智子阵列……三体黑科技随手抽来。面对高傲的天使、嗜血的恶魔，太一冷笑一声：“我的帝国，靠科技就能碾压诸神！”从蒸汽时代到星际文明，他以系统为翼，以科技为刃，在超神宇宙杀出一条属于星河帝国的霸权之路。</p>
+                        </div>
+                    </li>
+                                    <li>
+                        <div class="book-img">
+                            <a href="/site/detail?id=15814" target="_blank">
+                                                                    <img width="75" height="100" loading="lazy" alt="开局盘点M78，三体人吓脱水了" src="/resource/book/2026/01/29/dcea9e9fb65e066130c04e65da433695">
+                                                            </a>
+                        </div>
+                        <div class="book-info">
+                            <h3 style="font-size: 14px;"><a
+                                    href="/site/detail?id=15814" target="_blank">《开局盘点M78，三体人吓脱水了》</a>
+                            </h3>
+                            <p class="author">作者：<a href="/site/list?q=%E9%BB%84%E8%89%B2%E7%9A%84%E6%9C%BA%E6%A2%B0%E7%8C%AB">黄色的机械猫</a></p>
+                            <p class="author">
+                                状态：<a href="/site/list?finish=1"class="btn-success btn-xs">已完结</a>                                                            </p>
+                            <p class="author">
+                                更新：2026-07-12 21:20:35                            </p>
+                            <p class="author">最新：<a href="/site/chapter?id=11070797">第187章 十大文明，阿瑞斯铠甲文明盘点完毕！</a></p>
+                            <p class="author">
+                                <span style="color: #8c4000;"
+                                    class="author">55万字</span>
+                                                                        <span style="color: #0062ff;" class="type"><a href="/site/list?cid=35">系统</a></span>
+                                                                        <span style="color: #0062ff;" class="type"><a href="/site/list?cid=36">诸天万界</a></span>
+                                                                        <span style="color: #0062ff;" class="type"><a href="/site/list?cid=41">开局</a></span>
+                                                                        <span style="color: #0062ff;" class="type"><a href="/site/list?cid=48">直播</a></span>
+                                                                        <span style="color: #0062ff;" class="type"><a href="/site/list?cid=74">同人</a></span>
+                                                                        <span style="color: #0062ff;" class="type"><a class="hidden-xs"
+                                                href="/site/list?cid=110">星际</a></span>
+                                                                            <span style="color: #0062ff;" class="type"><a class="hidden-xs"
+                                                href="/site/list?cid=133">动漫衍生</a></span>
+                                                                            <span style="color: #0062ff;" class="type"><a class="hidden-xs"
+                                                href="/site/list?cid=136">衍生</a></span>
+                                                                            <span style="color: #0062ff;" class="type"><a class="hidden-xs"
+                                                href="/site/list?cid=199">游戏主播</a></span>
+                                                                            <span style="color: #0062ff;" class="type"><a class="hidden-xs"
+                                                href="/site/list?cid=239">轻小说</a></span>
+                                                                </p>
+                            <p class="author">
+    <span style="font-size:13px;color:var(--text);">读者评分：</span>
+        <i class="fa fa-star"
+       style="font-size:14px;color:#f0a500;margin:0 1px;"></i>
+        <i class="fa fa-star"
+       style="font-size:14px;color:#f0a500;margin:0 1px;"></i>
+        <i class="fa fa-star"
+       style="font-size:14px;color:#f0a500;margin:0 1px;"></i>
+        <i class="fa fa-star-o"
+       style="font-size:14px;color:var(--border);margin:0 1px;"></i>
+        <i class="fa fa-star-o"
+       style="font-size:14px;color:var(--border);margin:0 1px;"></i>
+        <span style="font-size:13px;color:var(--text);margin-left:4px;">3.8分 (357人评分)</span>
+</p>
+                            <p style="float: left;">简介：【奥特曼+三体+群星人联+Qu+达尔文事变+战锤+赛博坦】
+一道神秘光幕横空出世，照耀诸天万界。
+盘点宇宙十大神级文明！
+开局就是王炸——M78星云，奥特曼文明！
+所有三体人纷纷震惊，
+M78 星云？
+一个文明的坐标就这么轻而易举的暴露出来了？
+然而，这只是开胃小菜。
+不儿？这群巨人居然逢人便说来自M78星云，他们不清楚黑暗森林法则吗？
+不儿？这群巨人的居然特么徒手造太阳？！
+等离子火花塔，几十亿兆度光线，穿梭多元宇宙？原来他们奉行的是光明森林理论！
+这群巨人还挺有爱心的，居然帮我们三体人解决了太阳和乱纪元的问题，只是……
+这个名叫赛文的文官为什么有些不对劲，我们只是说了准备侵略地球人类而已。
+等等……能斩断水滴的冰斧头镖是什么鬼？一发干爆恒星的集束光线又是什么鬼？？
+窝草，人类是你们小弟你们早说啊！
+……
+当天幕曝光Qu之后，
+银河和黑暗路基艾尔彻底暴怒！
+路基艾尔：银河，吾让你于吾合体，你尔多聋，还是盐津虾？！
+随后，完全体银河路基艾尔降世，随手撕开时间线！
+战锤远征军，群星人联舰队，赛博坦钢铁洪流，奥特百亿地表全军集结！
+Qu瑟瑟发抖：“各位爱人王，你们知道的，我一向喜爱人类。”</p>
+                        </div>
+                    </li>
+                                    <li>
+                        <div class="book-img">
+                            <a href="/site/detail?id=21400" target="_blank">
+                                                                    <img width="75" height="100" loading="lazy" alt="全民公敌：我的灵娘是三体核武！" src="/resource/book/2026/03/03/cda9145b970a5ab6d0b9122d134f598e">
+                                                            </a>
+                        </div>
+                        <div class="book-info">
+                            <h3 style="font-size: 14px;"><a
+                                    href="/site/detail?id=21400" target="_blank">《全民公敌：我的灵娘是三体核武！》</a>
+                            </h3>
+                            <p class="author">作者：<a href="/site/list?q=%E7%A7%91%E5%AD%A6%E7%9A%84%E5%B0%BD%E5%A4%B4%E6%98%AF%E7%A5%9E%E5%AD%A6">科学的尽头是神学</a></p>
+                            <p class="author">
+                                状态：<a href="/site/list?finish=1"class="btn-success btn-xs">已完结</a>                                                            </p>
+                            <p class="author">
+                                更新：2026-10-18 23:52:07                            </p>
+                            <p class="author">最新：<a href="/site/chapter?id=10404377">第600章 全球环保大使！大结局！</a></p>
+                            <p class="author">
+                                <span style="color: #8c4000;"
+                                    class="author">127万字</span>
+                                                                        <span style="color: #0062ff;" class="type"><a href="/site/list?cid=1">都市高武</a></span>
+                                                                        <span style="color: #0062ff;" class="type"><a href="/site/list?cid=2">都市</a></span>
+                                                                        <span style="color: #0062ff;" class="type"><a href="/site/list?cid=3">穿越</a></span>
+                                                                        <span style="color: #0062ff;" class="type"><a href="/site/list?cid=41">开局</a></span>
+                                                                        <span style="color: #0062ff;" class="type"><a href="/site/list?cid=104">多女主</a></span>
+                                                                        <span style="color: #0062ff;" class="type"><a class="hidden-xs"
+                                                href="/site/list?cid=118">天才</a></span>
+                                                                            <span style="color: #0062ff;" class="type"><a class="hidden-xs"
+                                                href="/site/list?cid=186">国运</a></span>
+                                                                </p>
+                            <p class="author">
+    <span style="font-size:13px;color:var(--text);">读者评分：</span>
+        <i class="fa fa-star"
+       style="font-size:14px;color:#f0a500;margin:0 1px;"></i>
+        <i class="fa fa-star"
+       style="font-size:14px;color:#f0a500;margin:0 1px;"></i>
+        <i class="fa fa-star"
+       style="font-size:14px;color:#f0a500;margin:0 1px;"></i>
+        <i class="fa fa-star-o"
+       style="font-size:14px;color:var(--border);margin:0 1px;"></i>
+        <i class="fa fa-star-o"
+       style="font-size:14px;color:var(--border);margin:0 1px;"></i>
+        <span style="font-size:13px;color:var(--text);margin-left:4px;">3.9分 (78人评分)</span>
+</p>
+                            <p style="float: left;">简介：【多女+道法+无敌+不压实力+炸炸炸】我叫楚玄，一个正经的道士。
+别人觉醒的武灵是刀枪剑炮，我却在黑石集市花了1000块，买了一枚生锈的核弹！
+“老板，不响不要钱啊！”
+结果核弹炸出一个白丝蓝眸的极品机娘？！
+我给核弹娘刻画【神行符】。
+结果：灵娘的修长美腿上直接长出了白丝？
+我在核心刻画【清心咒】。
+结果：检测到洲际变轨？
+我：“？？？我养你们，你们拿我当靶心！”
+她微笑：“不，是靶心，也是核心。”
+“要么娶我，要么陪我殉爆，你选。”
+——道观上空，蘑菇云形状的爱心正在绽放。
+世人抬头：“道长，这波是字面意义上的‘爱你到炸’！”
+我掐指一算：卦象——“大吉，但·······。”
+【黑屏】
+【未完待爆】</p>
+                        </div>
+                    </li>
+                                    <li>
+                        <div class="book-img">
+                            <a href="/site/detail?id=23098" target="_blank">
+                                                                    <img width="75" height="100" loading="lazy" alt="三体：我还以为是全知域呢！" src="/resource/book/2026/10/16/f4ccfe918fae0c69e7c17644fa0ab2f2">
+                                                            </a>
+                        </div>
+                        <div class="book-info">
+                            <h3 style="font-size: 14px;"><a
+                                    href="/site/detail?id=23098" target="_blank">《三体：我还以为是全知域呢！》</a>
+                            </h3>
+                            <p class="author">作者：<a href="/site/list?q=%E8%89%BE%E6%96%AF%E8%8E%89">艾斯莉</a></p>
+                            <p class="author">
+                                状态：<a href="/site/list?finish=0"class="btn-info btn-xs">连载中</a>                                                            </p>
+                            <p class="author">
+                                更新：2026-11-19 00:47:10                            </p>
+                            <p class="author">最新：<a href="/site/chapter?id=13582502">第152章 实验？</a></p>
+                            <p class="author">
+                                <span style="color: #8c4000;"
+                                    class="author">31万字</span>
+                                                                        <span style="color: #0062ff;" class="type"><a href="/site/list?cid=3">穿越</a></span>
+                                                                        <span style="color: #0062ff;" class="type"><a href="/site/list?cid=35">系统</a></span>
+                                                                        <span style="color: #0062ff;" class="type"><a href="/site/list?cid=40">无女主</a></span>
+                                                                        <span style="color: #0062ff;" class="type"><a href="/site/list?cid=42">搞笑轻松</a></span>
+                                                                        <span style="color: #0062ff;" class="type"><a href="/site/list?cid=114">男频衍生</a></span>
+                                                                        <span style="color: #0062ff;" class="type"><a class="hidden-xs"
+                                                href="/site/list?cid=134">二次元</a></span>
+                                                                            <span style="color: #0062ff;" class="type"><a class="hidden-xs"
+                                                href="/site/list?cid=136">衍生</a></span>
+                                                                </p>
+                                                        <p style="float: left;">简介：【三体同人+无系统+无cp+稍微搞笑+想啥写啥+肯定不严谨】
+人生一向苦短，眼睛一闭一睁，或许就换了一个时间，一个地点，甚至一个世界。
+贺谛被一辆失控的大运撞倒在地，躺在血泊中闭上眼睛时，便是这样想的。
+再一睁眼——他躺在陌生的床上。
+坏消息：他穿越到了《三体》世界。
+更坏的消息：系统炸了。
+贺谛：……
+孤立无援只能等死了吗？
+事已至此……
+先睡觉吧。
+——————————
+主角一部分性格参考游戏《崩坏星穹铁道》的角色黑塔。
+因为作者自己的知识限制，文会偏向叙事，专业名词等会出现的比较少，文中的科学逻辑肯定也会有问题，再次道歉(深鞠躬)</p>
+                        </div>
+                    </li>
+                            </ul>
+            <div class="page-nav mt10">
+                            </div>
+        </div>
+    </div>
+</section>
+<script>
+    $(function() {
+        $('#more').click(function() {
+            let name = $(this).find('a').text();
+            if (name == '更多...') {
+                $('#more').find('a').text('收起');
+                $('.hidden-cate').removeClass('hidden');
+            } else {
+                $('#more').find('a').text('更多...');
+                $('.hidden-cate').addClass('hidden');
+            }
+        })
+    })
+</script>    <section id="footer" class="mt30">
+        <div class="friend-link container">
+        </div>
+        <div class="copy-right text-center">
+            <p style="padding: 0 5px;">Copyright © 2025 <a href="/" target="_blank">土豆小说网</a> <a href="/cdn-cgi/l/email-protection#bac9cacfded4d5ccdfd69c998c8e81ddd7dbd3d694d9d5d7">spudnovel&#64;gmail.com</a> All Rights Reserved</p>
+            <p style="padding:4px 5px 0;font-size:12px;">
+                <a href="/about" style="color:var(--text-meta);margin:0 8px;">关于我们</a>
+                <a href="/privacy-policy" style="color:var(--text-meta);margin:0 8px;">隐私政策</a>
+                <a href="/terms-of-service" style="color:var(--text-meta);margin:0 8px;">服务条款</a>
+                <a href="/contact" style="color:var(--text-meta);margin:0 8px;">联系我们</a>
+            </p>
+        </div>
+    </section>
+    <script data-cfasync="false" src="/cdn-cgi/scripts/5c5dd728/cloudflare-static/email-decode.min.js"></script><script>
+        $.ajaxSetup({
+            headers: {
+                'X-CSRF-Token': $('meta[name="csrf-token"]').attr('content')
+            }
+        });
+    </script>
+            <div id="gt-float" style="position:fixed;right:16px;top:40%;transform:translateY(-50%);z-index:999;">
+            <button id="gt-btn" type="button" title="切换主题" style="width:32px;height:32px;border-radius:50%;border:1px solid var(--border);background:var(--bg-card);cursor:pointer;font-size:16px;line-height:1;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 6px rgba(0,0,0,.2);padding:0;">🎨</button>
+            <div id="gt-panel" style="display:none;position:absolute;right:0;top:calc(100% + 6px);background:var(--bg-card);border:1px solid var(--border);border-radius:20px;box-shadow:0 2px 12px rgba(0,0,0,.2);padding:7px 10px;white-space:nowrap;align-items:center;gap:8px;">
+                <span class="gt-sw" data-theme="" style="display:inline-block;width:22px;height:22px;border-radius:50%;background:#f5f5f5;border:2px solid rgba(0,0,0,.1);cursor:pointer;vertical-align:middle;" title="默认白"></span>
+                <span class="gt-sw" data-theme="theme-eye" style="display:inline-block;width:22px;height:22px;border-radius:50%;background:#f5ede2;border:2px solid rgba(0,0,0,.1);cursor:pointer;vertical-align:middle;" title="护眼米黄"></span>
+                <span class="gt-sw" data-theme="theme-night" style="display:inline-block;width:22px;height:22px;border-radius:50%;background:#18191a;border:2px solid rgba(0,0,0,.1);cursor:pointer;vertical-align:middle;" title="夜间黑"></span>
+                <span class="gt-sw" data-theme="theme-blue" style="display:inline-block;width:22px;height:22px;border-radius:50%;background:#e8edf5;border:2px solid rgba(0,0,0,.1);cursor:pointer;vertical-align:middle;" title="淡蓝"></span>
+                <span class="gt-sw" data-theme="theme-brown" style="display:inline-block;width:22px;height:22px;border-radius:50%;background:#1e160e;border:2px solid rgba(0,0,0,.1);cursor:pointer;vertical-align:middle;" title="暖棕"></span>
+            </div>
+        </div>
+        <script>
+            (function() {
+                var btn = document.getElementById('gt-btn'),
+                    panel = document.getElementById('gt-panel');
+                var themes = ['theme-eye', 'theme-night', 'theme-blue', 'theme-brown'];
+
+                function cur() {
+                    var cl = document.documentElement.classList;
+                    for (var i = 0; i < themes.length; i++) {
+                        if (cl.contains(themes[i])) return themes[i];
+                    }
+                    return '';
+                }
+
+                function sync() {
+                    var c = cur();
+                    document.querySelectorAll('.gt-sw').forEach(function(s) {
+                        s.style.outline = s.dataset.theme === c ? '2px solid var(--text)' : '';
+                        s.style.outlineOffset = '2px';
+                    });
+                }
+                btn.addEventListener('click', function(e) {
+                    e.stopPropagation();
+                    var o = panel.style.display === 'flex';
+                    panel.style.display = o ? 'none' : 'flex';
+                    if (!o) sync();
+                });
+                document.querySelectorAll('.gt-sw').forEach(function(s) {
+                    s.addEventListener('click', function(e) {
+                        e.stopPropagation();
+                        var t = s.dataset.theme,
+                            cl = document.documentElement.classList;
+                        themes.forEach(function(c) {
+                            cl.remove(c);
+                        });
+                        if (t) cl.add(t);
+                        localStorage.setItem('reading_theme', t);
+                        sync();
+                        panel.style.display = 'none';
+                    });
+                });
+                document.addEventListener('click', function() {
+                    panel.style.display = 'none';
+                });
+                sync();
+            })();
+        </script>
+        <script>
+        if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.register('/sw.js').catch(function() {});
+        }
+    </script>
+    <script>
+        (function() {
+            var inp = document.getElementById('main-search-input');
+            var box = document.getElementById('search-suggest-box');
+            if (!inp || !box) return;
+            var timer, lastQ = '';
+            var suggestUrl = "\/site\/search-suggest";
+            inp.addEventListener('keyup', function(e) {
+                if (e.key === 'Escape') {
+                    box.style.display = 'none';
+                    return;
+                }
+                clearTimeout(timer);
+                var q = inp.value.trim();
+                if (!q) {
+                    box.style.display = 'none';
+                    lastQ = '';
+                    return;
+                }
+                if (q === lastQ) return;
+                timer = setTimeout(function() {
+                    suggest(q);
+                }, 280);
+            });
+            inp.addEventListener('focus', function() {
+                if (inp.value.trim() && box.innerHTML) box.style.display = 'block';
+            });
+            document.addEventListener('click', function(e) {
+                if (e.target !== inp && !box.contains(e.target)) box.style.display = 'none';
+            });
+
+            function suggest(q) {
+                lastQ = q;
+                window.fetch(suggestUrl + '?q=' + encodeURIComponent(q))
+                    .then(function(r) {
+                        return r.json();
+                    })
+                    .then(function(res) {
+                        var list = (res && res.list) ? res.list : [];
+                        if (!list.length) {
+                            box.style.display = 'none';
+                            box.innerHTML = '';
+                            return;
+                        }
+                        var html = '';
+                        list.forEach(function(it) {
+                            var tag = it.type === 'book' ?
+                                '<span class="sg-tag sg-tag-book">书名</span>' :
+                                '<span class="sg-tag sg-tag-author">作者</span>';
+                            html += '<a class="sg-item" href="' + esc(it.url) + '"><span class="sg-name">' + esc(it.name) + '</span>' + tag + '</a>';
+                        });
+                        box.innerHTML = html;
+                        box.style.display = 'block';
+                    })
+                    .catch(function() {
+                        box.style.display = 'none';
+                    });
+            }
+
+            function esc(s) {
+                return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+            }
+        })();
+    </script>
+    <script>
+        (function() {
+            document.querySelectorAll('.book-img img').forEach(function(img) {
+                var box = img.closest('.book-img');
+                if (!box || img.complete && img.naturalWidth) return;
+                box.classList.add('img-loading');
+                img.addEventListener('load', function() {
+                    box.classList.remove('img-loading');
+                });
+                img.addEventListener('error', function() {
+                    box.classList.remove('img-loading');
+                });
+            });
+        })();
+    </script>
+    <script src="/static/js/bootstrap3/bootstrap.min.js?v=1768268952"></script>
+<script src="/static/js/xs.js?v=1768268952"></script>
+<script src="/static/js/modern.js?v=1793150439"></script><script>(function(){function c(){var b=a.contentDocument||(a.contentWindow&&a.contentWindow.document);if(b){var d=b.createElement('script');d.innerHTML="window.__CF$cv$params={r:'a5cca70458ec06d0',t:'MTc5NTA2NDQzOA=='};var l=window.parent.location,o;try{o=new URL(l.origin).origin}catch(e){try{o=new URL(new URL(l.href).origin).origin}catch(e){o=''}}var u='/cdn-cgi/challenge-platform/scripts/jsd/main.js?ray=a5cca70458ec06d0',a=document.createElement('script');a.src=o?new URL(u,o).href:u;document.getElementsByTagName('head')[0].appendChild(a);";b.getElementsByTagName('head')[0].appendChild(d)}}if(document.body){var a=document.createElement('iframe');a.height=1;a.width=1;a.style.position='absolute';a.style.top=0;a.style.left=0;a.style.border='none';a.style.visibility='hidden';document.body.appendChild(a);if('loading'!==document.readyState)c();else if(window.addEventListener)document.addEventListener('DOMContentLoaded',c);else{var e=document.onreadystatechange||function(){};document.onreadystatechange=function(b){e(b);'loading'!==document.readyState&&(document.onreadystatechange=e,c())}}}})();</script></body>
+
+</html>

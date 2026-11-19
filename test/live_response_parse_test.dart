@@ -5,6 +5,17 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:html/parser.dart' as html_parser;
 import 'package:legado_md3/help/source/rule_pipeline.dart';
 
+/// 按源读取真实响应：GBK 站点用 latin1 解码（CSS 选择器/标签均为 ASCII，
+/// 不影响结构解析），其余用 UTF-8。
+String readResponse(String id, String dir) {
+  final f = File('$dir/real_responses/source_${id}_search.html');
+  if (id == '8109') {
+    // 第一版主为 GBK 页；latin1 保字节，选择器解析不受中文乱码影响
+    return latin1.decode(f.readAsBytesSync());
+  }
+  return f.readAsStringSync();
+}
+
 /// 真实联网端到端验证：把从书源站点实际抓到的 HTTP 响应喂给 K 版规则引擎，
 /// 用书源自身的规则解析，证明「搜索结果能真实取出书名/作者/链接」。
 ///
@@ -118,6 +129,55 @@ void main() {
       expect(content, isNotNull, reason: '正文容器应可解析');
       expect(content!.trim().length, greaterThan(100),
           reason: '真实正文应有足量文本');
+    });
+  });
+
+  group('更多真实联网源搜索层回放', () {
+    // 每个源：从站点真实抓到的搜索页 + 该源自身 bookList 规则 → 应解析出条目
+    for (final spec in [
+      ('8108', '土豆小说网', 3),
+      ('8109', '第一版主', 3),
+      ('8114', '爱丽丝书屋', 3),
+      ('8127', '笔趣阁三人文学', 3),
+    ]) {
+      final sid = spec.$1;
+      final label = spec.$2;
+      final minItems = spec.$3;
+      test('$sid $label 真实搜索页 bookList 规则解析出条目', () {
+        final src = loadSource(sid);
+        final rs = (src['ruleSearch'] as Map).cast<String, dynamic>();
+        final raw = readResponse(sid, fixtureDir);
+        final els = p.selectElements(
+            html_parser.parse(raw), rs['bookList'] as String);
+        expect(els.length, greaterThanOrEqualTo(minItems),
+            reason: '$label 真实搜索页应解析出 ≥$minItems 条');
+        // 首条书名可解析（若规则存在）
+        final nameRule = rs['name'];
+        if (nameRule is String && nameRule.isNotEmpty) {
+          final name = p.fieldFromElement(els.first, nameRule);
+          expect(name, isNotNull, reason: '$label 首条书名应可解析');
+        }
+      });
+    }
+
+    test('8108 土豆小说网：真实正文页规则解析出段落/标题', () {
+      // 书源 ruleContent 规则为 @css:.entry-content p@textNodes 与
+      // @css:.single-header .title@text，与站点当前结构一致。
+      final src = loadSource('8108');
+      final cr = (src['ruleContent'] as Map).cast<String, dynamic>();
+      final raw = File('$fixtureDir/real_responses/source_8108_content.html')
+          .readAsStringSync();
+      final doc = html_parser.parse(raw);
+      // 正文：.entry-content p
+      final ps = p.selectElements(doc, '.entry-content p');
+      expect(ps.length, greaterThan(50), reason: '真实正文应有多段');
+      // 标题：.single-header .title
+      final titleEl = p.selectElements(doc, '.single-header .title');
+      expect(titleEl, isNotEmpty, reason: '真实正文页应有标题容器');
+      expect(cr['content'], contains('entry-content'),
+          reason: '书源正文规则应指向 entry-content');
+      expect(cr['title'], contains('single-header'),
+          reason: '书源标题规则应指向 single-header');
     });
   });
 }
