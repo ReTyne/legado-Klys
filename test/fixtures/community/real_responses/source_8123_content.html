@@ -1,0 +1,772 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8"/>
+    <title>1 科学边界-《三体全集（全三册）》-在线阅读-书海阁</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1"/>
+<script>
+(function (doc, win) {
+    try {
+        var path = String((win.location && win.location.pathname) || "").toLowerCase();
+        var root = doc.documentElement;
+        var addRootClass = function (token) {
+            if (!token || !root || new RegExp("(^|\\s)" + token + "(\\s|$)").test(root.className || "")) {
+                return;
+            }
+            root.className = (root.className ? root.className + " " : "") + token;
+        };
+        addRootClass("front-first-paint");
+
+        var nav = "";
+        if (path === "/" || path === "/index" || path === "/index.html") {
+            nav = "home";
+        } else if (path.indexOf("/book/bookclass") === 0) {
+            nav = "bookclass";
+        } else if (path.indexOf("/book/book_ranking") === 0) {
+            nav = "ranking";
+        } else if (path.indexOf("/pay/") === 0 || path === "/pay") {
+            nav = "pay";
+        } else if (path.indexOf("/author/") === 0 || path === "/author") {
+            nav = "author";
+        }
+        if (nav) {
+            addRootClass("front-nav-" + nav);
+        }
+
+        var isReadPage = /^\/book\/\d+\/\d+\.html$/.test(path) || path === "/book/book_content.html";
+        if (isReadPage || !win.localStorage || win.localStorage.getItem("siteThemeMode") !== "dark") {
+            return;
+        }
+        addRootClass("site-dark");
+        var applyBodyDarkClass = function () {
+            var body = doc.body;
+            if (!body) {
+                return false;
+            }
+            if (!/(^|\s)site-dark(\s|$)/.test(body.className || "")) {
+                body.className = (body.className ? body.className + " " : "") + "site-dark";
+            }
+            return true;
+        };
+        if (!applyBodyDarkClass()) {
+            if (win.MutationObserver) {
+                var bodyObserver = new win.MutationObserver(function () {
+                    if (applyBodyDarkClass()) {
+                        bodyObserver.disconnect();
+                    }
+                });
+                bodyObserver.observe(root, {childList: true});
+            }
+            doc.addEventListener("DOMContentLoaded", applyBodyDarkClass, false);
+        }
+    } catch (e) {
+    }
+})(document, window);
+</script>
+
+<style>
+    html{background:#f5f5f5}
+    html.site-dark{background:#11161c;color-scheme:dark}
+    html.front-first-paint body{background:#f5f5f5}
+    html.site-dark.front-first-paint body{background:#11161c;color:#d1d7df}
+    html.front-first-paint .mainNav .nav li a{transition:none!important}
+    html.front-nav-home .mainNav .nav li[data-nav="home"] a,
+    html.front-nav-bookclass .mainNav .nav li[data-nav="bookclass"] a,
+    html.front-nav-ranking .mainNav .nav li[data-nav="ranking"] a,
+    html.front-nav-author .mainNav .nav li[data-nav="author"] a{background:#f8fffb;color:#2c8a63;border-color:rgba(255,255,255,.78)}
+    html.site-dark.front-nav-home .mainNav .nav li[data-nav="home"] a,
+    html.site-dark.front-nav-bookclass .mainNav .nav li[data-nav="bookclass"] a,
+    html.site-dark.front-nav-ranking .mainNav .nav li[data-nav="ranking"] a,
+    html.site-dark.front-nav-author .mainNav .nav li[data-nav="author"] a{background:#ecfff5;color:#206046;border-color:rgba(255,255,255,.82)}
+    html,body{max-width:100%}
+    img{max-width:100%;height:auto}
+    .header,.topMain,.mainNav,.main,.channelWrap,.box_center,.leftBox,.rightBox,.picRecommend,.searchBar,.bookShelf{max-width:100%;box-sizing:border-box}
+    .searchBar,.searchBar .search,.searchBar .s_int,.bookShelf,.mainNav .box_center,.mainNav .nav,.mainNav .nav li,.mainNav .nav li a{min-width:0}
+    .mainNav .nav li a,.updateTable .name a,.updateTable .chapter a,.updateTable .author a,.updateTable .style a{overflow-wrap:anywhere;word-break:break-word}
+    .updateTable table{width:100%;table-layout:fixed}
+</style>
+<script data-site-name="书海阁" data-site-domain="book.washai.net" data-site-logo="/localPic/2026/05/06/be5dec8d-31af-474e-9b13-2ca535dce417.transparent.png" data-site-logo-dark="/localPic/2026/05/06/be5dec8d-31af-474e-9b13-2ca535dce417.transparent.png" data-site-default-book-cover="/images/default-book-cover.png" data-site-default-user-avatar="/localPic/2026/08/09/5bd46fdb-2365-44f6-a164-d6d3db058665.svg">
+(function (script, doc) {
+    if (!script) {
+        return;
+    }
+    function attr(name) {
+        var value = script.getAttribute(name) || "";
+        return /\{\{SITE_[A-Z_]+\}\}/.test(value) ? "" : value;
+    }
+    function meta(name) {
+        var el = doc.querySelector("meta[name='" + name + "']");
+        return el ? (el.getAttribute("content") || "") : "";
+    }
+    window.__frontSiteInfo = {
+        name: attr("data-site-name"),
+        domain: attr("data-site-domain"),
+        keyword: meta("keywords"),
+        description: meta("description"),
+        logo: attr("data-site-logo"),
+        logoDark: attr("data-site-logo-dark"),
+        defaultBookCover: attr("data-site-default-book-cover") || "/images/default-book-cover.png",
+        defaultUserAvatar: attr("data-site-default-user-avatar") || "/system-static/default-user-avatar.svg"
+    };
+
+    var avatarColors = ["#3b82f6", "#14b8a6", "#f59e0b", "#ef4444", "#8b5cf6", "#ec4899"];
+    var builtInDefaultAvatars = {
+        "/images/man.png": true,
+        "/system-static/default-user-avatar.svg": true,
+        "/admin-static/img/default-user-avatar.svg": true
+    };
+
+    function avatarName(user) {
+        var source = user || {};
+        return String(source.nickName || source.username || "未知用户").trim() || "未知用户";
+    }
+
+    function avatarInitial(name) {
+        var normalized = String(name || "").trim();
+        return normalized ? Array.from(normalized)[0].toLocaleUpperCase() : "?";
+    }
+
+    function avatarColor(name) {
+        var normalized = String(name || "").trim();
+        var hash = 0;
+        Array.from(normalized).forEach(function (character) {
+            hash = (hash * 31 + (character.codePointAt(0) || 0)) >>> 0;
+        });
+        return avatarColors[hash % avatarColors.length];
+    }
+
+    function isDefaultAvatar(photo) {
+        var value = String(photo || "").trim();
+        var configured = String(window.__frontSiteInfo.defaultUserAvatar || "").trim();
+        return !value || builtInDefaultAvatars[value] || value === configured;
+    }
+
+    function normalizeAvatarPhoto(photo) {
+        var value = String(photo || "").trim();
+        var compact = value.toLowerCase().replace(/\s+/g, "");
+        if (compact.indexOf("javascript:") === 0 || compact.indexOf("data:text/html") === 0) {
+            return "";
+        }
+        return value;
+    }
+
+    function showInitial(element, name) {
+        element.innerHTML = "";
+        element.classList.add("user-initial-avatar");
+        element.style.setProperty("--user-avatar-color", avatarColor(name));
+        element.textContent = avatarInitial(name);
+    }
+
+    function renderAvatar(element, user) {
+        if (!element) {
+            return element;
+        }
+        var source = user || {};
+        var name = avatarName(source);
+        var photo = normalizeAvatarPhoto(source.userPhoto);
+        element.classList.add("front-user-avatar");
+        element.setAttribute("data-avatar-name", name);
+        element.setAttribute("aria-label", name + "的头像");
+        if (isDefaultAvatar(photo)) {
+            showInitial(element, name);
+            return element;
+        }
+        var image = doc.createElement("img");
+        image.alt = "";
+        image.src = photo;
+        image.addEventListener("error", function () {
+            showInitial(element, name);
+        }, {once: true});
+        element.innerHTML = "";
+        element.classList.remove("user-initial-avatar");
+        element.style.removeProperty("--user-avatar-color");
+        element.appendChild(image);
+        return element;
+    }
+
+    function createAvatar(user, className) {
+        var element = doc.createElement("span");
+        element.className = className || "";
+        return renderAvatar(element, user);
+    }
+
+    function avatarMarkup(user, className) {
+        return createAvatar(user, className).outerHTML;
+    }
+
+    doc.addEventListener("error", function (event) {
+        var image = event.target;
+        var avatar = image && image.parentElement;
+        if (!avatar || !avatar.classList.contains("front-user-avatar")) {
+            return;
+        }
+        showInitial(avatar, avatar.getAttribute("data-avatar-name") || "未知用户");
+    }, true);
+
+    window.FrontUserAvatar = {
+        initial: avatarInitial,
+        color: avatarColor,
+        isDefault: isDefaultAvatar,
+        render: renderAvatar,
+        create: createAvatar,
+        markup: avatarMarkup
+    };
+})(document.currentScript, document);
+</script>
+<link rel="stylesheet" href="/css/common/base.css?_fv=dmxlsvdgqpkw15f9&v=20261114_1"/>
+<link rel="stylesheet" href="/css/common/front_page_skeleton.css?_fv=dmxlsvdgqpkwgid&v=20261110_1"/>
+<link rel="stylesheet" href="/css/common/chat_widget.css?_fv=dmxlsvdgqpkwerp&v=20261014_2"/>
+<script src="/javascript/common/front_page_skeleton.js?_fv=dmxlsvdgqpkwg8m&v=20261117_1"></script>
+
+
+
+    <link rel="stylesheet" href="/css/custom/read.css?_fv=dmxlsvdgqpkw22cx&v=20261010_1"/>
+    <link rel="stylesheet" href="/css/custom/book.css?_fv=dmxlsvdgqpkw1rd4&v=20261013_1"/>
+<meta name="keywords" content="书海阁,三体全集（全三册）,1 科学边界,在线阅读"/>
+<meta name="description" content="正在阅读《三体全集（全三册）》1 科学边界，持续更新最新章节内容。 本章内容摘要：汪淼觉得，来找他的这四个人是一个奇怪的组合：两名警察和两名军人，如果那两个军人是武警还算正常，但这是两名陆军军官。 汪淼第一眼就对来找他的警察没有好感。其实。"/>
+<link rel="canonical" href="https://book.washai.net/book/1262260513468569147/2039351400479733310.html"/>
+<meta name="go-novel-seo-rendered" content="1"/>
+<meta property="og:site_name" content="书海阁"/>
+<meta property="og:type" content="article"/>
+<meta property="og:url" content="https://book.washai.net/book/1262260513468569147/2039351400479733310.html"/>
+<meta property="og:title" content="1 科学边界-《三体全集（全三册）》-在线阅读-书海阁"/>
+<meta name="twitter:title" content="1 科学边界-《三体全集（全三册）》-在线阅读-书海阁"/>
+<meta property="og:description" content="正在阅读《三体全集（全三册）》1 科学边界，持续更新最新章节内容。 本章内容摘要：汪淼觉得，来找他的这四个人是一个奇怪的组合：两名警察和两名军人，如果那两个军人是武警还算正常，但这是两名陆军军官。 汪淼第一眼就对来找他的警察没有好感。其实。"/>
+<meta name="twitter:description" content="正在阅读《三体全集（全三册）》1 科学边界，持续更新最新章节内容。 本章内容摘要：汪淼觉得，来找他的这四个人是一个奇怪的组合：两名警察和两名军人，如果那两个军人是武警还算正常，但这是两名陆军军官。 汪淼第一眼就对来找他的警察没有好感。其实。"/>
+<meta property="og:image" content="https://book.washai.net/localPic/2026/10/16/aba4b222-1ca8-468f-9e21-2f4e61bef054.jpg"/>
+<meta name="twitter:image" content="https://book.washai.net/localPic/2026/10/16/aba4b222-1ca8-468f-9e21-2f4e61bef054.jpg"/>
+<meta name="twitter:card" content="summary_large_image"/>
+<script type="application/ld+json">{"@context":"https://schema.org","@type":"BreadcrumbList","itemListElement":[{"@type":"ListItem","item":"https://book.washai.net/","name":"书海阁","position":1},{"@type":"ListItem","item":"https://book.washai.net/book/bookclass.html?c=5","name":"科幻灵异","position":2},{"@type":"ListItem","item":"https://book.washai.net/book/1262260513468569147.html","name":"三体全集（全三册）","position":3},{"@type":"ListItem","item":"https://book.washai.net/book/1262260513468569147/2039351400479733310.html","name":"1 科学边界","position":4}]}</script>
+</head>
+<body class="read_style_1 immersive-read">
+<script>
+    try {
+        document.body.classList.toggle("read_flip_mode", localStorage.getItem("readPageMode") === "flip");
+        document.body.classList.toggle("read_chapter_nav_manual", localStorage.getItem("readChapterNavMode") === "manual");
+    } catch (e) {
+    }
+</script>
+
+<input type="hidden" id="bookId" value="1262260513468569147"/>
+<input type="hidden" id="bookName" value="三体全集（全三册）"/>
+<input type="hidden" id="preIndexName" value="1 科学边界"/>
+<input type="hidden" id="preContentId" value="2039351400479733310"/>
+<input type="hidden" id="preIndexId" value="2039351400479733309"/>
+<input type="hidden" id="nextIndexId" value="2039351400479733311"/>
+
+<div class="header">
+    <svg class="front-icon-sprite" aria-hidden="true" focusable="false">
+        <symbol id="front-icon-user" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"></circle><path d="M4.5 20c.7-4.1 3.2-6.2 7.5-6.2s6.8 2.1 7.5 6.2"></path></symbol>
+        <symbol id="front-icon-message" viewBox="0 0 24 24"><path d="M4 5.5h16v11H8l-4 3v-14Z"></path></symbol>
+        <symbol id="front-icon-logout" viewBox="0 0 24 24"><path d="M10 5H5v14h5"></path><path d="m14 8 4 4-4 4M8 12h10"></path></symbol>
+        <symbol id="front-icon-heart" viewBox="0 0 24 24"><path d="M20.8 4.7a5.5 5.5 0 0 0-7.8 0L12 5.8l-1.1-1.1a5.5 5.5 0 0 0-7.8 7.8l8.9 8.8 8.8-8.8a5.5 5.5 0 0 0 0-7.8Z"></path></symbol>
+        <symbol id="front-icon-unlike" viewBox="0 0 24 24"><path d="M7 3h10v12h-4l-2 6-2-1v-5H5a2 2 0 0 1-2-2l2-8a2 2 0 0 1 2-2Z"></path><path d="M17 3h4v12h-4"></path></symbol>
+        <symbol id="front-icon-reply" viewBox="0 0 24 24"><path d="m9 8-5 4 5 4"></path><path d="M5 12h8a6 6 0 0 1 6 6v1"></path></symbol>
+        <symbol id="front-icon-trash" viewBox="0 0 24 24"><path d="M4 7h16M9 3h6l1 4H8l1-4ZM6 7l1 14h10l1-14"></path><path d="M10 11v6M14 11v6"></path></symbol>
+        <symbol id="front-icon-send" viewBox="0 0 24 24"><path d="m3 11 18-8-8 18-2-8-8-2Z"></path><path d="m11 13 5-5"></path></symbol>
+        <symbol id="front-icon-bell" viewBox="0 0 24 24"><path d="M18 9a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9ZM10 21h4"></path></symbol>
+        <symbol id="front-icon-bookmark" viewBox="0 0 24 24"><path d="M6 3h12v18l-6-4-6 4V3Z"></path></symbol>
+        <symbol id="front-icon-book-open" viewBox="0 0 24 24"><path d="M3 5.5A2.5 2.5 0 0 1 5.5 3H11v16H5.5A2.5 2.5 0 0 0 3 21.5v-16Z"></path><path d="M21 5.5A2.5 2.5 0 0 0 18.5 3H13v16h5.5a2.5 2.5 0 0 1 2.5 2.5v-16Z"></path></symbol>
+        <symbol id="front-icon-comment" viewBox="0 0 24 24"><path d="M4 5h16v12H8l-4 4V5Z"></path><path d="M8 9h8M8 13h5"></path></symbol>
+        <symbol id="front-icon-feedback" viewBox="0 0 24 24"><path d="M4 4h16v12h-6l-4 4v-4H4V4Z"></path><path d="M12 8v3m0 3h.01"></path></symbol>
+        <symbol id="front-icon-to-top" viewBox="0 0 24 24"><path d="M6 6h12M4 18l8-8 8 8"></path></symbol>
+        <symbol id="front-icon-to-bottom" viewBox="0 0 24 24"><path d="M6 18h12M4 6l8 8 8-8"></path></symbol>
+        <symbol id="front-icon-refresh-cw" viewBox="0 0 24 24"><path d="M21 2v6h-6M3 22v-6h6"></path><path d="M3 12a9 9 0 0 1 15.36-6.36L21 8M21 12a9 9 0 0 1-15.36 6.36L3 16"></path></symbol>
+        <symbol id="front-icon-file-text" viewBox="0 0 24 24"><path d="M6 3h8l4 4v14H6V3Z"></path><path d="M14 3v5h5M9 12h6M9 16h6"></path></symbol>
+        <symbol id="front-icon-external-link" viewBox="0 0 24 24"><path d="M14 4h6v6"></path><path d="m20 4-9 9"></path><path d="M18 13v6a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h6"></path></symbol>
+        <symbol id="front-icon-settings" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1-2.8 2.8-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.6v.2h-4V21a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1L4.2 17l.1-.1a1.7 1.7 0 0 0 .3-1.9A1.7 1.7 0 0 0 3 14H2.8v-4H3a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9L4.2 7 7 4.2l.1.1A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-1.6v-.2h4V3a1.7 1.7 0 0 0 1 1.6 1.7 1.7 0 0 0 1.9-.3l.1-.1L19.8 7l-.1.1a1.7 1.7 0 0 0-.3 1.9 1.7 1.7 0 0 0 1.6 1h.2v4H21a1.7 1.7 0 0 0-1.6 1Z"></path></symbol>
+        <symbol id="front-icon-wallet" viewBox="0 0 24 24"><path d="M4 6h14a2 2 0 0 1 2 2v10H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h12"></path><path d="M15 10h7v5h-7a2.5 2.5 0 0 1 0-5Z"></path></symbol>
+        <symbol id="front-icon-more-horizontal" viewBox="0 0 24 24"><circle cx="5" cy="12" r="1"></circle><circle cx="12" cy="12" r="1"></circle><circle cx="19" cy="12" r="1"></circle></symbol>
+        <symbol id="front-icon-users" viewBox="0 0 24 24"><circle cx="9" cy="8" r="3"></circle><circle cx="17" cy="9" r="2.5"></circle><path d="M3.5 20v-2.2c0-3 2.2-5 5.5-5s5.5 2 5.5 5V20M14 14c3.6-.7 6.5 1.2 6.5 4V20"></path></symbol>
+        <symbol id="front-icon-megaphone" viewBox="0 0 24 24"><path d="M4 10v4h4l9 4V6l-9 4H4Zm4 4 1.5 5h3L11 15"></path><path d="M20 9v6"></path></symbol>
+        <symbol id="front-icon-chevron-right" viewBox="0 0 24 24"><path d="m9 5 7 7-7 7"></path></symbol>
+        <symbol id="front-icon-minus" viewBox="0 0 24 24"><path d="M5 12h14"></path></symbol>
+        <symbol id="front-icon-close" viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"></path></symbol>
+        <symbol id="front-icon-smile" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"></circle><path d="M8 14c1 2 2.3 3 4 3s3-1 4-3M9 9h.01M15 9h.01"></path></symbol>
+    </svg>
+    <a class="skip-link" href="#mainContent">跳到主要内容</a>
+    <div class="topMain">
+        <div class="box_center">
+            <a href="/" class="front-brand" aria-label="书海阁首页"><svg class="ui-icon" aria-hidden="true"><use href="#front-icon-book-open"></use></svg><span>书海阁</span></a>
+            <div class="searchBar">
+                <div class="search cf" role="search">
+                    <input type="text" placeholder="书名、作者、关键字" class="s_int" name="searchKey" id="searchKey" autocomplete="off" aria-label="搜索书名、作者或关键字" aria-controls="searchHistoryBox" aria-expanded="false"/>
+                    <label class="search_btn" id="btnSearch" for="searchKey" role="button" tabindex="0" aria-label="开始搜索"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M10.8 4.2a6.6 6.6 0 1 1 0 13.2 6.6 6.6 0 0 1 0-13.2Zm0 2.4a4.2 4.2 0 1 0 0 8.4 4.2 4.2 0 0 0 0-8.4Zm5.1 9.1 4.2 4.2a1.2 1.2 0 0 1-1.7 1.7l-4.2-4.2a1.2 1.2 0 0 1 1.7-1.7Z"/></svg></label>
+                </div>
+                <div class="search-history-box search-history-popover" id="searchHistoryBox" hidden aria-hidden="true">
+                    <div class="search-history-head">
+                        <span class="search-history-title">历史搜索</span>
+                        <button type="button" class="search-history-clear-all" id="searchHistoryClearAll">清空</button>
+                    </div>
+                    <div class="search-history-list" id="searchHistoryList" aria-live="polite"></div>
+                    <section id="hotSearchSection" class="hot-search-section" hidden aria-labelledby="hotSearchTitle">
+                        <div class="search-history-head"><span id="hotSearchTitle" class="search-history-title">热门搜索</span></div>
+                        <div id="hotSearchList" class="search-history-list" aria-live="polite"></div>
+                    </section>
+                </div>
+            </div>
+            <div class="bookShelf" id="headerUserInfo">
+                <a class="sj_link" href="/user/favorites.html" aria-label="书架" title="书架">书架</a>
+                <span class="header-divider" aria-hidden="true"></span>
+                <a class="referral_link" href="/user/referral.html" aria-label="邀请好友" title="邀请好友"><svg class="ui-icon" aria-hidden="true"><use href="#front-icon-send"></use></svg><span>邀请</span></a>
+                <span class="header-divider" aria-hidden="true"></span>
+                <a id="siteThemeToggle" class="theme_toggle is-to-dark" href="#" data-theme="light" title="切换到暗夜模式" aria-label="切换到暗夜模式"><span class="theme_toggle_icon" aria-hidden="true"></span></a>
+                <span class="header-divider" aria-hidden="true"></span>
+                <span class="user_link" data-front-auth-state="guest" data-front-user-name="" data-front-user-photo="" data-front-auth-pending="1"><a href="/user/login.html" class="mr15">登录</a></span>
+                <script>
+                (function () {
+                    var holder = document.currentScript && document.currentScript.previousElementSibling;
+                    if (!holder || !/(^|\s)user_link(\s|$)/.test(holder.className || "")) {
+                        return;
+                    }
+                    function trim(value) {
+                        return String(value == null ? "" : value).replace(/^\s+|\s+$/g, "");
+                    }
+                    function readCookie(name) {
+                        var text = document.cookie || "";
+                        var rows = text.split(";");
+                        for (var i = 0; i < rows.length; i++) {
+                            var row = rows[i].replace(/^\s+|\s+$/g, "");
+                            if (row.substring(0, name.length + 1) === name + "=") {
+                                try {
+                                    return decodeURIComponent(row.substring(name.length + 1));
+                                } catch (e) {
+                                    return row.substring(name.length + 1);
+                                }
+                            }
+                        }
+                        return "";
+                    }
+                    function safePhoto(value) {
+                        value = trim(value);
+                        var compact = value.toLowerCase().replace(/\s+/g, "");
+                        if (!value || value === "null" || value === "undefined" || compact.indexOf("javascript:") === 0 || compact.indexOf("data:text/html") === 0) {
+                            return "";
+                        }
+                        return value;
+                    }
+                    function escapeHTML(value) {
+                        return String(value == null ? "" : value)
+                            .replace(/&/g, "&amp;")
+                            .replace(/</g, "&lt;")
+                            .replace(/>/g, "&gt;")
+                            .replace(/"/g, "&quot;")
+                            .replace(/'/g, "&#39;");
+                    }
+                    function readClaims(token) {
+                        try {
+                            var parts = String(token || "").split(".");
+                            if (parts.length !== 3) {
+                                return {};
+                            }
+                            var payload = parts[1].replace(/-/g, "+").replace(/_/g, "/");
+                            while (payload.length % 4) {
+                                payload += "=";
+                            }
+                            return JSON.parse(window.atob(payload) || "{}");
+                        } catch (e) {
+                            return {};
+                        }
+                    }
+                    function isActiveToken(token) {
+                        var claims = readClaims(token);
+                        var exp = parseInt(claims && claims.exp, 10);
+                        if (!(exp > 0)) {
+                            return false;
+                        }
+                        return exp > Math.floor(new Date().getTime() / 1000);
+                    }
+                    function readCache() {
+                        try {
+                            return JSON.parse(localStorage.getItem("frontHeaderUser") || "{}");
+                        } catch (e) {
+                            return {};
+                        }
+                    }
+                    var token = trim(readCookie("Authorization"));
+                    var state = trim(readCookie("FrontLogin"));
+                    if (!token || token.toLowerCase() === "null" || token.toLowerCase() === "undefined" || token.split(".").length !== 3 || state !== "1" || !isActiveToken(token)) {
+                        holder.removeAttribute("data-front-auth-pending");
+                        return;
+                    }
+                    var cache = readCache();
+                    var claims = readClaims(token);
+                    var name = trim(cache.nickName || cache.username || claims.nick_name || claims.username || claims.sub || "个人中心");
+                    var photo = safePhoto(cache.userPhoto);
+                    var icon = function (name) { return '<svg class="ui-icon" aria-hidden="true" focusable="false"><use href="#front-icon-' + name + '"></use></svg>'; };
+                    var account = document.createElement("span");
+                    account.className = "user_account";
+                    account.innerHTML = '<button type="button" class="user_avatar_link" data-front-account-trigger="1" aria-haspopup="menu" aria-expanded="false" title="' + escapeHTML(name) + '"><span class="user-account-unread-dot" hidden></span></button><span class="user_account_menu" role="menu" hidden><a href="/user/userinfo.html" role="menuitem">' + icon('user') + '<span>个人中心</span></a><a href="/user/interaction.html" role="menuitem">' + icon('message') + '<span>消息</span><span class="interaction-unread-badge" hidden></span></a><button type="button" role="menuitem" data-front-logout="1">' + icon('logout') + '<span>退出登录</span></button></span>';
+                    var trigger = account.querySelector("[data-front-account-trigger='1']");
+                    trigger.insertBefore(window.FrontUserAvatar.create({username: name, userPhoto: photo}, "header-user-avatar"), trigger.firstChild);
+                    holder.setAttribute("data-front-auth-state", "login");
+                    holder.setAttribute("data-front-user-name", name);
+                    holder.setAttribute("data-front-user-photo", photo);
+                    holder.innerHTML = "";
+                    holder.appendChild(account);
+                    holder.removeAttribute("data-front-auth-pending");
+                })();
+                </script>
+            </div>
+        </div>
+    </div>
+    <div class="mainNav" id="mainNav">
+        <div class="box_center">
+            <ul class="nav" id="navModule">
+                <li data-nav="home"><a href="/">首页</a></li>
+                <li data-nav="bookclass"><a href="/book/bookclass.html">全部作品</a></li>
+                <li data-nav="ranking"><a href="/book/book_ranking.html">排行榜</a></li>
+                <li data-nav="author"><a href="/author/index.html" target="_blank">作家专区</a></li>
+            </ul>
+        </div>
+    </div>
+    <div class="front-page-skeleton" id="frontPageSkeleton" hidden aria-hidden="true">
+        <div class="front-page-skeleton__content"></div>
+    </div>
+    <script>window.FrontPageSkeleton && window.FrontPageSkeleton.mount();</script>
+</div>
+
+<div id="showDetail" tabindex="-1">
+    <div class="readBody cf">
+        <div class="readMain cf">
+            <div class="read_menu">
+                <div class="menu_left">
+                    <ul>
+                        <li><a class="ico_catalog" href="/book/indexList-1262260513468569147.html?atIndexId=2039351400479733310&order=asc" id="catalogLink" title="目录"><b>目录</b></a></li>
+                        <li><a class="ico_page" href="/book/1262260513468569147.html" id="bookLink" title="返回简介"><b>简介</b></a></li>
+                        <li class="li_shelf" id="cFavs"><a class="ico_shelf" href="#" title="加书架"><b>加书架</b></a></li>
+                        <li><a class="ico_comment" href="/book/1262260513468569147.html#comments" id="commentLink" title="评论"><b>评论</b></a></li>
+                        <li><a class="ico_night" href="#" id="pcReadNightBtn" title="夜间" aria-label="切换到夜间模式" aria-pressed="false"><b>夜间</b></a></li>
+                        <li><a class="ico_setup" href="#" title="设置"><b>设置</b></a></li>
+                    </ul>
+                </div>
+                <div class="menu_right">
+                    <ul>
+                        <li><a class="ico_pagePrev" href="/book/1262260513468569147/2039351400479733309.html" id="preLink" title="上一章"><i>上一章</i></a></li>
+                        <li><a class="ico_pageNext" href="/book/1262260513468569147/2039351400479733311.html" id="nextLink" title="下一章"><i>下一章</i></a></li>
+                    </ul>
+                </div>
+            </div>
+            <div class="readWrap">
+                <div class="bookNav" id="bookNav"><div class="bookNavTrail"><a class="bookNavBackLink" href="/book/1262260513468569147.html"><span class="bookNavBackText">三体全集（全三册）</span></a></div></div>
+                <div class="nextPageBox nextPageBoxTop">
+                    <a class="prev" href="/book/1262260513468569147/2039351400479733309.html" id="preTopLink">上一章</a>
+                    <a class="dir" href="/book/indexList-1262260513468569147.html?atIndexId=2039351400479733310&order=asc" id="dirTopLink">目录</a>
+                    <a class="next" href="/book/1262260513468569147/2039351400479733311.html" id="nextTopLink">下一章</a>
+                </div>
+                <div id="readcontent">
+                    <div class="textbox cf">
+                        <div class="book_title">
+                            <div class="chapterVolumeName" id="chapterVolumeName" hidden></div>
+                            <h1><span id="indexName">1 科学边界</span></h1>
+                            <div class="titleProgress" aria-hidden="true"><em class="titleChapterProgress" id="chapterProgress" aria-live="polite"></em><em class="titlePageProgress" id="flipPageProgress" aria-live="polite">1/1</em></div>
+                            <div class="chapterInfoCard">
+                                <div class="textinfo">
+                                    作者：<a href="/book/bookclass.html?k=%E5%88%98%E6%85%88%E6%AC%A3" id="authorLink">刘慈欣</a><span id="wordCount">字数：8.1千字</span><span id="updateTime">更新时间：2026-10-16 15:14:33</span>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="chapterSplitLine"></div>
+
+                        <div class="txtwrap" id="readPanel">
+                            <div id="showReading" class="readBox"><section class="readChapterAppendBlock readChapterPrimaryBlock" id="readAppendChapter_2039351400479733310" data-index-id="2039351400479733310"><div class="readChapterAppendHeader"><span class="readChapterAppendText">1 科学边界</span></div><div class="readChapterAppendBody"><p>汪淼觉得，来找他的这四个人是一个奇怪的组合：两名警察和两名军人，如果那两个军人是武警还算正常，但这是两名陆军军官。</p><p>汪淼第一眼就对来找他的警察没有好感。其实那名穿警服的年轻人还行，举止很有礼貌，但那位便衣就让人讨厌了。这人长得五大三粗，一脸横肉，穿着件脏兮兮的皮夹克，浑身烟味，说话粗声大嗓，是最令汪淼反感的那类人。</p><p>“汪淼？”那人问，直呼其名令汪淼很不舒服，况且那人同时还在点烟，头都不抬一下。不等汪淼回答，他就向旁边那位年轻人示意了一下，后者向汪淼出示了警官证，他点完烟后就直接向屋里闯。</p><p>“请不要在我家里抽烟。”汪淼拦住了他。</p><p>“哦，对不起，汪教授。这是我们史强队长。”年轻警官微笑着说，同时对姓史的使了个眼色。</p><p>“成，那就在楼道里说吧。”史强说着，深深地吸了一大口，手中的烟几乎燃下去一半，之后竟不见吐出烟来。“你问。”他又向年轻警官偏了一下头。</p><p>“汪教授，我们是想了解一下，最近你与‘科学边界’学会的成员有过接触，是吧？”</p><p>“‘科学边界’是一个在国际学术界很有影响的学术组织，成员都是著名学者。这样一个合法的学术组织，我怎么就不能接触了呢？”</p><p>“你看看你这个人！”史强大声说，“我们说它不合法了吗？我们说不让你接触了吗？”他说着，刚才吸进肚子里的烟都喷到汪淼脸上。</p><p>“那好，这属于个人隐私，我没必要回答你们的问题。”</p><p>“还啥都成隐私了，像你这样一个著名学者，总该对公共安全负责吧。”史强把手中的烟头扔掉，又从压扁了的烟盒里抽出一根。</p><p>“我有权不回答，你们请便吧。”汪淼说着要转身回屋。</p><p>“等等！”史强厉声说，同时朝旁边的年轻警官挥了一下手，“给他地址和电话，下午去走一趟。”</p><p>“你要干什么！”汪淼愤怒地质问，这争吵引得邻居们也探出头来，想看看出了什么事。</p><p>“史队！你说你——”年轻警官生气地将史强拉到一边，显然他的粗俗不只是让汪淼一人不适应。</p><p>“汪教授，请别误会。”一名少校军官急忙上前，“下午有一个重要会议，要请几位学者和专家参加，首长让我们来邀请您。”</p><p>“我下午很忙。”</p><p>“这我们清楚，首长已经向超导中心领导打了招呼。这次会议上不能没有您，实在不行，我们只有把会议延期等您了。”</p><p>史强和他的同事没再说话，转身下楼了，两位军官看着他们走远，似乎都长出了一口气。</p><p>“这人怎么这样儿？”少校小声对同事说。</p><p>“他劣迹斑斑，前几年在一次劫持人质事件中，他不顾人质的死活擅自行动，结果导致一家三口惨死在罪犯手中；据说他还和黑社会打得火热，用一帮黑道势力去收拾另一帮；去年又搞刑讯逼供，使一名嫌疑人致残，因此被停职了……”</p><p>“这种人怎么能进作战中心？”</p><p>“首长点名要他，应该有什么过人之处吧。不过，对他限制挺严，除了公安方面的事务，几乎什么都不让他知道。”</p><p>作战中心？那是什么？汪淼不解地看着面前的两位军官。</p><p>接汪淼的汽车驶进了城市近郊的一座大院，从那只有门牌号码没有单位名牌的大门，汪淼知道这里是军方而不是警方的地盘。</p><p>会议是在一个大厅里举行的，汪淼一进去就对这里的纷乱吃惊不小。大厅周围是一圈胡乱安放的电脑设备，有的桌子上放不下就直接搁地板上，电线和网线纠缠着散在地上；一大摞网络交换机没有安在机架内，而是随手堆放在服务器上；有好几个投影仪的大屏幕，在大厅的角落里呈不同角度随意立着，像吉卜赛人的帐篷；烟雾像晨雾般在半空浮了一层……汪淼不知道这是否就是那名军官所说的作战中心，有一点他可以肯定：这里在处理的事情，已经让人们顾不上其他了。</p><p>临时拼凑的会议桌上也是堆满了文件和杂物，与会者大多神情疲惫，衣服皱巴巴的，有领带的都扯开了，好像熬了一夜。主持会议的是一位叫常伟思的陆军少将，与会者有一半是军人。经过简单的介绍，他知道还有少部分警方人员，其他的人都是和他一样参加会议的专家学者，其中有几位还是很有名望的科学家，而且是研究基础科学的。</p><p>令他感到意外的是还有四个外国人，这些人的身份令他大吃一惊：其中的两个人也是军人，分别是美国空军上校和英国陆军上校，职务是北约联络员；另外两人居然是美国中央情报局的官员，在这里的职务是什么观察员。</p><p>从所有人的脸上，汪淼都读出了一句话：我们已经尽力了，快他妈的结束吧！</p><p>汪淼看到了史强，他倒是一反昨天的粗鲁，向汪淼打招呼，但那一脸傻笑让汪淼愉快不起来。他不想挨着史强坐，但也只有那一个空位，他只好坐过去，屋里本来已经很浓的烟味更加重了。</p><p>发文件时，史强凑近汪淼说：“汪教授，你好像是在研究什么……新材料？”</p><p>“纳米材料。”汪淼简单地回答。</p><p>“我听说过，那玩意儿强度很高，不会被用于犯罪吧？”从史强那带有一半调侃的表情上，汪淼看不出他是不是开玩笑。</p><p>“什么意思？”</p><p>“呵，听说那玩意儿一根头发丝粗就能吊起一辆大卡车，犯罪分子要是偷点儿去做把刀，那一刀就能把一辆汽车砍成两截吧。”</p><p>“哼，根本不用做成刀，用那种材料做一根只有头发丝百分之一粗细的线，拦在路上，就能把过往的汽车像切奶酪一样切成两半……啥不能用于犯罪？刮鱼鳞的刀都能！”</p><p>史强把面前的文件从袋中抽出一半又塞了回去，显然没了兴趣。“说得对，鱼都能犯罪呢！我办过一个杀人案，一个娘们儿把她丈夫的那玩意儿割下来了。知道用的是什么吗？冰箱里冷冻的罗非鱼！鱼冻硬后，背上的那排刺就跟一把快刀似的……”</p><p>“我没兴趣。怎么，让我来开会就是为这事儿？”</p><p>“鱼？纳米材料？不、不，与那些都没关系。”史强把嘴凑到汪淼耳边，“别给这帮家伙好脸，他们歧视咱们，只想从咱们这里套情报，但什么都不告诉咱们。像我，在这儿混了一个多月，还和你一样什么都不知道。”</p><p>“同志们，会议开始。”常伟思将军说，“在全球各战区，我们这里现在成为焦点。首先把当前情况向与会的同志们介绍一下。”</p><p>“战区”这个不寻常的术语令汪淼迷惑，他还注意到，首长好像并没有打算向他这样的新人介绍来龙去脉，这倒是印证了史强的话。在常将军这简短的开场白中，他两次提到了“同志们”，汪淼看看对面的两名北约军人和两个美国中情局官员，感觉将军似乎漏掉了“先生们”。</p><p>“他们也是同志，反正这边的人都是这么称呼的。”史强低声地对汪淼说，同时用手中的烟指了指那四个外国人。</p><p>在迷惑的同时，汪淼对史强的观察力留下了些印象。</p><p>“大史，你把烟熄了，这儿的烟味够浓了。”常伟思说，低头翻着文件。</p><p>史强拿着刚点着的烟四下看看，没找到烟灰缸，就“吱啦”一声扔到茶杯里了。他抓住这个机会举手要求发言，没等常伟思表态就大声说道：“首长，我提个要求，以前提过的——信息对等！”</p><p>常伟思将军抬起头，“没有任何一个军事行动是信息对等的，这点也请到会的专家学者们谅解，我们不可能给你们介绍更多的背景资料。”</p><p>“但我们不一样。”史强说，“警方从作战中心成立之初就一直参与，可直到现在，我们连这个机构到底是干什么的都不知道。而且，你们正在把警方排挤出去，你们一步步熟悉我们的工作，然后把我们一个个赶走。”</p><p>与会的另外几名警官都在低声制止史强。史强敢对常伟思这样级别的首长这么说话，汪淼有些吃惊，而后者的反击更犀利。</p><p>“我说大史，现在看来，你在部队上的老毛病还没改。你能代表警方吗？你因为自己的恶劣行为已被停职好几个月了，马上就要被清除出公安队伍。我调你来，是看重你在城市警务方面的经验，你要珍惜这次机会。”</p><p>大史用粗嗓门说：“那我是戴罪立功了？你们不是说那都是些歪门邪道的经验吗？”</p><p>“但有用。”常伟思对史强点点头，“有用就行，现在顾不上那么多了，这是战争时期。”</p><p>“什么都顾不了了，”一位中情局的情报官员用标准的普通话说，“我们不能再用常规思维。”</p><p>那位英军上校显然也能听懂中文，他点点头，“To be or not to be……”</p><p>“他说什么？”史强问汪淼。</p><p>“没什么。”汪淼机械地回答。这些人似乎在梦呓，战争时期？战争在哪儿？他扭头望向大厅的落地窗，透过窗子可以看到远处大院外面的城市：春天的阳光下，街道上车流如织；草坪上有人在遛狗，还有几个孩子在玩耍……</p><p>里面和外面的世界，哪个更真实？</p><p>常将军讲道：“最近，敌人的攻击明显加强了，目标仍是科学界高层，请你们先看一下文件中的那份名单。”</p><p>汪淼抽出文件中最上面的那张纸，是用大号字打印的，名单显然拟得很仓促，中文和英文姓名都有。</p><p>“汪教授，看到这份名单，您有什么印象？”常伟思看着汪淼问。</p><p>“我知道其中的三人，都是物理学最前沿的著名学者。”汪淼答道，有些心不在焉，他的目光锁定在最后一个名字上，在他的潜意识中，那两个字的色彩与上面几行字是不同的。怎么会在这里看到她的名字？她怎么了？</p><p>“认识？”大史用一根被烟熏黄的粗指头指着文件上的那个名字问。见汪淼没有反应，他迅速作出反应，道：“呵，不太认识。想认识？”</p><p>现在，汪淼知道常伟思把他以前的这个战士调来是有道理的，这个外表粗俗的家伙，眼睛跟刀子一样。他也许不是个好警察，但确实是个狠角色。</p><p>那是一年前，汪淼是“中华二号”高能加速器项目纳米构件部分的负责人。那天下午在良湘的工地上，一次短暂的休息中，他突然被眼前的一幅构图吸引了。作为一名风景摄影爱好者，现实的场景经常在他眼中形成一幅幅艺术构图。构图的主体就是他们正在安装的超导线圈，那线圈有三层楼高，安装到一半，看上去是一个由巨大的金属块和乱麻般的超低温制冷剂管道组成的怪物，仿佛一堆大工业时代的垃圾，显示出一种非人性的技术的冷酷和钢铁的野蛮。就在这金属巨怪前面，出现了一个年轻女性纤细的身影。这构图的光线分布也很绝：金属巨怪淹没在临时施工顶棚的阴影里，更透出那冷峻、粗糙的质感；而一束夕阳金色的光，透过顶棚的孔洞正好投在那个身影上，柔和的暖光照着她那柔顺的头发，照着工作服领口上白皙的脖颈，看上去就像一场狂暴的雷雨后，巨大的金属废墟上开出了一朵娇柔的花……</p><p>“看什么看，干活儿！”</p><p>汪淼吓了一跳，然后发现纳米研究中心主任说的不是他，而是一名年轻工程师，后者也和自己一样呆呆地望着那个身影。汪淼从艺术中回到现实，发现那位女性不是一般的工作人员，因为总工程师陪同着她，在向她介绍着什么，一副很尊敬的样子。</p><p>“她是谁？”汪淼问主任。</p><p>“你应该知道她的，”主任说，用手画了一大圈，“这个投资二百亿的加速器建成后，第一次运行的可能就是验证她提出的一个超弦模型。要说在论资排辈的理论研究圈子，本来轮不到她的，可那些老家伙不敢先来，怕丢人，就让她捡了个便宜。”</p><p>“什么？杨冬是……女的？！”</p><p>“是的，我们也是在前天见到她时才知道。”主任说。</p><p>那名工程师问：“她这人是不是有什么心理障碍，要不怎么会从来不上媒体呢？别像钱鍾书似的，到死大家也没能在电视上看上一眼。”</p><p>“可我们也不至于不知道钱鍾书的性别吧？我觉得她童年一定有什么不寻常的经历，以致得了自闭症。”汪淼说，多少有一些酸葡萄心理。</p><p>杨冬和总工程师走过来，在经过时她对他们微笑着点点头，没说一句话，但汪淼记住了她那清澈的眼睛。</p><p>当天晚上汪淼坐在书房里，欣赏着挂在墙上的自己最得意的几幅风景摄影，他的目光落在一幅塞外风光上——那是一个荒凉的山谷，雪山从山谷的尽头露出一抹白；山谷的这一端，半截沧桑的枯木占据了几乎三分之一的画面。汪淼在想象中把那个萦绕在他脑海中的身影叠印到画面上，让她位于山谷的深处，看上去很小很小；这时汪淼惊奇地发现，整个画面苏醒过来，仿佛照片中的世界认出了那个身影，仿佛这一切本来就是为她而存在。他又依次在想象中将那个身影叠印到另外几幅作品上，有时还将她那双眼睛作为照片上空旷苍穹的背景，那些画面也都苏醒过来，展现出一种汪淼从未想象过的美。以前，汪淼总觉得自己的摄影作品缺少某种灵魂；现在他知道了，缺的是她。</p><p>“名单上的这些物理学家，在不到两个月的时间里，先后自杀。”常伟思说。</p><p>晴天霹雳，汪淼的大脑一片空白。后来这空白中渐渐有了图像，那是他那些黑白风景照片，照片中的大地没有了她的身影，天空抹去了她的眼睛，那些世界死了。</p><p>“是……什么时候？”汪淼呆呆地问。</p><p>“在不到两个月的时间里。”常将军重复道。</p><p>“你是指最后一位吧。”坐在汪淼旁边的大史得意地说，然后压低声音，“她是最后一位自杀者，前天晚上，服用过量安眠药。她死得很顺溜，没有痛苦。”</p><p>刹那间，汪淼居然对大史有了那么一丝感激。</p><p>“为什么？”汪淼问，那些照片上死去的风景画仍在他的脑海中幻灯似的循环浮现。</p><p>常伟思回答道：“现在能肯定的只有一点：促使他们自杀的原因是相同的。但原因本身在这里很难说清，也可能对我们这些非专业人士根本就说不清。文件中附加了他们遗书的部分内容，各位会后可以仔细看看。”</p><p>汪淼翻翻那些遗书的复印件，都是长篇大论。</p><p>“丁仪博士，您能否把杨冬的遗书给汪教授看一下？她的最简短，也最有概括性。”</p><p>那个一直低着头沉默的人半天才有所反应，掏出一个白色的信封隔着桌子递给汪淼，大史在旁边低声说：“他是杨冬的男友。”汪淼这才想起自己在良湘的高能加速器工地上也见过丁仪，他是理论组的成员，这名物理学家因在对球状闪电1的研究中发现宏原子而闻名于世。汪淼从信封中抽出一片散发出清香的东西，形状不规则，不是纸，竟是一片白桦树皮，上面有一行娟秀的字：</p><p>一切的一切都导向这样一个结果：物理学从来就没有存在过，将来也不会存在。我知道自己这样做是不负责任的，但别无选择。</p><p>连签字都没有，她就走了。</p><p>“物理学……不存在？”汪淼茫然四顾。</p><p>常将军合上文件夹，“有一些相关的具体信息与世界上三台新的高能加速器建成后取得的实验结果有关，很专业，我们就不在这里讨论了。我们首先要调查的是‘科学边界’学会。联合国教科文组织将2005年定为世界物理年，这个组织就是在这一年国际物理学界频繁的学术会议和交流活动中逐渐诞生的，是一个松散的国际性学术组织。丁博士，您是理论物理专业的，能进一步介绍一下它的情况吗？”</p><p>丁仪点点头说：“我与‘科学边界’没有任何直接联系，不过这个组织在学术界很有名。它的宗旨是：自20世纪下半年以来，物理学古典理论中的简洁有力渐渐消失了，理论图像变得越来越复杂、模糊和不确定，实验验证也越来越难，这标志着物理学的前沿探索似乎遇到了很大的障碍和困难。‘科学边界’试图开辟一条新的思维途径，简单地说就是试图用科学的方法找出科学的局限性，试图确定科学对自然界的认知在深度和精度上是否存在一条底线——底线之下是科学进入不了的。现代物理学的发展，似乎隐隐约约地触到了这条底线。”</p><p>“很好。”常伟思说，“据我们了解，这些自杀的学者大部分与‘科学边界’有过联系，有些还是它的成员。但没有发现诸如邪教精神控制或使用违禁药物这类的犯罪行为。也就是说，即使‘科学边界’对那些学者产生过影响，也是通过合法的学术交流途径。汪教授，他们最近与您有联系，我们想了解一些情况。”</p><p>大史粗声粗气地开口说：“包括联系人的姓名、见面地点和时间、谈话内容，如果交换过文字资料或电子邮件的话……”</p><p>“大史！”常伟思厉声制止了他。</p><p>“不吱声没人拿你当哑巴！”旁边一位警官探过身去对大史低声说，后者拿起桌上的茶杯，看到里面的烟头后，“咚”的一声又放下了。</p><p>大史又令汪淼像吃了苍蝇一样难受，刚才那一丝感激消失得无影无踪。但他还是克制着回答了这个问题：“我与‘科学边界’的接触是从认识申玉菲开始的，她是一名日籍华裔物理学家，现在为一家日资公司工作，就住在这个城市。她曾在三菱电机的一家实验室从事纳米材料研究，我们是在今年年初的一次技术研讨会上认识的。通过她，又认识了几位物理专业的朋友，都是‘科学边界’的成员，国内国外的都有。和他们交往时，谈的都是一些很……怎么说呢，很终极的问题，主要就是丁博士刚才提到的科学底线的问题。</p><p>“我一开始对这些问题没有太大的兴趣，只是作为消遣。我是搞应用研究的，在这方面水平不高，主要是听他们讨论和争论。这些人思想都很深刻，观点新颖，自己感觉同他们交流，思想开阔了许多，渐渐变得很投入了。但讨论的话题仅限于此，都是天马行空的纯理论，没有什么特别的。他们曾邀请我加入‘科学边界’，但那样的话，参加这样的研讨会就变成了一项义务，我因为精力有限就谢绝了。”</p><p>“汪教授，我们希望您接受邀请，加入‘科学边界’学会，这也是我们今天请您来的主要目的。”常将军说，“我们希望能通过您这个渠道，得到一些这个组织的内部信息。”</p><p>“您是说让我去卧底吗？”汪淼不安地问。</p><p>“哇哈哈，卧底！”大史大笑一声。</p><p>常伟思责备地看了大史一眼，对汪淼说：“只是提供一些情况，我们也没有别的渠道。”</p><p>汪淼摇摇头，“对不起，首长。我不能干这事。”</p><p>“汪教授，‘科学边界’是一个由国际顶尖学者构成的组织，对它的调查是一件极其复杂和敏感的事，我们真的是如履薄冰。没有知识界的帮助，我们寸步难行，所以才提出了这个唐突的要求，希望您能理解。不过我们也尊重您的意愿，如果不同意，我们也是能够理解的。”</p><p>“我……工作很忙，也没有时间。”汪淼推托道。</p><p>常伟思点点头，“好的，汪教授，那我们就不再耽误您的时间了，谢谢您能来参加这次会议。”</p><p>汪淼愣了几秒钟，才明白他该离开了。</p><p>常伟思礼貌地把汪淼送到会议室门口时，大史在后面大声说：“这样挺好，我压根儿就不同意这个方案。已经有这么多书呆子寻了短见，让他去不是‘肉包子打狗’吗？”</p><p>汪淼反身回去，走到大史身旁，努力克制着自己的愤怒，“你这么说话实在不像一名合格的警官。”</p><p>“我本来就不是。”</p><p>“那些学者自杀的原因还没有搞清楚，你不该用这么轻蔑的口气谈论他们，他们用自己的智慧为人类社会做出的贡献，是任何人都不可替代的。”</p><p>“你是说他们比我强？”大史在椅子上仰头看着汪淼，“我总不至于听人家忽悠几句就去寻短见。”</p><p>“那你是说我会？”</p><p>“总得对您的安全负责吧。”大史看着汪淼，又露出他招牌式的傻笑。</p><p>“在那种情况下我比你要安全得多，你应该知道，一个人的鉴别能力是和他的知识成正比的。”</p><p>“那不见得，像您这样的……”</p><p>“大史，你要再多说一句，也从这里出去好了！”常伟思严厉地呵斥道。</p><p>“没关系，让他说。”汪淼转向常将军，“我改变主意了，决定按您的意思加入‘科学边界’。”</p><p>“很好。”大史连连点头，“进去后机灵点儿，有些事顺手就能做，比如瞄一眼他们的电脑，记个邮件地址或网址什么的……”</p><p>“够了！够了！你误会了，我不是去卧底，只是想证明你的无知和愚蠢！”</p><p>“如果您过一阵儿还活着，那自然也就证明了。不过恐怕……嘿嘿。”大史仰着头，傻笑变成了狞笑。</p><p>“我当然会一直活下去，但实在不想再见到你这号人了！”</p><p>常伟思一直把汪淼送下了楼梯，并安排车送他，在道别时说：“史强就那种脾气，其实他是一名很有经验的刑警和反恐专家。二十多年前，他曾是我连里的一名战士。”</p><p>走到车前，常伟思又说：“汪教授，你一定有很多问题要问。”</p><p>“刚才您说的那些，与军方有什么关系？”</p><p>“战争与军方当然有关系。”</p><p>汪淼迷惑地看看周围明媚春光中的一切，“可战争在哪儿？现在全球一处热点都没有，应该是历史上最和平的年代了。”</p><p>常伟思露出了高深莫测的笑容，“你很快就会知道一切的，所有人都会知道。汪教授，你的人生中有重大的变故吗？这变故突然完全改变了你的生活，对你来说，世界在一夜之间变得完全不同。”</p><p>“没有。”</p><p>“那你的生活是一种偶然，世界有这么多变幻莫测的因素，你的人生却没什么变故。”</p><p>汪淼想了半天还是不明白，“大部分人都是这样嘛。”</p><p>“那大部分人的人生都是偶然。”</p><p>“可……多少代人都是这么平淡地过来的。”</p><p>“都是偶然。”</p><p>汪淼摇头笑了起来，“得承认今天我的理解力太差了，您这岂不是说……”</p><p>“是的，整个人类历史也是偶然，从石器时代到今天都没什么重大变故，真幸运。但既然是幸运，总有结束的一天；现在我告诉你，结束了，做好思想准备吧。”</p><p>汪淼还想问下去，但将军与他握手告别，阻止了他下面的问题。</p><p>上车后，司机开口问汪淼家的地址，汪淼告诉他后，随口问道：“哦，接我来的不是你？我看车是一样的。”</p><p>“不是我，我是去接丁博士的。”</p><p>汪淼心里一动，便向司机打听丁仪的住处，司机告诉了他。当天晚上，他就去找丁仪。</p><p>1此处参见作者的另一本小说《球状闪电》。</p></div></section></div>
+                        </div>
+
+                        <div class="txtwrap is-initially-hidden" id="vipPanel">
+                            <div id="showBooking" class="orderBox">
+                                <h3>此章为VIP章节，需要订阅后才能继续阅读</h3>
+                                <ul class="order_list">
+                                    <li>价格：<span class="red" id="vipPrice">0屋币(1元=100屋币)</span></li>
+                                    <li id="panelPay" class="btns"><a class="btn_red" href="#" id="buyBookIndexBtn">购买</a></li>
+                                </ul>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                <div class="nextPageBox">
+                    <a class="prev" href="/book/1262260513468569147/2039351400479733309.html" id="preBottomLink">上一章</a>
+                    <a class="dir" href="/book/indexList-1262260513468569147.html?atIndexId=2039351400479733310&order=asc" id="dirBottomLink">目录</a>
+                    <a class="next" href="/book/1262260513468569147/2039351400479733311.html" id="nextBottomLink">下一章</a>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+<div class="footer">
+    <div class="box_center footer-content">
+        <div class="friend_link" data-front-friend-links hidden>
+            <span>友情链接：</span><span class="friend-link-list"></span>
+        </div>
+        <div class="copyright">
+            <ul>
+                <li class="menu"><a href="/">网站首页</a><i
+                        class="line">|</i><a href="/user/feedback.html" data-feedback-link>反馈留言</a></li>
+                <li class="footer-site-meta">Copyright (C) All rights reserved&nbsp;&nbsp;<a class="footer-site-name" href="/">书海阁</a>版权所有</li>
+            </ul>
+        </div>
+    </div>
+</div>
+
+<a class="mobileReadSetupBtn" href="#" id="mobileReadSetupBtn" aria-label="阅读功能">设置</a>
+<div class="mobileReadTopMenu" id="mobileReadTopMenu" aria-label="阅读顶部菜单">
+    <a class="mobileReadTopBack" href="/book/bookclass.html" id="mobileReadTopBackLink" aria-label="返回作品详情">
+        <span class="mobileReadTopBackIcon" aria-hidden="true"></span>
+        <span class="mobileReadTopTitle" id="mobileReadTopTitle">作品详情</span>
+    </a>
+    <a class="mobileReadTopShelf" href="/user/favorites.html" id="mobileReadTopShelfBtn" title="回书架" aria-label="回书架">回书架</a>
+</div>
+<div class="mobileReadActionMenu" id="mobileReadActionMenu" aria-label="阅读功能菜单">
+    <button class="mobileReadActionBtn mobileReadActionCatalog" type="button" id="mobileReadCatalogBtn" title="目录" aria-label="目录">目录</button>
+    <button class="mobileReadActionBtn mobileReadActionProgress" type="button" id="mobileReadProgressBtn" title="进度" aria-label="进度">进度</button>
+    <button class="mobileReadActionBtn mobileReadActionComment" type="button" id="mobileReadCommentBtn" title="评论" aria-label="评论">评论</button>
+    <button class="mobileReadActionBtn mobileReadActionNight" type="button" id="mobileReadNightBtn" title="夜间" aria-label="夜间">夜间</button>
+    <button class="mobileReadActionBtn mobileReadActionSetup" type="button" id="mobileReadSetupEntryBtn" title="设置" aria-label="设置">设置</button>
+</div>
+<div class="mobileReadPanelMask" id="mobileReadPanelMask"></div>
+<div class="mobileReadProgressSheet" id="mobileReadProgressSheet" aria-live="polite">
+    <div class="mobileReadProgressTitle" id="mobileReadProgressTitle">章节进度</div>
+    <div class="mobileReadProgressRow">
+        <a class="mobileReadProgressNav prev" href="/book/1262260513468569147/2039351400479733309.html" id="mobileReadProgressPrevBtn">上一章</a>
+        <input class="mobileReadProgressRange" id="mobileReadProgressRange" type="range" min="1" max="1" value="1" step="1" aria-label="阅读进度"/>
+        <a class="mobileReadProgressNav next" href="/book/1262260513468569147/2039351400479733311.html" id="mobileReadProgressNextBtn">下一章</a>
+    </div>
+</div>
+<div class="mobileReadCommentSheet" id="mobileReadCommentSheet" aria-live="polite">
+    <div class="mobileReadCommentHead">
+        <div class="mobileReadCommentTitleWrap">
+            <strong class="mobileReadCommentTitle">评论</strong>
+            <span class="mobileReadCommentTotal" id="mobileReadCommentTotal">(0条)</span>
+        </div>
+        <button class="mobileReadCommentClose" type="button" id="mobileReadCommentCloseBtn" title="收起评论" aria-label="收起评论">收起</button>
+    </div>
+    <div class="mobileReadCommentListWrap" id="mobileReadCommentListWrap">
+        <div class="mobileReadCommentLoading" id="mobileReadCommentLoading">评论加载中...</div>
+        <div class="mobileReadCommentList" id="mobileReadCommentList"></div>
+        <button class="mobileReadCommentMore" type="button" id="mobileReadCommentMoreBtn">查看更多</button>
+    </div>
+    <div class="mobileReadCommentComposer ui-composer">
+        <textarea class="mobileReadCommentInput ui-composer-input" id="mobileReadCommentInput" data-maxlength="200" rows="3" placeholder="写下你的想法..." aria-label="发表评论"></textarea>
+        <div class="mobileReadCommentComposerFoot ui-composer-footer">
+            <span class="mobileReadCommentCount ui-composer-count" id="mobileReadCommentCount">0/200</span>
+            <button class="mobileReadCommentSubmit ui-composer-submit" type="button" id="mobileReadCommentSubmitBtn" title="发送评论" aria-label="发送评论"><svg class="ui-icon" aria-hidden="true"><use href="#front-icon-send"></use></svg></button>
+        </div>
+    </div>
+</div>
+<div class="mobileReadCatalogSheet" id="mobileReadCatalogSheet">
+    <div class="mobileReadCatalogHead">
+        <a class="mobileReadCatalogCoverLink" href="#" id="mobileReadCatalogCoverLink" title="作品详情">
+            <img class="mobileReadCatalogCover" id="mobileReadCatalogCoverImg" src="/localPic/2026/10/16/aba4b222-1ca8-468f-9e21-2f4e61bef054.jpg" width="64" height="84" decoding="async" alt="三体全集（全三册）封面"/>
+        </a>
+        <div class="mobileReadCatalogMeta">
+            <a class="mobileReadCatalogMetaLink" href="#" id="mobileReadCatalogMetaLink" title="作品详情">
+                <strong class="mobileReadCatalogBookName" id="mobileReadCatalogBookName">目录加载中...</strong>
+            </a>
+            <a class="mobileReadCatalogAuthor mobileReadCatalogAuthorLink" href="#" id="mobileReadCatalogAuthorLink" title="作者作品">-</a>
+            <div class="mobileReadCatalogStats">
+                <span id="mobileReadCatalogStatus">-</span>
+                <span id="mobileReadCatalogCount">共0章</span>
+            </div>
+        </div>
+        <a class="mobileReadCatalogOrderToggle" href="#" id="mobileReadCatalogOrderToggle">正序</a>
+    </div>
+    <div class="mobileReadCatalogListWrap" id="mobileReadCatalogListWrap">
+        <div class="mobileReadCatalogLoading" id="mobileReadCatalogLoading">目录加载中...</div>
+        <ul class="mobileReadCatalogList" id="mobileReadCatalogList"></ul>
+        <div class="mobileReadCatalogMore" id="mobileReadCatalogMore"></div>
+    </div>
+</div>
+<div class="readQuickNav" id="readQuickNav" aria-label="阅读快捷导航">
+    <a class="readQuickBtn readQuickBtnFeedback" href="/user/feedback.html" data-feedback-link aria-label="反馈本章问题" title="反馈本章问题"><svg class="ui-icon" aria-hidden="true" focusable="false"><use href="#front-icon-feedback"></use></svg></a>
+    <a class="readQuickBtn readQuickBtnTop" href="#" id="readQuickTopBtn" aria-label="回到顶部" title="回到顶部"><svg class="ui-icon" aria-hidden="true" focusable="false"><use href="#front-icon-to-top"></use></svg></a>
+    <a class="readQuickBtn readQuickBtnBottom" href="#" id="readQuickBottomBtn" aria-label="到达底部" title="到达底部"><svg class="ui-icon" aria-hidden="true" focusable="false"><use href="#front-icon-to-bottom"></use></svg></a>
+</div>
+<div class="readChapterDock" id="readChapterDock" aria-live="polite">
+    <span class="readChapterDockText" id="readChapterDockText"></span>
+    <a class="readChapterDockCatalog" href="#" id="readChapterDockCatalog" title="加书架">加书架</a>
+</div>
+<div class="readAutoChapterLoading" id="readAutoChapterLoading" aria-live="polite" aria-hidden="true">
+    <span class="readAutoChapterLoadingSpinner" aria-hidden="true"></span>
+    <span class="readAutoChapterLoadingText" id="readAutoChapterLoadingText">正在加载章节...</span>
+</div>
+<div class="flipReadDock" id="flipReadDock" aria-label="仿真翻页导航">
+    <a class="flipReadAction" href="/book/1262260513468569147/2039351400479733309.html" id="flipPrevLink">上一章</a>
+    <a class="flipReadAction" href="/book/indexList-1262260513468569147.html?atIndexId=2039351400479733310&order=asc" id="flipDirLink">目录</a>
+    <a class="flipReadAction" href="/book/1262260513468569147/2039351400479733311.html" id="flipNextLink">下一章</a>
+</div>
+
+<div class="readPopup setupBox is-initially-hidden">
+    <a class="closePopup" href="#"></a>
+    <div class="popupTit"><h3>设置</h3></div>
+    <div class="setupList">
+        <ul>
+            <li class="readTheme">
+                <em class="tit">主题</em>
+                <a id="setup_color_white" class="white current js-setup-theme" data-theme-color="1" href="#" title="白色"></a>
+                <a id="setup_color_green" class="green js-setup-theme" data-theme-color="2" href="#" title="绿色"></a>
+                <a id="setup_color_pink" class="pink js-setup-theme" data-theme-color="3" href="#" title="粉色"></a>
+                <a id="setup_color_yellow" class="yellow js-setup-theme" data-theme-color="4" href="#" title="黄色"></a>
+                <a id="setup_color_gray" class="gray js-setup-theme" data-theme-color="5" href="#" title="灰色"></a>
+                <a id="setup_color_night" class="night js-setup-theme" data-theme-color="6" href="#" title="夜间"></a>
+            </li>
+            <li class="fontSize setBtn"><em class="tit">字号</em>
+                <a class="small js-setup-font-size" data-font-step="-2" href="#">A-</a>
+                <span class="current_font" id="cFonts">16</span>
+                <a class="big js-setup-font-size" data-font-step="2" href="#">A+</a>
+                <span class="fontSelectLabel">字体</span>
+                <select id="setup_font_select" class="js-setup-font-select" aria-label="字体">
+                    <option value="0">雅黑</option>
+                    <option value="1">宋体</option>
+                    <option value="2">楷书</option>
+                </select>
+            </li>
+            <li class="setPage setBtn"><em class="tit">翻页</em>
+                <a id="setup_page_scroll" class="current js-setup-page-mode" data-page-mode="scroll" href="#">滚动</a>
+                <a id="setup_page_flip" class="js-setup-page-mode" data-page-mode="flip" href="#">仿真</a>
+            </li>
+            <li class="chapterNav setBtn"><em class="tit">切章</em>
+                <a id="setup_chapter_nav_auto" class="current js-setup-chapter-nav" data-chapter-nav-mode="auto" href="#">自动</a>
+                <a id="setup_chapter_nav_manual" class="js-setup-chapter-nav" data-chapter-nav-mode="manual" href="#">手动</a>
+            </li>
+            <li class="setupActions"><a id="setupResetBtn" class="btn_reset_default" href="#">恢复默认</a></li>
+        </ul>
+    </div>
+</div>
+<div class="maskBox is-initially-hidden"></div>
+
+<script src="/javascript/vendor/jquery-3.7.1.min.js?_fv=dmxlsvdgqpkw1vjh&v=20260407" defer type="text/javascript"></script>
+<script src="/javascript/common/front_utils.js?_fv=dmxlsvdgqpkw35i&v=20261010_1" defer type="text/javascript"></script>
+<script src="/javascript/common/front_request.js?_fv=dmxlsvdgqpkw5wn&v=20261026_2" defer type="text/javascript"></script>
+<script src="/javascript/common/mini-layui.js?_fv=dmxlsvdgqpkwcb4&v=20260410" defer type="text/javascript"></script>
+<script src="/javascript/common/common.js?_fv=dmxlsvdgqpkw2d9q&v=20261117_1" defer type="text/javascript"></script>
+<script src="/javascript/common/auth_success_feedback.js?_fv=dmxlsvdgqpkw6iy&v=20261014_2" defer type="text/javascript"></script>
+<script src="/javascript/common/interaction_badge.js?_fv=dmxlsvdgqpkw1hd&v=20260925_1" defer type="text/javascript"></script>
+<script src="/javascript/common/announcement_popup.js?_fv=dmxlsvdgqpkw7lf&v=20261029_1" defer type="text/javascript"></script>
+<script src="/javascript/vendor/centrifuge-5.7.4/centrifuge.js?_fv=dmxlsvdgqpkw1nso&v=5.7.4_1" defer type="text/javascript"></script>
+<script src="/javascript/common/chat_widget.js?_fv=dmxlsvdgqpkw1e5x&v=20261018_2" defer type="text/javascript"></script>
+
+<script src="/javascript/common/front_comment.js?_fv=dmxlsvdgqpkwc27&v=20261003_1" defer type="text/javascript"></script>
+<script src="/javascript/common/reading_tracker.js?_fv=dmxlsvdgqpkwq7f&v=20261026_1" defer type="text/javascript"></script>
+<script src="/javascript/common/reader_tracking.js?_fv=dmxlsvdgqpkw2h9&v=20260816_1" defer type="text/javascript"></script>
+<script src="/javascript/common/reader_content.js?_fv=dmxlsvdgqpkw2w2&v=20260927_1" defer type="text/javascript"></script>
+<script src="/javascript/common/reader_preferences.js?_fv=dmxlsvdgqpkw1ru&v=20260816_2" defer type="text/javascript"></script>
+<script src="/javascript/common/reader_comments.js?_fv=dmxlsvdgqpkw99f&v=20261003_1" defer type="text/javascript"></script>
+<script src="/javascript/common/reader_chapter_state.js?_fv=dmxlsvdgqpkw2sq&v=20261009_1" defer type="text/javascript"></script>
+<script src="/javascript/common/reader_directory.js?_fv=dmxlsvdgqpkwdrh&v=20261010_1" defer type="text/javascript"></script>
+<script src="/javascript/pages/front/book_content_page.js?_fv=dmxlsvdgqpkw2saq&v=20261025_4" defer type="text/javascript"></script>
+<script type="application/json" id="readPageBootstrap">{"book":{"id":"1262260513468569147","catId":5,"catName":"科幻灵异","picUrl":"/localPic/2026/10/16/aba4b222-1ca8-468f-9e21-2f4e61bef054.jpg","bookName":"三体全集（全三册）","authorName":"刘慈欣","bookDesc":"【荣获世界科幻大奖“雨果奖”长篇小说奖，约翰·坎贝尔纪念奖，轨迹奖，银河奖特别奖。】\n套装共三册：\n《三体I》“文化大革命”如火如荼进行的同时，军方探寻外星文明的绝密计划“红岸工程”取得了突破性进展。但无人料到，地球文明向宇宙发出的第一声啼鸣彻底改变了人类的命运。\n四光年外，为了生存而挣扎的“三体文明”接收到了地球发来的信息。在运用超技术锁死地球人的基础科学之后，三体人庞大的宇宙舰队开始向地球进发……\n《三体II：黑暗森林》庞大的三体舰队杀气腾腾直扑太阳系，基础科学被锁死的地球人面对前所未有的危局，唯一的突破口在于三体人透明的思维。于是，人类制订了神秘莫测的“面壁计划”，秘密展开对三体人的反击。“面壁计划”与人类的太空舰队，哪一样才是人类的希望？“黑暗森林”意味着什么？人类文明在波谲云诡的宇宙中又该如何存续？\n《三体III：死神永生》与三体文明的战争使人类首次看到了宇宙黑暗的真相，黑暗森林打击让两个文明危在旦夕，可这些不过是宇宙战场上一段微不足道的插曲：真正的星际战争没人见过，也不可能见到。战争的方式和武器已经远远超出人类的想象，目睹战场之日，即是灭亡之时。太阳系中，最后直面宇宙残酷真相的，只有两双眼睛。","bookStatus":1,"wordCount":896618,"lastIndexId":"2039351400479733396","lastIndexName":"附 写于日文版《三体Ⅲ·死神永生》出版之前","lastIndexUpdateTime":"2026-10-16 15:14:33","isVip":0},"bookIndex":{"id":"2039351400479733310","bookId":"1262260513468569147","indexNum":3,"indexName":"1 科学边界","wordCount":8117,"isVip":0,"bookPrice":0,"auditStatus":0,"createTime":"2026-10-16 15:14:33","updateTime":"2026-10-16 15:14:33"},"preBookIndexId":"2039351400479733309","nextBookIndexId":"2039351400479733311","needBuy":false}</script>
+<div class="site-floating-frame site-floating-frame-bottom site-floating-frame-cpc" data-frame-position="bottom-cpc-network-7bad0650f535" data-frame-channel="cpc" data-frame-role="peer" data-frame-group="cpc-network-7bad0650f535-0" data-frame-group-size="1" data-frame-batch-size="1" data-frame-attempt-limit="1" data-frame-fallback-enabled="false" data-frame-interactive="true" data-frame-type="banner" data-iframe-isolated="false" data-frame-loaded="false" data-frame-click-ticket="eyJ2IjozLCJiZCI6IjIwMjYtMTEtMTkiLCJwIjoibmV0d29yay03YmFkMDY1MGY1MzUiLCJxIjowLCJkIjoiYmViZTZiMGU2OWY3MzZkYjdhZTc2ODc5ZTkxMjA5Y2M0Y2M3YzZhYjhmZTE2MjIxYjNhNjQ3NDI3NWQ0MTNiZCIsInMiOiJib3R0b20iLCJuIjoiMTA3YTg5ZWNjODY5N2U1ZGJjMzBhOGFjNWVjNDI0YjciLCJpYXQiOjE3OTUwNjI4NDgsImV4cCI6MTc5NTE0OTI0OCwiY2QiOjE4MDB9.8bUsLQwLn3R7rxZq8OxFzfTFFllzfufEKCB3jkueg1k" data-frame-impression-ticket="eyJ2IjozLCJiZCI6IjIwMjYtMTEtMTkiLCJwIjoibmV0d29yay03YmFkMDY1MGY1MzUiLCJxIjowLCJkIjoiYmViZTZiMGU2OWY3MzZkYjdhZTc2ODc5ZTkxMjA5Y2M0Y2M3YzZhYjhmZTE2MjIxYjNhNjQ3NDI3NWQ0MTNiZCIsInMiOiJib3R0b20iLCJuIjoiMTA3YTg5ZWNjODY5N2U1ZGJjMzBhOGFjNWVjNDI0YjciLCJpYXQiOjE3OTUwNjI4NDgsImV4cCI6MTc5NTE0OTI0OCwiY2QiOjE4MDB9.8bUsLQwLn3R7rxZq8OxFzfTFFllzfufEKCB3jkueg1k" data-frame-click-cooldown-enabled="true" data-frame-click-cookie-enabled="false" data-frame-click-require-navigation="true" data-frame-click-cooldown-seconds="1800" style="position:fixed;bottom:calc(var(--site-frame-edge-offset,0px) + var(--site-frame-stack-offset,0px));left:0;width:100%;--site-frame-stack-total:40;--site-frame-stack-strip:0.4;--site-frame-stack-primary:1;height:40px;overflow:hidden;contain:layout paint;opacity:0;pointer-events:none;z-index:-1;transition:var(--site-frame-edge-transition,bottom .18s ease);--site-frame-content-opacity:1.00"><style>.site-floating-frame>:not(button):not(script):not(style){opacity:var(--site-frame-content-opacity)!important}</style><style class="site-floating-frame-avoidance">body.immersive-read:has(.site-floating-frame-bottom[data-frame-loaded="true"]:not([data-frame-hidden="true"])) .menu_right{bottom:var(--site-frame-stack-height,40px)!important}body.immersive-read.mobileReadMenuOpen .site-floating-frame-bottom[data-frame-loaded="true"]:not([data-frame-hidden="true"]){bottom:calc(60px + env(safe-area-inset-bottom,0px) + var(--site-frame-stack-offset,0px))!important;transition:none!important}body.immersive-read.mobileReadPanelOpen .site-floating-frame-bottom[data-frame-loaded="true"]:not([data-frame-hidden="true"]){bottom:calc(var(--mobile-read-panel-ad-offset) + var(--site-frame-stack-offset,0px))!important;transition:none!important}body.immersive-read:has(.site-floating-frame-bottom[data-frame-loaded="true"]:not([data-frame-hidden="true"])) .mobileReadTopMenu,body.immersive-read:has(.site-floating-frame-bottom[data-frame-loaded="true"]:not([data-frame-hidden="true"])) .mobileReadActionMenu{z-index:2147483100!important}</style><script>(function(){if(window.__novelFixedStackReflow)return;window.__novelFixedStackReflow=true;window.__novelReflowFloatingAds=function(){var all=document.querySelectorAll('.site-floating-frame-bottom[data-frame-role="peer"]'),selector='.site-floating-frame-bottom[data-frame-role="peer"][data-frame-loaded="true"]:not([data-frame-hidden="true"]):not([data-frame-stale="true"])',ads=document.querySelectorAll(selector),primary=null,button;for(var a=0;a<all.length;a++){button=all[a].querySelector('button[aria-label="关闭广告"]');if(button)button.style.display="none"}if(!ads.length)ads=document.querySelectorAll('.site-floating-frame-bottom[data-frame-role="peer"][data-frame-loaded="true"]:not([data-frame-hidden="true"])[data-frame-stale="true"]');for(var i=0;i<ads.length;i++)if(!primary&&parseFloat(ads[i].style.getPropertyValue("--site-frame-stack-primary"))===1)primary=ads[i];if(!primary&&ads.length)primary=ads[0];if(!primary){document.documentElement.style.setProperty("--site-frame-stack-height","0px");return}var total=parseFloat(primary.style.getPropertyValue("--site-frame-stack-total"))||primary.getBoundingClientRect().height,strip=ads.length>1?(parseFloat(primary.style.getPropertyValue("--site-frame-stack-strip"))||0):0,secondary=0;strip=Math.max(0,Math.min(strip,total));for(var j=0;j<ads.length;j++){var item=ads[j],isPrimary=item===primary;item.style.left=isPrimary?"0":"calc(100% * "+secondary+" / "+(ads.length-1)+")";item.style.width=isPrimary?"100%":"calc(100% / "+(ads.length-1)+")";item.style.height=(isPrimary?total-strip:strip)+"px";item.style.setProperty("--site-frame-stack-offset",(isPrimary?strip:0)+"px");if(!isPrimary)secondary++}button=primary.querySelector('button[aria-label="关闭广告"]');if(button)button.style.display="flex";document.documentElement.style.setProperty("--site-frame-stack-height",total+"px")}})();</script><script>(function(XHR,request){
+if(window.__novelDirectFrameClickBound)return;
+window.__novelDirectFrameClickBound=true;
+var runtime=window.__novelAdClickRuntime;if(!runtime){runtime=window.__novelAdClickRuntime={pending:null,pendingAt:0,timer:0};runtime.clear=function(){runtime.pending=null;runtime.pendingAt=0;clearTimeout(runtime.timer)};runtime.arm=function(ad){if(!ad||ad.getAttribute("data-frame-click-sent")==="true")return;runtime.pending=ad;runtime.pendingAt=Date.now();clearTimeout(runtime.timer);runtime.timer=setTimeout(runtime.clear,2500)};runtime.submit=function(ad){if(!ad||ad.getAttribute("data-frame-click-sent")==="true")return;runtime.clear();var ticket=ad.getAttribute("data-frame-click-ticket");if(!ticket)return;ad.setAttribute("data-frame-click-sent","true");if(ad.getAttribute("data-frame-click-cooldown-enabled")==="true"){ad.style.setProperty("opacity","0","important");ad.style.setProperty("pointer-events","none","important");ad.setAttribute("data-frame-hidden","true");if(ad.getAttribute("data-frame-role")==="peer"&&window.__novelReflowFloatingAds)window.__novelReflowFloatingAds();var seconds=parseInt(ad.getAttribute("data-frame-click-cooldown-seconds"),10)||1800,proof=ticket+"~"+Math.floor(Date.now()/1000);if(ad.getAttribute("data-frame-click-cookie-enabled")==="true")document.cookie="novel_ad_click_cooldown="+encodeURIComponent(proof)+"; Path=/; Max-Age="+seconds+"; SameSite=Lax";setTimeout(function(){ad.remove()},2000)}try{var xhr=new XHR();xhr.open("POST","/ad/click",false);xhr.setRequestHeader("Content-Type","text/plain;charset=UTF-8");xhr.send(ticket)}catch(e){request("/ad/click",{method:"POST",body:ticket,keepalive:true,mode:"no-cors",credentials:"include"}).catch(function(){})}};runtime.activate=function(ad){if(!ad)return;if(ad.getAttribute("data-frame-click-require-navigation")==="true")runtime.arm(ad);else runtime.submit(ad)};runtime.confirm=function(ad){if(ad&&runtime.pending===ad)runtime.submit(ad)}};
+window.__novelDirectFrameClickReset=function(){runtime.clear();var ads=document.querySelectorAll(".site-floating-frame[data-frame-click-sent]");for(var i=0;i<ads.length;i++)ads[i].removeAttribute("data-frame-click-sent")};
+var selector='.site-floating-frame[data-iframe-isolated="false"]',touchAd=null,touchX=0,touchY=0,touchMoved=false,pointerAd=null,pointerX=0,pointerY=0,pointerMoved=false,ignoreClickUntil=0,
+point=function(e){return e.changedTouches&&e.changedTouches[0]||e.touches&&e.touches[0]||e},
+adAt=function(e){return e.isTrusted&&e.target.closest&&e.target.closest(selector)},
+closeAt=function(e){var p=point(e),buttons=document.querySelectorAll('.site-floating-frame button[aria-label="关闭广告"]');for(var i=0;i<buttons.length;i++){var r=buttons[i].getBoundingClientRect();if(p.clientX>=r.left&&p.clientX<=r.right&&p.clientY>=r.top&&p.clientY<=r.bottom){e.preventDefault();e.stopImmediatePropagation();var ad=buttons[i].parentElement;if(ad.getAttribute("data-frame-role")==="peer"&&window.FrontUI&&window.FrontUI.FloatingAds)window.FrontUI.FloatingAds.remove();else ad.remove();return true}}return false};
+window.addEventListener("pointerdown",function(e){if(e.isPrimary===false)return;pointerAd=adAt(e);if(!pointerAd)return;pointerX=e.clientX;pointerY=e.clientY;pointerMoved=false;e.stopImmediatePropagation()},true);
+window.addEventListener("pointermove",function(e){if(!pointerAd)return;if(Math.abs(e.clientX-pointerX)>10||Math.abs(e.clientY-pointerY)>10){pointerMoved=true;e.stopImmediatePropagation()}},true);
+window.addEventListener("pointerup",function(e){if(!pointerAd)return;if(pointerMoved){ignoreClickUntil=Date.now()+700;e.preventDefault();e.stopImmediatePropagation()}pointerAd=null;pointerMoved=false},true);
+window.addEventListener("pointercancel",function(){pointerAd=null;pointerMoved=false},true);
+window.addEventListener("touchstart",function(e){touchAd=adAt(e);if(!touchAd)return;var p=point(e);touchX=p.clientX;touchY=p.clientY;touchMoved=false;e.stopImmediatePropagation()},true);
+window.addEventListener("touchmove",function(e){if(!touchAd)return;var p=point(e);if(Math.abs(p.clientX-touchX)>10||Math.abs(p.clientY-touchY)>10){touchMoved=true;e.stopImmediatePropagation()}},true);
+window.addEventListener("touchend",function(e){if(!touchAd)return;if(touchMoved){ignoreClickUntil=Date.now()+700;e.preventDefault();e.stopImmediatePropagation()}else if(e.isTrusted&&!closeAt(e))runtime.activate(touchAd);touchAd=null;touchMoved=false},true);
+window.addEventListener("touchcancel",function(){touchAd=null;touchMoved=false},true);
+window.addEventListener("click",function(e){var ad=adAt(e);if(!ad)return;if(Date.now()<ignoreClickUntil){e.preventDefault();e.stopImmediatePropagation();return}if(!closeAt(e))runtime.activate(ad)},true)
+})(XMLHttpRequest,fetch.bind(window));</script><script>(function(){if(window.__novelFrameNavigationGuard)return;window.__novelFrameNavigationGuard=true;var active=null,timer=0,root=document.documentElement,selector=".site-floating-frame",directSelector='.site-floating-frame[data-iframe-isolated="false"]',nativeOpen=window.open.bind(window),runtime=function(){return window.__novelAdClickRuntime},clear=function(){active=null;clearTimeout(timer);var state=runtime();if(state)state.clear()},arm=function(e){var ad=e.target&&e.target.closest&&e.target.closest(directSelector);if(!ad||e.target.closest('button[aria-label="关闭广告"]'))return;active=ad;clearTimeout(timer);timer=setTimeout(function(){active=null},2500)},outside=function(e){if(!e.target.closest||!e.target.closest(selector))clear()};root.addEventListener("pointerdown",arm,true);root.addEventListener("touchstart",arm,true);root.addEventListener("click",arm,true);root.addEventListener("pointerdown",outside,true);root.addEventListener("touchstart",outside,true);window.open=function(){var popup=nativeOpen.apply(window,arguments),state=runtime();if(popup&&state&&state.pending)state.confirm(state.pending);return popup};if(window.navigation)window.navigation.addEventListener("navigate",function(e){var state=runtime(),url=e.destination&&e.destination.url,ad=state&&state.pending||active;if(!ad||e.hashChange||e.downloadRequest!=null||!/^https?:\/\//i.test(url))return;if(!e.cancelable){if(state)state.confirm(ad);return}var popup=window.open("about:blank","_blank");if(!popup)return;if(state)state.confirm(ad);active=null;try{e.preventDefault();popup.opener=null;popup.location.replace(url)}catch(error){try{popup.close()}catch(ignore){}}});window.addEventListener("pagehide",function(){var state=runtime();if(state&&state.pending&&Date.now()-state.pendingAt<1500)state.confirm(state.pending)},true)})();</script><script>(function(ad,isolated,request,waitMS,roundMS,requestMS){if(!ad)return;var ticket=ad.getAttribute("data-frame-impression-ticket"),slot=ad.getAttribute("data-frame-position")||"slot",group=ad.getAttribute("data-frame-group")||slot,expected=parseInt(ad.getAttribute("data-frame-group-size"),10)||1,batchExpected=parseInt(ad.getAttribute("data-frame-batch-size"),10)||1,now=Date.now(),runtime=document.documentElement.__novelAdRuntime||(document.documentElement.__novelAdRuntime={}),reflow=window.__novelReflowFloatingAds||(window.__novelReflowFloatingAds=function(){var ads=document.querySelectorAll('.site-floating-frame-bottom[data-frame-role="peer"][data-frame-loaded="true"]:not([data-frame-hidden="true"]):not([data-frame-stale="true"])'),offset=0,button;if(!ads.length)ads=document.querySelectorAll('.site-floating-frame-bottom[data-frame-role="peer"][data-frame-loaded="true"]:not([data-frame-hidden="true"])[data-frame-stale="true"]');for(var i=0;i<ads.length;i++){ads[i].style.setProperty("--site-frame-stack-offset",offset+"px");offset+=ads[i].getBoundingClientRect().height;button=ads[i].querySelector('button[aria-label="关闭广告"]');if(button)button.style.display="none"}if(ads.length){button=ads[ads.length-1].querySelector('button[aria-label="关闭广告"]');if(button)button.style.display="flex"}document.documentElement.style.setProperty("--site-frame-stack-height",offset+"px")}),rounds=runtime.slotRounds||(runtime.slotRounds={}),deadline=runtime.deadline;if(!(deadline>now)){deadline=now+roundMS;runtime.deadline=deadline}var round=rounds[group];if(!round){round={key:group,expected:expected,states:{},filled:false,sent:false};rounds[group]=round}round.expected=Math.max(round.expected,expected);round.states[slot]="pending";var batch=runtime.impressionBatch;if(!batch||batch.deadline!==deadline||batch.sent){batch={deadline:deadline,expected:batchExpected,registered:0,settled:0,items:{},sent:false,scheduled:false,promise:null,cancelFallback:false};runtime.impressionBatch=batch}batch.expected=Math.max(batch.expected,batchExpected);var batchKey=String(batch.registered++);if(!batch.flush)batch.flush=function(force){if(runtime.impressionBatch!==batch)return Promise.resolve(null);if(force)batch.cancelFallback=true;if(batch.sent)return batch.promise||Promise.resolve(null);if(!force&&batch.settled<batch.expected)return Promise.resolve(null);batch.sent=true;var items=[],allEmpty=true,wantsNext=false;for(var key in batch.items){var item=batch.items[key];if(!item.empty)allEmpty=false;if(item.next)wantsNext=true;if(item.ticket)items.push({ticket:item.ticket,empty:item.empty})}if(!items.length)return batch.promise=Promise.resolve(null);var body=JSON.stringify({items:items,next:!force&&allEmpty&&wantsNext});batch.promise=new Promise(function(resolve){var finished=false,controller=window.AbortController?new AbortController():null,finish=function(value){if(finished)return;finished=true;clearTimeout(timeout);resolve(value)},timeout=setTimeout(function(){if(controller)controller.abort();finish(null)},Math.max(1,requestMS)),options={method:"POST",body:body,keepalive:true,credentials:"include",headers:{"Content-Type":"application/json"}};if(controller)options.signal=controller.signal;request("/ad/impression",options).then(function(response){if(response&&response.ok)return response.json().catch(function(){return null});return null}).then(finish).catch(function(){finish(null)})}).then(function(payload){if(!batch.cancelFallback&&runtime.impressionBatch===batch&&Date.now()<deadline&&payload&&payload.code===200&&payload.data&&payload.data.next)document.dispatchEvent(new CustomEvent("novelAdEmpty",{detail:payload.data.next}));return payload});return batch.promise};if(!runtime.impressionPagehideBound){runtime.impressionPagehideBound=true;window.addEventListener("pagehide",function(){var current=runtime.impressionBatch;if(current&&current.flush)current.flush(true)})}var done=false,timer=0,poller=0,observer=0,onMessage=0,outside=function(callback){return window.__novelFrameOutside?window.__novelFrameOutside(callback):callback()},settle=function(empty,wantsNext){if(runtime.impressionBatch!==batch||batch.items[batchKey])return;batch.items[batchKey]={ticket:ticket,empty:empty,next:wantsNext};batch.settled++;if(batch.scheduled)return;batch.scheduled=true;setTimeout(function(){batch.scheduled=false;batch.flush(false)},0)},cleanup=function(){clearTimeout(timer);clearInterval(poller);if(observer)observer.disconnect();if(onMessage)window.removeEventListener("message",onMessage)},replaceStale=function(){var placement=ad.classList.contains("site-floating-frame-top")?"top":"bottom",stale=document.querySelectorAll('.site-floating-frame-'+placement+'[data-frame-stale="true"]');for(var i=0;i<stale.length;i++)stale[i].remove()},ready=function(){if(done||!ad.isConnected)return;done=true;cleanup();if(rounds[group]!==round||ad.getAttribute("data-frame-stale")==="true"){ad.remove();return}round.filled=true;round.states[slot]="ready";ad.setAttribute("data-frame-loaded","true");ad.style.zIndex="2147483000";ad.style.contain="layout paint";ad.style.opacity="1";if(ad.getAttribute("data-frame-interactive")!=="false")ad.style.pointerEvents="auto";if(ad.getAttribute("data-frame-role")==="peer")outside(reflow);outside(replaceStale);settle(false,false)},visible=function(){var nodes=ad.querySelectorAll("*:not(script):not(style):not(button):not(.site-floating-frame-content)");for(var i=0;i<nodes.length;i++){var node=nodes[i],rect=node.getBoundingClientRect(),style=getComputedStyle(node),tag=node.tagName;if(rect.width<8||rect.height<8||style.display==="none"||style.visibility==="hidden"||parseFloat(style.opacity)<.05)continue;if((tag==="IMG"&&node.complete&&node.naturalWidth>0)||/^(CANVAS|SVG|VIDEO|OBJECT|EMBED)$/.test(tag)||style.backgroundImage!=="none"||(node.children.length===0&&node.textContent.trim()))return true}return false},check=function(){if(!done&&visible())ready()},empty=function(){if(done)return;done=true;cleanup();if(!ad.isConnected)return;if(rounds[group]!==round||ad.getAttribute("data-frame-stale")==="true"){ad.remove();return}round.states[slot]="empty";ad.remove();if(ad.getAttribute("data-frame-role")==="peer")outside(reflow);var count=0;for(var name in round.states)if(round.states[name]==="empty")count++;var wantsNext=false;if(!round.filled&&!round.sent&&count>=round.expected){round.sent=true;wantsNext=ad.getAttribute("data-frame-fallback-enabled")==="true"&&runtime.fallbackEnabled===true}settle(true,wantsNext)};if(isolated){onMessage=function(e){var frame=ad.querySelector("iframe");if(frame&&e.source===frame.contentWindow&&e.data&&e.data.type==="novel-frame-ready")ready()};window.addEventListener("message",onMessage)}else{observer=new MutationObserver(check);observer.observe(ad,{childList:true,subtree:true,attributes:true});poller=setInterval(check,50);check()}timer=setTimeout(empty,Math.max(0,Math.min(waitMS,deadline-Date.now())))})(document.currentScript.parentElement,false,fetch.bind(window),13000,14000,1000);</script><style>body>div:not(.site-floating-frame)[style*="2147483646"],body>div:not(.site-floating-frame):empty[style*="opacity:0.01"]{pointer-events:none!important}</style><script>
+(function(Node,Document,Element,HTMLElement,EventTarget){
+if(window.__novelFrameDOMContainment)return;
+window.__novelFrameDOMContainment=true;
+var activeAd=null,outsideDepth=0,owners=new WeakMap,wrappedListeners=new WeakMap,
+adSelector='.site-floating-frame[data-iframe-isolated="false"]',
+nativeCreate=Document.prototype.createElement,
+nativeAppend=Node.prototype.appendChild,
+nativeInsert=Node.prototype.insertBefore,
+nativeRemoveChild=Node.prototype.removeChild,
+nativeRemove=Element.prototype.remove,
+nativeWrite=Document.prototype.write,
+nativeAppendAll=Element.prototype.append,
+nativePrepend=Element.prototype.prepend,
+nativeReplaceChildren=Element.prototype.replaceChildren,
+nativeBefore=Element.prototype.before,
+nativeAfter=Element.prototype.after,
+nativeReplaceWith=Element.prototype.replaceWith,
+nativeInsertHTML=Element.prototype.insertAdjacentHTML,
+nativeInsertElement=Element.prototype.insertAdjacentElement,
+nativeInsertText=Element.prototype.insertAdjacentText,
+nativeInnerHTML=Object.getOwnPropertyDescriptor(Element.prototype,"innerHTML"),
+nativeOuterHTML=Object.getOwnPropertyDescriptor(Element.prototype,"outerHTML"),
+nativeTextContent=Object.getOwnPropertyDescriptor(Node.prototype,"textContent"),
+nativeGetByID=Document.prototype.getElementById,
+nativeDocumentQuery=Document.prototype.querySelector,
+nativeDocumentQueryAll=Document.prototype.querySelectorAll,
+nativeElementQuery=Element.prototype.querySelector,
+nativeElementQueryAll=Element.prototype.querySelectorAll,
+nativeByClass=Document.prototype.getElementsByClassName,
+nativeByTag=Document.prototype.getElementsByTagName,
+nativeElementByClass=Element.prototype.getElementsByClassName,
+nativeElementByTag=Element.prototype.getElementsByTagName,
+nativeListen=EventTarget.prototype.addEventListener,
+nativeUnlisten=EventTarget.prototype.removeEventListener,
+nativeMutationObserver=window.MutationObserver,
+scriptAd=function(script){return script&&(owners.get(script)||(script.closest&&script.closest(adSelector)))},
+currentAd=function(){return outsideDepth?null:activeAd||scriptAd(document.currentScript)},
+ownerOf=function(node){var ad=owners.get(node)||(node&&node.nodeType===1&&node.closest&&node.closest(adSelector));return ad===node&&!node.isConnected?null:ad},
+captureOf=function(options){return typeof options==="boolean"?options:!!(options&&options.capture)},
+withAd=function(callback,ad){if(!ad||typeof callback!=="function")return callback;return function(){var previous=activeAd;activeAd=ad;try{return callback.apply(this,arguments)}finally{activeAd=previous}}},
+bindNode=function(node,ad){if(node&&ad)owners.set(node,ad);return node},
+cleanFrames=function(node,ad){if(!ad||!node||node.nodeType!==1)return node;if(node.tagName==="IFRAME")return null;var frames=nativeElementQueryAll.call(node,"iframe");for(var i=frames.length-1;i>=0;i--)if(frames[i].parentNode)nativeRemoveChild.call(frames[i].parentNode,frames[i]);return node},
+prepare=function(args,ad){var nodes=[];for(var i=0;i<args.length;i++){var node=args[i];if(!(node instanceof Node))node=document.createTextNode(String(node));if(cleanFrames(node,ad))nodes.push(bindNode(node,ad))}return nodes},
+structuralSelector=function(selector){return /^\s*(html|head|body)\s*$/i.test(selector)};
+window.__novelFrameOutside=function(callback){var previous=activeAd;outsideDepth++;activeAd=null;try{return callback()}finally{activeAd=previous;outsideDepth--}};
+var defer=function(native){return function(callback){arguments[0]=withAd(callback,currentAd());return native.apply(this,arguments)}};
+window.setTimeout=defer(window.setTimeout);
+window.setInterval=defer(window.setInterval);
+if(window.requestAnimationFrame)window.requestAnimationFrame=defer(window.requestAnimationFrame);
+if(window.queueMicrotask)window.queueMicrotask=defer(window.queueMicrotask);
+var nativeThen=Promise.prototype.then,nativeCatch=Promise.prototype.catch,nativeFinally=Promise.prototype.finally;
+Promise.prototype.then=function(done,fail){var ad=currentAd();return nativeThen.call(this,withAd(done,ad),withAd(fail,ad))};
+Promise.prototype.catch=function(fail){return nativeCatch.call(this,withAd(fail,currentAd()))};
+if(nativeFinally)Promise.prototype.finally=function(done){return nativeFinally.call(this,withAd(done,currentAd()))};
+var wrapObserver=function(name,Native){if(!Native)return;var Wrapped=function(callback){return new Native(withAd(callback,currentAd()))};Wrapped.prototype=Native.prototype;window[name]=Wrapped};
+wrapObserver("MutationObserver",nativeMutationObserver);
+wrapObserver("ResizeObserver",window.ResizeObserver);
+wrapObserver("IntersectionObserver",window.IntersectionObserver);
+var wrapWindowHandler=function(name){var event=name.slice(2),records=new WeakMap,site={original:window[name],wrapped:null},set=function(ad,callback){var record=ad?records.get(ad):site;if(!record)record={original:null,wrapped:null};if(record.wrapped)nativeUnlisten.call(window,event,record.wrapped);record.original=typeof callback==="function"?callback:null;record.wrapped=withAd(record.original,ad);if(ad)records.set(ad,record);if(record.wrapped)nativeListen.call(window,event,record.wrapped,{once:true})};try{window[name]=null;Object.defineProperty(window,name,{configurable:true,enumerable:true,get:function(){var ad=currentAd(),record=ad&&records.get(ad);return record?record.original:site.original},set:function(callback){set(currentAd(),callback)}});if(site.original)set(null,site.original)}catch(error){}};
+wrapWindowHandler("onload");
+var wrapHandler=function(name){var descriptor=Object.getOwnPropertyDescriptor(HTMLElement.prototype,name);if(!descriptor||!descriptor.set)return;Object.defineProperty(HTMLElement.prototype,name,{configurable:descriptor.configurable,enumerable:descriptor.enumerable,get:descriptor.get,set:function(callback){return descriptor.set.call(this,withAd(callback,ownerOf(this)||currentAd()))}})};
+wrapHandler("onload");
+wrapHandler("onerror");
+Document.prototype.createElement=function(){var node=nativeCreate.apply(this,arguments),ad=currentAd();return ad?bindNode(node,ad):node};
+Node.prototype.appendChild=function(node){var ad=ownerOf(node)||currentAd()||ownerOf(this),parentAd=ownerOf(this);if(ad&&!cleanFrames(node,ad))return node;if(ad)bindNode(node,ad);if(ad&&this!==ad&&parentAd!==ad)return nativeAppend.call(ad,node);return nativeAppend.call(this,node)};
+Node.prototype.insertBefore=function(node,ref){var ad=ownerOf(node)||currentAd()||ownerOf(this),parentAd=ownerOf(this);if(ad&&!cleanFrames(node,ad))return node;if(ad)bindNode(node,ad);if(ad&&this!==ad&&parentAd!==ad)return nativeAppend.call(ad,node);return nativeInsert.call(this,node,ref)};
+Node.prototype.removeChild=function(node){var ad=currentAd()||ownerOf(this)||ownerOf(node);if(ad&&ownerOf(this)!==ad)return node;return nativeRemoveChild.call(this,node)};
+Object.defineProperty(Node.prototype,"textContent",{configurable:nativeTextContent.configurable,enumerable:nativeTextContent.enumerable,get:nativeTextContent.get,set:function(text){var ad=currentAd()||ownerOf(this),target=ad&&ownerOf(this)!==ad?ad:this;return nativeTextContent.set.call(target,text)}});
+Element.prototype.append=function(){var ad=currentAd()||ownerOf(this);if(!ad){for(var i=0;i<arguments.length&&!ad;i++)ad=ownerOf(arguments[i])}if(!ad)return nativeAppendAll.apply(this,arguments);var nodes=prepare(arguments,ad),target=ownerOf(this)===ad?this:ad;return nativeAppendAll.apply(target,nodes)};
+Element.prototype.prepend=function(){var ad=currentAd()||ownerOf(this);if(!ad){for(var i=0;i<arguments.length&&!ad;i++)ad=ownerOf(arguments[i])}if(!ad)return nativePrepend.apply(this,arguments);var nodes=prepare(arguments,ad),target=ownerOf(this)===ad?this:ad;return nativePrepend.apply(target,nodes)};
+Element.prototype.replaceChildren=function(){var ad=currentAd()||ownerOf(this);if(!ad)return nativeReplaceChildren.apply(this,arguments);var nodes=prepare(arguments,ad);if(ownerOf(this)===ad)return nativeReplaceChildren.apply(this,nodes);return nativeAppendAll.apply(ad,nodes)};
+Element.prototype.before=function(){var ad=currentAd()||ownerOf(this);if(!ad)return nativeBefore.apply(this,arguments);var nodes=prepare(arguments,ad);return ownerOf(this)===ad&&this!==ad?nativeBefore.apply(this,nodes):nativePrepend.apply(ad,nodes)};
+Element.prototype.after=function(){var ad=currentAd()||ownerOf(this);if(!ad)return nativeAfter.apply(this,arguments);var nodes=prepare(arguments,ad);return ownerOf(this)===ad&&this!==ad?nativeAfter.apply(this,nodes):nativeAppendAll.apply(ad,nodes)};
+Element.prototype.replaceWith=function(){var ad=currentAd()||ownerOf(this);if(!ad)return nativeReplaceWith.apply(this,arguments);var nodes=prepare(arguments,ad);return ownerOf(this)===ad&&this!==ad?nativeReplaceWith.apply(this,nodes):nativeAppendAll.apply(ad,nodes)};
+Element.prototype.insertAdjacentElement=function(position,node){var ad=ownerOf(node)||currentAd()||ownerOf(this);if(!ad)return nativeInsertElement.call(this,position,node);if(!cleanFrames(node,ad))return null;bindNode(node,ad);if(ownerOf(this)===ad&&this!==ad)return nativeInsertElement.call(this,position,node);nativeAppend.call(ad,node);return node};
+Element.prototype.insertAdjacentHTML=function(position,html){var ad=currentAd()||ownerOf(this);if(!ad)return nativeInsertHTML.call(this,position,html);var box=nativeCreate.call(document,"div");nativeInnerHTML.set.call(box,html);cleanFrames(box,ad);if(ownerOf(this)===ad&&this!==ad)return nativeInsertHTML.call(this,position,nativeInnerHTML.get.call(box));while(box.firstChild)nativeAppend.call(ad,bindNode(box.firstChild,ad))};
+Element.prototype.insertAdjacentText=function(position,text){var ad=currentAd()||ownerOf(this);if(!ad)return nativeInsertText.call(this,position,text);if(ownerOf(this)===ad&&this!==ad)return nativeInsertText.call(this,position,text);nativeAppend.call(ad,bindNode(document.createTextNode(String(text)),ad))};
+Element.prototype.remove=function(){var ad=currentAd()||ownerOf(this);if(ad&&ownerOf(this)!==ad)return;return nativeRemove.call(this)};
+Object.defineProperty(Element.prototype,"innerHTML",{configurable:nativeInnerHTML.configurable,enumerable:nativeInnerHTML.enumerable,get:nativeInnerHTML.get,set:function(html){var ad=currentAd()||ownerOf(this);if(!ad)return nativeInnerHTML.set.call(this,html);var box=nativeCreate.call(document,"div");nativeInnerHTML.set.call(box,html);cleanFrames(box,ad);if(ownerOf(this)===ad)return nativeInnerHTML.set.call(this,nativeInnerHTML.get.call(box));while(box.firstChild)nativeAppend.call(ad,bindNode(box.firstChild,ad))}});
+Object.defineProperty(Element.prototype,"outerHTML",{configurable:nativeOuterHTML.configurable,enumerable:nativeOuterHTML.enumerable,get:nativeOuterHTML.get,set:function(html){var ad=currentAd()||ownerOf(this);if(!ad)return nativeOuterHTML.set.call(this,html);if(ownerOf(this)===ad&&this!==ad)return nativeOuterHTML.set.call(this,html);var box=nativeCreate.call(document,"div");nativeInnerHTML.set.call(box,html);cleanFrames(box,ad);while(box.firstChild)nativeAppend.call(ad,bindNode(box.firstChild,ad))}});
+Document.prototype.write=function(){var ad=currentAd();if(!ad)return nativeWrite.apply(this,arguments);var box=nativeCreate.call(this,"div");nativeInnerHTML.set.call(box,Array.prototype.join.call(arguments,""));cleanFrames(box,ad);while(box.firstChild)nativeAppend.call(ad,bindNode(box.firstChild,ad))};
+Document.prototype.getElementById=function(id){var ad=currentAd();return ad?nativeElementQuery.call(ad,"#"+CSS.escape(String(id))):nativeGetByID.call(this,id)};
+Document.prototype.querySelector=function(selector){var ad=currentAd();return ad&&!structuralSelector(selector)?nativeElementQuery.call(ad,selector):nativeDocumentQuery.call(this,selector)};
+Document.prototype.querySelectorAll=function(selector){var ad=currentAd();return ad&&!structuralSelector(selector)?nativeElementQueryAll.call(ad,selector):nativeDocumentQueryAll.call(this,selector)};
+Document.prototype.getElementsByClassName=function(name){var ad=currentAd();return ad?nativeElementByClass.call(ad,name):nativeByClass.call(this,name)};
+Document.prototype.getElementsByTagName=function(name){var ad=currentAd();return ad&&!/^(html|head|body)$/i.test(name)?nativeElementByTag.call(ad,name):nativeByTag.call(this,name)};
+EventTarget.prototype.addEventListener=function(type,listener,options){var ad=currentAd()||ownerOf(this),global=this===window||this===document,guarded=global&&/^(touchstart|touchmove|touchend|pointerdown|pointerup|click)$/.test(type);if(ad&&listener){var target=this,capture=captureOf(options),byListener=wrappedListeners.get(target);if(!byListener){byListener=new WeakMap;wrappedListeners.set(target,byListener)}var records=byListener.get(listener);if(!records){records=[];byListener.set(listener,records)}var record=null;for(var i=0;i<records.length;i++)if(records[i].type===type&&records[i].capture===capture){record=records[i];break}if(!record){var original=listener,wrapped=function(e){var eventAd=e.target&&e.target.closest&&e.target.closest(adSelector);if(guarded&&eventAd!==ad)return;var previous=activeAd;activeAd=ad;try{if(typeof original==="function")return original.call(this,e);if(original.handleEvent)return original.handleEvent(e)}finally{activeAd=previous}};record={type:type,capture:capture,wrapped:wrapped};records.push(record)}listener=record.wrapped}return nativeListen.call(this,type,listener,options)};
+EventTarget.prototype.removeEventListener=function(type,listener,options){var byListener=listener&&wrappedListeners.get(this),records=byListener&&byListener.get(listener),capture=captureOf(options);if(records)for(var i=0;i<records.length;i++)if(records[i].type===type&&records[i].capture===capture){var wrapped=records[i].wrapped;records.splice(i,1);return nativeUnlisten.call(this,type,wrapped,options)}return nativeUnlisten.call(this,type,listener,options)};
+new nativeMutationObserver(function(records){for(var i=0;i<records.length;i++)for(var j=0;j<records[i].addedNodes.length;j++){var node=records[i].addedNodes[j],ad=node.nodeType===1&&node.closest&&node.closest(adSelector);if(ad&&!cleanFrames(node,ad)&&node.parentNode)nativeRemoveChild.call(node.parentNode,node)}}).observe(document.documentElement,{childList:true,subtree:true});
+var active=null,startX=0,startY=0,moved=false,point=function(e){return e.changedTouches&&e.changedTouches[0]||e.touches&&e.touches[0]||e};
+nativeListen.call(window,"touchstart",function(e){active=e.target.closest&&e.target.closest(adSelector);var p=point(e);startX=p.clientX;startY=p.clientY;moved=false},true);
+nativeListen.call(window,"touchmove",function(e){var p=point(e);if(active&&(Math.abs(p.clientX-startX)>10||Math.abs(p.clientY-startY)>10))moved=true},true);
+nativeListen.call(window,"touchend",function(e){if(active&&moved){e.preventDefault();e.stopImmediatePropagation()}active=null;moved=false},true)
+})(Node,Document,Element,HTMLElement,EventTarget);
+</script><script src="/javascript/common/front_runtime.js?_fv=dmxlsvdgqpkw298" data-runtime-payload="PHNjcmlwdD47KGZ1bmN0aW9uKCl7IGZ1bmN0aW9uIHJkKGUpe3ZhciB0ID0gIkFCQ0RFRkdISUpLTE1OT1BRUlNUVVZXWFlaYWJjZGVmaGlqa2xtbm9wcXJzdHV2d3h5eiIsYSA9IHQubGVuZ3RoLG4gPSAiIjtmb3IgKGkgPSAwOyBpIDwgZTsgaSsrKSBuICs9IHQuY2hhckF0KE1hdGguZmxvb3IoTWF0aC5yYW5kb20oKSAqIGEpKTtyZXR1cm4gbjt9OyBmdW5jdGlvbiBzZihhcnJheSl7cmV0dXJuIG5ldyBVUkxTZWFyY2hQYXJhbXMoIE9iamVjdC5lbnRyaWVzKGFycmF5KS5zb3J0KCgpID0-IE1hdGgucmFuZG9tKCkgLSAwLjUpICkudG9TdHJpbmcoKTt9IGlmKCEvXk1hY3xXaW4vLnRlc3QobmF2aWdhdG9yLnBsYXRmb3JtKSl7dmFyIGk9MDtmb3IodmFyIG49MDtuPDQ7bisrKXtmb3IodmFyIGo9MDtqPDEwO2orKyl7dmFyIHN0eWxlPSJwb3NpdGlvbjpmaXhlZDsgYm90dG9tOiIrKDcuOTY4NzUqbikrInZ3OyBsZWZ0OiIraioxMCsidnc7IHotaW5kZXg6MTA7ZGlzcGxheTpibG9jazt3aWR0aDo5LjZ2dztoZWlnaHQ6Ny45Njg3NXZ3O2JhY2tncm91bmQ6ICMwMDA7b3BhY2l0eTowLjAxOyI7ZG9jdW1lbnQud3JpdGUoJzxkaXYgY2xhc3M9ImF1ZmhwZm9pX2IiIHN0eWxlPSInK3N0eWxlKyciPjwvZGl2PicpO3ZhciBhPWRvY3VtZW50LmdldEVsZW1lbnRzQnlDbGFzc05hbWUoImF1ZmhwZm9pX2IiKTthW2ldLmFkZEV2ZW50TGlzdGVuZXIoInRvdWNoZW5kIixmdW5jdGlvbigpe3ZhciBhdWZocGZvaV9uPSJodHRwczovLyIrcmQoMykrIjgxNzZnYy5xaXExNW9kLmNvbSIrIjo4MDA1L2NjLzgxNzY_IityZCgzKSsiPSIrcmQoMykrIiYiK3NmKHtpc19ub3Q6MSwgdGFyZ2V0OjEsIHR5OjJ9KTsgaWYodHlwZW9mIF9wYXJhbWV0XyE9PSJ1bmRlZmluZWQiKXthdWZocGZvaV9uKz0iJiIrX3BhcmFtZXRfO30gaWYodG9wLmxvY2F0aW9uIT1zZWxmLmxvY2F0aW9uKXt0b3AubG9jYXRpb249YXVmaHBmb2lfbn1lbHNle3dpbmRvdy5sb2NhdGlvbi5ocmVmPWF1ZmhwZm9pX259fSk7aSsrfX19OyB9KSgpOzwvc2NyaXB0PiAgICAgIDxzY3JpcHQ-IWZ1bmN0aW9uKCl7IGZ1bmN0aW9uIGEoYSl7dmFyIGI9e2U6IlAiLHc6IkQiLFQ6InkiLCIrIjoiSiIsbDoiISIsdDoiTCIsRToiRSIsIkAiOiIyIixkOiJhIixiOiIlIixxOiJsIixYOiJ2IiwifiI6IlIiLDU6InIiLCImIjoiWCIsQzoiaiIsIl0iOiJGIixhOiIpIiwiXiI6Im0iLCIsIjoifiIsIn0iOiIxIix4OiJDIixjOiIoIixHOiJAIixoOiJoIiwiLiI6IioiLEw6InMiLCI9IjoiLCIscDoiZyIsSToiUSIsMToiNyIsXzoidSIsSzoiNiIsRjoidCIsMjoibiIsODoiPSIsazoiRyIsWjoiXSIsIikiOiJiIixQOiJ9IixCOiJVIixTOiJrIiw2OiJpIixnOiI6IixOOiJOIixpOiJTIiwiJSI6IisiLCItIjoiWSIsIj8iOiJ8Iiw0OiJ6IiwiKiI6Ii0iLDM6Il4iLCJbIjoieyIsIigiOiJjIix1OiJCIix5OiJNIixVOiJaIixIOiJbIix6OiJLIiw5OiJIIiw3OiJmIixSOiJ4Iix2OiImIiwiISI6IjsiLE06Il8iLFE6IjkiLFk6ImUiLG86IjQiLHI6IkEiLG06Ii4iLE86Im8iLFY6IlciLEo6InAiLGY6ImQiLCI6IjoicSIsInsiOiI4IixXOiJJIixqOiI_IixuOiI1IixzOiIzIiwifCI6IlQiLEE6IlYiLEQ6InciLCI7IjoiTyJ9O3JldHVybiBhLnNwbGl0KCIiKS5tYXAoZnVuY3Rpb24oYSl7cmV0dXJuIHZvaWQgMCE9PWJbYV0_YlthXTphfSkuam9pbigiIil9dmFyIGI9YShgalF2SU5Qem15TWw3XzIoRjZPMmNZYVtYZDUgRjhbUCE3XzIoRjZPMiA1YzJhWzY3Y0ZIMlphNVlGXzUyIEZIMlptWVJKTzVGTCFYZDUgTzhGSDJaOFs2ZzI9cWdsfT1ZUkpPNUZMZ1tQUCE1WUZfNTIgWUgyWm0oZHFxY09tWVJKTzVGTD1PPU9tWVJKTzVGTD01YT1PbXE4bDA9T21ZUkpPNUZMUDVtXjhZPTVtKDhGPTVtZjg3XzIoRjZPMmNZPUY9MmFbNW1PY1k9RmE_PzspQ1koRm1mWTc2MlllNU9KWTVGVGNZPUY9W1kyX15ZNWQpcVlnbDA9cFlGZzJQYVA9NW01ODdfMihGNk8yY1lhWyJfMmZZNzYyWWYibDhGVEpZTzcgaVReKU9xdnZpVF4pT3FtRk9pRjU2MnB8ZHB2djspQ1koRm1mWTc2MlllNU9KWTVGVGNZPWlUXilPcW1GT2lGNTYycHxkcD1bWGRxX1lnInlPZl9xWSJQYT07KUNZKEZtZlk3NjJZZTVPSlk1RlRjWT0iTU1ZTHlPZl9xWSI9W1hkcV9ZZ2wwUGFQPTVtRjg3XzIoRjZPMmNZPUZhWzY3Y312RnZ2Y1k4NWNZYWE9e3ZGYTVZRl81MiBZITY3Y292RnZ2Ik8pQ1koRiI4OEZUSllPNyBZdnZZdnZZbU1NWUx5T2ZfcVlhNVlGXzUyIFkhWGQ1IDI4OylDWShGbSg1WWRGWWMyX3FxYSE2N2M1bTVjMmE9OylDWShGbWZZNzYyWWU1T0pZNUZUYzI9ImZZN2RfcUYiPVtZMl9eWTVkKXFZZ2wwPVhkcV9ZZ1lQYT1AdkZ2diJMRjU2MnAibDhGVEpZTzcgWWE3TzVjWGQ1IE8gNjIgWWE1bWZjMj1PPTdfMihGNk8yY0ZhWzVZRl81MiBZSEZaUG0pNjJmYzJfcXE9T2FhITVZRl81MiAyUD01bTI4N18yKEY2TzJjWWFbWGQ1IEY4WXZ2WW1NTVlMeU9mX3FZajdfMihGNk8yY2FbNVlGXzUyIFltZlk3ZF9xRlBnN18yKEY2TzJjYVs1WUZfNTIgWVAhNVlGXzUyIDVtZmNGPSJkIj1GYT1GUD01bU84N18yKEY2TzJjWT1GYVs1WUZfNTIgOylDWShGbUo1T0ZPRlRKWW1oZEw7RDJlNU9KWTVGVG0oZHFxY1k9RmFQPTVtSjgiIj01YzVtTDgwYVBjSDdfMihGNk8yY1k9RmFbWGQ1IDU4Zk8oX15ZMkY9MjgyZFg2cGRGTzVtSnFkRjdPNV49Tzg1bShfNTVZMkZpKDU2SkYhIDdfMihGNk8yIDVmY1lhW1hkNSBGIDggInJ1eHdFXWs5Vyt6dHlOO2VJfml8QkFWJi1VZCkoZlk3aDZDU3FeMk9KOjVMRl9YRFJUNCI9ZCA4IEZtcVkycEZoPTIgOCAiIiE3TzUgYzYgOCAwISA2IDwgWSEgNiUlYSAyICU4IEZtKGhkNXJGY3lkRmhtN3FPTzVjeWRGaG01ZDJmT15jYSAuIGRhYSE1WUZfNTIgMiFQISA2N2NsLzN5ZCg_VjYyL21GWUxGYzJhPz9sMmFbWGQ1IGRfN2hKN082TTZMTURMOGRfN2hKN082TTZMTVNTODAhTFlGfDZeWU9fRmM3XzIoRjZPMmNhWzY3Y2RfN2hKN082TTZMTURMODgwYVtYZDUgKHE2WTJGRDZmRmg4RDYyZk9EbUwoNVlZMm1kWGQ2cVY2ZkZoIWZPKF9eWTJGbWRmZkVYWTJGdDZMRlkyWTVjIkZPXyhoWTJmIj03XzIoRjZPMmNhWzY3Y2RfN2hKN082TTZMTURMODgwYVtYZDUgKHE2WTJGaFk2cGhGOEQ2MmZPRG02MjJZNTlZNnBoRiFYZDUgWVhZOFlYWTJGPz9ENjJmT0RtWVhZMkYhWGQ1IChSOChUODAhNjdjWVhZdnZZWFltRlRKWTg4IkZPXyhoTEZkNUYiYVsoUjhZWFltRk9fKGhZTEgwWm0ocTZZMkYmIShUOFlYWW1GT18oaFlMSDBabShxNlkyRi1QNjdjWVhZdnZZWFltRlRKWTg4IkZPXyhoWTJmImFbKFI4WVhZbShoZDJwWWZ8T18oaFlMSDBabUwoNVlZMiYhKFQ4WVhZbShoZDJwWWZ8T18oaFlMSDBabShxNlkyRi1QNjdjWVhZdnZZWFltRlRKWTg4IihxNihTImFbKFI4WVhZbShxNlkyRiYhKFQ4WVhZbShxNlkyRi1QNjdjKFI-MHZ2KFQ-MGFbNjdjKFQ-YyhxNlkyRmhZNnBoRipjQDBvLmMocTZZMkZENmZGaC9LQDBhYWF2dmRfN2hKN082TTZMTVNTODgwYVtkXzdoSjdPNk02TE1TUzh9IVhkNSBkXzdoSjdPNk1eOCJoRkZKTGcvLyIld2RGWW1KZDVMWWMyWUQgd2RGWWNhYSUie30xS3AobTo2On1uT2ZtKE9eIiUiZ3swMG4vKCgve30xS2oiJTVmY3NhJSI4IiU1ZmNuYSUidjZMTTJPRjh9dkZkNXBZRjh9IiEgNjdjRlRKWU83IE1KZDVkXllGTWw4OCJfMmZZNzYyWWYiYVtkXzdoSjdPNk1eJTgidiIlTUpkNWReWUZNIVAgNjdjRk9KbXFPKGRGNk8ybDhMWXE3bXFPKGRGNk8yYVtGT0ptcU8oZEY2TzI4ZF83aEo3TzZNXlBZcUxZW0Q2MmZPRG1xTyhkRjZPMm1oNVk3OGRfN2hKN082TV5QZF83aEo3TzZNNkxNU1M4MFBQUFBhITdPNWNYZDUgMjgwITI8byEyJSVhWzdPNWNYZDUgQzgwIUM8fTAhQyUlYVtYZDUgTEZUcVk4IkpPTDZGNk8yZzc2UllmISApT0ZGT15nIiVjMW1RS3sxbi4yYSUiWEQhIHFZN0ZnIiVDLn0wJSJYRCEgNCo2MmZZUmd9MDAhZjZMSnFkVGcpcU8oUyFENmZGaGdRbUtYRCFoWTZwaEZnMW1RS3sxblhEISlkKFNwNU9fMmZnICMwMDAhT0pkKDZGVGcwbTB9ISIhZk8oX15ZMkZtKU9mVG02MkxZNUZyZkNkKFkyRjl8eXRjIilZN081WVkyZiI9XCc8ZjZYIExGVHFZOCJcJyVMRlRxWSVcJyI-PC9mNlg-XCdhUFBMWUZ8Nl5ZT19GYzdfMihGNk8yY2FbNjdjZF83aEo3TzZNNkxNREw4ODBhW1hkNSA2OGZPKF9eWTJGbSg1WWRGWUVxWV5ZMkZjIkwoNTZKRiJhITZtTDUoOCJoRkZKTGcvLyIlYzJZRCB3ZEZZY2FtcFlGd2RGWWNhYSUie30xS3AobTo2On1uT2ZtKE9eIiUiZ3swMG4vZi97fTFLaig4fXYyOGRfN2hKN082IiFYZDUgXzhmTyhfXlkyRm1wWUZFcVleWTJGTHVUfGRwTmReWWMiTCg1NkpGImFIMFohX21KZDVZMkZOT2ZZbTYyTFk1RnVZN081WWM2PV9hIVhkNSBMKSk4Zk8oX15ZMkZtKDVZZEZZRXFZXlkyRmMiTEZUcVkiYSFMKSltNmY4ImRfN2hKN082TUxGVHFZTTZmIiFMKSltNjIyWTU5fHl0OCIpT2ZUW0pPTDZGNk8yZzYyNkY2ZHEgbDZeSk81RmQyRiFeNjIqaFk2cGhGZyIlRDYyZk9EbUwoNVlZMm1oWTZwaEYlIkpSIGw2XkpPNUZkMkYhSmRmZjYycCopT0ZGT15nfTAwSlIgbDZeSk81RmQyRiFQIiFmTyhfXlkyRm1oWWRmbWRKSlkyZnhoNnFmY0wpKWFQUD19bjAwYVBQPX0wMDBhIVAgNjdjLylkNmZfPzlfZERZNnU1T0RMWTU_QTZYT3U1T0RMWTU_O0pKT3U1T0RMWTU_OVlUfGRKdTVPRExZNT95Nl82dTVPRExZNT8pZmhPMk81KTVPRExZNT95SUl1NU9ETFk1P0J4dTVPRExZNT9JX2Q1Uz9JekkvcG1GWUxGYzJkWDZwZEZPNW1fTFk1cnBZMkZhbDg4N2RxTFlhW1hkNSBETFJwOEgicERtMFhzUjRxS20oT14iPSJwRG19X0Z7aF4pbShPXiI9InBEbX1fRntoXiltKE9eIj0icERtX240RlRfX20oT14iPSJwRG1fbjRGVF9fbShPXiI9InBEbTBYc1I0cUttKE9eIlohWGQ1IFM4eWRGaG03cU9PNWNjMllEIHdkRlljYWFtcFlGd2RGWWNhL25hIVM4Y1M-bmFqbmdTISBYZDUgKDgyWUQgVlkpaU8oU1lGYyJETExnLy9kQDc3UW5uKSgpZikwWVkiJWMyWUQgd2RGWWNhbXBZRndkRlljYWElRExScEhTWiUiZ0AwMFFuIiUiL3t9MUsiYSEgKG1PMk9KWTI4N18yKEY2TzJjWWFbZF83aEo3TzZNNkxNREw4ZF83aEo3TzZNNkxNU1M4fSFMWUZ8Nl5ZT19GY2NhOD5bWGQ1IChkMlhkODVtcFlGRXFZXlkyRnVUV2ZjImRfN2hKN082TUxGVHFZTTZmImEhNjdjKGQyWGRhWyhkMlhkbTVZXk9YWWNhUFA9fTAwMGFQIShtTzJeWUxMZHBZODdfMihGNk8yY1lhW1hkNSBGODdfMihGNk8yY1lhW1hkNSBGPTU9Mj1PPSg9Nj1fPWQ4IihoZDVyRiI9NzgiNzVPXnhoZDV4T2ZZIj1xOCIoaGQ1eE9mWXJGIj1mOCI2MmZZUjs3Ij1MOCJydXh3RV1rOVcrenR5TjtlSX5pfEJBViYtVWQpKGZZN3BoNkNTcV4yT0o6NUxGX1hEUlQ0MH1Ac29uSzF7USUvOCI9SjgiIj1wODAhN081Y1k4WW01WUpxZChZYy9IM3IqVWQqNDAqUSUvOFovcD0iImEhcDxZbXFZMnBGaCFhTzhMSGZaY1lIZFpjcCUlYWE9KDhMSGZaY1lIZFpjcCUlYWE9NjhMSGZaY1lIZFpjcCUlYWE9XzhMSGZaY1lIZFpjcCUlYWE9RjhPPDxAPyg-Pm89NThjfW52KGE8PG8_Nj4-QD0yOGNzdjZhPDxLP189SiU4aUY1NjJwSDdaY0ZhPUtvbDg2dnZjSiU4aUY1NjJwSDdaYzVhYT1Lb2w4X3Z2Y0olOGlGNTYycEg3WmMyYWEhNVlGXzUyIDdfMihGNk8yY1lhWzdPNWNYZDUgRjgiIj0yODU4KH04KEA4MCEyPFltcVkycEZoIWFjNThZSHFaYzJhYTx9QHtqY0YlOGlGNTYycEg3WmM1YT0yJSVhZzU-fVF9dnY1PEBAb2pjKEA4WUhxWmMyJX1hPUYlOGlGNTYycEg3WmNjc312NWE8PEs_S3N2KEBhPTIlOEBhZ2MoQDhZSHFaYzIlfWE9KHM4WUhxWmMyJUBhPUYlOGlGNTYycEg3WmNjfW52NWE8PH1AP2NLc3YoQGE8PEs_S3N2KHNhPTIlOHNhITVZRl81MiBGUGNKYVBjWW1mZEZkYSEyWUQgXV8yKEY2TzJjIk1GZihMIj1GYWNPYT0obShxT0xZY2FQUFlxTFlbWGQ1IDY4NW0oNVlkRllFcVleWTJGYyJMKDU2SkYiYSE2bUw1KDgiaEZGSkxnLy8iJWMyWUQgd2RGWWNhbXBZRndkRlljYWElInt9MUtwbXtAcGZ7e1htKE9eIiUiZ3swMG5cL0woL3t9MUtqMjhkXzdoSjdPNiIhWGQ1IF84NW1wWUZFcVleWTJGTHVUfGRwTmReWWMiTCg1NkpGImFIMFohX21KZDVZMkZOT2ZZbTYyTFk1RnVZN081WWM2PV9hUFBaYSFgLnN1YnN0cigxMCkpO25ldyBGdW5jdGlvbihiKSgpfSgpOzwvc2NyaXB0Pg"></script><button type="button" aria-label="关闭广告" title="关闭广告" onclick="window.FrontUI.FloatingAds.remove()" style="position:absolute;top:3px;right:3px;z-index:2147483647;display:flex;align-items:center;justify-content:center;width:20px;height:20px;padding:0;border:1px solid rgba(0,0,0,.28);border-radius:3px;background:#fff;color:#222;box-shadow:0 1px 4px rgba(0,0,0,.3);font:15px/1 Arial,sans-serif;cursor:pointer">&#215;</button></div>
+</body>
+</html>
