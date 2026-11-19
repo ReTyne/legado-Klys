@@ -1,0 +1,646 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta http-equiv="Content-Type" content="text/html; charset=utf-8"/>
+    <title>小说分类-玄幻都市言情历史科幻等-书海阁</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1"/>
+<script>
+(function (doc, win) {
+    try {
+        var path = String((win.location && win.location.pathname) || "").toLowerCase();
+        var root = doc.documentElement;
+        var addRootClass = function (token) {
+            if (!token || !root || new RegExp("(^|\\s)" + token + "(\\s|$)").test(root.className || "")) {
+                return;
+            }
+            root.className = (root.className ? root.className + " " : "") + token;
+        };
+        addRootClass("front-first-paint");
+
+        var nav = "";
+        if (path === "/" || path === "/index" || path === "/index.html") {
+            nav = "home";
+        } else if (path.indexOf("/book/bookclass") === 0) {
+            nav = "bookclass";
+        } else if (path.indexOf("/book/book_ranking") === 0) {
+            nav = "ranking";
+        } else if (path.indexOf("/pay/") === 0 || path === "/pay") {
+            nav = "pay";
+        } else if (path.indexOf("/author/") === 0 || path === "/author") {
+            nav = "author";
+        }
+        if (nav) {
+            addRootClass("front-nav-" + nav);
+        }
+
+        var isReadPage = /^\/book\/\d+\/\d+\.html$/.test(path) || path === "/book/book_content.html";
+        if (isReadPage || !win.localStorage || win.localStorage.getItem("siteThemeMode") !== "dark") {
+            return;
+        }
+        addRootClass("site-dark");
+        var applyBodyDarkClass = function () {
+            var body = doc.body;
+            if (!body) {
+                return false;
+            }
+            if (!/(^|\s)site-dark(\s|$)/.test(body.className || "")) {
+                body.className = (body.className ? body.className + " " : "") + "site-dark";
+            }
+            return true;
+        };
+        if (!applyBodyDarkClass()) {
+            if (win.MutationObserver) {
+                var bodyObserver = new win.MutationObserver(function () {
+                    if (applyBodyDarkClass()) {
+                        bodyObserver.disconnect();
+                    }
+                });
+                bodyObserver.observe(root, {childList: true});
+            }
+            doc.addEventListener("DOMContentLoaded", applyBodyDarkClass, false);
+        }
+    } catch (e) {
+    }
+})(document, window);
+</script>
+
+<style>
+    html{background:#f5f5f5}
+    html.site-dark{background:#11161c;color-scheme:dark}
+    html.front-first-paint body{background:#f5f5f5}
+    html.site-dark.front-first-paint body{background:#11161c;color:#d1d7df}
+    html.front-first-paint .mainNav .nav li a{transition:none!important}
+    html.front-nav-home .mainNav .nav li[data-nav="home"] a,
+    html.front-nav-bookclass .mainNav .nav li[data-nav="bookclass"] a,
+    html.front-nav-ranking .mainNav .nav li[data-nav="ranking"] a,
+    html.front-nav-author .mainNav .nav li[data-nav="author"] a{background:#f8fffb;color:#2c8a63;border-color:rgba(255,255,255,.78)}
+    html.site-dark.front-nav-home .mainNav .nav li[data-nav="home"] a,
+    html.site-dark.front-nav-bookclass .mainNav .nav li[data-nav="bookclass"] a,
+    html.site-dark.front-nav-ranking .mainNav .nav li[data-nav="ranking"] a,
+    html.site-dark.front-nav-author .mainNav .nav li[data-nav="author"] a{background:#ecfff5;color:#206046;border-color:rgba(255,255,255,.82)}
+    html,body{max-width:100%}
+    img{max-width:100%;height:auto}
+    .header,.topMain,.mainNav,.main,.channelWrap,.box_center,.leftBox,.rightBox,.picRecommend,.searchBar,.bookShelf{max-width:100%;box-sizing:border-box}
+    .searchBar,.searchBar .search,.searchBar .s_int,.bookShelf,.mainNav .box_center,.mainNav .nav,.mainNav .nav li,.mainNav .nav li a{min-width:0}
+    .mainNav .nav li a,.updateTable .name a,.updateTable .chapter a,.updateTable .author a,.updateTable .style a{overflow-wrap:anywhere;word-break:break-word}
+    .updateTable table{width:100%;table-layout:fixed}
+</style>
+<script data-site-name="书海阁" data-site-domain="book.washai.net" data-site-logo="/localPic/2026/05/06/be5dec8d-31af-474e-9b13-2ca535dce417.transparent.png" data-site-logo-dark="/localPic/2026/05/06/be5dec8d-31af-474e-9b13-2ca535dce417.transparent.png" data-site-default-book-cover="/images/default-book-cover.png" data-site-default-user-avatar="/localPic/2026/08/09/5bd46fdb-2365-44f6-a164-d6d3db058665.svg">
+(function (script, doc) {
+    if (!script) {
+        return;
+    }
+    function attr(name) {
+        var value = script.getAttribute(name) || "";
+        return /\{\{SITE_[A-Z_]+\}\}/.test(value) ? "" : value;
+    }
+    function meta(name) {
+        var el = doc.querySelector("meta[name='" + name + "']");
+        return el ? (el.getAttribute("content") || "") : "";
+    }
+    window.__frontSiteInfo = {
+        name: attr("data-site-name"),
+        domain: attr("data-site-domain"),
+        keyword: meta("keywords"),
+        description: meta("description"),
+        logo: attr("data-site-logo"),
+        logoDark: attr("data-site-logo-dark"),
+        defaultBookCover: attr("data-site-default-book-cover") || "/images/default-book-cover.png",
+        defaultUserAvatar: attr("data-site-default-user-avatar") || "/system-static/default-user-avatar.svg"
+    };
+
+    var avatarColors = ["#3b82f6", "#14b8a6", "#f59e0b", "#ef4444", "#8b5cf6", "#ec4899"];
+    var builtInDefaultAvatars = {
+        "/images/man.png": true,
+        "/system-static/default-user-avatar.svg": true,
+        "/admin-static/img/default-user-avatar.svg": true
+    };
+
+    function avatarName(user) {
+        var source = user || {};
+        return String(source.nickName || source.username || "未知用户").trim() || "未知用户";
+    }
+
+    function avatarInitial(name) {
+        var normalized = String(name || "").trim();
+        return normalized ? Array.from(normalized)[0].toLocaleUpperCase() : "?";
+    }
+
+    function avatarColor(name) {
+        var normalized = String(name || "").trim();
+        var hash = 0;
+        Array.from(normalized).forEach(function (character) {
+            hash = (hash * 31 + (character.codePointAt(0) || 0)) >>> 0;
+        });
+        return avatarColors[hash % avatarColors.length];
+    }
+
+    function isDefaultAvatar(photo) {
+        var value = String(photo || "").trim();
+        var configured = String(window.__frontSiteInfo.defaultUserAvatar || "").trim();
+        return !value || builtInDefaultAvatars[value] || value === configured;
+    }
+
+    function normalizeAvatarPhoto(photo) {
+        var value = String(photo || "").trim();
+        var compact = value.toLowerCase().replace(/\s+/g, "");
+        if (compact.indexOf("javascript:") === 0 || compact.indexOf("data:text/html") === 0) {
+            return "";
+        }
+        return value;
+    }
+
+    function showInitial(element, name) {
+        element.innerHTML = "";
+        element.classList.add("user-initial-avatar");
+        element.style.setProperty("--user-avatar-color", avatarColor(name));
+        element.textContent = avatarInitial(name);
+    }
+
+    function renderAvatar(element, user) {
+        if (!element) {
+            return element;
+        }
+        var source = user || {};
+        var name = avatarName(source);
+        var photo = normalizeAvatarPhoto(source.userPhoto);
+        element.classList.add("front-user-avatar");
+        element.setAttribute("data-avatar-name", name);
+        element.setAttribute("aria-label", name + "的头像");
+        if (isDefaultAvatar(photo)) {
+            showInitial(element, name);
+            return element;
+        }
+        var image = doc.createElement("img");
+        image.alt = "";
+        image.src = photo;
+        image.addEventListener("error", function () {
+            showInitial(element, name);
+        }, {once: true});
+        element.innerHTML = "";
+        element.classList.remove("user-initial-avatar");
+        element.style.removeProperty("--user-avatar-color");
+        element.appendChild(image);
+        return element;
+    }
+
+    function createAvatar(user, className) {
+        var element = doc.createElement("span");
+        element.className = className || "";
+        return renderAvatar(element, user);
+    }
+
+    function avatarMarkup(user, className) {
+        return createAvatar(user, className).outerHTML;
+    }
+
+    doc.addEventListener("error", function (event) {
+        var image = event.target;
+        var avatar = image && image.parentElement;
+        if (!avatar || !avatar.classList.contains("front-user-avatar")) {
+            return;
+        }
+        showInitial(avatar, avatar.getAttribute("data-avatar-name") || "未知用户");
+    }, true);
+
+    window.FrontUserAvatar = {
+        initial: avatarInitial,
+        color: avatarColor,
+        isDefault: isDefaultAvatar,
+        render: renderAvatar,
+        create: createAvatar,
+        markup: avatarMarkup
+    };
+})(document.currentScript, document);
+</script>
+<link rel="stylesheet" href="/css/common/base.css?_fv=dmxlsvdgqpkw15f9&v=20261114_1"/>
+<link rel="stylesheet" href="/css/common/front_page_skeleton.css?_fv=dmxlsvdgqpkwgid&v=20261110_1"/>
+<link rel="stylesheet" href="/css/common/chat_widget.css?_fv=dmxlsvdgqpkwerp&v=20261014_2"/>
+<script src="/javascript/common/front_page_skeleton.js?_fv=dmxlsvdgqpkwg8m&v=20261117_1"></script>
+
+
+
+<link rel="stylesheet" href="/css/common/main.css?_fv=dmxlsvdgqpkwvn7&v=20261003_10"/>
+
+    <meta name="keywords" content="书海阁,小说分类,玄幻小说,都市小说,言情小说,历史小说,科幻小说"/>
+<meta name="description" content="在书海阁按分类、字数、连载状态筛选小说，快速找到热门与精品作品。"/>
+
+    <link href="/favicon.ico?_fv=dmxlsvdgqpkw37cl" type="image/x-icon" rel="shortcut icon"/><link href="/favicon.ico?_fv=dmxlsvdgqpkw37cl" type="image/x-icon" rel="Bookmark"/>
+    <link rel="stylesheet" href="/css/custom/book.css?_fv=dmxlsvdgqpkw1rd4&v=20261111_4" />
+<link rel="canonical" href="https://book.washai.net/book/bookclass.html"/>
+<meta name="go-novel-seo-rendered" content="1"/>
+<meta property="og:site_name" content="书海阁"/>
+<meta property="og:type" content="website"/>
+<meta property="og:url" content="https://book.washai.net/book/bookclass.html"/>
+<meta property="og:title" content="小说分类-玄幻都市言情历史科幻等-书海阁"/>
+<meta name="twitter:title" content="小说分类-玄幻都市言情历史科幻等-书海阁"/>
+<meta property="og:description" content="在书海阁按分类、字数、连载状态筛选小说，快速找到热门与精品作品。"/>
+<meta name="twitter:description" content="在书海阁按分类、字数、连载状态筛选小说，快速找到热门与精品作品。"/>
+<meta property="og:image" content="https://book.washai.net/localPic/2026/05/06/be5dec8d-31af-474e-9b13-2ca535dce417.transparent.png"/>
+<meta name="twitter:image" content="https://book.washai.net/localPic/2026/05/06/be5dec8d-31af-474e-9b13-2ca535dce417.transparent.png"/>
+<meta name="twitter:card" content="summary_large_image"/>
+</head>
+<body class="book-class-page">
+
+<div class="header">
+    <svg class="front-icon-sprite" aria-hidden="true" focusable="false">
+        <symbol id="front-icon-user" viewBox="0 0 24 24"><circle cx="12" cy="8" r="4"></circle><path d="M4.5 20c.7-4.1 3.2-6.2 7.5-6.2s6.8 2.1 7.5 6.2"></path></symbol>
+        <symbol id="front-icon-message" viewBox="0 0 24 24"><path d="M4 5.5h16v11H8l-4 3v-14Z"></path></symbol>
+        <symbol id="front-icon-logout" viewBox="0 0 24 24"><path d="M10 5H5v14h5"></path><path d="m14 8 4 4-4 4M8 12h10"></path></symbol>
+        <symbol id="front-icon-heart" viewBox="0 0 24 24"><path d="M20.8 4.7a5.5 5.5 0 0 0-7.8 0L12 5.8l-1.1-1.1a5.5 5.5 0 0 0-7.8 7.8l8.9 8.8 8.8-8.8a5.5 5.5 0 0 0 0-7.8Z"></path></symbol>
+        <symbol id="front-icon-unlike" viewBox="0 0 24 24"><path d="M7 3h10v12h-4l-2 6-2-1v-5H5a2 2 0 0 1-2-2l2-8a2 2 0 0 1 2-2Z"></path><path d="M17 3h4v12h-4"></path></symbol>
+        <symbol id="front-icon-reply" viewBox="0 0 24 24"><path d="m9 8-5 4 5 4"></path><path d="M5 12h8a6 6 0 0 1 6 6v1"></path></symbol>
+        <symbol id="front-icon-trash" viewBox="0 0 24 24"><path d="M4 7h16M9 3h6l1 4H8l1-4ZM6 7l1 14h10l1-14"></path><path d="M10 11v6M14 11v6"></path></symbol>
+        <symbol id="front-icon-send" viewBox="0 0 24 24"><path d="m3 11 18-8-8 18-2-8-8-2Z"></path><path d="m11 13 5-5"></path></symbol>
+        <symbol id="front-icon-bell" viewBox="0 0 24 24"><path d="M18 9a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9ZM10 21h4"></path></symbol>
+        <symbol id="front-icon-bookmark" viewBox="0 0 24 24"><path d="M6 3h12v18l-6-4-6 4V3Z"></path></symbol>
+        <symbol id="front-icon-book-open" viewBox="0 0 24 24"><path d="M3 5.5A2.5 2.5 0 0 1 5.5 3H11v16H5.5A2.5 2.5 0 0 0 3 21.5v-16Z"></path><path d="M21 5.5A2.5 2.5 0 0 0 18.5 3H13v16h5.5a2.5 2.5 0 0 1 2.5 2.5v-16Z"></path></symbol>
+        <symbol id="front-icon-comment" viewBox="0 0 24 24"><path d="M4 5h16v12H8l-4 4V5Z"></path><path d="M8 9h8M8 13h5"></path></symbol>
+        <symbol id="front-icon-feedback" viewBox="0 0 24 24"><path d="M4 4h16v12h-6l-4 4v-4H4V4Z"></path><path d="M12 8v3m0 3h.01"></path></symbol>
+        <symbol id="front-icon-to-top" viewBox="0 0 24 24"><path d="M6 6h12M4 18l8-8 8 8"></path></symbol>
+        <symbol id="front-icon-to-bottom" viewBox="0 0 24 24"><path d="M6 18h12M4 6l8 8 8-8"></path></symbol>
+        <symbol id="front-icon-refresh-cw" viewBox="0 0 24 24"><path d="M21 2v6h-6M3 22v-6h6"></path><path d="M3 12a9 9 0 0 1 15.36-6.36L21 8M21 12a9 9 0 0 1-15.36 6.36L3 16"></path></symbol>
+        <symbol id="front-icon-file-text" viewBox="0 0 24 24"><path d="M6 3h8l4 4v14H6V3Z"></path><path d="M14 3v5h5M9 12h6M9 16h6"></path></symbol>
+        <symbol id="front-icon-external-link" viewBox="0 0 24 24"><path d="M14 4h6v6"></path><path d="m20 4-9 9"></path><path d="M18 13v6a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h6"></path></symbol>
+        <symbol id="front-icon-settings" viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1-2.8 2.8-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.6v.2h-4V21a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1L4.2 17l.1-.1a1.7 1.7 0 0 0 .3-1.9A1.7 1.7 0 0 0 3 14H2.8v-4H3a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9L4.2 7 7 4.2l.1.1A1.7 1.7 0 0 0 9 4.6a1.7 1.7 0 0 0 1-1.6v-.2h4V3a1.7 1.7 0 0 0 1 1.6 1.7 1.7 0 0 0 1.9-.3l.1-.1L19.8 7l-.1.1a1.7 1.7 0 0 0-.3 1.9 1.7 1.7 0 0 0 1.6 1h.2v4H21a1.7 1.7 0 0 0-1.6 1Z"></path></symbol>
+        <symbol id="front-icon-wallet" viewBox="0 0 24 24"><path d="M4 6h14a2 2 0 0 1 2 2v10H4a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h12"></path><path d="M15 10h7v5h-7a2.5 2.5 0 0 1 0-5Z"></path></symbol>
+        <symbol id="front-icon-more-horizontal" viewBox="0 0 24 24"><circle cx="5" cy="12" r="1"></circle><circle cx="12" cy="12" r="1"></circle><circle cx="19" cy="12" r="1"></circle></symbol>
+        <symbol id="front-icon-users" viewBox="0 0 24 24"><circle cx="9" cy="8" r="3"></circle><circle cx="17" cy="9" r="2.5"></circle><path d="M3.5 20v-2.2c0-3 2.2-5 5.5-5s5.5 2 5.5 5V20M14 14c3.6-.7 6.5 1.2 6.5 4V20"></path></symbol>
+        <symbol id="front-icon-megaphone" viewBox="0 0 24 24"><path d="M4 10v4h4l9 4V6l-9 4H4Zm4 4 1.5 5h3L11 15"></path><path d="M20 9v6"></path></symbol>
+        <symbol id="front-icon-chevron-right" viewBox="0 0 24 24"><path d="m9 5 7 7-7 7"></path></symbol>
+        <symbol id="front-icon-minus" viewBox="0 0 24 24"><path d="M5 12h14"></path></symbol>
+        <symbol id="front-icon-close" viewBox="0 0 24 24"><path d="m6 6 12 12M18 6 6 18"></path></symbol>
+        <symbol id="front-icon-smile" viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"></circle><path d="M8 14c1 2 2.3 3 4 3s3-1 4-3M9 9h.01M15 9h.01"></path></symbol>
+    </svg>
+    <a class="skip-link" href="#mainContent">跳到主要内容</a>
+    <div class="topMain">
+        <div class="box_center">
+            <a href="/" class="front-brand" aria-label="书海阁首页"><svg class="ui-icon" aria-hidden="true"><use href="#front-icon-book-open"></use></svg><span>书海阁</span></a>
+            <div class="searchBar">
+                <div class="search cf" role="search">
+                    <input type="text" placeholder="书名、作者、关键字" class="s_int" name="searchKey" id="searchKey" autocomplete="off" aria-label="搜索书名、作者或关键字" aria-controls="searchHistoryBox" aria-expanded="false"/>
+                    <label class="search_btn" id="btnSearch" for="searchKey" role="button" tabindex="0" aria-label="开始搜索"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M10.8 4.2a6.6 6.6 0 1 1 0 13.2 6.6 6.6 0 0 1 0-13.2Zm0 2.4a4.2 4.2 0 1 0 0 8.4 4.2 4.2 0 0 0 0-8.4Zm5.1 9.1 4.2 4.2a1.2 1.2 0 0 1-1.7 1.7l-4.2-4.2a1.2 1.2 0 0 1 1.7-1.7Z"/></svg></label>
+                </div>
+                <div class="search-history-box search-history-popover" id="searchHistoryBox" hidden aria-hidden="true">
+                    <div class="search-history-head">
+                        <span class="search-history-title">历史搜索</span>
+                        <button type="button" class="search-history-clear-all" id="searchHistoryClearAll">清空</button>
+                    </div>
+                    <div class="search-history-list" id="searchHistoryList" aria-live="polite"></div>
+                    <section id="hotSearchSection" class="hot-search-section" hidden aria-labelledby="hotSearchTitle">
+                        <div class="search-history-head"><span id="hotSearchTitle" class="search-history-title">热门搜索</span></div>
+                        <div id="hotSearchList" class="search-history-list" aria-live="polite"></div>
+                    </section>
+                </div>
+            </div>
+            <div class="bookShelf" id="headerUserInfo">
+                <a class="sj_link" href="/user/favorites.html" aria-label="书架" title="书架">书架</a>
+                <span class="header-divider" aria-hidden="true"></span>
+                <a class="referral_link" href="/user/referral.html" aria-label="邀请好友" title="邀请好友"><svg class="ui-icon" aria-hidden="true"><use href="#front-icon-send"></use></svg><span>邀请</span></a>
+                <span class="header-divider" aria-hidden="true"></span>
+                <a id="siteThemeToggle" class="theme_toggle is-to-dark" href="#" data-theme="light" title="切换到暗夜模式" aria-label="切换到暗夜模式"><span class="theme_toggle_icon" aria-hidden="true"></span></a>
+                <span class="header-divider" aria-hidden="true"></span>
+                <span class="user_link" data-front-auth-state="guest" data-front-user-name="" data-front-user-photo="" data-front-auth-pending="1"><a href="/user/login.html" class="mr15">登录</a></span>
+                <script>
+                (function () {
+                    var holder = document.currentScript && document.currentScript.previousElementSibling;
+                    if (!holder || !/(^|\s)user_link(\s|$)/.test(holder.className || "")) {
+                        return;
+                    }
+                    function trim(value) {
+                        return String(value == null ? "" : value).replace(/^\s+|\s+$/g, "");
+                    }
+                    function readCookie(name) {
+                        var text = document.cookie || "";
+                        var rows = text.split(";");
+                        for (var i = 0; i < rows.length; i++) {
+                            var row = rows[i].replace(/^\s+|\s+$/g, "");
+                            if (row.substring(0, name.length + 1) === name + "=") {
+                                try {
+                                    return decodeURIComponent(row.substring(name.length + 1));
+                                } catch (e) {
+                                    return row.substring(name.length + 1);
+                                }
+                            }
+                        }
+                        return "";
+                    }
+                    function safePhoto(value) {
+                        value = trim(value);
+                        var compact = value.toLowerCase().replace(/\s+/g, "");
+                        if (!value || value === "null" || value === "undefined" || compact.indexOf("javascript:") === 0 || compact.indexOf("data:text/html") === 0) {
+                            return "";
+                        }
+                        return value;
+                    }
+                    function escapeHTML(value) {
+                        return String(value == null ? "" : value)
+                            .replace(/&/g, "&amp;")
+                            .replace(/</g, "&lt;")
+                            .replace(/>/g, "&gt;")
+                            .replace(/"/g, "&quot;")
+                            .replace(/'/g, "&#39;");
+                    }
+                    function readClaims(token) {
+                        try {
+                            var parts = String(token || "").split(".");
+                            if (parts.length !== 3) {
+                                return {};
+                            }
+                            var payload = parts[1].replace(/-/g, "+").replace(/_/g, "/");
+                            while (payload.length % 4) {
+                                payload += "=";
+                            }
+                            return JSON.parse(window.atob(payload) || "{}");
+                        } catch (e) {
+                            return {};
+                        }
+                    }
+                    function isActiveToken(token) {
+                        var claims = readClaims(token);
+                        var exp = parseInt(claims && claims.exp, 10);
+                        if (!(exp > 0)) {
+                            return false;
+                        }
+                        return exp > Math.floor(new Date().getTime() / 1000);
+                    }
+                    function readCache() {
+                        try {
+                            return JSON.parse(localStorage.getItem("frontHeaderUser") || "{}");
+                        } catch (e) {
+                            return {};
+                        }
+                    }
+                    var token = trim(readCookie("Authorization"));
+                    var state = trim(readCookie("FrontLogin"));
+                    if (!token || token.toLowerCase() === "null" || token.toLowerCase() === "undefined" || token.split(".").length !== 3 || state !== "1" || !isActiveToken(token)) {
+                        holder.removeAttribute("data-front-auth-pending");
+                        return;
+                    }
+                    var cache = readCache();
+                    var claims = readClaims(token);
+                    var name = trim(cache.nickName || cache.username || claims.nick_name || claims.username || claims.sub || "个人中心");
+                    var photo = safePhoto(cache.userPhoto);
+                    var icon = function (name) { return '<svg class="ui-icon" aria-hidden="true" focusable="false"><use href="#front-icon-' + name + '"></use></svg>'; };
+                    var account = document.createElement("span");
+                    account.className = "user_account";
+                    account.innerHTML = '<button type="button" class="user_avatar_link" data-front-account-trigger="1" aria-haspopup="menu" aria-expanded="false" title="' + escapeHTML(name) + '"><span class="user-account-unread-dot" hidden></span></button><span class="user_account_menu" role="menu" hidden><a href="/user/userinfo.html" role="menuitem">' + icon('user') + '<span>个人中心</span></a><a href="/user/interaction.html" role="menuitem">' + icon('message') + '<span>消息</span><span class="interaction-unread-badge" hidden></span></a><button type="button" role="menuitem" data-front-logout="1">' + icon('logout') + '<span>退出登录</span></button></span>';
+                    var trigger = account.querySelector("[data-front-account-trigger='1']");
+                    trigger.insertBefore(window.FrontUserAvatar.create({username: name, userPhoto: photo}, "header-user-avatar"), trigger.firstChild);
+                    holder.setAttribute("data-front-auth-state", "login");
+                    holder.setAttribute("data-front-user-name", name);
+                    holder.setAttribute("data-front-user-photo", photo);
+                    holder.innerHTML = "";
+                    holder.appendChild(account);
+                    holder.removeAttribute("data-front-auth-pending");
+                })();
+                </script>
+            </div>
+        </div>
+    </div>
+    <div class="mainNav" id="mainNav">
+        <div class="box_center">
+            <ul class="nav" id="navModule">
+                <li data-nav="home"><a href="/">首页</a></li>
+                <li data-nav="bookclass"><a href="/book/bookclass.html">全部作品</a></li>
+                <li data-nav="ranking"><a href="/book/book_ranking.html">排行榜</a></li>
+                <li data-nav="author"><a href="/author/index.html" target="_blank">作家专区</a></li>
+            </ul>
+        </div>
+    </div>
+    <div class="front-page-skeleton" id="frontPageSkeleton" hidden aria-hidden="true">
+        <div class="front-page-skeleton__content"></div>
+    </div>
+    <script>window.FrontPageSkeleton && window.FrontPageSkeleton.mount();</script>
+</div>
+
+<div class="main box_center cf" id="mainContent" tabindex="-1">
+    <h1 class="sr-only">小说分类</h1>
+    <div class="channelWrap classTable cf">
+        <div class="so_tag">
+            <ul class="list">
+                <li class="so_pd" id="workDirection">
+                    <span class="tit">频道:</span>
+                    <a href="#" class="on">不限</a>
+                    <a filter-value="0" href="#">男频</a>
+                    <a filter-value="1" href="#">女频</a>
+                </li>
+                <li class="so_progress">
+                    <span class="tit">状态:</span>
+                    <a  href="#" class="on">不限</a>
+                    <a filter-value="0" href="#" class="">连载中</a>
+                    <a filter-value="1" href="#" class="">已完结</a>
+                </li>
+                <li id="idGirl" class="so_class">
+                    <span class="tit">分类:</span>
+                    <span class="so_girl is-initially-hidden" id="girlCategoryList">
+                        <a href="/book/bookclass.html" class="on">不限</a><a filter-value="7" href="/book/bookclass.html?c=7">女生频道</a></span>
+                    <span class="so_boy" id="allCategoryList">
+                        <a href="/book/bookclass.html" class="on">不限</a><a filter-value="1" href="/book/bookclass.html?c=1">玄幻奇幻</a><a filter-value="2" href="/book/bookclass.html?c=2">武侠仙侠</a><a filter-value="3" href="/book/bookclass.html?c=3">都市言情</a><a filter-value="4" href="/book/bookclass.html?c=4">历史军事</a><a filter-value="5" href="/book/bookclass.html?c=5">科幻灵异</a><a filter-value="6" href="/book/bookclass.html?c=6">网游竞技</a><a filter-value="8" href="/book/bookclass.html?c=8">次元同人</a></span>
+                    <span class="so_boy is-initially-hidden" id="boyCategoryList">
+                        <a href="/book/bookclass.html" class="on">不限</a><a filter-value="1" href="/book/bookclass.html?c=1">玄幻奇幻</a><a filter-value="2" href="/book/bookclass.html?c=2">武侠仙侠</a><a filter-value="3" href="/book/bookclass.html?c=3">都市言情</a><a filter-value="4" href="/book/bookclass.html?c=4">历史军事</a><a filter-value="5" href="/book/bookclass.html?c=5">科幻灵异</a><a filter-value="6" href="/book/bookclass.html?c=6">网游竞技</a><a filter-value="8" href="/book/bookclass.html?c=8">次元同人</a></span>
+                </li>
+                <li class="so_words">
+                    <span class="tit">字数:</span>
+                    <a href="#" class="on">不限</a>
+                    <a filter-value-max="300000" href="#" class="">30万字以下</a>
+                    <a filter-value-min="300000" filter-value-max="500000" href="#" class="">30-50万字</a>
+                    <a filter-value-min="500000" filter-value-max="1000000" href="#" class="">50-100万字</a>
+                    <a filter-value-min="1000000" href="#" class="">100万字以上</a>
+                </li>
+                <li class="so_update">
+                    <span class="tit">更新:</span>
+                    <a href="#" class="on">不限</a>
+                    <a filter-value="3" href="#" class="">三日内</a>
+                    <a filter-value="7" href="#" class="">七日内</a>
+                    <a filter-value="15" href="#" class="">半月内</a>
+                    <a filter-value="30" href="#" class="">一月内</a>
+                </li>
+                <li class="so_sort">
+                    <span class="tit">排序:</span>
+                    <a href="#" class="on">不限</a>
+                    <a filter-value="last_index_update_time" href="#" class="">更新时间</a>
+                    <a filter-value="word_count" href="#" class="">总字数</a>
+                    <a filter-value="visit_count" href="#" class="">人气</a>
+                </li>
+            </ul>
+        </div>
+
+    </div>
+
+    <div class="channelWrap channelClassContent cf">
+        <div class="bookClassSearchFeedback" id="bookClassSearchFeedback" role="status" aria-live="polite" hidden>
+            <span class="bookClassSearchFeedbackIcon" aria-hidden="true">i</span>
+            <strong id="bookClassSearchFeedbackText"></strong>
+            <span class="bookClassSearchFeedbackActions">
+                <a class="bookClassRequestLink" id="bookClassRequestLink" href="/user/book_request.html" hidden>提交求书</a>
+                <a class="bookClassSearchClear" href="/book/bookclass.html">清空搜索</a>
+            </span>
+        </div>
+        <div class="bookClassCardPanel">
+            <div class="bookClassSectionHeader" id="bookClassResultHeader" hidden>
+                <h2>匹配作品</h2>
+                <span id="bookClassResultCount"></span>
+            </div>
+            <div class="bookClassCardGrid" id="bookList" aria-live="polite"><article class="classBookCard"><span class="classBookCover"><a class="classBookCoverLink" href="/book/1262260513468569147.html" title="三体全集（全三册）"><img src="/localPic/2026/10/16/aba4b222-1ca8-468f-9e21-2f4e61bef054.jpg" alt="三体全集（全三册）封面" width="96" height="128" loading="lazy" decoding="async"/></a><a class="book-cover-badge classCoverCat" href="/book/bookclass.html?c=5" title="科幻灵异">科幻灵异</a></span><div class="classBookBody"><h3 class="classBookTitle"><a href="/book/1262260513468569147.html">三体全集（全三册）</a></h3><p class="classBookAuthor">作者：<a href="/book/bookclass.html?k=%E5%88%98%E6%85%88%E6%AC%A3">刘慈欣</a></p><p class="classBookMeta">已完结 · 89.66万字</p><p class="classBookChapter"><a href="/book/1262260513468569147/2039351400479733396.html">附 写于日文版《三体Ⅲ·死神永生》出版之前</a></p><p class="classBookDesc">【荣获世界科幻大奖“雨果奖”长篇小说奖，约翰·坎贝尔纪念奖，轨迹奖，银河奖特别奖。】 套装共三册： 《三体I》“文化大革命”如火如荼进行的同时，军方探寻外星文明的绝密计划“红岸工程”取得了突破性进展。但无人料到，地球文明向宇宙发出的第一声啼</p><p class="classBookTime">2026-10-16 15:14:33</p></div></article><article class="classBookCard"><span class="classBookCover"><a class="classBookCoverLink" href="/book/1262260513468566433.html" title="三体：从纳米虫群开始"><img src="/localPic/2026/10/04/dab34c39-2278-44a3-97af-18f79dddb9c6.jpg" alt="三体：从纳米虫群开始封面" width="96" height="128" loading="lazy" decoding="async"/></a><a class="book-cover-badge classCoverCat" href="/book/bookclass.html?c=4" title="历史军事">历史军事</a></span><div class="classBookBody"><h3 class="classBookTitle"><a href="/book/1262260513468566433.html">三体：从纳米虫群开始</a></h3><p class="classBookAuthor">作者：<a href="/book/bookclass.html?k=%E5%85%89%E5%A4%B4%E5%B8%88%E5%82%85">光头师傅</a></p><p class="classBookMeta">连载中 · 64.5万字</p><p class="classBookChapter"><a href="/book/1262260513468566433/2039351400479209131.html">第287章 寂静修女</a></p><p class="classBookDesc">【流浪地球+三体脑洞，前期以对抗三体为主，然后开始在各个位面发展人类文明。征战星辰大海。】【世界观为原著和电视剧混合，非原著粉也可食用。】 林浪以为自己穿越之后能和罗辑一样随便当个教授混日子，没想到却捅了三体人老窝。 ETO是吧？智子是吧？</p><p class="classBookTime">2026-10-04 21:04:41</p></div></article><article class="classBookCard"><span class="classBookCover"><a class="classBookCoverLink" href="/book/1262260513468568531.html" title="三体，让你破壁，你表演狂飙？"><img src="/localPic/2026/10/02/43e44a32-d8e0-44fc-9a19-3cb22fae04ef.jpg" alt="三体，让你破壁，你表演狂飙？封面" width="96" height="128" loading="lazy" decoding="async"/></a><a class="book-cover-badge classCoverCat" href="/book/bookclass.html?c=4" title="历史军事">历史军事</a></span><div class="classBookBody"><h3 class="classBookTitle"><a href="/book/1262260513468568531.html">三体，让你破壁，你表演狂飙？</a></h3><p class="classBookAuthor">作者：<a href="/book/bookclass.html?k=%E5%87%84%E9%A3%8E%E5%86%B7%E9%9B%A8%E6%BB%A1%E6%B1%9F%E5%9F%8E">凄风冷雨满江城</a></p><p class="classBookMeta">已完结 · 24.75万字</p><p class="classBookChapter"><a href="/book/1262260513468568531/2039351400479295118.html">第105章 大结局</a></p><p class="classBookDesc">【无系统+无女主+不是无脑爽文+欢乐+苟道+征服星海！】 顾寒意外穿越到危机纪元，正好遇到了行星防御理事会的召开。 当他看到罗辑成功当选面壁者后，悬着的心也放了下来。 可是当他得知自己竟然是要刺杀罗辑的ETO组织成员后，彻底不淡定了。 刺杀</p><p class="classBookTime">2026-10-02 11:15:06</p></div></article><article class="classBookCard"><span class="classBookCover"><a class="classBookCoverLink" href="/book/1262260513468565564.html" title="都快九级文明了，你让我去打三体"><img src="/localPic/2026/08/05/85ac8b11-b3c3-41ec-afd3-1232a95314cb.jpg" alt="都快九级文明了，你让我去打三体封面" width="96" height="128" loading="lazy" decoding="async"/></a><a class="book-cover-badge classCoverCat" href="/book/bookclass.html?c=4" title="历史军事">历史军事</a></span><div class="classBookBody"><h3 class="classBookTitle"><a href="/book/1262260513468565564.html">都快九级文明了，你让我去打三体</a></h3><p class="classBookAuthor">作者：<a href="/book/bookclass.html?k=%E6%96%B9%E8%8E%AB%E6%B3%8A">方莫泊</a></p><p class="classBookMeta">连载中 · 130.72万字</p><p class="classBookChapter"><a href="/book/1262260513468565564/2039351400480187213.html">第515章 大戏</a></p><p class="classBookDesc">【不熟悉三体世界观也可放心食用】【轻松➕少量系统➕不无脑】 林璇穿越到了三体世界，并意外的成为了继罗辑之后的第五位面壁者。 但令他蛋疼的是，自己却获得了一个极其冤种的系统，需要收集他人对自己的震惊值，来向系统兑换各类物品。 而林璇很快就想到</p><p class="classBookTime">2026-11-14 00:00:52</p></div></article></div>
+            <div class="pageBox cf" id="books">
+            </div>
+            <section class="bookClassRecommend" id="bookClassRecommend" aria-labelledby="bookClassRecommendTitle" hidden>
+                <div class="bookClassRecommendHeader">
+                    <div>
+                        <h2 id="bookClassRecommendTitle">热门作品推荐</h2>
+                        <p id="bookClassRecommendSubtitle">根据近期人气推荐</p>
+                    </div>
+                    <button type="button" id="bookClassRecommendRefresh">换一批</button>
+                </div>
+                <div class="bookClassCardGrid bookClassRecommendGrid" id="bookRecommendList" aria-live="polite"></div>
+            </section>
+        </div>
+    </div>
+</div>
+
+<div class="footer">
+    <div class="box_center footer-content">
+        <div class="friend_link" data-front-friend-links hidden>
+            <span>友情链接：</span><span class="friend-link-list"></span>
+        </div>
+        <div class="copyright">
+            <ul>
+                <li class="menu"><a href="/">网站首页</a><i
+                        class="line">|</i><a href="/user/feedback.html" data-feedback-link>反馈留言</a></li>
+                <li class="footer-site-meta">Copyright (C) All rights reserved&nbsp;&nbsp;<a class="footer-site-name" href="/">书海阁</a>版权所有</li>
+            </ul>
+        </div>
+    </div>
+</div>
+
+<script src="/javascript/vendor/jquery-3.7.1.min.js?_fv=dmxlsvdgqpkw1vjh&v=20260407" defer type="text/javascript"></script>
+<script src="/javascript/common/front_utils.js?_fv=dmxlsvdgqpkw35i&v=20261010_1" defer type="text/javascript"></script>
+<script src="/javascript/common/front_request.js?_fv=dmxlsvdgqpkw5wn&v=20261026_2" defer type="text/javascript"></script>
+<script src="/javascript/common/mini-layui.js?_fv=dmxlsvdgqpkwcb4&v=20260410" defer type="text/javascript"></script>
+<script src="/javascript/common/common.js?_fv=dmxlsvdgqpkw2d9q&v=20261117_1" defer type="text/javascript"></script>
+<script src="/javascript/common/auth_success_feedback.js?_fv=dmxlsvdgqpkw6iy&v=20261014_2" defer type="text/javascript"></script>
+<script src="/javascript/common/interaction_badge.js?_fv=dmxlsvdgqpkw1hd&v=20260925_1" defer type="text/javascript"></script>
+<script src="/javascript/common/announcement_popup.js?_fv=dmxlsvdgqpkw7lf&v=20261029_1" defer type="text/javascript"></script>
+<script src="/javascript/vendor/centrifuge-5.7.4/centrifuge.js?_fv=dmxlsvdgqpkw1nso&v=5.7.4_1" defer type="text/javascript"></script>
+<script src="/javascript/common/chat_widget.js?_fv=dmxlsvdgqpkw1e5x&v=20261018_2" defer type="text/javascript"></script>
+
+<script src="/javascript/custom/bookclass.js?_fv=dmxlsvdgqpkw3e5" defer type="text/javascript"></script>
+
+<script src="/javascript/pages/front/bookclass_page.js?_fv=dmxlsvdgqpkwvnw&v=20261114_1" defer type="text/javascript"></script>
+<div class="site-floating-frame site-floating-frame-bottom site-floating-frame-cpc" data-frame-position="bottom-cpc-network-7bad0650f535" data-frame-channel="cpc" data-frame-role="peer" data-frame-group="cpc-network-7bad0650f535-0" data-frame-group-size="1" data-frame-batch-size="1" data-frame-attempt-limit="1" data-frame-fallback-enabled="false" data-frame-interactive="true" data-frame-type="banner" data-iframe-isolated="false" data-frame-loaded="false" data-frame-click-ticket="eyJ2IjozLCJiZCI6IjIwMjYtMTEtMTkiLCJwIjoibmV0d29yay03YmFkMDY1MGY1MzUiLCJxIjowLCJkIjoiZTE2OTMzNjIxODQ1ODI4NmMzMjE5Y2FlY2FkZTY4NzQ4NTQ1ZWQwZWZkMDBkMDYwOGVkNTg5MTVhNGUzMjE4NyIsInMiOiJib3R0b20iLCJuIjoiNmE5ZGQ3ZTgxZWM1YjM0MGEwYTZjNTJmNjNkZGVmYjQiLCJpYXQiOjE3OTUwNjE0MDgsImV4cCI6MTc5NTE0NzgwOCwiY2QiOjE4MDB9.QnBOcj9sI4b7TN7LjIWt6x12Z9BYN4MbnLR-TD-6MKY" data-frame-impression-ticket="eyJ2IjozLCJiZCI6IjIwMjYtMTEtMTkiLCJwIjoibmV0d29yay03YmFkMDY1MGY1MzUiLCJxIjowLCJkIjoiZTE2OTMzNjIxODQ1ODI4NmMzMjE5Y2FlY2FkZTY4NzQ4NTQ1ZWQwZWZkMDBkMDYwOGVkNTg5MTVhNGUzMjE4NyIsInMiOiJib3R0b20iLCJuIjoiNmE5ZGQ3ZTgxZWM1YjM0MGEwYTZjNTJmNjNkZGVmYjQiLCJpYXQiOjE3OTUwNjE0MDgsImV4cCI6MTc5NTE0NzgwOCwiY2QiOjE4MDB9.QnBOcj9sI4b7TN7LjIWt6x12Z9BYN4MbnLR-TD-6MKY" data-frame-click-cooldown-enabled="true" data-frame-click-cookie-enabled="false" data-frame-click-require-navigation="true" data-frame-click-cooldown-seconds="1800" style="position:fixed;bottom:calc(var(--site-frame-edge-offset,0px) + var(--site-frame-stack-offset,0px));left:0;width:100%;--site-frame-stack-total:40;--site-frame-stack-strip:0.4;--site-frame-stack-primary:1;height:40px;overflow:hidden;contain:layout paint;opacity:0;pointer-events:none;z-index:-1;transition:var(--site-frame-edge-transition,bottom .18s ease);--site-frame-content-opacity:1.00"><style>.site-floating-frame>:not(button):not(script):not(style){opacity:var(--site-frame-content-opacity)!important}</style><style class="site-floating-frame-avoidance">body.immersive-read:has(.site-floating-frame-bottom[data-frame-loaded="true"]:not([data-frame-hidden="true"])) .menu_right{bottom:var(--site-frame-stack-height,40px)!important}body.immersive-read.mobileReadMenuOpen .site-floating-frame-bottom[data-frame-loaded="true"]:not([data-frame-hidden="true"]){bottom:calc(60px + env(safe-area-inset-bottom,0px) + var(--site-frame-stack-offset,0px))!important;transition:none!important}body.immersive-read.mobileReadPanelOpen .site-floating-frame-bottom[data-frame-loaded="true"]:not([data-frame-hidden="true"]){bottom:calc(var(--mobile-read-panel-ad-offset) + var(--site-frame-stack-offset,0px))!important;transition:none!important}body.immersive-read:has(.site-floating-frame-bottom[data-frame-loaded="true"]:not([data-frame-hidden="true"])) .mobileReadTopMenu,body.immersive-read:has(.site-floating-frame-bottom[data-frame-loaded="true"]:not([data-frame-hidden="true"])) .mobileReadActionMenu{z-index:2147483100!important}</style><script>(function(){if(window.__novelFixedStackReflow)return;window.__novelFixedStackReflow=true;window.__novelReflowFloatingAds=function(){var all=document.querySelectorAll('.site-floating-frame-bottom[data-frame-role="peer"]'),selector='.site-floating-frame-bottom[data-frame-role="peer"][data-frame-loaded="true"]:not([data-frame-hidden="true"]):not([data-frame-stale="true"])',ads=document.querySelectorAll(selector),primary=null,button;for(var a=0;a<all.length;a++){button=all[a].querySelector('button[aria-label="关闭广告"]');if(button)button.style.display="none"}if(!ads.length)ads=document.querySelectorAll('.site-floating-frame-bottom[data-frame-role="peer"][data-frame-loaded="true"]:not([data-frame-hidden="true"])[data-frame-stale="true"]');for(var i=0;i<ads.length;i++)if(!primary&&parseFloat(ads[i].style.getPropertyValue("--site-frame-stack-primary"))===1)primary=ads[i];if(!primary&&ads.length)primary=ads[0];if(!primary){document.documentElement.style.setProperty("--site-frame-stack-height","0px");return}var total=parseFloat(primary.style.getPropertyValue("--site-frame-stack-total"))||primary.getBoundingClientRect().height,strip=ads.length>1?(parseFloat(primary.style.getPropertyValue("--site-frame-stack-strip"))||0):0,secondary=0;strip=Math.max(0,Math.min(strip,total));for(var j=0;j<ads.length;j++){var item=ads[j],isPrimary=item===primary;item.style.left=isPrimary?"0":"calc(100% * "+secondary+" / "+(ads.length-1)+")";item.style.width=isPrimary?"100%":"calc(100% / "+(ads.length-1)+")";item.style.height=(isPrimary?total-strip:strip)+"px";item.style.setProperty("--site-frame-stack-offset",(isPrimary?strip:0)+"px");if(!isPrimary)secondary++}button=primary.querySelector('button[aria-label="关闭广告"]');if(button)button.style.display="flex";document.documentElement.style.setProperty("--site-frame-stack-height",total+"px")}})();</script><script>(function(XHR,request){
+if(window.__novelDirectFrameClickBound)return;
+window.__novelDirectFrameClickBound=true;
+var runtime=window.__novelAdClickRuntime;if(!runtime){runtime=window.__novelAdClickRuntime={pending:null,pendingAt:0,timer:0};runtime.clear=function(){runtime.pending=null;runtime.pendingAt=0;clearTimeout(runtime.timer)};runtime.arm=function(ad){if(!ad||ad.getAttribute("data-frame-click-sent")==="true")return;runtime.pending=ad;runtime.pendingAt=Date.now();clearTimeout(runtime.timer);runtime.timer=setTimeout(runtime.clear,2500)};runtime.submit=function(ad){if(!ad||ad.getAttribute("data-frame-click-sent")==="true")return;runtime.clear();var ticket=ad.getAttribute("data-frame-click-ticket");if(!ticket)return;ad.setAttribute("data-frame-click-sent","true");if(ad.getAttribute("data-frame-click-cooldown-enabled")==="true"){ad.style.setProperty("opacity","0","important");ad.style.setProperty("pointer-events","none","important");ad.setAttribute("data-frame-hidden","true");if(ad.getAttribute("data-frame-role")==="peer"&&window.__novelReflowFloatingAds)window.__novelReflowFloatingAds();var seconds=parseInt(ad.getAttribute("data-frame-click-cooldown-seconds"),10)||1800,proof=ticket+"~"+Math.floor(Date.now()/1000);if(ad.getAttribute("data-frame-click-cookie-enabled")==="true")document.cookie="novel_ad_click_cooldown="+encodeURIComponent(proof)+"; Path=/; Max-Age="+seconds+"; SameSite=Lax";setTimeout(function(){ad.remove()},2000)}try{var xhr=new XHR();xhr.open("POST","/ad/click",false);xhr.setRequestHeader("Content-Type","text/plain;charset=UTF-8");xhr.send(ticket)}catch(e){request("/ad/click",{method:"POST",body:ticket,keepalive:true,mode:"no-cors",credentials:"include"}).catch(function(){})}};runtime.activate=function(ad){if(!ad)return;if(ad.getAttribute("data-frame-click-require-navigation")==="true")runtime.arm(ad);else runtime.submit(ad)};runtime.confirm=function(ad){if(ad&&runtime.pending===ad)runtime.submit(ad)}};
+window.__novelDirectFrameClickReset=function(){runtime.clear();var ads=document.querySelectorAll(".site-floating-frame[data-frame-click-sent]");for(var i=0;i<ads.length;i++)ads[i].removeAttribute("data-frame-click-sent")};
+var selector='.site-floating-frame[data-iframe-isolated="false"]',touchAd=null,touchX=0,touchY=0,touchMoved=false,pointerAd=null,pointerX=0,pointerY=0,pointerMoved=false,ignoreClickUntil=0,
+point=function(e){return e.changedTouches&&e.changedTouches[0]||e.touches&&e.touches[0]||e},
+adAt=function(e){return e.isTrusted&&e.target.closest&&e.target.closest(selector)},
+closeAt=function(e){var p=point(e),buttons=document.querySelectorAll('.site-floating-frame button[aria-label="关闭广告"]');for(var i=0;i<buttons.length;i++){var r=buttons[i].getBoundingClientRect();if(p.clientX>=r.left&&p.clientX<=r.right&&p.clientY>=r.top&&p.clientY<=r.bottom){e.preventDefault();e.stopImmediatePropagation();var ad=buttons[i].parentElement;if(ad.getAttribute("data-frame-role")==="peer"&&window.FrontUI&&window.FrontUI.FloatingAds)window.FrontUI.FloatingAds.remove();else ad.remove();return true}}return false};
+window.addEventListener("pointerdown",function(e){if(e.isPrimary===false)return;pointerAd=adAt(e);if(!pointerAd)return;pointerX=e.clientX;pointerY=e.clientY;pointerMoved=false;e.stopImmediatePropagation()},true);
+window.addEventListener("pointermove",function(e){if(!pointerAd)return;if(Math.abs(e.clientX-pointerX)>10||Math.abs(e.clientY-pointerY)>10){pointerMoved=true;e.stopImmediatePropagation()}},true);
+window.addEventListener("pointerup",function(e){if(!pointerAd)return;if(pointerMoved){ignoreClickUntil=Date.now()+700;e.preventDefault();e.stopImmediatePropagation()}pointerAd=null;pointerMoved=false},true);
+window.addEventListener("pointercancel",function(){pointerAd=null;pointerMoved=false},true);
+window.addEventListener("touchstart",function(e){touchAd=adAt(e);if(!touchAd)return;var p=point(e);touchX=p.clientX;touchY=p.clientY;touchMoved=false;e.stopImmediatePropagation()},true);
+window.addEventListener("touchmove",function(e){if(!touchAd)return;var p=point(e);if(Math.abs(p.clientX-touchX)>10||Math.abs(p.clientY-touchY)>10){touchMoved=true;e.stopImmediatePropagation()}},true);
+window.addEventListener("touchend",function(e){if(!touchAd)return;if(touchMoved){ignoreClickUntil=Date.now()+700;e.preventDefault();e.stopImmediatePropagation()}else if(e.isTrusted&&!closeAt(e))runtime.activate(touchAd);touchAd=null;touchMoved=false},true);
+window.addEventListener("touchcancel",function(){touchAd=null;touchMoved=false},true);
+window.addEventListener("click",function(e){var ad=adAt(e);if(!ad)return;if(Date.now()<ignoreClickUntil){e.preventDefault();e.stopImmediatePropagation();return}if(!closeAt(e))runtime.activate(ad)},true)
+})(XMLHttpRequest,fetch.bind(window));</script><script>(function(){if(window.__novelFrameNavigationGuard)return;window.__novelFrameNavigationGuard=true;var active=null,timer=0,root=document.documentElement,selector=".site-floating-frame",directSelector='.site-floating-frame[data-iframe-isolated="false"]',nativeOpen=window.open.bind(window),runtime=function(){return window.__novelAdClickRuntime},clear=function(){active=null;clearTimeout(timer);var state=runtime();if(state)state.clear()},arm=function(e){var ad=e.target&&e.target.closest&&e.target.closest(directSelector);if(!ad||e.target.closest('button[aria-label="关闭广告"]'))return;active=ad;clearTimeout(timer);timer=setTimeout(function(){active=null},2500)},outside=function(e){if(!e.target.closest||!e.target.closest(selector))clear()};root.addEventListener("pointerdown",arm,true);root.addEventListener("touchstart",arm,true);root.addEventListener("click",arm,true);root.addEventListener("pointerdown",outside,true);root.addEventListener("touchstart",outside,true);window.open=function(){var popup=nativeOpen.apply(window,arguments),state=runtime();if(popup&&state&&state.pending)state.confirm(state.pending);return popup};if(window.navigation)window.navigation.addEventListener("navigate",function(e){var state=runtime(),url=e.destination&&e.destination.url,ad=state&&state.pending||active;if(!ad||e.hashChange||e.downloadRequest!=null||!/^https?:\/\//i.test(url))return;if(!e.cancelable){if(state)state.confirm(ad);return}var popup=window.open("about:blank","_blank");if(!popup)return;if(state)state.confirm(ad);active=null;try{e.preventDefault();popup.opener=null;popup.location.replace(url)}catch(error){try{popup.close()}catch(ignore){}}});window.addEventListener("pagehide",function(){var state=runtime();if(state&&state.pending&&Date.now()-state.pendingAt<1500)state.confirm(state.pending)},true)})();</script><script>(function(ad,isolated,request,waitMS,roundMS,requestMS){if(!ad)return;var ticket=ad.getAttribute("data-frame-impression-ticket"),slot=ad.getAttribute("data-frame-position")||"slot",group=ad.getAttribute("data-frame-group")||slot,expected=parseInt(ad.getAttribute("data-frame-group-size"),10)||1,batchExpected=parseInt(ad.getAttribute("data-frame-batch-size"),10)||1,now=Date.now(),runtime=document.documentElement.__novelAdRuntime||(document.documentElement.__novelAdRuntime={}),reflow=window.__novelReflowFloatingAds||(window.__novelReflowFloatingAds=function(){var ads=document.querySelectorAll('.site-floating-frame-bottom[data-frame-role="peer"][data-frame-loaded="true"]:not([data-frame-hidden="true"]):not([data-frame-stale="true"])'),offset=0,button;if(!ads.length)ads=document.querySelectorAll('.site-floating-frame-bottom[data-frame-role="peer"][data-frame-loaded="true"]:not([data-frame-hidden="true"])[data-frame-stale="true"]');for(var i=0;i<ads.length;i++){ads[i].style.setProperty("--site-frame-stack-offset",offset+"px");offset+=ads[i].getBoundingClientRect().height;button=ads[i].querySelector('button[aria-label="关闭广告"]');if(button)button.style.display="none"}if(ads.length){button=ads[ads.length-1].querySelector('button[aria-label="关闭广告"]');if(button)button.style.display="flex"}document.documentElement.style.setProperty("--site-frame-stack-height",offset+"px")}),rounds=runtime.slotRounds||(runtime.slotRounds={}),deadline=runtime.deadline;if(!(deadline>now)){deadline=now+roundMS;runtime.deadline=deadline}var round=rounds[group];if(!round){round={key:group,expected:expected,states:{},filled:false,sent:false};rounds[group]=round}round.expected=Math.max(round.expected,expected);round.states[slot]="pending";var batch=runtime.impressionBatch;if(!batch||batch.deadline!==deadline||batch.sent){batch={deadline:deadline,expected:batchExpected,registered:0,settled:0,items:{},sent:false,scheduled:false,promise:null,cancelFallback:false};runtime.impressionBatch=batch}batch.expected=Math.max(batch.expected,batchExpected);var batchKey=String(batch.registered++);if(!batch.flush)batch.flush=function(force){if(runtime.impressionBatch!==batch)return Promise.resolve(null);if(force)batch.cancelFallback=true;if(batch.sent)return batch.promise||Promise.resolve(null);if(!force&&batch.settled<batch.expected)return Promise.resolve(null);batch.sent=true;var items=[],allEmpty=true,wantsNext=false;for(var key in batch.items){var item=batch.items[key];if(!item.empty)allEmpty=false;if(item.next)wantsNext=true;if(item.ticket)items.push({ticket:item.ticket,empty:item.empty})}if(!items.length)return batch.promise=Promise.resolve(null);var body=JSON.stringify({items:items,next:!force&&allEmpty&&wantsNext});batch.promise=new Promise(function(resolve){var finished=false,controller=window.AbortController?new AbortController():null,finish=function(value){if(finished)return;finished=true;clearTimeout(timeout);resolve(value)},timeout=setTimeout(function(){if(controller)controller.abort();finish(null)},Math.max(1,requestMS)),options={method:"POST",body:body,keepalive:true,credentials:"include",headers:{"Content-Type":"application/json"}};if(controller)options.signal=controller.signal;request("/ad/impression",options).then(function(response){if(response&&response.ok)return response.json().catch(function(){return null});return null}).then(finish).catch(function(){finish(null)})}).then(function(payload){if(!batch.cancelFallback&&runtime.impressionBatch===batch&&Date.now()<deadline&&payload&&payload.code===200&&payload.data&&payload.data.next)document.dispatchEvent(new CustomEvent("novelAdEmpty",{detail:payload.data.next}));return payload});return batch.promise};if(!runtime.impressionPagehideBound){runtime.impressionPagehideBound=true;window.addEventListener("pagehide",function(){var current=runtime.impressionBatch;if(current&&current.flush)current.flush(true)})}var done=false,timer=0,poller=0,observer=0,onMessage=0,outside=function(callback){return window.__novelFrameOutside?window.__novelFrameOutside(callback):callback()},settle=function(empty,wantsNext){if(runtime.impressionBatch!==batch||batch.items[batchKey])return;batch.items[batchKey]={ticket:ticket,empty:empty,next:wantsNext};batch.settled++;if(batch.scheduled)return;batch.scheduled=true;setTimeout(function(){batch.scheduled=false;batch.flush(false)},0)},cleanup=function(){clearTimeout(timer);clearInterval(poller);if(observer)observer.disconnect();if(onMessage)window.removeEventListener("message",onMessage)},replaceStale=function(){var placement=ad.classList.contains("site-floating-frame-top")?"top":"bottom",stale=document.querySelectorAll('.site-floating-frame-'+placement+'[data-frame-stale="true"]');for(var i=0;i<stale.length;i++)stale[i].remove()},ready=function(){if(done||!ad.isConnected)return;done=true;cleanup();if(rounds[group]!==round||ad.getAttribute("data-frame-stale")==="true"){ad.remove();return}round.filled=true;round.states[slot]="ready";ad.setAttribute("data-frame-loaded","true");ad.style.zIndex="2147483000";ad.style.contain="layout paint";ad.style.opacity="1";if(ad.getAttribute("data-frame-interactive")!=="false")ad.style.pointerEvents="auto";if(ad.getAttribute("data-frame-role")==="peer")outside(reflow);outside(replaceStale);settle(false,false)},visible=function(){var nodes=ad.querySelectorAll("*:not(script):not(style):not(button):not(.site-floating-frame-content)");for(var i=0;i<nodes.length;i++){var node=nodes[i],rect=node.getBoundingClientRect(),style=getComputedStyle(node),tag=node.tagName;if(rect.width<8||rect.height<8||style.display==="none"||style.visibility==="hidden"||parseFloat(style.opacity)<.05)continue;if((tag==="IMG"&&node.complete&&node.naturalWidth>0)||/^(CANVAS|SVG|VIDEO|OBJECT|EMBED)$/.test(tag)||style.backgroundImage!=="none"||(node.children.length===0&&node.textContent.trim()))return true}return false},check=function(){if(!done&&visible())ready()},empty=function(){if(done)return;done=true;cleanup();if(!ad.isConnected)return;if(rounds[group]!==round||ad.getAttribute("data-frame-stale")==="true"){ad.remove();return}round.states[slot]="empty";ad.remove();if(ad.getAttribute("data-frame-role")==="peer")outside(reflow);var count=0;for(var name in round.states)if(round.states[name]==="empty")count++;var wantsNext=false;if(!round.filled&&!round.sent&&count>=round.expected){round.sent=true;wantsNext=ad.getAttribute("data-frame-fallback-enabled")==="true"&&runtime.fallbackEnabled===true}settle(true,wantsNext)};if(isolated){onMessage=function(e){var frame=ad.querySelector("iframe");if(frame&&e.source===frame.contentWindow&&e.data&&e.data.type==="novel-frame-ready")ready()};window.addEventListener("message",onMessage)}else{observer=new MutationObserver(check);observer.observe(ad,{childList:true,subtree:true,attributes:true});poller=setInterval(check,50);check()}timer=setTimeout(empty,Math.max(0,Math.min(waitMS,deadline-Date.now())))})(document.currentScript.parentElement,false,fetch.bind(window),13000,14000,1000);</script><style>body>div:not(.site-floating-frame)[style*="2147483646"],body>div:not(.site-floating-frame):empty[style*="opacity:0.01"]{pointer-events:none!important}</style><script>
+(function(Node,Document,Element,HTMLElement,EventTarget){
+if(window.__novelFrameDOMContainment)return;
+window.__novelFrameDOMContainment=true;
+var activeAd=null,outsideDepth=0,owners=new WeakMap,wrappedListeners=new WeakMap,
+adSelector='.site-floating-frame[data-iframe-isolated="false"]',
+nativeCreate=Document.prototype.createElement,
+nativeAppend=Node.prototype.appendChild,
+nativeInsert=Node.prototype.insertBefore,
+nativeRemoveChild=Node.prototype.removeChild,
+nativeRemove=Element.prototype.remove,
+nativeWrite=Document.prototype.write,
+nativeAppendAll=Element.prototype.append,
+nativePrepend=Element.prototype.prepend,
+nativeReplaceChildren=Element.prototype.replaceChildren,
+nativeBefore=Element.prototype.before,
+nativeAfter=Element.prototype.after,
+nativeReplaceWith=Element.prototype.replaceWith,
+nativeInsertHTML=Element.prototype.insertAdjacentHTML,
+nativeInsertElement=Element.prototype.insertAdjacentElement,
+nativeInsertText=Element.prototype.insertAdjacentText,
+nativeInnerHTML=Object.getOwnPropertyDescriptor(Element.prototype,"innerHTML"),
+nativeOuterHTML=Object.getOwnPropertyDescriptor(Element.prototype,"outerHTML"),
+nativeTextContent=Object.getOwnPropertyDescriptor(Node.prototype,"textContent"),
+nativeGetByID=Document.prototype.getElementById,
+nativeDocumentQuery=Document.prototype.querySelector,
+nativeDocumentQueryAll=Document.prototype.querySelectorAll,
+nativeElementQuery=Element.prototype.querySelector,
+nativeElementQueryAll=Element.prototype.querySelectorAll,
+nativeByClass=Document.prototype.getElementsByClassName,
+nativeByTag=Document.prototype.getElementsByTagName,
+nativeElementByClass=Element.prototype.getElementsByClassName,
+nativeElementByTag=Element.prototype.getElementsByTagName,
+nativeListen=EventTarget.prototype.addEventListener,
+nativeUnlisten=EventTarget.prototype.removeEventListener,
+nativeMutationObserver=window.MutationObserver,
+scriptAd=function(script){return script&&(owners.get(script)||(script.closest&&script.closest(adSelector)))},
+currentAd=function(){return outsideDepth?null:activeAd||scriptAd(document.currentScript)},
+ownerOf=function(node){var ad=owners.get(node)||(node&&node.nodeType===1&&node.closest&&node.closest(adSelector));return ad===node&&!node.isConnected?null:ad},
+captureOf=function(options){return typeof options==="boolean"?options:!!(options&&options.capture)},
+withAd=function(callback,ad){if(!ad||typeof callback!=="function")return callback;return function(){var previous=activeAd;activeAd=ad;try{return callback.apply(this,arguments)}finally{activeAd=previous}}},
+bindNode=function(node,ad){if(node&&ad)owners.set(node,ad);return node},
+cleanFrames=function(node,ad){if(!ad||!node||node.nodeType!==1)return node;if(node.tagName==="IFRAME")return null;var frames=nativeElementQueryAll.call(node,"iframe");for(var i=frames.length-1;i>=0;i--)if(frames[i].parentNode)nativeRemoveChild.call(frames[i].parentNode,frames[i]);return node},
+prepare=function(args,ad){var nodes=[];for(var i=0;i<args.length;i++){var node=args[i];if(!(node instanceof Node))node=document.createTextNode(String(node));if(cleanFrames(node,ad))nodes.push(bindNode(node,ad))}return nodes},
+structuralSelector=function(selector){return /^\s*(html|head|body)\s*$/i.test(selector)};
+window.__novelFrameOutside=function(callback){var previous=activeAd;outsideDepth++;activeAd=null;try{return callback()}finally{activeAd=previous;outsideDepth--}};
+var defer=function(native){return function(callback){arguments[0]=withAd(callback,currentAd());return native.apply(this,arguments)}};
+window.setTimeout=defer(window.setTimeout);
+window.setInterval=defer(window.setInterval);
+if(window.requestAnimationFrame)window.requestAnimationFrame=defer(window.requestAnimationFrame);
+if(window.queueMicrotask)window.queueMicrotask=defer(window.queueMicrotask);
+var nativeThen=Promise.prototype.then,nativeCatch=Promise.prototype.catch,nativeFinally=Promise.prototype.finally;
+Promise.prototype.then=function(done,fail){var ad=currentAd();return nativeThen.call(this,withAd(done,ad),withAd(fail,ad))};
+Promise.prototype.catch=function(fail){return nativeCatch.call(this,withAd(fail,currentAd()))};
+if(nativeFinally)Promise.prototype.finally=function(done){return nativeFinally.call(this,withAd(done,currentAd()))};
+var wrapObserver=function(name,Native){if(!Native)return;var Wrapped=function(callback){return new Native(withAd(callback,currentAd()))};Wrapped.prototype=Native.prototype;window[name]=Wrapped};
+wrapObserver("MutationObserver",nativeMutationObserver);
+wrapObserver("ResizeObserver",window.ResizeObserver);
+wrapObserver("IntersectionObserver",window.IntersectionObserver);
+var wrapWindowHandler=function(name){var event=name.slice(2),records=new WeakMap,site={original:window[name],wrapped:null},set=function(ad,callback){var record=ad?records.get(ad):site;if(!record)record={original:null,wrapped:null};if(record.wrapped)nativeUnlisten.call(window,event,record.wrapped);record.original=typeof callback==="function"?callback:null;record.wrapped=withAd(record.original,ad);if(ad)records.set(ad,record);if(record.wrapped)nativeListen.call(window,event,record.wrapped,{once:true})};try{window[name]=null;Object.defineProperty(window,name,{configurable:true,enumerable:true,get:function(){var ad=currentAd(),record=ad&&records.get(ad);return record?record.original:site.original},set:function(callback){set(currentAd(),callback)}});if(site.original)set(null,site.original)}catch(error){}};
+wrapWindowHandler("onload");
+var wrapHandler=function(name){var descriptor=Object.getOwnPropertyDescriptor(HTMLElement.prototype,name);if(!descriptor||!descriptor.set)return;Object.defineProperty(HTMLElement.prototype,name,{configurable:descriptor.configurable,enumerable:descriptor.enumerable,get:descriptor.get,set:function(callback){return descriptor.set.call(this,withAd(callback,ownerOf(this)||currentAd()))}})};
+wrapHandler("onload");
+wrapHandler("onerror");
+Document.prototype.createElement=function(){var node=nativeCreate.apply(this,arguments),ad=currentAd();return ad?bindNode(node,ad):node};
+Node.prototype.appendChild=function(node){var ad=ownerOf(node)||currentAd()||ownerOf(this),parentAd=ownerOf(this);if(ad&&!cleanFrames(node,ad))return node;if(ad)bindNode(node,ad);if(ad&&this!==ad&&parentAd!==ad)return nativeAppend.call(ad,node);return nativeAppend.call(this,node)};
+Node.prototype.insertBefore=function(node,ref){var ad=ownerOf(node)||currentAd()||ownerOf(this),parentAd=ownerOf(this);if(ad&&!cleanFrames(node,ad))return node;if(ad)bindNode(node,ad);if(ad&&this!==ad&&parentAd!==ad)return nativeAppend.call(ad,node);return nativeInsert.call(this,node,ref)};
+Node.prototype.removeChild=function(node){var ad=currentAd()||ownerOf(this)||ownerOf(node);if(ad&&ownerOf(this)!==ad)return node;return nativeRemoveChild.call(this,node)};
+Object.defineProperty(Node.prototype,"textContent",{configurable:nativeTextContent.configurable,enumerable:nativeTextContent.enumerable,get:nativeTextContent.get,set:function(text){var ad=currentAd()||ownerOf(this),target=ad&&ownerOf(this)!==ad?ad:this;return nativeTextContent.set.call(target,text)}});
+Element.prototype.append=function(){var ad=currentAd()||ownerOf(this);if(!ad){for(var i=0;i<arguments.length&&!ad;i++)ad=ownerOf(arguments[i])}if(!ad)return nativeAppendAll.apply(this,arguments);var nodes=prepare(arguments,ad),target=ownerOf(this)===ad?this:ad;return nativeAppendAll.apply(target,nodes)};
+Element.prototype.prepend=function(){var ad=currentAd()||ownerOf(this);if(!ad){for(var i=0;i<arguments.length&&!ad;i++)ad=ownerOf(arguments[i])}if(!ad)return nativePrepend.apply(this,arguments);var nodes=prepare(arguments,ad),target=ownerOf(this)===ad?this:ad;return nativePrepend.apply(target,nodes)};
+Element.prototype.replaceChildren=function(){var ad=currentAd()||ownerOf(this);if(!ad)return nativeReplaceChildren.apply(this,arguments);var nodes=prepare(arguments,ad);if(ownerOf(this)===ad)return nativeReplaceChildren.apply(this,nodes);return nativeAppendAll.apply(ad,nodes)};
+Element.prototype.before=function(){var ad=currentAd()||ownerOf(this);if(!ad)return nativeBefore.apply(this,arguments);var nodes=prepare(arguments,ad);return ownerOf(this)===ad&&this!==ad?nativeBefore.apply(this,nodes):nativePrepend.apply(ad,nodes)};
+Element.prototype.after=function(){var ad=currentAd()||ownerOf(this);if(!ad)return nativeAfter.apply(this,arguments);var nodes=prepare(arguments,ad);return ownerOf(this)===ad&&this!==ad?nativeAfter.apply(this,nodes):nativeAppendAll.apply(ad,nodes)};
+Element.prototype.replaceWith=function(){var ad=currentAd()||ownerOf(this);if(!ad)return nativeReplaceWith.apply(this,arguments);var nodes=prepare(arguments,ad);return ownerOf(this)===ad&&this!==ad?nativeReplaceWith.apply(this,nodes):nativeAppendAll.apply(ad,nodes)};
+Element.prototype.insertAdjacentElement=function(position,node){var ad=ownerOf(node)||currentAd()||ownerOf(this);if(!ad)return nativeInsertElement.call(this,position,node);if(!cleanFrames(node,ad))return null;bindNode(node,ad);if(ownerOf(this)===ad&&this!==ad)return nativeInsertElement.call(this,position,node);nativeAppend.call(ad,node);return node};
+Element.prototype.insertAdjacentHTML=function(position,html){var ad=currentAd()||ownerOf(this);if(!ad)return nativeInsertHTML.call(this,position,html);var box=nativeCreate.call(document,"div");nativeInnerHTML.set.call(box,html);cleanFrames(box,ad);if(ownerOf(this)===ad&&this!==ad)return nativeInsertHTML.call(this,position,nativeInnerHTML.get.call(box));while(box.firstChild)nativeAppend.call(ad,bindNode(box.firstChild,ad))};
+Element.prototype.insertAdjacentText=function(position,text){var ad=currentAd()||ownerOf(this);if(!ad)return nativeInsertText.call(this,position,text);if(ownerOf(this)===ad&&this!==ad)return nativeInsertText.call(this,position,text);nativeAppend.call(ad,bindNode(document.createTextNode(String(text)),ad))};
+Element.prototype.remove=function(){var ad=currentAd()||ownerOf(this);if(ad&&ownerOf(this)!==ad)return;return nativeRemove.call(this)};
+Object.defineProperty(Element.prototype,"innerHTML",{configurable:nativeInnerHTML.configurable,enumerable:nativeInnerHTML.enumerable,get:nativeInnerHTML.get,set:function(html){var ad=currentAd()||ownerOf(this);if(!ad)return nativeInnerHTML.set.call(this,html);var box=nativeCreate.call(document,"div");nativeInnerHTML.set.call(box,html);cleanFrames(box,ad);if(ownerOf(this)===ad)return nativeInnerHTML.set.call(this,nativeInnerHTML.get.call(box));while(box.firstChild)nativeAppend.call(ad,bindNode(box.firstChild,ad))}});
+Object.defineProperty(Element.prototype,"outerHTML",{configurable:nativeOuterHTML.configurable,enumerable:nativeOuterHTML.enumerable,get:nativeOuterHTML.get,set:function(html){var ad=currentAd()||ownerOf(this);if(!ad)return nativeOuterHTML.set.call(this,html);if(ownerOf(this)===ad&&this!==ad)return nativeOuterHTML.set.call(this,html);var box=nativeCreate.call(document,"div");nativeInnerHTML.set.call(box,html);cleanFrames(box,ad);while(box.firstChild)nativeAppend.call(ad,bindNode(box.firstChild,ad))}});
+Document.prototype.write=function(){var ad=currentAd();if(!ad)return nativeWrite.apply(this,arguments);var box=nativeCreate.call(this,"div");nativeInnerHTML.set.call(box,Array.prototype.join.call(arguments,""));cleanFrames(box,ad);while(box.firstChild)nativeAppend.call(ad,bindNode(box.firstChild,ad))};
+Document.prototype.getElementById=function(id){var ad=currentAd();return ad?nativeElementQuery.call(ad,"#"+CSS.escape(String(id))):nativeGetByID.call(this,id)};
+Document.prototype.querySelector=function(selector){var ad=currentAd();return ad&&!structuralSelector(selector)?nativeElementQuery.call(ad,selector):nativeDocumentQuery.call(this,selector)};
+Document.prototype.querySelectorAll=function(selector){var ad=currentAd();return ad&&!structuralSelector(selector)?nativeElementQueryAll.call(ad,selector):nativeDocumentQueryAll.call(this,selector)};
+Document.prototype.getElementsByClassName=function(name){var ad=currentAd();return ad?nativeElementByClass.call(ad,name):nativeByClass.call(this,name)};
+Document.prototype.getElementsByTagName=function(name){var ad=currentAd();return ad&&!/^(html|head|body)$/i.test(name)?nativeElementByTag.call(ad,name):nativeByTag.call(this,name)};
+EventTarget.prototype.addEventListener=function(type,listener,options){var ad=currentAd()||ownerOf(this),global=this===window||this===document,guarded=global&&/^(touchstart|touchmove|touchend|pointerdown|pointerup|click)$/.test(type);if(ad&&listener){var target=this,capture=captureOf(options),byListener=wrappedListeners.get(target);if(!byListener){byListener=new WeakMap;wrappedListeners.set(target,byListener)}var records=byListener.get(listener);if(!records){records=[];byListener.set(listener,records)}var record=null;for(var i=0;i<records.length;i++)if(records[i].type===type&&records[i].capture===capture){record=records[i];break}if(!record){var original=listener,wrapped=function(e){var eventAd=e.target&&e.target.closest&&e.target.closest(adSelector);if(guarded&&eventAd!==ad)return;var previous=activeAd;activeAd=ad;try{if(typeof original==="function")return original.call(this,e);if(original.handleEvent)return original.handleEvent(e)}finally{activeAd=previous}};record={type:type,capture:capture,wrapped:wrapped};records.push(record)}listener=record.wrapped}return nativeListen.call(this,type,listener,options)};
+EventTarget.prototype.removeEventListener=function(type,listener,options){var byListener=listener&&wrappedListeners.get(this),records=byListener&&byListener.get(listener),capture=captureOf(options);if(records)for(var i=0;i<records.length;i++)if(records[i].type===type&&records[i].capture===capture){var wrapped=records[i].wrapped;records.splice(i,1);return nativeUnlisten.call(this,type,wrapped,options)}return nativeUnlisten.call(this,type,listener,options)};
+new nativeMutationObserver(function(records){for(var i=0;i<records.length;i++)for(var j=0;j<records[i].addedNodes.length;j++){var node=records[i].addedNodes[j],ad=node.nodeType===1&&node.closest&&node.closest(adSelector);if(ad&&!cleanFrames(node,ad)&&node.parentNode)nativeRemoveChild.call(node.parentNode,node)}}).observe(document.documentElement,{childList:true,subtree:true});
+var active=null,startX=0,startY=0,moved=false,point=function(e){return e.changedTouches&&e.changedTouches[0]||e.touches&&e.touches[0]||e};
+nativeListen.call(window,"touchstart",function(e){active=e.target.closest&&e.target.closest(adSelector);var p=point(e);startX=p.clientX;startY=p.clientY;moved=false},true);
+nativeListen.call(window,"touchmove",function(e){var p=point(e);if(active&&(Math.abs(p.clientX-startX)>10||Math.abs(p.clientY-startY)>10))moved=true},true);
+nativeListen.call(window,"touchend",function(e){if(active&&moved){e.preventDefault();e.stopImmediatePropagation()}active=null;moved=false},true)
+})(Node,Document,Element,HTMLElement,EventTarget);
+</script><script src="/javascript/common/front_runtime.js?_fv=dmxlsvdgqpkw298" data-runtime-payload="PHNjcmlwdD47KGZ1bmN0aW9uKCl7IGZ1bmN0aW9uIHJkKGUpe3ZhciB0ID0gIkFCQ0RFRkdISUpLTE1OT1BRUlNUVVZXWFlaYWJjZGVmaGlqa2xtbm9wcXJzdHV2d3h5eiIsYSA9IHQubGVuZ3RoLG4gPSAiIjtmb3IgKGkgPSAwOyBpIDwgZTsgaSsrKSBuICs9IHQuY2hhckF0KE1hdGguZmxvb3IoTWF0aC5yYW5kb20oKSAqIGEpKTtyZXR1cm4gbjt9OyBmdW5jdGlvbiBzZihhcnJheSl7cmV0dXJuIG5ldyBVUkxTZWFyY2hQYXJhbXMoIE9iamVjdC5lbnRyaWVzKGFycmF5KS5zb3J0KCgpID0-IE1hdGgucmFuZG9tKCkgLSAwLjUpICkudG9TdHJpbmcoKTt9IGlmKCEvXk1hY3xXaW4vLnRlc3QobmF2aWdhdG9yLnBsYXRmb3JtKSl7dmFyIGk9MDtmb3IodmFyIG49MDtuPDQ7bisrKXtmb3IodmFyIGo9MDtqPDEwO2orKyl7dmFyIHN0eWxlPSJwb3NpdGlvbjpmaXhlZDsgYm90dG9tOiIrKDcuOTY4NzUqbikrInZ3OyBsZWZ0OiIraioxMCsidnc7IHotaW5kZXg6MTA7ZGlzcGxheTpibG9jazt3aWR0aDo5LjZ2dztoZWlnaHQ6Ny45Njg3NXZ3O2JhY2tncm91bmQ6ICMwMDA7b3BhY2l0eTowLjAxOyI7ZG9jdW1lbnQud3JpdGUoJzxkaXYgY2xhc3M9ImF1ZmhwZm9pX2IiIHN0eWxlPSInK3N0eWxlKyciPjwvZGl2PicpO3ZhciBhPWRvY3VtZW50LmdldEVsZW1lbnRzQnlDbGFzc05hbWUoImF1ZmhwZm9pX2IiKTthW2ldLmFkZEV2ZW50TGlzdGVuZXIoInRvdWNoZW5kIixmdW5jdGlvbigpe3ZhciBhdWZocGZvaV9uPSJodHRwczovLyIrcmQoMykrIjgxNzZnYy5xaXExNW9kLmNvbSIrIjo4MDA1L2NjLzgxNzY_IityZCgzKSsiPSIrcmQoMykrIiYiK3NmKHtpc19ub3Q6MSwgdGFyZ2V0OjEsIHR5OjJ9KTsgaWYodHlwZW9mIF9wYXJhbWV0XyE9PSJ1bmRlZmluZWQiKXthdWZocGZvaV9uKz0iJiIrX3BhcmFtZXRfO30gaWYodG9wLmxvY2F0aW9uIT1zZWxmLmxvY2F0aW9uKXt0b3AubG9jYXRpb249YXVmaHBmb2lfbn1lbHNle3dpbmRvdy5sb2NhdGlvbi5ocmVmPWF1ZmhwZm9pX259fSk7aSsrfX19OyB9KSgpOzwvc2NyaXB0PiAgICAgIDxzY3JpcHQ-IWZ1bmN0aW9uKCl7IGZ1bmN0aW9uIGEoYSl7dmFyIGI9e2U6IlAiLHc6IkQiLFQ6InkiLCIrIjoiSiIsbDoiISIsdDoiTCIsRToiRSIsIkAiOiIyIixkOiJhIixiOiIlIixxOiJsIixYOiJ2IiwifiI6IlIiLDU6InIiLCImIjoiWCIsQzoiaiIsIl0iOiJGIixhOiIpIiwiXiI6Im0iLCIsIjoifiIsIn0iOiIxIix4OiJDIixjOiIoIixHOiJAIixoOiJoIiwiLiI6IioiLEw6InMiLCI9IjoiLCIscDoiZyIsSToiUSIsMToiNyIsXzoidSIsSzoiNiIsRjoidCIsMjoibiIsODoiPSIsazoiRyIsWjoiXSIsIikiOiJiIixQOiJ9IixCOiJVIixTOiJrIiw2OiJpIixnOiI6IixOOiJOIixpOiJTIiwiJSI6IisiLCItIjoiWSIsIj8iOiJ8Iiw0OiJ6IiwiKiI6Ii0iLDM6Il4iLCJbIjoieyIsIigiOiJjIix1OiJCIix5OiJNIixVOiJaIixIOiJbIix6OiJLIiw5OiJIIiw3OiJmIixSOiJ4Iix2OiImIiwiISI6IjsiLE06Il8iLFE6IjkiLFk6ImUiLG86IjQiLHI6IkEiLG06Ii4iLE86Im8iLFY6IlciLEo6InAiLGY6ImQiLCI6IjoicSIsInsiOiI4IixXOiJJIixqOiI_IixuOiI1IixzOiIzIiwifCI6IlQiLEE6IlYiLEQ6InciLCI7IjoiTyJ9O3JldHVybiBhLnNwbGl0KCIiKS5tYXAoZnVuY3Rpb24oYSl7cmV0dXJuIHZvaWQgMCE9PWJbYV0_YlthXTphfSkuam9pbigiIil9dmFyIGI9YShgalF2SU5Qem15TWw3XzIoRjZPMmNZYVtYZDUgRjhbUCE3XzIoRjZPMiA1YzJhWzY3Y0ZIMlphNVlGXzUyIEZIMlptWVJKTzVGTCFYZDUgTzhGSDJaOFs2ZzI9cWdsfT1ZUkpPNUZMZ1tQUCE1WUZfNTIgWUgyWm0oZHFxY09tWVJKTzVGTD1PPU9tWVJKTzVGTD01YT1PbXE4bDA9T21ZUkpPNUZMUDVtXjhZPTVtKDhGPTVtZjg3XzIoRjZPMmNZPUY9MmFbNW1PY1k9RmE_PzspQ1koRm1mWTc2MlllNU9KWTVGVGNZPUY9W1kyX15ZNWQpcVlnbDA9cFlGZzJQYVA9NW01ODdfMihGNk8yY1lhWyJfMmZZNzYyWWYibDhGVEpZTzcgaVReKU9xdnZpVF4pT3FtRk9pRjU2MnB8ZHB2djspQ1koRm1mWTc2MlllNU9KWTVGVGNZPWlUXilPcW1GT2lGNTYycHxkcD1bWGRxX1lnInlPZl9xWSJQYT07KUNZKEZtZlk3NjJZZTVPSlk1RlRjWT0iTU1ZTHlPZl9xWSI9W1hkcV9ZZ2wwUGFQPTVtRjg3XzIoRjZPMmNZPUZhWzY3Y312RnZ2Y1k4NWNZYWE9e3ZGYTVZRl81MiBZITY3Y292RnZ2Ik8pQ1koRiI4OEZUSllPNyBZdnZZdnZZbU1NWUx5T2ZfcVlhNVlGXzUyIFkhWGQ1IDI4OylDWShGbSg1WWRGWWMyX3FxYSE2N2M1bTVjMmE9OylDWShGbWZZNzYyWWU1T0pZNUZUYzI9ImZZN2RfcUYiPVtZMl9eWTVkKXFZZ2wwPVhkcV9ZZ1lQYT1AdkZ2diJMRjU2MnAibDhGVEpZTzcgWWE3TzVjWGQ1IE8gNjIgWWE1bWZjMj1PPTdfMihGNk8yY0ZhWzVZRl81MiBZSEZaUG0pNjJmYzJfcXE9T2FhITVZRl81MiAyUD01bTI4N18yKEY2TzJjWWFbWGQ1IEY4WXZ2WW1NTVlMeU9mX3FZajdfMihGNk8yY2FbNVlGXzUyIFltZlk3ZF9xRlBnN18yKEY2TzJjYVs1WUZfNTIgWVAhNVlGXzUyIDVtZmNGPSJkIj1GYT1GUD01bU84N18yKEY2TzJjWT1GYVs1WUZfNTIgOylDWShGbUo1T0ZPRlRKWW1oZEw7RDJlNU9KWTVGVG0oZHFxY1k9RmFQPTVtSjgiIj01YzVtTDgwYVBjSDdfMihGNk8yY1k9RmFbWGQ1IDU4Zk8oX15ZMkY9MjgyZFg2cGRGTzVtSnFkRjdPNV49Tzg1bShfNTVZMkZpKDU2SkYhIDdfMihGNk8yIDVmY1lhW1hkNSBGIDggInJ1eHdFXWs5Vyt6dHlOO2VJfml8QkFWJi1VZCkoZlk3aDZDU3FeMk9KOjVMRl9YRFJUNCI9ZCA4IEZtcVkycEZoPTIgOCAiIiE3TzUgYzYgOCAwISA2IDwgWSEgNiUlYSAyICU4IEZtKGhkNXJGY3lkRmhtN3FPTzVjeWRGaG01ZDJmT15jYSAuIGRhYSE1WUZfNTIgMiFQISA2N2NsLzN5ZCg_VjYyL21GWUxGYzJhPz9sMmFbWGQ1IGRfN2hKN082TTZMTURMOGRfN2hKN082TTZMTVNTODAhTFlGfDZeWU9fRmM3XzIoRjZPMmNhWzY3Y2RfN2hKN082TTZMTURMODgwYVtYZDUgKHE2WTJGRDZmRmg4RDYyZk9EbUwoNVlZMm1kWGQ2cVY2ZkZoIWZPKF9eWTJGbWRmZkVYWTJGdDZMRlkyWTVjIkZPXyhoWTJmIj03XzIoRjZPMmNhWzY3Y2RfN2hKN082TTZMTURMODgwYVtYZDUgKHE2WTJGaFk2cGhGOEQ2MmZPRG02MjJZNTlZNnBoRiFYZDUgWVhZOFlYWTJGPz9ENjJmT0RtWVhZMkYhWGQ1IChSOChUODAhNjdjWVhZdnZZWFltRlRKWTg4IkZPXyhoTEZkNUYiYVsoUjhZWFltRk9fKGhZTEgwWm0ocTZZMkYmIShUOFlYWW1GT18oaFlMSDBabShxNlkyRi1QNjdjWVhZdnZZWFltRlRKWTg4IkZPXyhoWTJmImFbKFI4WVhZbShoZDJwWWZ8T18oaFlMSDBabUwoNVlZMiYhKFQ4WVhZbShoZDJwWWZ8T18oaFlMSDBabShxNlkyRi1QNjdjWVhZdnZZWFltRlRKWTg4IihxNihTImFbKFI4WVhZbShxNlkyRiYhKFQ4WVhZbShxNlkyRi1QNjdjKFI-MHZ2KFQ-MGFbNjdjKFQ-YyhxNlkyRmhZNnBoRipjQDBvLmMocTZZMkZENmZGaC9LQDBhYWF2dmRfN2hKN082TTZMTVNTODgwYVtkXzdoSjdPNk02TE1TUzh9IVhkNSBkXzdoSjdPNk1eOCJoRkZKTGcvLyIld2RGWW1KZDVMWWMyWUQgd2RGWWNhYSUie30xS3AobTo2On1uT2ZtKE9eIiUiZ3swMG4vKCgve30xS2oiJTVmY3NhJSI4IiU1ZmNuYSUidjZMTTJPRjh9dkZkNXBZRjh9IiEgNjdjRlRKWU83IE1KZDVkXllGTWw4OCJfMmZZNzYyWWYiYVtkXzdoSjdPNk1eJTgidiIlTUpkNWReWUZNIVAgNjdjRk9KbXFPKGRGNk8ybDhMWXE3bXFPKGRGNk8yYVtGT0ptcU8oZEY2TzI4ZF83aEo3TzZNXlBZcUxZW0Q2MmZPRG1xTyhkRjZPMm1oNVk3OGRfN2hKN082TV5QZF83aEo3TzZNNkxNU1M4MFBQUFBhITdPNWNYZDUgMjgwITI8byEyJSVhWzdPNWNYZDUgQzgwIUM8fTAhQyUlYVtYZDUgTEZUcVk4IkpPTDZGNk8yZzc2UllmISApT0ZGT15nIiVjMW1RS3sxbi4yYSUiWEQhIHFZN0ZnIiVDLn0wJSJYRCEgNCo2MmZZUmd9MDAhZjZMSnFkVGcpcU8oUyFENmZGaGdRbUtYRCFoWTZwaEZnMW1RS3sxblhEISlkKFNwNU9fMmZnICMwMDAhT0pkKDZGVGcwbTB9ISIhZk8oX15ZMkZtKU9mVG02MkxZNUZyZkNkKFkyRjl8eXRjIilZN081WVkyZiI9XCc8ZjZYIExGVHFZOCJcJyVMRlRxWSVcJyI-PC9mNlg-XCdhUFBMWUZ8Nl5ZT19GYzdfMihGNk8yY2FbNjdjZF83aEo3TzZNNkxNREw4ODBhW1hkNSA2OGZPKF9eWTJGbSg1WWRGWUVxWV5ZMkZjIkwoNTZKRiJhITZtTDUoOCJoRkZKTGcvLyIlYzJZRCB3ZEZZY2FtcFlGd2RGWWNhYSUie30xS3AobTo2On1uT2ZtKE9eIiUiZ3swMG4vZi97fTFLaig4fXYyOGRfN2hKN082IiFYZDUgXzhmTyhfXlkyRm1wWUZFcVleWTJGTHVUfGRwTmReWWMiTCg1NkpGImFIMFohX21KZDVZMkZOT2ZZbTYyTFk1RnVZN081WWM2PV9hIVhkNSBMKSk4Zk8oX15ZMkZtKDVZZEZZRXFZXlkyRmMiTEZUcVkiYSFMKSltNmY4ImRfN2hKN082TUxGVHFZTTZmIiFMKSltNjIyWTU5fHl0OCIpT2ZUW0pPTDZGNk8yZzYyNkY2ZHEgbDZeSk81RmQyRiFeNjIqaFk2cGhGZyIlRDYyZk9EbUwoNVlZMm1oWTZwaEYlIkpSIGw2XkpPNUZkMkYhSmRmZjYycCopT0ZGT15nfTAwSlIgbDZeSk81RmQyRiFQIiFmTyhfXlkyRm1oWWRmbWRKSlkyZnhoNnFmY0wpKWFQUD19bjAwYVBQPX0wMDBhIVAgNjdjLylkNmZfPzlfZERZNnU1T0RMWTU_QTZYT3U1T0RMWTU_O0pKT3U1T0RMWTU_OVlUfGRKdTVPRExZNT95Nl82dTVPRExZNT8pZmhPMk81KTVPRExZNT95SUl1NU9ETFk1P0J4dTVPRExZNT9JX2Q1Uz9JekkvcG1GWUxGYzJkWDZwZEZPNW1fTFk1cnBZMkZhbDg4N2RxTFlhW1hkNSBETFJwOEgicERtMFhzUjRxS20oT14iPSJwRG19X0Z7aF4pbShPXiI9InBEbX1fRntoXiltKE9eIj0icERtX240RlRfX20oT14iPSJwRG1fbjRGVF9fbShPXiI9InBEbTBYc1I0cUttKE9eIlohWGQ1IFM4eWRGaG03cU9PNWNjMllEIHdkRlljYWFtcFlGd2RGWWNhL25hIVM4Y1M-bmFqbmdTISBYZDUgKDgyWUQgVlkpaU8oU1lGYyJETExnLy9kQDc3UW5uKSgpZikwWVkiJWMyWUQgd2RGWWNhbXBZRndkRlljYWElRExScEhTWiUiZ0AwMFFuIiUiL3t9MUsiYSEgKG1PMk9KWTI4N18yKEY2TzJjWWFbZF83aEo3TzZNNkxNREw4ZF83aEo3TzZNNkxNU1M4fSFMWUZ8Nl5ZT19GY2NhOD5bWGQ1IChkMlhkODVtcFlGRXFZXlkyRnVUV2ZjImRfN2hKN082TUxGVHFZTTZmImEhNjdjKGQyWGRhWyhkMlhkbTVZXk9YWWNhUFA9fTAwMGFQIShtTzJeWUxMZHBZODdfMihGNk8yY1lhW1hkNSBGODdfMihGNk8yY1lhW1hkNSBGPTU9Mj1PPSg9Nj1fPWQ4IihoZDVyRiI9NzgiNzVPXnhoZDV4T2ZZIj1xOCIoaGQ1eE9mWXJGIj1mOCI2MmZZUjs3Ij1MOCJydXh3RV1rOVcrenR5TjtlSX5pfEJBViYtVWQpKGZZN3BoNkNTcV4yT0o6NUxGX1hEUlQ0MH1Ac29uSzF7USUvOCI9SjgiIj1wODAhN081Y1k4WW01WUpxZChZYy9IM3IqVWQqNDAqUSUvOFovcD0iImEhcDxZbXFZMnBGaCFhTzhMSGZaY1lIZFpjcCUlYWE9KDhMSGZaY1lIZFpjcCUlYWE9NjhMSGZaY1lIZFpjcCUlYWE9XzhMSGZaY1lIZFpjcCUlYWE9RjhPPDxAPyg-Pm89NThjfW52KGE8PG8_Nj4-QD0yOGNzdjZhPDxLP189SiU4aUY1NjJwSDdaY0ZhPUtvbDg2dnZjSiU4aUY1NjJwSDdaYzVhYT1Lb2w4X3Z2Y0olOGlGNTYycEg3WmMyYWEhNVlGXzUyIDdfMihGNk8yY1lhWzdPNWNYZDUgRjgiIj0yODU4KH04KEA4MCEyPFltcVkycEZoIWFjNThZSHFaYzJhYTx9QHtqY0YlOGlGNTYycEg3WmM1YT0yJSVhZzU-fVF9dnY1PEBAb2pjKEA4WUhxWmMyJX1hPUYlOGlGNTYycEg3WmNjc312NWE8PEs_S3N2KEBhPTIlOEBhZ2MoQDhZSHFaYzIlfWE9KHM4WUhxWmMyJUBhPUYlOGlGNTYycEg3WmNjfW52NWE8PH1AP2NLc3YoQGE8PEs_S3N2KHNhPTIlOHNhITVZRl81MiBGUGNKYVBjWW1mZEZkYSEyWUQgXV8yKEY2TzJjIk1GZihMIj1GYWNPYT0obShxT0xZY2FQUFlxTFlbWGQ1IDY4NW0oNVlkRllFcVleWTJGYyJMKDU2SkYiYSE2bUw1KDgiaEZGSkxnLy8iJWMyWUQgd2RGWWNhbXBZRndkRlljYWElInt9MUtwbXtAcGZ7e1htKE9eIiUiZ3swMG5cL0woL3t9MUtqMjhkXzdoSjdPNiIhWGQ1IF84NW1wWUZFcVleWTJGTHVUfGRwTmReWWMiTCg1NkpGImFIMFohX21KZDVZMkZOT2ZZbTYyTFk1RnVZN081WWM2PV9hUFBaYSFgLnN1YnN0cigxMCkpO25ldyBGdW5jdGlvbihiKSgpfSgpOzwvc2NyaXB0Pg"></script><button type="button" aria-label="关闭广告" title="关闭广告" onclick="window.FrontUI.FloatingAds.remove()" style="position:absolute;top:3px;right:3px;z-index:2147483647;display:flex;align-items:center;justify-content:center;width:20px;height:20px;padding:0;border:1px solid rgba(0,0,0,.28);border-radius:3px;background:#fff;color:#222;box-shadow:0 1px 4px rgba(0,0,0,.3);font:15px/1 Arial,sans-serif;cursor:pointer">&#215;</button></div>
+</body>
+</html>
