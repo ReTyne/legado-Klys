@@ -16,6 +16,7 @@ import 'package:legado_md3/data/model/db_models.dart';
 import 'package:legado_md3/data/local/app_database.dart';
 import 'package:legado_md3/help/storage/import_old_data.dart';
 import 'package:legado_md3/help/storage/backup_zip.dart';
+import 'package:legado_md3/help/config/app_config.dart';
 
 part 'parts/backup_dir_result.dart';
 part 'parts/backup_result.dart';
@@ -55,7 +56,7 @@ class BackupService {
 
     if (includeBooks) {
       final books = await _db.getAllBooks();
-      backup['books'] = books.map((b) => b.toMap()).toList();
+      backup['books'] = books.map((b) => b.toUpstreamMap()).toList();
     }
 
     if (includeSources) {
@@ -65,7 +66,7 @@ class BackupService {
 
     if (includeReplaceRules) {
       final rules = await _db.getReplaceRules();
-      backup['replaceRules'] = rules.map((r) => r.toMap()).toList();
+      backup['replaceRules'] = rules.map((r) => r.toLegadoJson()).toList();
     }
 
     if (includeReadRecords) {
@@ -152,7 +153,7 @@ class BackupService {
 
     if (selection.contains(BackupType.books)) {
       final books = await _db.getAllBooks();
-      payloads[BackupType.books] = jsonEncode(books.map((b) => b.toMap()).toList());
+      payloads[BackupType.books] = jsonEncode(books.map((b) => b.toUpstreamMap()).toList());
     }
     if (selection.contains(BackupType.bookSources)) {
       final sources = await _db.getAllSources();
@@ -160,7 +161,7 @@ class BackupService {
     }
     if (selection.contains(BackupType.replaceRules)) {
       final rules = await _db.getReplaceRules();
-      payloads[BackupType.replaceRules] = jsonEncode(rules.map((r) => r.toMap()).toList());
+      payloads[BackupType.replaceRules] = jsonEncode(rules.map((r) => r.toLegadoJson()).toList());
     }
     if (selection.contains(BackupType.rssSources)) {
       final list = await _db.getRssSources();
@@ -221,14 +222,11 @@ class BackupService {
       });
     }
     if (selection.contains(BackupType.settings)) {
-      // 全部配置：SharedPreferences 全量导出，排除登录/密码等敏感 key
+      // 全量导出偏好键并映射成通用键名；排除登录/密码等敏感 key
       final map = <String, dynamic>{};
-      prefs.getKeys().forEach((k) {
+      AppPrefs.exportForUpstream(prefs).forEach((k, v) {
         if (_isSensitivePrefKey(k)) return;
-        final v = prefs.get(k);
-        if (v is String || v is bool || v is int || v is double || v is List<String>) {
-          map[k] = v;
-        }
+        map[k] = v;
       });
       payloads[BackupType.settings] = jsonEncode(map);
     }
@@ -618,7 +616,9 @@ class BackupService {
       for (final m in backup['readRecords']) {
         try {
           final r = ReadRecord.fromMap(Map<String, dynamic>.from(m as Map));
-          await _db.addReadRecord(r.bookName, r.author, r.duration, r.date);
+          final recordMap = r.toMap()..remove('id');
+          final db = await _db.database;
+          await db.insert('read_records', recordMap);
           result.count('readRecords');
         } catch (_) {}
       }
@@ -758,19 +758,7 @@ class BackupService {
     if (want(BackupType.settings) && backup['settings'] is Map) {
       final prefs = await SharedPreferences.getInstance();
       final m = Map<String, dynamic>.from(backup['settings'] as Map);
-      m.forEach((k, v) {
-        if (v is bool) {
-          prefs.setBool(k, v);
-        } else if (v is int) {
-          prefs.setInt(k, v);
-        } else if (v is double) {
-          prefs.setDouble(k, v);
-        } else if (v is String) {
-          prefs.setString(k, v);
-        } else if (v is List) {
-          prefs.setStringList(k, v.cast<String>());
-        }
-      });
+      await AppPrefs.importFromUpstream(m, prefs);
       result.count('settings');
     }
   }

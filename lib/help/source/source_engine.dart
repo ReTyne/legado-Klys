@@ -41,7 +41,18 @@ class BookSourceEngine {
   ));
 
   final ReplaceRuleService _replaceService = ReplaceRuleService();
-  late final RulePipeline _pipeline = RulePipeline();
+  late final RulePipeline _pipeline = RulePipeline(
+    contextValueResolver: (key) {
+      if (key == 'bookName') return _activeBook?['name']?.toString();
+      if (key == 'title') return _activeChapter?['title']?.toString();
+      final layered = RuleDataScope.current.getVariable(key);
+      return layered.isEmpty ? null : layered;
+    },
+  );
+
+  /// 当前书籍/章节上下文，供规则 `@get:bookName` / `@get:title` 取值。
+  Map<String, dynamic>? _activeBook;
+  Map<String, dynamic>? _activeChapter;
 
   /// 强制编码（阅读页可切换），null 时自动探测
   String? forcedCharset;
@@ -327,15 +338,13 @@ class BookSourceEngine {
 
   // ==================== URL / 请求 ====================
 
-  /// 处理URL中的{{key}}/{{page}}/{{(page-1)*n}}模板（同步快速路径）。
+  /// 处理 URL 中的 `{{key}}`/`{{page}}`/`{{(page-1)*n}}` 模板（同步快速路径）。
   ///
-  /// 任意 `{{js表达式}}` 需要走 [_processUrlTemplateAsync]（
-  /// `AnalyzeUrl.replaceKeyPageJs()`：所有 `{{}}` 块按内联 JS 求值，
-  /// 绑定 key/page/baseUrl/source/result/book）。
-  String _processUrlTemplate(String url, String keyword, int page) {
-    var result = url.replaceAll('{{key}}', Uri.encodeComponent(keyword));
-    // 未编码的 key（部分站点需要原始中文）
-    result = result.replaceAll('{{key}}', keyword);
+  /// `{{key}}` 保留原始未编码关键字；需要编码时用
+  /// `{{encodeURIComponent(key)}}`（由 [_processUrlTemplateAsync] 的 JS 求值处理）。
+  /// 任意其它 `{{js表达式}}` 也需走 [_processUrlTemplateAsync]。
+  static String processUrlTemplate(String url, String keyword, int page) {
+    var result = url.replaceAll('{{key}}', keyword);
     result = result.replaceAll('{{page}}', page.toString());
     final pageCalc = RegExp(r'\{\{\(page-1\)\*(\d+)\}\}');
     result = result.replaceAllMapped(
@@ -344,6 +353,9 @@ class BookSourceEngine {
     result = result.replaceAll('{{searchKey}}', Uri.encodeComponent(keyword));
     return result;
   }
+
+  String _processUrlTemplate(String url, String keyword, int page) =>
+      processUrlTemplate(url, keyword, page);
 
   /// URL 模板处理（异步完整版）：
   /// 1. 先做固定占位符替换（{{key}}/{{page}}/{{(page-1)*n}}/{{searchKey}}）；
@@ -936,6 +948,11 @@ class BookSourceEngine {
   static final RegExp _webJsRule =
       RegExp(r'@webjs:([\s\S]+)', caseSensitive: false);
   static final RegExp _mustache = RegExp(r'\{\{([\s\S]*?)\}\}');
+  // URL 规则中的 JS 块：<js>…</js> 或 @js:（吞掉其后全部内容），大小写不敏感。
+  static final RegExp _urlJsChain =
+      RegExp(r'<js>([\s\S]*?)</js>|@js:([\s\S]*)', caseSensitive: false);
+  static final RegExp _urlLeadingJs =
+      RegExp(r'^\s*<js>([\s\S]*)</js>', caseSensitive: false);
 
   /// 求值一段书源脚本，返回字符串结果（任何异常都安全降级为 null）。
   ///
@@ -1109,8 +1126,52 @@ class BookSourceEngine {
     return (rule: _pipeline.substituteGets(rest), value: null);
   }
 
-  /// 解析 URL 规则：`<js>` 脚本求值（可返回 `url,{options}`），否则走模板替换。
-  /// 模板中的 `{{js}}` 内联表达式在脚本求值后继续处理（legado replaceKeyPageJs）。
+  /// 按 URL 规则的 JS 块链求值，返回最终规则串（纯逻辑，便于离线测试）。
+  ///
+  /// `result` 初始为原始规则串；每个 JS 块前的字面片段先替换 `@result` 覆盖
+  /// `result`，再求值该块并把返回值作为新的 `result`。末尾字面片段同样替换
+  /// `@result`。残留 JS 标记说明脚本未产出有效结果，返回空串。
+  static Future<String> resolveUrlJsChain(
+    String ruleUrl,
+    Future<String?> Function(String script, String result) eval,
+  ) async {
+    final t = ruleUrl.trim();
+    // 单个前置 <js> 块沿用贪婪匹配，兼容脚本字符串内的 `</js>` 字面量。
+    if (RegExp('<js>', caseSensitive: false).allMatches(t).length == 1) {
+      final single = _urlLeadingJs.firstMatch(t);
+      if (single != null) {
+        final v = await eval(single.group(1)!, t);
+        if (v == null || v.trim().isEmpty) return '';
+        var result = v.trim();
+        final tail = t.substring(single.end).trim();
+        if (tail.isNotEmpty) result = tail.replaceAll('@result', result);
+        return result;
+      }
+    }
+    final matches = _urlJsChain.allMatches(t).toList();
+    if (matches.isEmpty) return t;
+    var result = t;
+    var start = 0;
+    for (final m in matches) {
+      if (m.start > start) {
+        final prefix = t.substring(start, m.start).trim();
+        if (prefix.isNotEmpty) result = prefix.replaceAll('@result', result);
+      }
+      final script = m.group(2) ?? m.group(1) ?? '';
+      final v = await eval(script, result);
+      if (v != null && v.trim().isNotEmpty) result = v.trim();
+      start = m.end;
+    }
+    if (t.length > start) {
+      final suffix = t.substring(start).trim();
+      if (suffix.isNotEmpty) result = suffix.replaceAll('@result', result);
+    }
+    result = result.trim();
+    if (result.contains('<js>') || result.contains('@js:')) return '';
+    return result;
+  }
+
+  /// 解析 URL 规则：`<js>`/`@js:` 脚本块链式求值，随后处理 `{{}}` 模板。
   Future<String> _resolveUrlRule(
     BookSource source,
     String urlTpl, {
@@ -1119,24 +1180,16 @@ class BookSourceEngine {
     String? baseUrl,
     Map<String, dynamic>? book,
   }) async {
-    final t = urlTpl.trim();
-    final m = _leadingJs.firstMatch(t);
-    if (m != null) {
-      final script = m.group(1)!;
-      final tail = t.substring(m.end).trim();
-      var v = await _evalJs(source, script,
-          key: key, page: page, baseUrl: baseUrl, book: book, isUrlRule: true);
-      if (v == null || v.trim().isEmpty) {
-        // 脚本失败/为空：若规则本身由 JS 驱动，绝不能把 <js> 字面量当 URL 请求
-        if (t.contains('<js>') || t.contains('@js:')) return '';
-        return _processUrlTemplate(urlTpl, key ?? '', page ?? 1);
-      }
-      v = v.trim();
-      if (tail.isNotEmpty) v = '$v$tail';
-      return _processUrlTemplateAsync(source, v, key ?? '', page ?? 1,
-          baseUrl: baseUrl, book: book);
-    }
-    return _processUrlTemplateAsync(source, t, key ?? '', page ?? 1,
+    final resolved = await resolveUrlJsChain(urlTpl, (script, result) =>
+        _evalJs(source, script,
+            result: result,
+            key: key,
+            page: page,
+            baseUrl: baseUrl,
+            book: book,
+            isUrlRule: true));
+    if (resolved.isEmpty) return '';
+    return _processUrlTemplateAsync(source, resolved, key ?? '', page ?? 1,
         baseUrl: baseUrl, book: book);
   }
 
@@ -1258,7 +1311,7 @@ class BookSourceEngine {
         return _pipeline.fieldFromJson(jsonDecode(jsOutput), s);
       } catch (_) {}
     }
-    return _pipeline.extractStringFromRaw(jsOutput, s);
+    return _pipeline.extractStringFromRaw(jsOutput, s, unescape: true);
   }
 
   /// 处理 `{{...}}` mustache（内部为 JS，`$`/result 绑定为当前 JSON 节点）。
@@ -1299,7 +1352,7 @@ class BookSourceEngine {
             v = await _evalJs(source, script,
                 result: node, baseUrl: baseUrl, key: key, page: page);
           } else {
-            v = _pipeline.extractStringFromRaw(node, expr);
+            v = _pipeline.extractStringFromRaw(node, expr, unescape: true);
           }
         } else {
           // JSON 节点：走字段规则链（JSONPath / @js: / <js>，真运行时求值）
@@ -1960,6 +2013,8 @@ class BookSourceEngine {
       _pipeline.baseUrl = _currentRedirectUrl ?? source.bookSourceUrl;
       final seed =
           _bookSeed(bookUrl: bookUrl, name: presetName, author: presetAuthor);
+      _activeBook = seed;
+      _activeChapter = null;
 
       // ruleBookInfo.init：支持 <js> 脚本（可返回新内容或新URL）或纯 URL 规则
       final initRule = rule['init']?.toString() ?? '';
@@ -1995,7 +2050,7 @@ class BookSourceEngine {
         }
         return isJson
             ? _pipeline.fieldFromJson(jsonNode, r)
-            : _pipeline.extractStringFromRaw(content, r);
+            : _pipeline.extractStringFromRaw(content, r, unescape: true);
       }
 
       final name = ((await field('name')) ?? presetName ?? '').trim();
@@ -2103,7 +2158,7 @@ class BookSourceEngine {
       if (suffix.isEmpty) return v;
       return _fieldFromMixed(v, suffix) ?? v;
     }
-    return _pipeline.extractStringFromRaw(content, r);
+    return _pipeline.extractStringFromRaw(content, r, unescape: true);
   }
 
   /// 获取章节目录（支持 nextTocUrl 翻页拼接、前置 <js>、preUpdateJs、formatJs）
@@ -2117,6 +2172,8 @@ class BookSourceEngine {
     final seenChapterUrls = <String>{};
     var reverse = false;
     final seed = bookInfo ?? _bookSeed(bookUrl: tocUrl);
+    _activeBook = seed;
+    _activeChapter = null;
     // nextTocUrl 分页上限（默认 100 页，防死循环）
     final tocPageLimit = clampPageLimit(
         int.tryParse(source.ruleToc?['pageLimit']?.toString() ?? ''),
@@ -2136,28 +2193,38 @@ class BookSourceEngine {
           final pre = await _evalJs(
               source, '${buildPreUpdateJsPrelude()}$preUpdate',
               result: content, baseUrl: currentUrl, book: seed);
-          if (preUpdateRequestsReGetBook(pre)) {
+          if (preUpdateRequestsReGetBook(pre) ||
+              preUpdateRequestsRefreshTocUrl(pre)) {
+            // 重取详情以刷新目录地址，回写变量表后重新抓取当前目录页。
             final info = await getBookInfo(source, tocUrl);
             if (info != null) {
+              final refreshed = info.noteUrl ?? tocUrl;
               seed['name'] = info.name;
               seed['author'] = info.author;
-              seed['tocUrl'] = info.noteUrl ?? tocUrl;
-              _pipeline.variables['tocUrl'] = info.noteUrl ?? tocUrl;
-              currentUrl = _resolveUrl(info.noteUrl ?? currentUrl, currentUrl);
+              seed['tocUrl'] = refreshed;
+              _pipeline.variables['tocUrl'] = refreshed;
+              currentUrl = _resolveUrl(refreshed, currentUrl);
               content = await _fetch(currentUrl, baseUrl: source.bookSourceUrl);
-              _log('preUpdateJs 请求重取详情，已回写变量并重取目录');
+              _log('preUpdateJs 请求刷新目录地址，已回写变量并重取目录');
             }
           } else if (pre != null && pre.isNotEmpty) {
-            final trimmed = pre.trim();
-            if ((trimmed.startsWith('http://') ||
-                    trimmed.startsWith('https://') ||
-                    trimmed.startsWith('/')) &&
-                !_isJson(trimmed) &&
-                !trimmed.contains('<')) {
-              currentUrl = _resolveUrl(trimmed, currentUrl);
-              content = await _fetch(currentUrl, baseUrl: source.bookSourceUrl);
-            } else {
-              content = pre;
+            // 剔除注入标记，避免污染正文。
+            final cleaned = pre
+                .replaceAll(kRefreshTocUrlMarker, '')
+                .replaceAll(kReGetBookMarker, '')
+                .trim();
+            if (cleaned.isNotEmpty) {
+              if ((cleaned.startsWith('http://') ||
+                      cleaned.startsWith('https://') ||
+                      cleaned.startsWith('/')) &&
+                  !_isJson(cleaned) &&
+                  !cleaned.contains('<')) {
+                currentUrl = _resolveUrl(cleaned, currentUrl);
+                content =
+                    await _fetch(currentUrl, baseUrl: source.bookSourceUrl);
+              } else {
+                content = cleaned;
+              }
             }
           }
         }
@@ -2387,7 +2454,8 @@ class BookSourceEngine {
         } else {
           next = isJson
               ? _pipeline.fieldFromJson(jsonDecode(content), nextRule)
-              : _pipeline.extractStringFromRaw(content, nextRule);
+              : _pipeline.extractStringFromRaw(content, nextRule,
+                  unescape: true);
         }
         if (next == null || next.isEmpty || next == currentUrl) break;
         currentUrl = _resolveUrl(next, currentUrl);
@@ -2425,6 +2493,8 @@ class BookSourceEngine {
       if (chapter != null) seed['durChapterIndex'] = chapter['index'] ?? 0;
       final Map<String, dynamic> ch =
           chapter ?? {'index': 0, 'title': '', 'url': contentUrl};
+      _activeBook = seed;
+      _activeChapter = ch;
 
       // ContentRule.title：章节标题规则覆盖，回写章节上下文与变量表
       final contentTitleRule = rule['title']?.toString() ?? '';

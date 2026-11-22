@@ -17,6 +17,9 @@ import 'package:legado_md3/data/model/bookmark.dart';
 import 'package:legado_md3/data/model/replace_rule.dart';
 import 'package:legado_md3/data/model/rss_source.dart';
 import 'package:legado_md3/di/book_provider.dart';
+import 'package:legado_md3/help/config/app_config.dart';
+import 'package:legado_md3/help/http/cookie_manager.dart';
+import 'package:legado_md3/help/source/replace_rule_service.dart';
 import 'package:legado_md3/help/source/source_engine.dart';
 import 'package:legado_md3/help/storage/import_book_service.dart';
 import '../../data/local/app_database.dart';
@@ -217,7 +220,7 @@ class WebService {
 
     // 封面/图片
     router.get('/cover', _getCover);
-    router.get('/image', _getImage);
+    router.get('/image', (Request r) => _getImage(r));
 
     // 阅读配置
     router.get('/getReadConfig', _getReadConfig);
@@ -257,10 +260,16 @@ class WebService {
     // WebSocket 升级必须在所有 async 中间件之外同步分派：shelf 的
     // request.hijack 靠同步抛 HijackException 接管 socket，一旦进入
     // CORS/auth 中间件的 await，就无法完成 101 协议切换。
-    FutureOr<Response> rootHandler(Request request) {
+    Future<Response> rootHandler(Request request) async {
  // `WebService.serve`：每次请求续期唤醒锁。
       unawaited(WebServiceBoundary.instance.onRequestServed());
       if (wsHandlers.shouldHandle(request)) {
+        // 升级请求绕过 HTTP 中间件链，这里补做同一套访问校验。
+        if (!await _wsAuthorized(request)) {
+          return Response.forbidden(
+              jsonEncode({'error': '未授权，请提供正确的访问密码'}),
+              headers: {'content-type': 'application/json; charset=utf-8'});
+        }
         return wsHandlers.dispatch(request)!;
       }
       return httpHandler(request);
@@ -274,6 +283,32 @@ class WebService {
     );
   }
 
+  /// 解析 Authorization 头中的凭证。null 表示 Basic 值非法，空串表示未提供。
+  String? _credentialFromAuth(String auth) {
+    if (auth.startsWith('Bearer ')) return auth.substring(7);
+    if (auth.startsWith('Basic ')) {
+      try {
+        return utf8.decode(base64.decode(auth.substring(6))).split(':').last;
+      } catch (_) {
+        return null;
+      }
+    }
+    return '';
+  }
+
+  /// WebSocket 升级不走 HTTP 中间件链，握手前单独做同样的密码校验。
+  Future<bool> _wsAuthorized(Request request) async {
+    String pwd = '';
+    try {
+      final p = await SharedPreferences.getInstance();
+      pwd = p.getString('web_password') ?? '';
+    } catch (_) {}
+    if (pwd.isEmpty) return true;
+    final key = request.url.queryParameters['key'] ?? '';
+    final token = _credentialFromAuth(request.headers['authorization'] ?? '');
+    return key == pwd || token == pwd;
+  }
+
   /// 访问鉴权中间件：设置了 web_password 时，要求 ?key= 或 Authorization 头匹配
   Middleware _authMiddleware() {
     return (Handler inner) {
@@ -285,13 +320,13 @@ class WebService {
         } catch (_) {}
         if (pwd.isEmpty) return inner(request); // 未设置密码则放行
         final key = request.url.queryParameters['key'] ?? '';
-        final auth = request.headers['authorization'] ?? '';
-        final token = auth.startsWith('Bearer ')
-            ? auth.substring(7)
-            : auth.startsWith('Basic ')
-                ? utf8.decode(base64.decode(auth.substring(6))).split(':').last
-                : '';
+        final token = _credentialFromAuth(request.headers['authorization'] ?? '');
         if (key == pwd || token == pwd) return inner(request);
+        if (token == null) {
+          return Response(401,
+              body: jsonEncode({'error': 'Authorization 格式无效'}),
+              headers: {'content-type': 'application/json; charset=utf-8'});
+        }
         return Response.forbidden(jsonEncode({'error': '未授权，请提供正确的访问密码'}),
             headers: {'content-type': 'application/json; charset=utf-8'});
       };
@@ -873,6 +908,18 @@ class WebService {
         } catch (_) {}
       }
     }
+    // 返回前套用当前生效的替换净化规则，规则改动即时生效（不带章节标题）。
+    final enabledRules =
+        (await _db.getReplaceRules()).where((r) => r.enable == true).toList();
+    if (enabledRules.isNotEmpty) {
+      content = ReplaceRuleService().applyRules(
+        content,
+        enabledRules,
+        scope: book?.origin ?? '',
+        bookName: book?.name,
+        chapterName: chapter.title,
+      );
+    }
     return _rd(content);
   }
 
@@ -1239,8 +1286,9 @@ class WebService {
     return Response(302, headers: {'Location': path});
   }
 
-  /// 正文图片：?url=书址&path=图片地址&width=宽度
-  Future<Response> _getImage(Request request) async {
+  /// 正文图片：?url=书址&path=图片地址&width=宽度&bookUrl=书址
+  /// [bookUrl] 可选，指定后按该书所属书源的凭证（UA / header / Cookie）请求图片。
+  Future<Response> _getImage(Request request, {String? bookUrl}) async {
     final src = _q(request, ['path', 'src', 'url']);
     if (src.isEmpty) return _rdError('图片链接为空');
     if (!src.startsWith('http')) return _rdError('图片链接为空');
@@ -1251,7 +1299,9 @@ class WebService {
     // 由 Web 前端按该宽度做 CSS 尺寸约束。
     final width = parseImageWidth(request.url.queryParameters['width']);
     WebService.logDebug('[image] width=$width src=$src');
-    final bytes = await _fetchBytes(src);
+    final headers = await _sourceImageHeaders(
+        bookUrl ?? _q(request, ['bookUrl']), src);
+    final bytes = await _fetchBytes(src, headers: headers);
     if (bytes == null) return Response(302, headers: {'Location': src});
     return Response.ok(bytes, headers: {
       'Content-Type': _mime(src),
@@ -1259,10 +1309,44 @@ class WebService {
     });
   }
 
-  Future<List<int>?> _fetchBytes(String url) async {
+  /// 按书源凭证构造图片请求头；无书源时只带同域已保存的 Cookie。
+  Future<Map<String, String>?> _sourceImageHeaders(
+      String? bookUrl, String imageUrl) async {
+    final headers = <String, String>{};
+    if (bookUrl != null && bookUrl.isNotEmpty) {
+      final book = await _findBookByUrl(bookUrl);
+      final origin = book?.origin;
+      if (origin != null && origin.isNotEmpty) {
+        final source = await _db.getSource(origin);
+        if (source != null) {
+          headers['User-Agent'] = AppPrefs.userAgent;
+          final raw = source.header?.trim() ?? '';
+          if (raw.isNotEmpty) {
+            try {
+              final parsed = jsonDecode(raw);
+              if (parsed is Map) {
+                parsed.forEach((k, v) {
+                  if (v != null) headers[k.toString()] = v.toString();
+                });
+              }
+            } catch (_) {}
+          }
+        }
+      }
+    }
+    try {
+      final cookie = CookieManager().cookieHeader(imageUrl);
+      if (cookie != null && cookie.isNotEmpty) headers['Cookie'] = cookie;
+    } catch (_) {}
+    return headers.isEmpty ? null : headers;
+  }
+
+  Future<List<int>?> _fetchBytes(String url, {Map<String, String>? headers}) async {
     try {
       final resp = await _dio.get<List<int>>(url,
-          options: Options(responseType: ResponseType.bytes));
+          options: Options(
+              responseType: ResponseType.bytes,
+              headers: headers));
       final data = resp.data;
       if (data == null) return null;
       return data;

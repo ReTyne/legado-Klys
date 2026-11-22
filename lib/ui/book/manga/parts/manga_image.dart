@@ -16,6 +16,7 @@ class _MangaImage extends StatefulWidget {
   final bool noScale;
   final int threshold;
   final int colorFilter;
+  final MangaColorFilterConfig colorConfig;
   final double scaleMax;
   final bool fadeIn;
 
@@ -28,6 +29,7 @@ class _MangaImage extends StatefulWidget {
     required this.noScale,
     this.threshold = 128,
     this.colorFilter = 0,
+    this.colorConfig = const MangaColorFilterConfig(),
     this.scaleMax = 4,
     this.fadeIn = true,
   });

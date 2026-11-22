@@ -70,7 +70,7 @@ class _BookshelfScreenState extends State<BookshelfScreen> {
       _cfg = cfg;
       _coverCfg = coverCfg;
       _wifiOk = wifiOk;
-      _sortBy = _ViewCfg.sortMap[cfg.sortType.clamp(0, 4)];
+      _sortBy = _ViewCfg.sortMap[cfg.sortType.clamp(0, 5)];
       _sortAsc = cfg.sortAscending;
       _updateErrorBooks = errorBooks;
       // 配置可能影响过滤条件，作废 _filteredBooks 缓存
@@ -91,6 +91,12 @@ class _BookshelfScreenState extends State<BookshelfScreen> {
   int _unread(Book b) {
     final latest = b.lastChapterIndex ?? b.durChapterIndex;
     return (latest - b.durChapterIndex).clamp(0, 1 << 30);
+  }
+
+  /// 综合排序键：最近章节更新时间与最近阅读时间取较大者。
+  int _exclusiveSortTime(Book b) {
+    final latest = b.latestChapterTime ?? 0;
+    return latest > b.durChapterTime ? latest : b.durChapterTime;
   }
 
   List<Book> get _filteredBooks {
@@ -143,6 +149,15 @@ class _BookshelfScreenState extends State<BookshelfScreen> {
         books.sort((a, b) => _sortAsc
             ? (a.wordCount ?? 0).compareTo(b.wordCount ?? 0)
             : (b.wordCount ?? 0).compareTo(a.wordCount ?? 0));
+        break;
+      case 6:
+        // 综合排序：取「最近章节更新」与「最近阅读」两者中较新的时间排在前，
+        // 使久未阅读但刚更新、或刚读过但书源久未更新的书都能浮到前面。
+        books.sort((a, b) {
+          final ta = _exclusiveSortTime(a);
+          final tb = _exclusiveSortTime(b);
+          return _sortAsc ? ta.compareTo(tb) : tb.compareTo(ta);
+        });
         break;
       default:
         // 智能/手动：置顶(order<0)在前，其次按 order_num，再按最近阅读
@@ -387,8 +402,8 @@ class _BookshelfScreenState extends State<BookshelfScreen> {
 
     // 当前内部排序 -> E 风格排序单选索引：
     // E: 0最近阅读 1更新时间 2书名 3手动 4综合 5作者
-    // Klys 内部: 0智能/手动 1书名 2作者 3最近阅读 4更新时间 5字数
-    const internalToE = {3: 0, 4: 1, 1: 2, 0: 3, 2: 5};
+    // Klys 内部: 0智能/手动 1书名 2作者 3最近阅读 4更新时间 5字数 6综合
+    const internalToE = {3: 0, 4: 1, 1: 2, 0: 3, 2: 5, 6: 4};
     int sortIndex = internalToE[_sortBy] ?? 0;
 
     // E 风格布局索引 -> (Klys layout, columnCount)
@@ -539,8 +554,8 @@ class _BookshelfScreenState extends State<BookshelfScreen> {
                     }
                     // 排序：E 索引 -> Klys cfg 索引
                     // E: 0最近阅读 1更新时间 2书名 3手动 4综合 5作者
-                    // cfg: 0最近阅读 1书名 2作者 3添加时间(更新时间) 4手动
-                    const eToCfg = [0, 3, 1, 4, 0, 2];
+                    // cfg: 0最近阅读 1书名 2作者 3添加时间(更新时间) 4手动 5综合
+                    const eToCfg = [0, 3, 1, 4, 5, 2];
                     await prefs.setInt('bs_sortType', eToCfg[sortIndex]);
                     if (!mounted || !dialogContext.mounted) return;
                     Navigator.pop(dialogContext);

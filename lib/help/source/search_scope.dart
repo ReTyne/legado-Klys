@@ -1,6 +1,7 @@
 import 'package:legado_md3/data/local/app_database.dart';
 import 'package:legado_md3/data/model/book_source.dart';
 import 'package:legado_md3/help/config/app_config.dart';
+import 'package:legado_md3/help/source/source_extensions.dart';
 
 /// 搜索范围
 ///
@@ -94,7 +95,7 @@ class SearchScope {
           .map((e) => e.trim())
           .where((e) => e.isNotEmpty)
           .toList();
-      list = all.where((s) => groups.contains(s.bookSourceGroup)).toList();
+      list = all.where((s) => groups.any((g) => s.extHasGroup(g))).toList();
       if (list.isEmpty) {
         // 分组全部失效时回退全部（E 会把无效分组从 scope 中剔除）
         scope = '';

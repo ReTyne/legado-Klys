@@ -32,9 +32,23 @@ class _BrowserScreenState extends State<BrowserScreen> {
   /// 防止「完成 / 系统返回」重复触发 pop。
   bool _exiting = false;
 
+  // 请求头 / UA 透传：优先使用调用方显式传入，否则按 url 匹配书源 header 规则。
+  Map<String, String> _requestHeaders = const <String, String>{};
+  String _activeUserAgent = _uaMobile;
+  bool _headersResolved = false;
+
+  // 网页日志：会话级开关 + 消息缓冲，仅在本页面生命周期内保留。
+  bool _showWebLog = false;
+  final List<String> _webLogs = <String>[];
+  static const int _maxWebLogs = 300;
+
+  // 长按存图的保存目录（0 默认目录 / 1 自定义目录），自定义目录持久化。
+  static const String _imageDirPrefKey = 'browser_image_dir';
+
   @override
   void initState() {
     super.initState();
+    unawaited(_resolveRequestHeaders());
     // 书源常用 java.startBrowser('data:text/html;base64,' + base64(html), title)
     // 展示「使用教程 / 更新书源 / 设置中心」等自包含页面。能正常渲染，
     // 这里在 Dart 侧把 data URI 解码成 HTML，避免 WebUri 破坏 base64。
@@ -202,6 +216,204 @@ class _BrowserScreenState extends State<BrowserScreen> {
     return s;
   }
 
+  // ---------- 请求头 / UA 透传 ----------
+
+  /// 解析本次页面请求头：显式传入优先；否则按当前 url 匹配已启用书源的
+  /// header 规则（JSON 或 @js:，后者在 WebView 场景无法求值，跳过），
+  /// 并把 User-Agent 提升为 WebView 的 UA。解析失败时保持内置移动 UA。
+  Future<void> _resolveRequestHeaders() async {
+    Map<String, String> headers;
+    if (widget.headers != null && widget.headers!.isNotEmpty) {
+      headers = Map<String, String>.from(widget.headers!);
+    } else {
+      headers = <String, String>{};
+      try {
+        final target = _normalize(widget.url);
+        final sources = await _db.getAllSources(enabled: true);
+        for (final s in sources) {
+          if (!_engine.matchBookUrl(s, target)) continue;
+          final raw = s.header?.trim() ?? '';
+          if (raw.isEmpty || raw.toLowerCase().startsWith('@js:')) break;
+          final decoded = jsonDecode(raw);
+          if (decoded is Map) {
+            decoded.forEach((k, v) {
+              final key = k.toString();
+              if (key.isNotEmpty && v != null) headers[key] = v.toString();
+            });
+          }
+          break;
+        }
+      } catch (_) {}
+    }
+    String ua = _uaMobile;
+    for (final entry in headers.entries) {
+      if (entry.key.toLowerCase() == 'user-agent' && entry.value.isNotEmpty) {
+        ua = entry.value;
+        break;
+      }
+    }
+    if (!mounted) return;
+    setState(() {
+      _requestHeaders = headers;
+      _activeUserAgent = ua;
+      _headersResolved = true;
+    });
+  }
+
+  // ---------- 网页日志 ----------
+
+  /// 仅当会话开关打开时记录网页 console 消息，保留最近 [_maxWebLogs] 条。
+  String _consoleLevelName(ConsoleMessageLevel level) {
+    if (level == ConsoleMessageLevel.ERROR) return 'ERROR';
+    if (level == ConsoleMessageLevel.WARNING) return 'WARNING';
+    if (level == ConsoleMessageLevel.DEBUG) return 'DEBUG';
+    if (level == ConsoleMessageLevel.TIP) return 'TIP';
+    return 'LOG';
+  }
+
+  void _logConsole(ConsoleMessage message) {
+    if (!_showWebLog) return;
+    final line =
+        '${_consoleLevelName(message.messageLevel)}: ${message.message}';
+    _webLogs.add(line);
+    if (_webLogs.length > _maxWebLogs) {
+      _webLogs.removeRange(0, _webLogs.length - _maxWebLogs);
+    }
+    debugPrint('[网页日志] $line');
+  }
+
+  void _toggleWebLog() {
+    setState(() => _showWebLog = !_showWebLog);
+    _toast(_showWebLog ? '网页日志已开启' : '网页日志已关闭');
+  }
+
+  void _showWebLogSheet() {
+    showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      builder: (ctx) => SafeArea(
+        child: SizedBox(
+          height: MediaQuery.of(ctx).size.height * 0.7,
+          child: Column(
+            children: [
+              Padding(
+                padding: const EdgeInsets.all(AppSpacing.m),
+                child: Row(
+                  children: [
+                    const Text('网页日志',
+                        style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                    const Spacer(),
+                    TextButton(
+                      onPressed: () {
+                        setState(() => _webLogs.clear());
+                        Navigator.pop(ctx);
+                      },
+                      child: const Text('清空'),
+                    ),
+                    IconButton(
+                      tooltip: '关闭',
+                      icon: const Icon(Icons.close),
+                      onPressed: () => Navigator.pop(ctx),
+                    ),
+                  ],
+                ),
+              ),
+              const Divider(height: 1),
+              Expanded(
+                child: _webLogs.isEmpty
+                    ? const AppEmptyState(
+                        icon: Icons.article_outlined,
+                        title: '暂无日志',
+                        message: '开启「网页日志」后刷新页面即可捕获 console 输出',
+                      )
+                    : ListView.builder(
+                        itemCount: _webLogs.length,
+                        itemBuilder: (_, i) => Padding(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: AppSpacing.m, vertical: 4),
+                          child: SelectableText(
+                            _webLogs[i],
+                            style: const TextStyle(fontSize: 12),
+                          ),
+                        ),
+                      ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  // ---------- 长按图片保存 ----------
+
+  /// 长按命中图片时弹出动作：保存到默认目录 / 选择目录 / 取消。
+  void _onLongPressImage(String imageUrl) {
+    showAppMenuSheet(
+      context,
+      title: '保存图片',
+      items: [
+        AppMenuSheetItem(
+          title: '保存到默认目录',
+          icon: Icons.download_outlined,
+          subtitle: '应用文档目录/download',
+          onTap: () => _saveLongPressedImage(imageUrl, customDir: null),
+        ),
+        AppMenuSheetItem(
+          title: '选择目录保存',
+          icon: Icons.folder_outlined,
+          onTap: () => _pickImageDirAndSave(imageUrl),
+        ),
+      ],
+    );
+  }
+
+  Future<void> _pickImageDirAndSave(String imageUrl) async {
+    final prefs = await SharedPreferences.getInstance();
+    final ctl = TextEditingController(
+        text: prefs.getString(_imageDirPrefKey) ?? '');
+    if (!mounted) return;
+    final dir = await showDialog<String>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('图片保存目录'),
+        content: TextField(
+          controller: ctl,
+          decoration: const InputDecoration(
+            hintText: '绝对路径，如 /sdcard/Pictures',
+            labelText: '目录路径',
+          ),
+        ),
+        actions: [
+          TextButton(
+              onPressed: () => Navigator.pop(ctx), child: const Text('取消')),
+          FilledButton(
+              onPressed: () => Navigator.pop(ctx, ctl.text.trim()),
+              child: const Text('保存')),
+        ],
+      ),
+    );
+    if (dir == null || dir.isEmpty) return;
+    await prefs.setString(_imageDirPrefKey, dir);
+    await _saveLongPressedImage(imageUrl, customDir: dir);
+  }
+
+  Future<void> _saveLongPressedImage(String imageUrl,
+      {required String? customDir}) async {
+    // 相对图片地址按当前页面地址补全；data: URI 直接在 _downloadAndSave 落盘。
+    final resolved = imageUrl.startsWith('http') || imageUrl.startsWith('data:')
+        ? imageUrl
+        : Uri.tryParse(_tab.url)?.resolve(imageUrl).toString() ?? imageUrl;
+    final uri = Uri.tryParse(resolved);
+    final name = (uri != null && uri.pathSegments.isNotEmpty)
+        ? uri.pathSegments.last
+        : '';
+    await _downloadAndSave(resolved,
+        suggestedName: name.isEmpty ? 'image' : name,
+        mimeHint: 'image/jpeg',
+        saveDir: customDir);
+  }
+
   // ---------- 基础导航 ----------
   static String _normalize(String url) {
     final target = url.trim();
@@ -264,7 +476,8 @@ class _BrowserScreenState extends State<BrowserScreen> {
   Future<void> _setDesktopUa(bool v) async {
     setState(() => _desktopUa = v);
     await _controller?.setSettings(
-      settings: InAppWebViewSettings(userAgent: v ? _uaDesktop : _uaMobile),
+      settings: InAppWebViewSettings(
+          userAgent: v ? _uaDesktop : _activeUserAgent),
     );
     await _reload();
   }
@@ -608,6 +821,7 @@ class _BrowserScreenState extends State<BrowserScreen> {
     String url, {
     String? suggestedName,
     String? mimeHint,
+    String? saveDir,
   }) async {
     final target = _normalize(url);
     _toast('正在下载资源…');
@@ -641,9 +855,15 @@ class _BrowserScreenState extends State<BrowserScreen> {
       if (!baseName.toLowerCase().endsWith('.$ext')) {
         baseName = '$baseName.$ext';
       }
-      final dir = await getApplicationDocumentsDirectory();
-      final targetDir = Directory(p.join(dir.path, 'download'));
-      if (!await targetDir.exists()) await targetDir.create(recursive: true);
+      Directory targetDir;
+      if (saveDir != null && saveDir.isNotEmpty) {
+        targetDir = Directory(saveDir);
+        if (!await targetDir.exists()) await targetDir.create(recursive: true);
+      } else {
+        final dir = await getApplicationDocumentsDirectory();
+        targetDir = Directory(p.join(dir.path, 'download'));
+        if (!await targetDir.exists()) await targetDir.create(recursive: true);
+      }
       final file = File(p.join(targetDir.path,
           '${p.basenameWithoutExtension(baseName)}_${DateTime.now().millisecondsSinceEpoch}.$ext'));
       await file.writeAsBytes(bytes);
@@ -856,6 +1076,12 @@ class _BrowserScreenState extends State<BrowserScreen> {
                 case 'download_file':
                   await _promptDownload();
                   break;
+                case 'show_web_log':
+                  _toggleWebLog();
+                  break;
+                case 'view_web_log':
+                  _showWebLogSheet();
+                  break;
                 case 'copy':
                   Clipboard.setData(ClipboardData(text: _tab.url));
                   _toast('链接已复制');
@@ -886,6 +1112,13 @@ class _BrowserScreenState extends State<BrowserScreen> {
                   value: 'save_txt', child: Text('保存网页为 TXT')),
               const PopupMenuItem<String>(
                   value: 'download_file', child: Text('下载文件（多格式）')),
+              CheckedPopupMenuItem<String>(
+                value: 'show_web_log',
+                checked: _showWebLog,
+                child: const Text('显示网页日志'),
+              ),
+              const PopupMenuItem<String>(
+                  value: 'view_web_log', child: Text('查看网页日志')),
               const PopupMenuDivider(),
               ..._quickLinks.map((e) => PopupMenuItem<String>(
                     value: e['url'],
@@ -955,11 +1188,16 @@ class _BrowserScreenState extends State<BrowserScreen> {
           LinearProgressIndicator(value: _progress / 100, minHeight: 2),
         if (_sniffing) const LinearProgressIndicator(minHeight: 2),
         Expanded(
-          child: InAppWebView(
+          child: !_headersResolved
+              ? const AppLoadingIndicator()
+              : InAppWebView(
             // 自包含 data: 页面用 initialData 直接喂解码后的 HTML；
             // 否则走常规 URLRequest。两者互斥，避免 WebUri 破坏 base64。
             initialUrlRequest: _initialDataHtml.isEmpty
-                ? URLRequest(url: WebUri(_normalize(widget.url)))
+                ? URLRequest(
+                    url: WebUri(_normalize(widget.url)),
+                    headers: _requestHeaders.isEmpty ? null : _requestHeaders,
+                  )
                 : null,
             initialData: _initialDataHtml.isEmpty
                 ? null
@@ -977,11 +1215,23 @@ class _BrowserScreenState extends State<BrowserScreen> {
               useShouldOverrideUrlLoading: true,
               useOnDownloadStart: true,
               mixedContentMode: MixedContentMode.MIXED_CONTENT_ALWAYS_ALLOW,
-              userAgent: _uaMobile,
+              userAgent: _activeUserAgent,
               blockNetworkImage: _noImage,
               loadsImagesAutomatically: !_noImage,
             ),
             onWebViewCreated: (c) => _controller = c,
+            // 网页 console 日志：仅在会话开关开启时写入，.info/.log 都收
+            onConsoleMessage: (c, message) => _logConsole(message),
+            // 长按图片：命中图片 / 图片链接时给出保存入口
+            onLongPressHitTestResult: (c, result) {
+              final extra = result.extra;
+              if (extra == null || extra.isEmpty) return;
+              final type = result.type;
+              if (type == InAppWebViewHitTestResultType.IMAGE_TYPE ||
+                  type == InAppWebViewHitTestResultType.SRC_IMAGE_ANCHOR_TYPE) {
+                _onLongPressImage(extra);
+              }
+            },
             // 页面内跳转：http(s)/data:/about:blank 放行；其它自定义 scheme
             // （legado://、书源内部协议等）提示用外部应用打开。此前开启了
             // useShouldOverrideUrlLoading 却未注册回调，页面里的链接点击

@@ -40,6 +40,26 @@ part '../dao/v14_content_dao.dart';
 part '../dao/v14_media_dao.dart';
 part '../dao/maintenance_dao.dart';
 
+/// 首次装库/升级后灌入的默认数据；每条以空表为门控，重复执行不会叠加。
+class DefaultDataSeed {
+  DefaultDataSeed._();
+
+  static const List<String> sqls = <String>[
+    "INSERT INTO http_tts (name, url, method, headers, body, enabled, concurrentRate) "
+        "SELECT '系统语音', '', 'GET', '', '', 1, 0 WHERE NOT EXISTS (SELECT 1 FROM http_tts)",
+    "INSERT INTO txt_toc_rules (id, name, chapterRule, volumeRule, example, serialNumber, enable, replacement) "
+        "SELECT -1, '通用章节目录', '第[零一二三四五六七八九十百千万0-9]+章', "
+        "'第[零一二三四五六七八九十百千万0-9]+卷', '', 0, 1, '' "
+        "WHERE NOT EXISTS (SELECT 1 FROM txt_toc_rules)",
+    "INSERT INTO rss_sources (name, url, enabled, customOrder) "
+        "SELECT '示例订阅', '', 1, 0 WHERE NOT EXISTS (SELECT 1 FROM rss_sources)",
+    "INSERT INTO dict_rules (name, summary, url, rule, enabled, \"order\") "
+        "SELECT '默认字典', '', '', '', 1, 0 WHERE NOT EXISTS (SELECT 1 FROM dict_rules)",
+    "INSERT INTO keyboard_assists (name, rule, enabled, \"order\") "
+        "SELECT '常用标点', '。，！？', 1, 0 WHERE NOT EXISTS (SELECT 1 FROM keyboard_assists)",
+  ];
+}
+
 class DatabaseService {
   static final DatabaseService _instance = DatabaseService._internal();
   factory DatabaseService() => _instance;
@@ -58,13 +78,14 @@ class DatabaseService {
   static const String booksTableSql =
       'CREATE TABLE IF NOT EXISTS books (name TEXT NOT NULL, author TEXT NOT NULL, '
       'coverUrl TEXT, intro TEXT, kind TEXT, lastChapter TEXT, lastChapterIndex INTEGER, '
-      'durChapterIndex INTEGER, durChapterPos INTEGER, durChapterTime INTEGER, noteUrl TEXT, '
-      'bookUrl TEXT, origin TEXT, originName TEXT, tag TEXT, wordCount INTEGER, '
+      'durChapterIndex INTEGER, durChapterPos INTEGER, durChapterTime INTEGER, durChapterTitle TEXT, '
+      'noteUrl TEXT, bookUrl TEXT, tocUrl TEXT, origin TEXT, originName TEXT, tag TEXT, wordCount INTEGER, '
       'canUpdate INTEGER DEFAULT 1, local INTEGER DEFAULT 0, type INTEGER DEFAULT 0, '
-      'group_name TEXT, order_num INTEGER, latestChapterTime INTEGER, lastCheckTime INTEGER, '
-      'infoHtml TEXT, tocHtml TEXT, variable TEXT, customOrder INTEGER, '
+      'group_name TEXT, order_num INTEGER, originOrder INTEGER, latestChapterTime INTEGER, '
+      'lastCheckTime INTEGER, lastCheckCount INTEGER, infoHtml TEXT, tocHtml TEXT, variable TEXT, customOrder INTEGER, '
       'allowUpdate INTEGER DEFAULT 1, fileName TEXT, customCoverUrl TEXT, bookComment TEXT, '
-      'splitLongChapter INTEGER DEFAULT 1, readConfig TEXT, '
+      'customTag TEXT, customIntro TEXT, charset TEXT, durVolumeIndex INTEGER, chapterInVolumeIndex INTEGER, '
+      'totalChapterNum INTEGER, syncTime INTEGER, splitLongChapter INTEGER DEFAULT 1, readConfig TEXT, '
       'PRIMARY KEY (name, author))';
 
   /// 表结构与 v7 重建表、v9 迁移、BookChapter.toMap/fromMap 保持一致：
@@ -74,7 +95,7 @@ class DatabaseService {
       'bookAuthor TEXT NOT NULL, chapter_index INTEGER NOT NULL, title TEXT, url TEXT, '
       'baseUrl TEXT, isVolume INTEGER DEFAULT 0, isVip INTEGER DEFAULT 0, '
       'isPay INTEGER DEFAULT 0, update_time TEXT, tag TEXT, resourceUrl TEXT, '
-      'content TEXT, start_pos INTEGER, end_pos INTEGER, variable TEXT, '
+      'content TEXT, start_pos INTEGER, end_pos INTEGER, variable TEXT, wordCount INTEGER, '
       'startFragmentId TEXT, endFragmentId TEXT, imgUrl TEXT, titleMD5 TEXT, '
       'PRIMARY KEY (bookName, bookAuthor, chapter_index))';
 
@@ -477,6 +498,47 @@ class DatabaseService {
       'syncedTime INTEGER',
       'durChapterTitle TEXT',
     ]);
+    // 跨端互通字段：新装由建表 SQL 覆盖，升级走这里逐列补齐，全部幂等。
+    await _addColumnsIfMissing(db, 'books', const [
+      'durChapterTitle TEXT',
+      'tocUrl TEXT',
+      'originOrder INTEGER',
+      'lastCheckCount INTEGER',
+      'customTag TEXT',
+      'customIntro TEXT',
+      'charset TEXT',
+      'durVolumeIndex INTEGER',
+      'chapterInVolumeIndex INTEGER',
+      'totalChapterNum INTEGER',
+      'syncTime INTEGER',
+    ]);
+    await _addColumnsIfMissing(db, 'book_chapters', const [
+      'wordCount INTEGER',
+    ]);
+    await _addColumnsIfMissing(db, 'bookmarks', const [
+      'bookText TEXT',
+    ]);
+    await _addColumnsIfMissing(db, 'book_groups', const [
+      'bookSort INTEGER',
+      'onlyUpdateRead INTEGER DEFAULT 0',
+    ]);
+    await _addColumnsIfMissing(db, 'rss_sources', const [
+      'showWebLog INTEGER DEFAULT 1',
+    ]);
+    await _addColumnsIfMissing(db, 'rss_articles', const [
+      'origin TEXT',
+      'sort TEXT',
+      '"order" INTEGER',
+      '"group" TEXT',
+      'variable TEXT',
+      'type INTEGER',
+      'durPos REAL',
+    ]);
+    for (final sql in DefaultDataSeed.sqls) {
+      try {
+        await db.execute(sql);
+      } catch (_) {}
+    }
   }
 
   // 书籍DAO

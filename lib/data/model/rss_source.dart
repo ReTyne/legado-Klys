@@ -1,5 +1,15 @@
 import 'package:legado_md3/help/source/js/js_source.dart';
 
+bool _rssBool(dynamic v, bool fallback) {
+  if (v == null) return fallback;
+  if (v is bool) return v;
+  if (v is num) return v != 0;
+  final s = v.toString().trim().toLowerCase();
+  if (s == 'true' || s == '1') return true;
+  if (s == 'false' || s == '0') return false;
+  return fallback;
+}
+
 /// RSS订阅源模型 - RssSource
 class RssSource implements JsSource {
   int? id;
@@ -12,6 +22,7 @@ class RssSource implements JsSource {
   String? sortUrl;
   @override
   String? loginUrl;
+  @override
   String? loginUi;
   String? loginCheckJs;
   String? coverDecodeJs;
@@ -62,6 +73,7 @@ class RssSource implements JsSource {
   bool preload;
   bool singleUrl;
   bool cacheFirst;
+  bool showWebLog;
   String? redirectPolicy;
   int sourceType;
 
@@ -142,13 +154,14 @@ class RssSource implements JsSource {
     this.lastUpdateTime,
     this.unreadCount = 0,
     this.variable,
-    this.enabledCookieJar = false,
+    this.enabledCookieJar = true,
     this.articleStyle,
-    this.enableJs = false,
-    this.loadWithBaseUrl = false,
+    this.enableJs = true,
+    this.loadWithBaseUrl = true,
     this.preload = false,
     this.singleUrl = false,
     this.cacheFirst = false,
+    this.showWebLog = true,
     this.redirectPolicy,
     this.sourceType = 0,
   });
@@ -200,6 +213,7 @@ class RssSource implements JsSource {
     'preload': preload ? 1 : 0,
     'singleUrl': singleUrl ? 1 : 0,
     'cacheFirst': cacheFirst ? 1 : 0,
+    'showWebLog': showWebLog ? 1 : 0,
     'redirectPolicy': redirectPolicy,
     'type': sourceType,
   };
@@ -243,15 +257,16 @@ class RssSource implements JsSource {
     lastUpdateTime: map['lastUpdateTime'] as int?,
     unreadCount: map['unreadCount'] as int? ?? 0,
     variable: map['variable'] as String?,
-    enabledCookieJar: (map['enabledCookieJar'] as int?) == 1,
+    enabledCookieJar: _rssBool(map['enabledCookieJar'], true),
     articleStyle: map['articleStyle'] is int
         ? map['articleStyle'] as int
         : int.tryParse(map['articleStyle']?.toString() ?? ''),
-    enableJs: (map['enableJs'] as int?) == 1,
-    loadWithBaseUrl: (map['loadWithBaseUrl'] as int?) == 1,
-    preload: (map['preload'] as int?) == 1,
-    singleUrl: (map['singleUrl'] as int?) == 1,
-    cacheFirst: (map['cacheFirst'] as int?) == 1,
+    enableJs: _rssBool(map['enableJs'], true),
+    loadWithBaseUrl: _rssBool(map['loadWithBaseUrl'], true),
+    preload: _rssBool(map['preload'], false),
+    singleUrl: _rssBool(map['singleUrl'], false),
+    cacheFirst: _rssBool(map['cacheFirst'], false),
+    showWebLog: _rssBool(map['showWebLog'], true),
     redirectPolicy: map['redirectPolicy'] as String?,
     sourceType: map['type'] is int
         ? map['type'] as int
@@ -275,7 +290,8 @@ class RssSource implements JsSource {
     'variableComment': variableComment,
     'concurrentRate': concurrentRate,
     'jsLib': jsLib,
-    'articleStyle': articleStyle ?? int.tryParse(startStyle ?? ''),
+    'articleStyle': articleStyle,
+    'startStyle': startStyle,
     'ruleArticles': ruleArticles,
     'ruleNextPage': ruleNextPage,
     'ruleTitle': ruleTitle,
@@ -296,6 +312,7 @@ class RssSource implements JsSource {
     'preload': preload,
     'singleUrl': singleUrl,
     'cacheFirst': cacheFirst,
+    'showWebLog': showWebLog,
     'redirectPolicy': redirectPolicy,
     'customOrder': customOrder,
     'lastUpdateTime': lastUpdateTime,
@@ -318,7 +335,7 @@ class RssSource implements JsSource {
     variableComment: json['variableComment'] as String?,
     concurrentRate: json['concurrentRate'] as String?,
     jsLib: json['jsLib'] as String?,
-    startStyle: json['articleStyle']?.toString(),
+    startStyle: json['startStyle']?.toString(),
     articleStyle: json['articleStyle'] is int
         ? json['articleStyle'] as int
         : int.tryParse(json['articleStyle']?.toString() ?? ''),
@@ -336,12 +353,13 @@ class RssSource implements JsSource {
     contentBlacklist: json['contentBlacklist'] as String?,
     shouldOverrideUrlLoading: json['shouldOverrideUrlLoading'] as String?,
     enabled: json['enabled'] as bool? ?? true,
-    enabledCookieJar: json['enabledCookieJar'] as bool? ?? false,
-    enableJs: json['enableJs'] as bool? ?? false,
-    loadWithBaseUrl: json['loadWithBaseUrl'] as bool? ?? false,
-    preload: json['preload'] as bool? ?? false,
-    singleUrl: json['singleUrl'] as bool? ?? false,
-    cacheFirst: json['cacheFirst'] as bool? ?? false,
+    enabledCookieJar: _rssBool(json['enabledCookieJar'], true),
+    enableJs: _rssBool(json['enableJs'], true),
+    loadWithBaseUrl: _rssBool(json['loadWithBaseUrl'], true),
+    preload: _rssBool(json['preload'], false),
+    singleUrl: _rssBool(json['singleUrl'], false),
+    cacheFirst: _rssBool(json['cacheFirst'], false),
+    showWebLog: _rssBool(json['showWebLog'], true),
     redirectPolicy: json['redirectPolicy']?.toString(),
     customOrder: json['customOrder'] is int
         ? json['customOrder'] as int

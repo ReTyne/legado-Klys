@@ -13,6 +13,17 @@ import 'package:legado_md3/ui/bookmark/bookmark_export.dart';
 import 'package:legado_md3/ui/config/txt_toc_rule_screen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+/// 正文中不计入字数的片段：HTML 标签、空白、标点与符号。
+final RegExp _htmlTagPattern = RegExp(r'<[^>]*>');
+final RegExp _nonWordPattern = RegExp(r'[\s\p{P}\p{S}]+', unicode: true);
+
+/// 统计正文有效字数：去除 HTML 标签、标点与空白后按 Unicode 码点计数。
+int countEffectiveWords(String? content) {
+  if (content == null || content.isEmpty) return 0;
+  final plain = content.replaceAll(_htmlTagPattern, '');
+  return plain.replaceAll(_nonWordPattern, '').runes.length;
+}
+
 /// 目录页：「目录 / 书签 / 高亮」三 Tab，
 /// 菜单按当前 Tab 分组切换（E: onMenuOpened 的 menu_group_toc / menu_group_bookmark / menu_group_text）。
 class ChapterListScreen extends StatefulWidget {
@@ -184,26 +195,38 @@ class _ChapterListScreenState extends State<ChapterListScreen>
     if (value) await _loadWordCounts();
   }
 
-  /// 单次聚合查询各章节 content 长度（避免逐章 N+1 查询）。
+  /// 一次性读取各章节正文，按过滤规则统计有效字数并写回 wordCount 列。
   Future<void> _loadWordCounts() async {
     final book = widget.book;
     if (book == null) return;
     try {
       final db = await _db.database;
       final rows = await db.rawQuery(
-        'SELECT chapter_index AS idx, LENGTH(content) AS len '
+        'SELECT chapter_index AS idx, content AS content '
         'FROM book_chapters WHERE bookName = ? AND bookAuthor = ?',
         [book.name, book.author],
       );
       final map = <int, int>{};
+      final batch = db.batch();
       for (final row in rows) {
         final idx = row['idx'] as int?;
-        final len = row['len'] as int?;
-        if (idx != null && len != null && len > 0) map[idx] = len;
+        if (idx == null) continue;
+        final raw = row['content'];
+        final count = countEffectiveWords(raw is String ? raw : null);
+        if (count > 0) {
+          map[idx] = count;
+          batch.update(
+            'book_chapters',
+            {'wordCount': count},
+            where: 'bookName = ? AND bookAuthor = ? AND chapter_index = ?',
+            whereArgs: [book.name, book.author, idx],
+          );
+        }
       }
+      await batch.commit(noResult: true);
       if (mounted) setState(() => _wordCounts = map);
-    } catch (_) {
-      // 查询失败静默降级：不显示字数
+    } catch (e) {
+      debugPrint('统计章节字数失败：$e');
     }
   }
 

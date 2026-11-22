@@ -32,6 +32,7 @@ class BookSource implements JsSource {
   String? header;
   @override
   String? loginUrl;
+  @override
   String? loginUi;
   String? loginCheckJs;
   String? bookUrlPattern;

@@ -1,3 +1,20 @@
+int? _chInt(dynamic v) {
+  if (v == null) return null;
+  if (v is int) return v;
+  if (v is num) return v.toInt();
+  return int.tryParse(v.toString().trim());
+}
+
+bool _chFlag(dynamic v, bool fallback) {
+  if (v == null) return fallback;
+  if (v is bool) return v;
+  if (v is num) return v != 0;
+  final s = v.toString().trim().toLowerCase();
+  if (s == 'true' || s == '1') return true;
+  if (s == 'false' || s == '0') return false;
+  return fallback;
+}
+
 class BookChapter {
   String title;
   String url;
@@ -10,6 +27,13 @@ class BookChapter {
   int? startPos;
   int? endPos;
   String? variable;
+  int? wordCount;
+
+  /// 正文分片定位与插图地址，供分页与资源加载使用。
+  String? startFragmentId;
+  String? endFragmentId;
+  String? imgUrl;
+  String? titleMD5;
 
   /// 章节所属目录页地址（书源规则解析出的 baseUrl），落库列 baseUrl。
   String? baseUrl;
@@ -18,7 +42,7 @@ class BookChapter {
   String? tag;
 
   /// 章节资源直链（音频/视频/图片书源），落库列 resourceUrl。
-  /// JS 桥 __wrapChapter.getResourceUrl() 依赖该字段，此前恒为 null 导致死读。
+  /// JS 桥 __wrapChapter.getResourceUrl() 依赖该字段。
   String? resourceUrl;
 
   BookChapter({
@@ -33,13 +57,18 @@ class BookChapter {
     this.startPos,
     this.endPos,
     this.variable,
+    this.wordCount,
+    this.startFragmentId,
+    this.endFragmentId,
+    this.imgUrl,
+    this.titleMD5,
     this.baseUrl,
     this.tag,
     this.resourceUrl,
   });
 
   /// 传给书源 JS（ruleContent）的章节上下文。
-  /// 键名与 JS 桥 __wrapChapter 的 getter 一一对应，避免书源侧恒取到空串。
+  /// 键名与 JS 桥 __wrapChapter 的 getter 一一对应。
   Map<String, dynamic> jsContext([String? bookUrl]) => {
     'index': index,
     'title': title,
@@ -68,6 +97,11 @@ class BookChapter {
     'startPos': startPos,
     'endPos': endPos,
     'variable': variable,
+    'wordCount': wordCount,
+    'startFragmentId': startFragmentId,
+    'endFragmentId': endFragmentId,
+    'imgUrl': imgUrl,
+    'titleMD5': titleMD5,
     'baseUrl': baseUrl,
     'tag': tag,
     'resourceUrl': resourceUrl,
@@ -91,22 +125,32 @@ class BookChapter {
     'start_pos': startPos,
     'end_pos': endPos,
     'variable': variable,
+    'wordCount': wordCount,
+    'startFragmentId': startFragmentId,
+    'endFragmentId': endFragmentId,
+    'imgUrl': imgUrl,
+    'titleMD5': titleMD5,
   };
 
   factory BookChapter.fromMap(Map<String, dynamic> map) => BookChapter(
-    title: map['title'] as String,
-    url: map['url'] as String,
-    index: map['chapter_index'] as int? ?? map['index'] as int? ?? 0,
-    isVolume: (map['isVolume'] as int? ?? 0) == 1,
-    isVip: (map['isVip'] as int? ?? 0) == 1,
-    isPay: (map['isPay'] as int? ?? 0) == 1,
-    updateTime: map['update_time'] as String? ?? map['updateTime'] as String?,
-    content: map['content'] as String?,
-    startPos: map['start_pos'] as int? ?? map['start'] as int?,
-    endPos: map['end_pos'] as int? ?? map['end'] as int?,
-    variable: map['variable'] as String?,
-    baseUrl: map['baseUrl'] as String?,
-    tag: map['tag'] as String?,
-    resourceUrl: map['resourceUrl'] as String?,
+    title: (map['title'] ?? '').toString(),
+    url: (map['url'] ?? '').toString(),
+    index: _chInt(map['chapter_index'] ?? map['index']) ?? 0,
+    isVolume: _chFlag(map['isVolume'], false),
+    isVip: _chFlag(map['isVip'], false),
+    isPay: _chFlag(map['isPay'], false),
+    updateTime: map['update_time']?.toString() ?? map['updateTime']?.toString(),
+    content: map['content']?.toString(),
+    startPos: _chInt(map['start_pos'] ?? map['start']),
+    endPos: _chInt(map['end_pos'] ?? map['end']),
+    variable: map['variable']?.toString(),
+    wordCount: _chInt(map['wordCount']),
+    startFragmentId: map['startFragmentId']?.toString(),
+    endFragmentId: map['endFragmentId']?.toString(),
+    imgUrl: map['imgUrl']?.toString(),
+    titleMD5: map['titleMD5']?.toString(),
+    baseUrl: map['baseUrl']?.toString(),
+    tag: map['tag']?.toString(),
+    resourceUrl: map['resourceUrl']?.toString(),
   );
 }

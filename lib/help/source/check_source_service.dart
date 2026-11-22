@@ -316,6 +316,9 @@ class CheckSourceService {
     } on TimeoutException {
       source.addGroup('校验超时');
       errorMessage = '校验超时';
+      if (CheckSourceConfig.wSourceComment) {
+        source.addErrorComment(errorMessage);
+      }
     } catch (e) {
       if (_looksJsError(e)) {
         source.addGroup('js失效');

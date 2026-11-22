@@ -13,12 +13,24 @@ class JsBridgeCrypto {
   static JsSymmetricCrypto createSymmetricCrypto(
       String transformation, Object key, [Object iv = '']) {
     final mode = transformation.toUpperCase();
-    final isAes = !mode.contains('DES');
+    // DESede / 3DES / TripleDES 是三次 DES（24 字节密钥），不能当单 DES 处理。
+    final isTripleDes = mode.contains('DESEDE') ||
+        mode.contains('3DES') ||
+        mode.contains('TRIPLEDES');
+    final isDes = !isTripleDes && mode.contains('DES');
+    final isAes = !isTripleDes && !isDes;
     final cbc = mode.contains('CBC');
     final block = isAes ? 16 : 8;
     final kb = _bytesOf(key);
-    final keyBytes = isAes ? _aesKeyBytes(kb) : _padTo(kb, 8);
     final ivBytes = _padTo(_bytesOf(iv), block);
+    if (isTripleDes) {
+      var k = kb;
+      // 两密钥 3DES（16 字节）按 K3 = K1 处理。
+      if (k.length == 16) k = [...k, ...k.sublist(0, 8)];
+      return JsSymmetricCrypto._(
+          false, cbc, 8, ivBytes, null, _TripleDesCore(_padTo(k, 24)));
+    }
+    final keyBytes = isAes ? _aesKeyBytes(kb) : _padTo(kb, 8);
     return JsSymmetricCrypto._(
       isAes,
       cbc,
@@ -48,4 +60,26 @@ class JsBridgeCrypto {
     }
     return out;
   }
+}
+
+/// 三次 DES（EDE）：K1 加密 → K2 解密 → K3 加密，24 字节密钥。
+/// 复用单 DES 分组原语，由 [JsSymmetricCrypto] 负责 CBC 链与 PKCS7 填充。
+class _TripleDesCore extends _DesCore {
+  _TripleDesCore(List<int> key24)
+      : _k1 = _DesCore(key24.sublist(0, 8)),
+        _k2 = _DesCore(key24.sublist(8, 16)),
+        _k3 = _DesCore(key24.sublist(16, 24)),
+        super(key24.sublist(0, 8));
+
+  final _DesCore _k1;
+  final _DesCore _k2;
+  final _DesCore _k3;
+
+  @override
+  List<int> encryptBlock(List<int> block8) =>
+      _k3.encryptBlock(_k2.decryptBlock(_k1.encryptBlock(block8)));
+
+  @override
+  List<int> decryptBlock(List<int> block8) =>
+      _k1.decryptBlock(_k2.encryptBlock(_k3.decryptBlock(block8)));
 }

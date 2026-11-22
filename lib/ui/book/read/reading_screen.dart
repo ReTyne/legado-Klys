@@ -1020,16 +1020,67 @@ class _ReadingScreenState extends State<ReadingScreen>
   }
 
   /// 云进度拉取后把本地书籍对象与阅读定位同步到较新的远端进度。
+  /// 本地与云端进度不一致时由用户确认采用哪一份，避免静默覆盖较新的本地进度。
   Future<void> _onProgressPulled(int changed) async {
     if (changed <= 0) return;
     final updated = await _db.getBook(widget.book.name, widget.book.author);
-    if (updated == null || !mounted) return;
+    if (updated == null || !mounted || !context.mounted) return;
+
+    final localChapter = widget.book.durChapterIndex;
+    final localPos = widget.book.durChapterPos;
+    final cloudChapter = updated.durChapterIndex;
+    final cloudPos = updated.durChapterPos;
+    final differs = localChapter != cloudChapter || localPos != cloudPos;
+
+    var useCloud = true;
+    if (differs) {
+      final choice = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          title: const Text('云进度与本地进度不一致'),
+          content: Text(
+            '本地：第 ${localChapter + 1} 章 · 位置 $localPos\n'
+            '云端：第 ${cloudChapter + 1} 章 · 位置 $cloudPos\n'
+            '请选择要采用的进度。',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(ctx, false),
+              child: const Text('保留本地'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(ctx, true),
+              child: const Text('用云端'),
+            ),
+          ],
+        ),
+      );
+      // 关闭/取消对话框时默认保留本地，避免误覆盖
+      useCloud = choice ?? false;
+    }
+    if (!mounted || !context.mounted) return;
+
+    if (!useCloud) {
+      // 拉取可能已把云端进度写入本地库，这里写回本地进度以撤销覆盖
+      try {
+        await context
+            .read<BookProvider>()
+            .saveReadingProgress(widget.book, localChapter, localPos);
+      } catch (e) {
+        debugPrint('保留本地进度写回失败：$e');
+      }
+      if (!mounted || !context.mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
+          content: Text('已保留本地进度'), duration: Duration(seconds: 2)));
+      return;
+    }
+
     widget.book
-      ..durChapterIndex = updated.durChapterIndex
-      ..durChapterPos = updated.durChapterPos;
-    final target = updated.durChapterIndex
+      ..durChapterIndex = cloudChapter
+      ..durChapterPos = cloudPos;
+    final target = cloudChapter
         .clamp(0, _chapters.isEmpty ? 0 : _chapters.length - 1);
-    await _loadChapterContent(target, targetPage: updated.durChapterPos);
+    await _loadChapterContent(target, targetPage: cloudPos);
     if (mounted) {
       ScaffoldMessenger.of(context).showSnackBar(const SnackBar(
           content: Text('已按云端进度定位到最新章节'), duration: Duration(seconds: 2)));
@@ -1524,7 +1575,13 @@ class _ReadingScreenState extends State<ReadingScreen>
             );
           }
         }
-      } catch (_) {}
+      } catch (e) {
+        debugPrint('替换规则应用失败：$e');
+        if (mounted && context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text('替换规则应用失败，正文可能未净化：$e')));
+        }
+      }
     }
 
     // 简繁转换（chineseConverter: 0不转换 1转简 2转繁）
@@ -1811,7 +1868,13 @@ class _ReadingScreenState extends State<ReadingScreen>
       final provider = context.read<BookProvider>();
       await provider.saveReadingProgress(
           widget.book, _currentChapterIndex, _currentPage);
-    } catch (_) {}
+    } catch (e) {
+      debugPrint('保存阅读进度失败：$e');
+      if (mounted && context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('阅读进度保存失败，请检查存储')));
+      }
+    }
   }
 
   void _nextChapter() {
@@ -1826,6 +1889,12 @@ class _ReadingScreenState extends State<ReadingScreen>
 
   void _startAutoRead() {
     final cfg = context.read<ReadProvider>().config;
+    // 自动翻页与朗读互斥：先停朗读，避免语音与翻页节奏冲突
+    if (_ttsService.isPlaying || _ttsService.isPaused) {
+      unawaited(_ttsService.stop());
+    }
+    // 自动翻页期间保持屏幕常亮，停止后恢复到配置值
+    _applyKeepLight(-1);
     final secs = cfg.autoNextPageSpeed < 1 ? 3 : cfg.autoNextPageSpeed;
     _autoReadTimer?.cancel();
     _autoReadTimer = Timer.periodic(Duration(seconds: secs), (_) {
@@ -1847,6 +1916,11 @@ class _ReadingScreenState extends State<ReadingScreen>
   void _stopAutoRead() {
     _autoReadTimer?.cancel();
     _autoReadTimer = null;
+    try {
+      _applyKeepLight(context.read<ReadProvider>().config.keepLight);
+    } catch (e) {
+      debugPrint('恢复屏幕超时设置失败：$e');
+    }
     if (mounted) setState(() => _autoReadOn = false);
   }
 
@@ -2218,51 +2292,76 @@ class _ReadingScreenState extends State<ReadingScreen>
     _showImageActionsSheet(urls);
   }
 
-  /// 图片操作菜单：显示大图 / 刷新图片 / 保存图片 / 选择保存文件夹。
+  /// 图片操作菜单：先选择要操作的图片，再显示大图 / 刷新 / 保存 / 选文件夹 / 唤起菜单。
   void _showImageActionsSheet(List<String> urls) {
-    final url = urls.first;
+    var selected = 0;
     showModalBottomSheet<void>(
       context: context,
-      builder: (ctx) => SafeArea(
-        child: Column(mainAxisSize: MainAxisSize.min, children: [
-          Padding(
-            padding: const EdgeInsets.all(AppSpacing.l),
-            child: Text('正文图片（共 ${urls.length} 张，当前操作第 1 张）',
-                style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
-          ),
-          ListTile(
-            leading: const Icon(Icons.zoom_in),
-            title: const Text('显示大图'),
-            onTap: () {
-              Navigator.pop(ctx);
-              _showImagePreview(url);
-            },
-          ),
-          ListTile(
-            leading: const Icon(Icons.refresh),
-            title: const Text('刷新图片'),
-            onTap: () {
-              Navigator.pop(ctx);
-              _refreshImages();
-            },
-          ),
-          ListTile(
-            leading: const Icon(Icons.save_alt),
-            title: const Text('保存图片'),
-            onTap: () {
-              Navigator.pop(ctx);
-              unawaited(_saveBodyImage(url));
-            },
-          ),
-          ListTile(
-            leading: const Icon(Icons.folder_open),
-            title: const Text('选择保存文件夹'),
-            onTap: () {
-              Navigator.pop(ctx);
-              unawaited(_pickImageSaveFolder());
-            },
-          ),
-        ]),
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setSheetState) => SafeArea(
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            Padding(
+              padding: const EdgeInsets.all(AppSpacing.l),
+              child: Text('正文图片（共 ${urls.length} 张，当前操作第 ${selected + 1} 张）',
+                  style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
+            ),
+            if (urls.length > 1)
+              SizedBox(
+                height: 44,
+                child: ListView.separated(
+                  scrollDirection: Axis.horizontal,
+                  padding: const EdgeInsets.symmetric(horizontal: AppSpacing.l),
+                  itemCount: urls.length,
+                  separatorBuilder: (_, __) => const SizedBox(width: AppSpacing.s),
+                  itemBuilder: (_, i) => ChoiceChip(
+                    label: Text('第 ${i + 1} 张'),
+                    selected: selected == i,
+                    onSelected: (_) => setSheetState(() => selected = i),
+                  ),
+                ),
+              ),
+            ListTile(
+              leading: const Icon(Icons.zoom_in),
+              title: const Text('显示大图'),
+              onTap: () {
+                Navigator.pop(ctx);
+                _showImagePreview(urls[selected]);
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.refresh),
+              title: const Text('刷新图片'),
+              onTap: () {
+                Navigator.pop(ctx);
+                _refreshImages();
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.save_alt),
+              title: const Text('保存图片'),
+              onTap: () {
+                Navigator.pop(ctx);
+                unawaited(_saveBodyImage(urls[selected]));
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.folder_open),
+              title: const Text('选择保存文件夹'),
+              onTap: () {
+                Navigator.pop(ctx);
+                unawaited(_pickImageSaveFolder());
+              },
+            ),
+            ListTile(
+              leading: const Icon(Icons.menu),
+              title: const Text('菜单'),
+              onTap: () {
+                Navigator.pop(ctx);
+                _toggleMenu();
+              },
+            ),
+          ]),
+        ),
       ),
     );
   }
@@ -2402,11 +2501,57 @@ class _ReadingScreenState extends State<ReadingScreen>
     // 自定义页眉文本优先（customHeaderEnabled 且 headerString 非空）
     final customText =
         config.customHeaderEnabled ? (config.headerString ?? '') : '';
-    final title = customText.isNotEmpty
-        ? customText
-        : (_chapters.isNotEmpty
-            ? _chapters[_currentChapterIndex].title
-            : widget.book.name);
+    if (customText.isNotEmpty) return _headerTextContainer(config, customText);
+
+    // 三槽位页眉：左 / 中 / 右，各槽内容由 headerSlots 配置
+    if (config.headerMode == 1) {
+      final slots = config.headerSlots;
+      if (slots != null && slots.length == 3) {
+        return Container(
+          padding: EdgeInsets.fromLTRB(
+            config.paddingLeft.toDouble(),
+            config.titleTopSpacing.toDouble(),
+            config.paddingLeft.toDouble(),
+            config.titleBottomSpacing.toDouble(),
+          ),
+          height: config.headerHeight.toDouble(),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              Expanded(
+                child: Align(
+                  alignment: Alignment.centerLeft,
+                  child: _headerSlotWidget(0, config),
+                ),
+              ),
+              _headerDivider(config),
+              Expanded(
+                child: Align(
+                  alignment: Alignment.center,
+                  child: _headerSlotWidget(1, config),
+                ),
+              ),
+              _headerDivider(config),
+              Expanded(
+                child: Align(
+                  alignment: Alignment.centerRight,
+                  child: _headerSlotWidget(2, config),
+                ),
+              ),
+            ],
+          ),
+        );
+      }
+    }
+
+    // 经典单行页眉：章节名（或书名）
+    final title = _chapters.isNotEmpty
+        ? _chapters[_currentChapterIndex].title
+        : widget.book.name;
+    return _headerTextContainer(config, title);
+  }
+
+  Widget _headerTextContainer(ReadConfig config, String text) {
     return Container(
       padding: EdgeInsets.symmetric(
         horizontal: config.paddingLeft.toDouble(),
@@ -2416,7 +2561,7 @@ class _ReadingScreenState extends State<ReadingScreen>
       alignment:
           config.headerAlignCenter ? Alignment.center : Alignment.centerLeft,
       child: Text(
-        title,
+        text,
         style: TextStyle(
           fontSize: config.headerSize.toDouble(),
           color: Color(config.headerColor),
@@ -2425,6 +2570,61 @@ class _ReadingScreenState extends State<ReadingScreen>
         maxLines: 1,
         overflow: TextOverflow.ellipsis,
       ),
+    );
+  }
+
+  Widget _headerDivider(ReadConfig config) => Container(
+        width: 1,
+        height: config.titleSize.toDouble() + 4,
+        margin: const EdgeInsets.symmetric(horizontal: 4),
+        color: Color(config.tipDividerColor),
+      );
+
+  /// 页眉第 slotIndex 个槽位（0左 1中 2右）的文本，槽位枚举与页脚共用
+  String _headerSlotText(int slotIndex, ReadConfig config) {
+    final slots = config.headerSlots;
+    if (slots == null || slotIndex < 0 || slotIndex >= slots.length) return '';
+    switch (slots[slotIndex]) {
+      case FooterSlot.chapterTitle:
+        return _chapters.isNotEmpty ? _chapters[_currentChapterIndex].title : '';
+      case FooterSlot.bookName:
+        return widget.book.name;
+      case FooterSlot.pageNumber:
+        return _pages.length > 1 ? '${_currentPage + 1}' : '';
+      case FooterSlot.totalPages:
+        return '${_pages.length}';
+      case FooterSlot.progress:
+        return '${_bookProgress.toStringAsFixed(1)}%';
+      case FooterSlot.time:
+        return _currentTime;
+      case FooterSlot.batteryPercent:
+        return _batteryLevel != null ? '$_batteryLevel%' : '';
+      case FooterSlot.battery:
+      case FooterSlot.none:
+        return '';
+    }
+  }
+
+  /// 页眉槽位控件：文本槽位用 Text；电量槽位在无真实读数时降级为图标
+  Widget _headerSlotWidget(int slotIndex, ReadConfig config) {
+    final slots = config.headerSlots;
+    final slot = (slots != null && slotIndex < slots.length)
+        ? slots[slotIndex]
+        : FooterSlot.none;
+    if (slot == FooterSlot.battery ||
+        (slot == FooterSlot.batteryPercent && _batteryLevel == null)) {
+      return Icon(_batteryIcon(_batteryLevel),
+          size: 14, color: Color(config.tipColor));
+    }
+    return Text(
+      _headerSlotText(slotIndex, config),
+      style: TextStyle(
+        fontSize: config.titleSize.toDouble(),
+        color: Color(config.tipColor),
+        fontWeight: config.headerBold ? FontWeight.bold : FontWeight.normal,
+      ),
+      maxLines: 1,
+      overflow: TextOverflow.ellipsis,
     );
   }
 
@@ -2480,7 +2680,7 @@ class _ReadingScreenState extends State<ReadingScreen>
     final style = _textStyle(config);
     final align = config.textAlign == 1
         ? TextAlign.center
-        : config.textAlign == 2
+        : config.textAlign == 2 || config.textFullJustify
             ? TextAlign.justify
             : TextAlign.left;
     // 命中高亮标签规则时用 Text.rich 上色，否则退回普通 Text
@@ -4109,6 +4309,7 @@ class _ReadingScreenState extends State<ReadingScreen>
     ScaffoldMessenger.of(context)
         .showSnackBar(SnackBar(content: Text('开始缓存 $total 章...')));
     int cached = 0;
+    int failed = 0;
     for (int i = start; i <= end && i < _chapters.length; i++) {
       final chapter = _chapters[i];
       // 检查是否已有缓存（单章查询，避免每轮都读全书正文）
@@ -4141,12 +4342,16 @@ class _ReadingScreenState extends State<ReadingScreen>
               cached++;
             }
           }
-        } catch (_) {}
+        } catch (e) {
+          failed++;
+          debugPrint('缓存第 $i 章失败：$e');
+        }
       }
     }
     if (mounted) {
+      final suffix = failed > 0 ? '，$failed 章失败' : '';
       ScaffoldMessenger.of(context)
-          .showSnackBar(SnackBar(content: Text('缓存完成，共 $cached 章')));
+          .showSnackBar(SnackBar(content: Text('缓存完成，共 $cached 章$suffix')));
     }
   }
 

@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:legado_md3/help/translate/manga_translate_overlay.dart';
+import 'package:legado_md3/ui/book/manga/manga_view_config.dart';
 import 'package:legado_md3/ui/book/reader_router.dart';
 import 'package:legado_md3/ui/widgets/app_widgets.dart';
 
@@ -175,6 +176,31 @@ class _MangaConfigScreenState extends State<MangaConfigScreen> {
           value: _colorFilter, underline: const SizedBox(),
           items: List.generate(_colorFilters.length, (i) => DropdownMenuItem(value: i, child: Text(_colorFilters[i]))),
           onChanged: (v) { setState(() => _colorFilter = v ?? 0); _set('manga_colorFilter', v ?? 0); })),
+        ListTile(
+          dense: true,
+          title: const Text('5 通道精细滤镜'),
+          subtitle: const Text('R/G/B/A 独立调节 + 屏幕亮度（阅读时实时生效）', style: TextStyle(fontSize: 11)),
+          trailing: const Icon(Icons.chevron_right),
+          onTap: () async {
+            final ctx = context;
+            await MangaColorFilterConfig.refresh();
+            if (!ctx.mounted) return;
+            await showMangaColorFilterSheet(ctx);
+          },
+        ),
+        _section('页脚信息栏'),
+        ListTile(
+          dense: true,
+          title: const Text('页脚信息与对齐'),
+          subtitle: const Text('章节名 / 页码 / 章节号 / 阅读进度的显隐与对齐', style: TextStyle(fontSize: 11)),
+          trailing: const Icon(Icons.chevron_right),
+          onTap: () async {
+            final ctx = context;
+            await MangaFooterConfig.refresh();
+            if (!ctx.mounted) return;
+            await showMangaFooterSheet(ctx);
+          },
+        ),
         _section('缩放与翻页动画'),
         SwitchListTile(dense: true, title: const Text('禁用双指缩放'), value: _disableScale, onChanged: (v) { setState(() => _disableScale = v); _set('manga_noScale', v); }),
         ListTile(dense: true, title: Text('最大缩放倍数: ${_scaleMax}x'),

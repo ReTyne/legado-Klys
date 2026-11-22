@@ -12,6 +12,7 @@ import 'package:legado_md3/data/model/book_source.dart';
 import 'package:legado_md3/data/model/search_book.dart';
 import 'package:legado_md3/help/source/source_engine.dart';
 import 'package:legado_md3/help/source/source_network_log.dart';
+import 'package:legado_md3/ui/book/source/source_manage_screen.dart';
 
 part 'parts/source_debug_screen_state.dart';
 part 'parts/log_level.dart';

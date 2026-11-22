@@ -2,6 +2,17 @@
 /// 作为同一库的 part，私有成员互引保持可用。
 part of '../video_player_screen.dart';
 
+/// 弹幕滚动系数：播放倍速越高系数越小（滚动越快），长按倍速同样生效。
+double danmakuSpeedFactor(double playbackSpeed) =>
+    (1.0 - (playbackSpeed - 1.0) / 6.0).clamp(0.2, 2.0);
+
+/// 分卷：一个卷标题及其所属剧集在 [_chapters] 中的下标。
+class _VolumeGroup {
+  final String title;
+  final List<int> episodeIndices;
+  const _VolumeGroup(this.title, this.episodeIndices);
+}
+
 /// 按当前线路索引从线路列表取出播放地址（去首尾空白）；无地址返回空串。
 String resolveCurrentPlayUrl(List<String> lines, int lineIndex) {
   if (lines.isEmpty) return '';
@@ -23,6 +34,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   static const List<double> _rates = [0.5, 0.75, 1.0, 1.25, 1.5, 2.0, 3.0];
   /// 亮度遮罩不透明度（0 不压暗，0.8 最暗）
   static const String _prefDim = 'video_dim_value';
+  static const String _prefVolume = 'video_volume';
   static const double _maxDim = 0.8;
   static final RegExp _videoExt =
       RegExp(r'\.(mp4|m3u8|webm|flv|ts|mkv|mov|avi)(\?|#|$)', caseSensitive: false);
@@ -33,6 +45,8 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   VideoPlayerController? _controller;
   BookSource? _source;
   List<BookChapter> _chapters = [];
+  final List<_VolumeGroup> _volumeGroups = [];
+  int _selectedVolume = -1; // -1 表示全部分卷
   int _index = 0;
   bool _loading = true;
   String? _error;
@@ -62,7 +76,9 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   Offset? _pipOffset;
   bool _locked = false;
   double _dim = 0.0;
+  double _volume = 1.0;
   bool _volumeHintShown = false;
+  Timer? _volumeHintTimer;
 
   // 手势快进预览
   Duration? _seekPreview;
@@ -90,6 +106,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   void dispose() {
     unawaited(_savePosition(force: true));
     _hideTimer?.cancel();
+    _volumeHintTimer?.cancel();
     final c = _controller;
     _controller = null;
     unawaited(c?.dispose());
@@ -109,16 +126,55 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     final list = await _db.getChapters(widget.book.name, widget.book.author);
     if (!mounted) return;
     _chapters = list.where((c) => !c.isVolume).toList();
+    _buildVolumeGroups(list);
     if (_index < 0 || _index >= _chapters.length) _index = 0;
     setState(() {});
     final saved = await _loadPosition(_index);
     await _playAt(_index, line: saved?.line ?? 0, startAt: saved?.position);
   }
 
+  /// 用原始目录（含分卷）建立「卷 → 剧集下标」映射，供选集面板分组显示。
+  void _buildVolumeGroups(List<BookChapter> all) {
+    _volumeGroups.clear();
+    _selectedVolume = -1;
+    var filteredIndex = 0;
+    _VolumeGroup? current;
+    var unnamed = true;
+    for (final ch in all) {
+      if (ch.isVolume) {
+        if (current != null && current.episodeIndices.isNotEmpty) {
+          _volumeGroups.add(current);
+        }
+        current = _VolumeGroup(ch.title, []);
+        unnamed = false;
+      } else {
+        current ??= _VolumeGroup('正片', List<int>.empty(growable: true));
+        current.episodeIndices.add(filteredIndex);
+        filteredIndex++;
+      }
+    }
+    if (current != null && current.episodeIndices.isNotEmpty) {
+      _volumeGroups.add(current);
+    }
+    // 无显式分卷时不显示卷选择行
+    if (unnamed) _volumeGroups.clear();
+    if (_volumeGroups.length < 2) _selectedVolume = -1;
+  }
+
+  /// 当前选集面板应显示的剧集下标（全部分卷或某一卷）。
+  List<int> get _visibleEpisodeIndices {
+    if (_selectedVolume < 0 ||
+        _selectedVolume >= _volumeGroups.length) {
+      return List<int>.generate(_chapters.length, (i) => i);
+    }
+    return _volumeGroups[_selectedVolume].episodeIndices;
+  }
+
   Future<void> _loadPrefs() async {
     try {
       final p = await SharedPreferences.getInstance();
       _dim = (p.getDouble(_prefDim) ?? 0.0).clamp(0.0, _maxDim).toDouble();
+      _volume = (p.getDouble(_prefVolume) ?? 1.0).clamp(0.0, 1.0).toDouble();
       _danmakuOn = p.getBool(_prefDanmakuOn) ?? true;
       _danmakuOpacity =
           (p.getDouble(_prefDanmakuOpacity) ?? 0.9).clamp(0.1, 1.0).toDouble();
@@ -143,6 +199,13 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     try {
       final p = await SharedPreferences.getInstance();
       await p.setDouble(_prefDim, _dim);
+    } catch (_) {}
+  }
+
+  Future<void> _persistVolume() async {
+    try {
+      final p = await SharedPreferences.getInstance();
+      await p.setDouble(_prefVolume, _volume);
     } catch (_) {}
   }
 
@@ -285,6 +348,9 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       if (!mounted) return;
       c.addListener(_onControllerUpdate);
       await c.setPlaybackSpeed(_rate);
+      try {
+        await c.setVolume(_volume);
+      } catch (_) {}
       if (startAt != null && startAt > Duration.zero && startAt < c.value.duration) {
         await c.seekTo(startAt);
       }
@@ -394,6 +460,14 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
       ),
     );
   }
+
+  /// 实际播放倍速（长按期间临时切到配置的倍速）。
+  double get _effectiveSpeed => _longPressing
+      ? VideoPlayConfig.longPressSpeedTenths / 10.0
+      : _rate;
+
+  /// 弹幕滚动速度系数：播放越快，系数越小（滚动越快），与长按倍速同步。
+  double get _danmakuSpeedFactor => danmakuSpeedFactor(_effectiveSpeed);
 
   // ==================== 长按倍速（E: VideoPlayer.kt） ====================
 
@@ -759,11 +833,19 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   void _onVerticalDragUpdate(double dy, double dx, double width) {
     if (_locked) return;
     if (dx < width / 2) {
-      // 左侧：系统音量需要 volume_controller 之类的插件，本项目未引入
-      if (!_volumeHintShown) {
+      // 左侧：经播放器控制器直接调节播放音量（无需系统音量插件）
+      final next = (_volume - dy / 300).clamp(0.0, 1.0).toDouble();
+      if (next == _volume) return;
+      setState(() {
+        _volume = next;
         _volumeHintShown = true;
-        _toast('未集成系统音量插件，不支持手势调节音量');
-      }
+      });
+      final c = _controller;
+      if (c != null) unawaited(c.setVolume(next).catchError((_) {}));
+      _volumeHintTimer?.cancel();
+      _volumeHintTimer = Timer(const Duration(seconds: 2), () {
+        if (mounted) setState(() => _volumeHintShown = false);
+      });
       return;
     }
     // 右侧：无 screen_brightness 插件，用黑色遮罩模拟亮度调节
@@ -772,8 +854,19 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     setState(() => _dim = next);
   }
 
+  Future<void> _setVolume(double v) async {
+    final next = v.clamp(0.0, 1.0).toDouble();
+    setState(() {
+      _volume = next;
+      _volumeHintShown = true;
+    });
+    await _controller?.setVolume(next).catchError((_) {});
+    await _persistVolume();
+  }
+
   void _onVerticalDragEnd() {
     unawaited(_persistDim());
+    unawaited(_persistVolume());
   }
 
   void _toast(String msg) {
@@ -924,6 +1017,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                           item: d,
                           opacity: _danmakuOpacity,
                           fontSize: _danmakuFontSize,
+                          speedFactor: _danmakuSpeedFactor,
                         ),
                     ],
                   ),
@@ -966,6 +1060,18 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
                 color: Colors.black54, borderRadius: AppRadius.sAll),
             child: Text(
               '${VideoPlayConfig.longPressSpeedLabel}倍速播放中',
+              style: const TextStyle(color: Colors.white, fontSize: 16),
+            ),
+          ),
+        ),
+      if (_volumeHintShown)
+        Center(
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: AppSpacing.l, vertical: AppSpacing.s),
+            decoration: const BoxDecoration(
+                color: Colors.black54, borderRadius: AppRadius.sAll),
+            child: Text(
+              '音量 ${(_volume * 100).round()}%',
               style: const TextStyle(color: Colors.white, fontSize: 16),
             ),
           ),
@@ -1176,13 +1282,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
           Text('第 ${_index + 1} / ${_chapters.length} 集${current != null ? ' · ${current.title}' : ''}',
               style: const TextStyle(color: Colors.white70, fontSize: 12)),
           const SizedBox(height: AppSpacing.m),
-          _buildChipRow(
-            label: '选集',
-            count: _chapters.length,
-            selected: _index,
-            titleOf: (i) => '${i + 1}',
-            onTap: (i) => unawaited(_playAt(i)),
-          ),
+          _buildVolumeSelector((i) => unawaited(_playAt(i))),
           if (_lines.length > 1) ...[
             const SizedBox(height: AppSpacing.m),
             _buildChipRow(
@@ -1194,6 +1294,22 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
             ),
           ],
           const SizedBox(height: AppSpacing.m),
+          Row(children: [
+            const Icon(Icons.volume_up, color: Colors.white70, size: 16),
+            const SizedBox(width: AppSpacing.xs),
+            Text('音量 ${(_volume * 100).round()}%',
+                style: const TextStyle(color: Colors.white70, fontSize: 12)),
+            Expanded(
+              child: Slider(
+                value: _volume,
+                min: 0,
+                max: 1,
+                activeColor: Colors.white,
+                inactiveColor: Colors.white30,
+                onChanged: (v) => unawaited(_setVolume(v)),
+              ),
+            ),
+          ]),
           Row(children: [
             Text('亮度遮罩 ${(_dim * 100).round()}%',
                 style: const TextStyle(color: Colors.white70, fontSize: 12)),
@@ -1212,6 +1328,29 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
         ],
       ),
     );
+  }
+
+  /// 分卷 + 选集：有显式分卷时先按卷筛选，再列出该卷剧集。
+  Widget _buildVolumeSelector(void Function(int) onEpisodeTap) {
+    return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+      if (_volumeGroups.length >= 2) ...[
+        _buildChipRow(
+          label: '分卷',
+          count: _volumeGroups.length + 1,
+          selected: _selectedVolume + 1,
+          titleOf: (i) => i == 0 ? '全部' : _volumeGroups[i - 1].title,
+          onTap: (i) => setState(() => _selectedVolume = i - 1),
+        ),
+        const SizedBox(height: AppSpacing.m),
+      ],
+      _buildChipRow(
+        label: '选集',
+        count: _visibleEpisodeIndices.length,
+        selected: _visibleEpisodeIndices.indexOf(_index),
+        titleOf: (i) => '${_visibleEpisodeIndices[i] + 1}',
+        onTap: (i) => onEpisodeTap(_visibleEpisodeIndices[i]),
+      ),
+    ]);
   }
 
   Widget _buildChipRow({
@@ -1245,37 +1384,49 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
-      builder: (c) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.all(AppSpacing.l),
-          child: Column(mainAxisSize: MainAxisSize.min, children: [
-            _buildChipRow(
-              label: '选集',
-              count: _chapters.length,
-              selected: _index,
-              titleOf: (i) => '${i + 1}',
-              onTap: (i) {
-                Navigator.pop(c);
-                unawaited(_playAt(i));
-              },
-            ),
-            if (_lines.length > 1) ...[
-              const SizedBox(height: AppSpacing.m),
+      builder: (c) => StatefulBuilder(builder: (c, setS) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.all(AppSpacing.l),
+            child: Column(mainAxisSize: MainAxisSize.min, children: [
+              if (_volumeGroups.length >= 2) ...[
+                _buildChipRow(
+                  label: '分卷',
+                  count: _volumeGroups.length + 1,
+                  selected: _selectedVolume + 1,
+                  titleOf: (i) => i == 0 ? '全部' : _volumeGroups[i - 1].title,
+                  onTap: (i) => setS(() => _selectedVolume = i - 1),
+                ),
+                const SizedBox(height: AppSpacing.m),
+              ],
               _buildChipRow(
-                label: '线路',
-                count: _lines.length,
-                selected: _lineIndex,
-                titleOf: (i) => '线路 ${i + 1}',
+                label: '选集',
+                count: _visibleEpisodeIndices.length,
+                selected: _visibleEpisodeIndices.indexOf(_index),
+                titleOf: (i) => '${_visibleEpisodeIndices[i] + 1}',
                 onTap: (i) {
                   Navigator.pop(c);
-                  unawaited(_switchLine(i));
+                  unawaited(_playAt(_visibleEpisodeIndices[i]));
                 },
               ),
-            ],
-            const SizedBox(height: AppSpacing.l),
-          ]),
-        ),
-      ),
+              if (_lines.length > 1) ...[
+                const SizedBox(height: AppSpacing.m),
+                _buildChipRow(
+                  label: '线路',
+                  count: _lines.length,
+                  selected: _lineIndex,
+                  titleOf: (i) => '线路 ${i + 1}',
+                  onTap: (i) {
+                    Navigator.pop(c);
+                    unawaited(_switchLine(i));
+                  },
+                ),
+              ],
+              const SizedBox(height: AppSpacing.l),
+            ]),
+          ),
+        );
+      }),
     );
   }
 

@@ -42,7 +42,7 @@ class AlphanumComparator {
         // 长度相等时逐字符比较
         if (result == 0) {
           for (var i = 0; i < thisChunkLength; i++) {
-            result = thisChunk[i].codeUnitAt(0) - thatChunk.codeUnitAt(0);
+            result = thisChunk[i].codeUnitAt(0) - thatChunk.codeUnitAt(i);
             if (result != 0) return result;
           }
         }

@@ -22,6 +22,11 @@ abstract class JsSource {
   String? get jsLib;
   String? get loginUrl;
   String? get header;
+
+  /// 登录表单定义（书源 loginUi 的 JSON 配置）。书源实现返回自身值，
+  /// 订阅源等未提供该字段的实现回退空串。
+  String? get loginUi => '';
+
   bool get enabledCookieJar;
 
   /// 以下为 Legado 标准属性，书源实现时返回对应值，订阅源返回默认值

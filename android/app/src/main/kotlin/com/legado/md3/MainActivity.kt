@@ -22,6 +22,8 @@ class MainActivity : FlutterActivity() {
 
     private val channelName = "legado/file_intent"
     private val wakeChannelName = "legado/wakelock"
+    /** 朗读 CPU 唤醒锁频道：与屏幕常亮 wakelock 严格分离。 */
+    private val ttsWakeChannelName = "legado/tts_wakelock"
 
     /** 音频前台服务控制频道（见 AudioNotifyService） */
     private val audioChannelName = "legado/audio_notify"
@@ -48,6 +50,9 @@ class MainActivity : FlutterActivity() {
     private val processTextChannelName = "legado/process_text"
     private val safChannelName = "legado/saf"
 
+    /** Web 服务原生边界：前台服务 / 通知 / 唤醒锁 / 复制地址 */
+    private val webServiceChannelName = "legado/web_service"
+
     /** 判断当前活跃网络是否为 WiFi。 */
     private fun isWifi(): Boolean {
         val cm = getSystemService(Context.CONNECTIVITY_SERVICE) as? ConnectivityManager
@@ -70,6 +75,7 @@ class MainActivity : FlutterActivity() {
     private var pendingPath: String? = null
     private var channel: MethodChannel? = null
     private var wakeLock: PowerManager.WakeLock? = null
+    private var ttsWakeLock: PowerManager.WakeLock? = null
 
     /** 电量/时间广播与系统亮度 ContentObserver（onDestroy 注销） */
     private var batteryReceiver: BroadcastReceiver? = null
@@ -181,6 +187,20 @@ class MainActivity : FlutterActivity() {
                 else -> result.notImplemented()
             }
         }
+        // 朗读 CPU 唤醒锁（锁屏后继续朗读），与屏幕常亮锁互相独立
+        MethodChannel(flutterEngine.dartExecutor.binaryMessenger, ttsWakeChannelName).setMethodCallHandler { call, result ->
+            when (call.method) {
+                "acquire" -> {
+                    acquireTtsWakeLock()
+                    result.success(null)
+                }
+                "release" -> {
+                    releaseTtsWakeLock()
+                    result.success(null)
+                }
+                else -> result.notImplemented()
+            }
+        }
         // 音频前台服务 + 媒体通知栏控制
         MethodChannel(flutterEngine.dartExecutor.binaryMessenger, audioChannelName).setMethodCallHandler { call, result ->
             when (call.method) {
@@ -225,6 +245,63 @@ class MainActivity : FlutterActivity() {
 
         // ==================== 第十轮：原生 Android 能力域（按现有风格追加） ====================
         val messenger = flutterEngine.dartExecutor.binaryMessenger
+
+        // Web 服务原生边界：Dart 侧 shelf HTTP 服务保活所需的前台服务、通知、
+        // 唤醒锁与地址复制。7 个方法全部经单例控制器 WebServiceController 落地。
+        WebServiceController.rememberContext(applicationContext)
+        MethodChannel(messenger, webServiceChannelName).setMethodCallHandler { call, result ->
+            when (call.method) {
+                "startForeground" -> {
+                    val lines = (call.argument<List<*>>("lines") ?: emptyList<Any?>())
+                        .mapNotNull { it as? String }
+                    WebServiceController.startForeground(
+                        this,
+                        call.argument<String>("channelId"),
+                        call.argument<Int>("notificationId"),
+                        lines,
+                        call.argument<String>("hostAddress") ?: lines.firstOrNull() ?: "",
+                    )
+                    result.success(null)
+                }
+                "updateNotification" -> {
+                    val lines = (call.argument<List<*>>("lines") ?: emptyList<Any?>())
+                        .mapNotNull { it as? String }
+                    WebServiceController.updateNotification(
+                        lines,
+                        call.argument<String>("hostAddress") ?: "",
+                    )
+                    result.success(null)
+                }
+                "acquireLocks" -> {
+                    WebServiceController.acquireLocks(
+                        this,
+                        call.argument<String>("wakeLock") ?: "PARTIAL_WAKE_LOCK",
+                        call.argument<String>("wifiLock") ?: "WIFI_MODE_FULL_HIGH_PERF",
+                        call.argument<Boolean>("referenceCounted") ?: false,
+                    )
+                    result.success(null)
+                }
+                "serve" -> {
+                    WebServiceController.renewLocks()
+                    result.success(null)
+                }
+                "copyHostAddress" -> {
+                    val host = call.argument<String>("hostAddress")
+                        ?: WebServiceController.hostAddress
+                    WebServiceController.copyHostAddress(this, host)
+                    result.success(null)
+                }
+                "stopForeground" -> {
+                    WebServiceController.stopForeground(this)
+                    result.success(null)
+                }
+                "releaseLocks" -> {
+                    WebServiceController.releaseLocks()
+                    result.success(null)
+                }
+                else -> result.notImplemented()
+            }
+        }
 
         // 1) ReaderProvider 数据桥：Provider 的 16 条 URI 查询经此通道原生 -> Dart，
         //    Dart -> 原生仅用 cache 预置共享 JSON 兜底文件。
@@ -472,8 +549,23 @@ class MainActivity : FlutterActivity() {
         wakeLock = null
     }
 
+    private fun acquireTtsWakeLock() {
+        if (ttsWakeLock?.isHeld == true) return
+        val pm = getSystemService(Context.POWER_SERVICE) as PowerManager
+        ttsWakeLock = pm.newWakeLock(PowerManager.PARTIAL_WAKE_LOCK, "legado:tts_read_aloud")
+        ttsWakeLock?.acquire()
+    }
+
+    private fun releaseTtsWakeLock() {
+        ttsWakeLock?.let {
+            if (it.isHeld) it.release()
+        }
+        ttsWakeLock = null
+    }
+
     override fun onDestroy() {
         disableWakeLock()
+        releaseTtsWakeLock()
         unregisterBatteryReceiver()
         unregisterBrightnessObserver()
         NetworkCallbackHelper.unregister()

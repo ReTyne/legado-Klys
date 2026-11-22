@@ -14,6 +14,8 @@ import 'package:legado_md3/help/source/rule_complete.dart';
 import 'package:legado_md3/help/storage/shibboleth.dart';
 import 'package:legado_md3/ui/book/source/source_debug_screen.dart';
 import 'package:legado_md3/ui/book/source/source_login_screen.dart';
+import 'package:legado_md3/ui/book/source/qr_share_screen.dart';
+import 'package:legado_md3/ui/book/source/source_manage_screen.dart';
 import 'package:legado_md3/ui/book/search/search_screen.dart';
 import 'package:legado_md3/ui/widgets/app_widgets.dart';
 

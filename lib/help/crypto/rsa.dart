@@ -433,7 +433,7 @@ class AsymmetricCrypto {
       {String? publicKey, String? privateKey}) {
     final alg = transformation.split('/').first.trim().toUpperCase();
     if (alg != 'RSA') {
-      throw ArgumentError('暂仅支持 RSA 非对称加密（EC 待后续支持）');
+      throw ArgumentError('当前仅支持 RSA 非对称加解密/签名；ECDSA/SM2 需引入密码学依赖后启用');
     }
     _publicKeyPem = publicKey;
     _privateKeyPem = privateKey;

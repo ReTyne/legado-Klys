@@ -1,3 +1,10 @@
+int? _tocInt(dynamic v) {
+  if (v == null) return null;
+  if (v is int) return v;
+  if (v is num) return v.toInt();
+  return int.tryParse(v.toString().trim());
+}
+
 class TxtTocRule {
   int id;
   String name;
@@ -7,6 +14,9 @@ class TxtTocRule {
   int serialNumber;
   bool enable;
 
+  /// 命中规则后对章节标题做的替换表达式。
+  String? replacement;
+
   TxtTocRule({
     int? id,
     this.name = '',
@@ -15,6 +25,7 @@ class TxtTocRule {
     this.example,
     this.serialNumber = -1,
     this.enable = true,
+    this.replacement,
   }) : id = id ?? DateTime.now().millisecondsSinceEpoch;
 
   Map<String, dynamic> toMap() => {
@@ -25,16 +36,20 @@ class TxtTocRule {
         'example': example,
         'serialNumber': serialNumber,
         'enable': enable ? 1 : 0,
+        'replacement': replacement,
       };
 
   factory TxtTocRule.fromMap(Map<String, dynamic> map) => TxtTocRule(
-        id: map['id'] as int,
-        name: map['name'] as String? ?? '',
-        chapterRule: map['chapterRule'] as String? ?? '',
-        volumeRule: map['volumeRule'] as String? ?? '',
-        example: map['example'] as String?,
-        serialNumber: map['serialNumber'] as int? ?? -1,
-        enable: (map['enable'] as int? ?? 1) == 1,
+        id: _tocInt(map['id']),
+        name: (map['name'] ?? '').toString(),
+        chapterRule: (map['chapterRule'] ?? map['rule'] ?? '').toString(),
+        volumeRule: (map['volumeRule'] ?? '').toString(),
+        example: map['example']?.toString(),
+        serialNumber: _tocInt(map['serialNumber']) ?? -1,
+        enable: (map['enable'] == null)
+            ? true
+            : (map['enable'] == 1 || map['enable'] == true || map['enable'] == '1'),
+        replacement: map['replacement']?.toString(),
       );
 
   Map<String, dynamic> toJson() => toMap();

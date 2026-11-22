@@ -31,8 +31,9 @@ part 'parts/fullscreen_bottom_progress_state.dart';
 ///
 /// 画中画有两条真实通路：`NativeBridge.enterPip` 系统画中画，以及应用内
 /// 可拖拽悬浮小窗（设备不支持系统 PiP 或进入失败时自动回退，二者并存）。
-/// 弹幕支持文件缓存 / B 站 XML / JSON 三路加载，可调开关 / 透明度 / 字号。
-/// 手势调亮度用叠加黑色遮罩模拟并持久化；手势调音量走现有占位提示。
+/// 弹幕支持文件缓存 / B 站 XML / JSON 三路加载，可调开关 / 透明度 / 字号，
+/// 滚动速度随播放倍速（含长按倍速）联动。
+/// 手势调亮度用叠加黑色遮罩模拟并持久化；左侧手势经播放器控制器调节音量。
 class VideoPlayerScreen extends StatefulWidget {
   final Book book;
   final int initialChapter;

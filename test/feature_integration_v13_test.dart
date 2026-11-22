@@ -153,7 +153,7 @@ void main() {
       expect(providers, contains('{{speakText}}'));
       final tts = read('lib/help/readaloud/tts_service.dart');
       expect(tts, contains('getHttpTTS()'));
-      expect(tts, contains('HttpTtsProvider(h)'));
+      expect(tts, matches(RegExp(r'HttpTtsProvider\(\s*\w+\s*\)')));
     });
 
     test('仅 WiFi 加载封面：Dart 侧 + Kotlin 原生两侧闭环', () {

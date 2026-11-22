@@ -33,6 +33,13 @@ const List<FooterSlot> defaultFooterSlots = [
   FooterSlot.battery,
 ];
 
+/// 页眉三槽位默认配置：左-章节名 / 中-空白 / 右-进度
+const List<FooterSlot> defaultHeaderSlots = [
+  FooterSlot.chapterTitle,
+  FooterSlot.none,
+  FooterSlot.progress,
+];
+
 /// 阅读配置
 class ReadConfig {
   // 文字
@@ -105,12 +112,22 @@ class ReadConfig {
   String? footerString;
   // 页脚三槽位内容（依次为 左/中/右 槽位），null 时回退旧版单行页脚逻辑
   List<FooterSlot>? footerSlots;
+  // 页眉三槽位内容（依次为 左/中/右 槽位），headerMode=1 时生效
+  List<FooterSlot>? headerSlots;
+  // 页眉模式：0 经典单行（仅章节名）/ 1 三槽位自定义
+  int headerMode;
   int headerSize;
   int footerSize;
   bool headerBold;
   bool footerBold;
   bool headerAlignCenter;
   int headerColor;
+  // 页眉槽位样式：文字色 / 分隔线色 / 字号 / 上下间距
+  int tipColor;
+  int tipDividerColor;
+  int titleSize;
+  int titleTopSpacing;
+  int titleBottomSpacing;
   bool footerAlignCenter;
   int footerColor;
 
@@ -139,6 +156,12 @@ class ReadConfig {
   bool optimizeRender;           // 渲染优化
   bool adaptSpecialStyle;        // 特殊样式适配
   bool readBodyToLh;             // 正文带到行高
+  // 中文排版细分：useZhLayout 的 CJK 禁则由 Flutter 文本排版默认提供，
+  // textFullJustify 在渲染层映射为 TextAlign.justify，
+  // textBottomJustify（末行两端对齐）平台无对应 API，仅保留配置降级。
+  bool useZhLayout;
+  bool textFullJustify;
+  bool textBottomJustify;
   // 翻页
   int doubleHorizontalPage;      // 双水平页：0 单页 1 双水平页 2 横屏双页
   bool noAnimScrollPage;         // 滚动模式无动画
@@ -234,12 +257,19 @@ class ReadConfig {
     this.headerString,
     this.footerString,
     this.footerSlots = defaultFooterSlots,
+    this.headerSlots = defaultHeaderSlots,
+    this.headerMode = 0,
     this.headerSize = 12,
     this.footerSize = 12,
     this.headerBold = false,
     this.footerBold = false,
     this.headerAlignCenter = true,
     this.headerColor = 0xFF6B6B6B,
+    this.tipColor = 0xFF6B6B6B,
+    this.tipDividerColor = 0xFFE0E0E0,
+    this.titleSize = 12,
+    this.titleTopSpacing = 0,
+    this.titleBottomSpacing = 0,
     this.footerAlignCenter = false,
     this.footerColor = 0xFF6B6B6B,
     this.keepScreenOn = false,
@@ -260,6 +290,9 @@ class ReadConfig {
     this.optimizeRender = false,
     this.adaptSpecialStyle = true,
     this.readBodyToLh = true,
+    this.useZhLayout = true,
+    this.textFullJustify = false,
+    this.textBottomJustify = false,
     this.doubleHorizontalPage = 0,
     this.paddingDisplayCutouts = false,
     this.noAnimScrollPage = false,
@@ -314,8 +347,13 @@ class ReadConfig {
     'headerString': headerString, 'footerString': footerString,
     // 槽位枚举按 index 持久化，保证跨版本兼容
     'footerSlots': footerSlots?.map((e) => e.index).toList(),
+    'headerSlots': headerSlots?.map((e) => e.index).toList(),
+    'headerMode': headerMode,
     'headerSize': headerSize, 'footerSize': footerSize,
     'headerBold': headerBold, 'footerBold': footerBold,
+    'tipColor': tipColor, 'tipDividerColor': tipDividerColor,
+    'titleSize': titleSize, 'titleTopSpacing': titleTopSpacing,
+    'titleBottomSpacing': titleBottomSpacing,
     'keepLight': keepLight,
     'keepScreenOn': keepScreenOn, 'showMenuOnTap': showMenuOnTap, 'longPressSelect': longPressSelect,
     'charset': charset, 'chineseConverter': chineseConverter, 'preDownloadCount': preDownloadCount,
@@ -329,6 +367,9 @@ class ReadConfig {
     'optimizeRender': optimizeRender,
     'adaptSpecialStyle': adaptSpecialStyle,
     'readBodyToLh': readBodyToLh,
+    'useZhLayout': useZhLayout,
+    'textFullJustify': textFullJustify,
+    'textBottomJustify': textBottomJustify,
     'doubleHorizontalPage': doubleHorizontalPage,
     'paddingDisplayCutouts': paddingDisplayCutouts,
     'noAnimScrollPage': noAnimScrollPage,
@@ -417,12 +458,23 @@ class ReadConfig {
             ?.map((e) => FooterSlot.values[(e as num).toInt().clamp(0, FooterSlot.values.length - 1)])
             .toList() ??
         defaultFooterSlots,
+    // 兼容旧配置：无 headerSlots 字段时用默认三槽位
+    headerSlots: (json['headerSlots'] as List<dynamic>?)
+            ?.map((e) => FooterSlot.values[(e as num).toInt().clamp(0, FooterSlot.values.length - 1)])
+            .toList() ??
+        defaultHeaderSlots,
+    headerMode: _readInt(json['headerMode'], 0).clamp(0, 1).toInt(),
     headerSize: json['headerSize'] ?? 12,
     footerSize: json['footerSize'] ?? 12,
     headerBold: json['headerBold'] ?? false,
     footerBold: json['footerBold'] ?? false,
     headerAlignCenter: json['headerAlignCenter'] ?? true,
     headerColor: json['headerColor'] ?? 0xFF999999,
+    tipColor: json['tipColor'] ?? 0xFF6B6B6B,
+    tipDividerColor: json['tipDividerColor'] ?? 0xFFE0E0E0,
+    titleSize: _readInt(json['titleSize'], 12),
+    titleTopSpacing: _readInt(json['titleTopSpacing'], 0),
+    titleBottomSpacing: _readInt(json['titleBottomSpacing'], 0),
     footerAlignCenter: json['footerAlignCenter'] ?? false,
     footerColor: json['footerColor'] ?? 0xFF999999,
     keepScreenOn: json['keepScreenOn'] ?? false,
@@ -445,6 +497,9 @@ class ReadConfig {
     optimizeRender: json['optimizeRender'] ?? false,
     adaptSpecialStyle: json['adaptSpecialStyle'] ?? true,
     readBodyToLh: json['readBodyToLh'] ?? true,
+    useZhLayout: json['useZhLayout'] ?? true,
+    textFullJustify: json['textFullJustify'] ?? false,
+    textBottomJustify: json['textBottomJustify'] ?? false,
     doubleHorizontalPage: json['doubleHorizontalPage'] ?? 0,
     paddingDisplayCutouts: json['paddingDisplayCutouts'] ?? false,
     noAnimScrollPage: json['noAnimScrollPage'] ?? false,

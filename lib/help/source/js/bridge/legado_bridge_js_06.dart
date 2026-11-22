@@ -290,10 +290,25 @@ const String legadoBridgeJsPart06 = r'''    var b = bytes.slice();
     } catch (e) {}
     return bytes;
   }
+  // 只有 ECB/CBC + PKCS5/PKCS7 走纯 JS 快路径；PCBC/CFB/OFB/CTR 与
+  // NoPadding/ISO10126 必须委托原生 SymmetricCrypto，避免被静默按 ECB 处理。
+  function __aesFastPath(t) {
+    var parts = String(t || "AES/ECB/PKCS7Padding").toUpperCase().split("/");
+    var m = parts.length > 1 ? parts[1] : "ECB";
+    var pad = parts.length > 2 ? parts[2] : "PKCS7PADDING";
+    return (m === "ECB" || m === "CBC") &&
+      pad !== "NOPADDING" && pad.indexOf("ISO10126") < 0;
+  }
   function __aesDecryptToString(data, key, transformation, iv) {
+    var t = String(transformation || "AES/ECB/PKCS7Padding");
+    if (!__aesFastPath(t)) {
+      var nd = __nativeCrypto("decryptBytes", t,
+        __symArgBytes(key), __symArgBytes(iv), __symCipherBytes(data));
+      return __bytesToUtf8(nd);
+    }
     var cipher = __b64ToBytes(data);
     var kb = __aesKeyBytes(key);
-    var mode = String(transformation || "AES/ECB/PKCS7Padding").toUpperCase();
+    var mode = t.toUpperCase();
     var dec;
     if (mode.indexOf("CBC") >= 0) {
       dec = new aesjs.ModeOfOperation.cbc(kb, __aesIv(iv)).decrypt(cipher);
@@ -304,13 +319,19 @@ const String legadoBridgeJsPart06 = r'''    var b = bytes.slice();
     return __bytesToUtf8(dec);
   }
   function __aesEncryptToString(text, key, transformation, iv) {
+    var t = String(transformation || "AES/ECB/PKCS7Padding");
+    if (!__aesFastPath(t)) {
+      var ne = __nativeCrypto("encrypt", t,
+        __symArgBytes(key), __symArgBytes(iv), __utf8ToBytes(String(text)));
+      return __bytesToB64(ne);
+    }
     var kb = __aesKeyBytes(key);
     var data = __utf8ToBytes(String(text));
     var pad = 16 - (data.length % 16);
     var padded = new Uint8Array(data.length + pad);
     padded.set(data);
     for (var i = data.length; i < padded.length; i++) padded[i] = pad;
-    var mode = String(transformation || "AES/ECB/PKCS7Padding").toUpperCase();
+    var mode = t.toUpperCase();
     var enc;
     if (mode.indexOf("CBC") >= 0) {
       enc = new aesjs.ModeOfOperation.cbc(kb, __aesIv(iv)).encrypt(padded);
@@ -745,6 +766,14 @@ const String legadoBridgeJsPart06 = r'''    var b = bytes.slice();
     url = __resolve(url);
     var method = opt.method || "GET";
     var headers = {};
+    // 书源级请求头（UA / Referer / 自定义头）作底，单次 opt.headers 优先覆盖。
+    if (/^https?:\/\//i.test(url)) {
+      var baseHeaders = {};
+      try { baseHeaders = source.getHeaderMap() || {}; } catch (e) {}
+      Object.keys(baseHeaders).forEach(function (k) {
+        if (baseHeaders[k] !== undefined && baseHeaders[k] !== null) headers[k] = String(baseHeaders[k]);
+      });
+    }
     Object.keys(opt.headers || {}).forEach(function (k) {
       if (opt.headers[k] !== undefined && opt.headers[k] !== null) headers[k] = String(opt.headers[k]);
     });

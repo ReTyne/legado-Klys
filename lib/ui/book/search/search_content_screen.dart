@@ -1,7 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:legado_md3/data/local/app_database.dart';
 import 'package:legado_md3/data/model/book.dart';
 import 'package:legado_md3/data/model/book_chapter.dart';
+import 'package:legado_md3/data/model/replace_rule.dart';
+import 'package:legado_md3/help/readaloud/chinese_converter.dart';
+import 'package:legado_md3/help/source/replace_rule_service.dart';
 import 'package:legado_md3/help/source/source_engine.dart';
 import 'package:legado_md3/ui/widgets/app_widgets.dart';
 
@@ -46,17 +50,84 @@ class _SearchContentScreenState extends State<SearchContentScreen> {
   final BookSourceEngine _engine = BookSourceEngine();
   final List<String> _history = [];
 
+  // —— 搜索选项（持久化）——
+  /// 正则搜索：关键词按 RegExp 解释。
+  bool _regex = false;
+  /// 应用已启用的替换规则后再搜索（阅读页正文的同一套规则）。
+  bool _useReplace = false;
+  /// 简繁转换：0 不转换 1 转简体 2 转繁体，关键词与正文同步转换。
+  int _converter = 0;
+  /// 命中片段左右各取多少字符，可配置片段边界。
+  int _snippetLength = 20;
+  /// 取消标记：用户点「停止」后置位，在途 worker 提前收工。
+  bool _searchCancelled = false;
+  int _searchGeneration = 0;
+
   @override
   void initState() {
     super.initState();
+    _loadOptions();
     if ((widget.initialKeyword ?? '').isNotEmpty) {
       _controller.text = widget.initialKeyword!;
-      // 预填划词：自动执行一次搜索
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) _search(widget.initialKeyword!);
       });
     }
     _loadChapters();
+  }
+
+  @override
+  void dispose() {
+    _searchCancelled = true;
+    _searchGeneration++;
+    _controller.dispose();
+    super.dispose();
+  }
+
+  Future<void> _loadOptions() async {
+    final p = await SharedPreferences.getInstance();
+    if (!mounted) return;
+    setState(() {
+      _regex = p.getBool('searchContentRegex') ?? false;
+      _useReplace = p.getBool('searchContentReplace') ?? false;
+      _converter = (p.getInt('searchContentConverter') ?? 0).clamp(0, 2);
+      _snippetLength = (p.getInt('searchContentSnippetLength') ?? 20).clamp(8, 120);
+    });
+  }
+
+  Future<void> _setOption(String key, Object value) async {
+    final p = await SharedPreferences.getInstance();
+    if (value is bool) await p.setBool(key, value);
+    if (value is int) await p.setInt(key, value);
+  }
+
+  /// 段落/句子边界友好的片段：从命中点向左右各取 [_snippetLength]，
+  /// 起点尽量对齐段落首、终点对齐句读标点，同时绝不截断关键词本身。
+  _Snippet _buildSnippet(String content, int pos, int matchLen) {
+    final half = _snippetLength;
+    var start = pos - half;
+    if (start < 0) start = 0;
+    var end = (pos + matchLen + half).clamp(0, content.length);
+    // 段落边界：窗口起点若落在段落中间，回退到最近换行之后。
+    final paragraphBreak = content.lastIndexOf('\n', start);
+    if (paragraphBreak >= 0 && pos - paragraphBreak <= half) {
+      start = paragraphBreak + 1;
+    }
+    // 句子边界：窗口结尾优先落在最近句读标点后。
+    const punctuation = '。！？；.!?;';
+    for (var i = pos + matchLen; i < end; i++) {
+      if (punctuation.contains(content[i])) {
+        end = i + 1;
+        break;
+      }
+    }
+    if (end < pos + matchLen) end = (pos + matchLen).clamp(0, content.length);
+    final prefix = start > 0 ? '…' : '';
+    final suffix = end < content.length ? '…' : '';
+    return _Snippet(
+      '$prefix${content.substring(start, end)}$suffix',
+      pos - start + prefix.length,
+    );
   }
 
   Future<void> _loadChapters() async {
@@ -65,17 +136,76 @@ class _SearchContentScreenState extends State<SearchContentScreen> {
 
   Future<void> _search(String query) async {
     if (query.trim().isEmpty) return;
-    setState(() => _searching = true);
-    if (!_history.contains(query)) { _history.insert(0, query); if (_history.length > 20) _history.removeLast(); }
+    _searchGeneration++;
+    final gen = _searchGeneration;
+    _searchCancelled = false;
+    setState(() {
+      _searching = true;
+      _results = [];
+    });
+    if (!_history.contains(query)) {
+      _history.insert(0, query);
+      if (_history.length > 20) _history.removeLast();
+    }
+
+    // 关键词与正文同步做简繁转换，保证用简体也能搜到繁体正文。
+    final effectiveQuery = _converter == 0
+        ? query
+        : ChineseConverter.convert(query, _converter);
+    RegExp? pattern;
+    if (_regex) {
+      try {
+        pattern = RegExp(effectiveQuery);
+      } catch (_) {
+        if (mounted) {
+          setState(() => _searching = false);
+          ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('正则表达式无效，请检查语法')));
+        }
+        return;
+      }
+    }
+
+    List<ReplaceRule> rules = <ReplaceRule>[];
+    if (_useReplace) {
+      try {
+        rules = (await _db.getReplaceRules())
+            .where((r) => r.enable == true)
+            .toList();
+      } catch (_) {}
+    }
+    final replaceService = ReplaceRuleService();
+
     await Future.delayed(const Duration(milliseconds: 100));
-    List<_Result> matchIn(String content, int i) {
+    List<_Result> matchIn(String rawContent, int i) {
+      if (_searchCancelled || gen != _searchGeneration) return <_Result>[];
+      var content = rawContent;
+      if (_useReplace && rules.isNotEmpty) {
+        content = replaceService.applyRules(content, rules,
+            scope: widget.book.origin, bookName: widget.book.name);
+      }
+      if (_converter != 0) {
+        content = ChineseConverter.convert(content, _converter);
+      }
+      final positions = <int>[];
+      if (pattern != null) {
+        for (final m in pattern.allMatches(content)) {
+          if (_searchCancelled || gen != _searchGeneration) break;
+          positions.add(m.start);
+        }
+      } else {
+        var idx = content.indexOf(effectiveQuery);
+        while (idx >= 0) {
+          if (_searchCancelled || gen != _searchGeneration) break;
+          positions.add(idx);
+          idx = content.indexOf(effectiveQuery, idx + effectiveQuery.length);
+        }
+      }
       final snippets = <_Snippet>[];
-      var idx = content.indexOf(query);
-      while (idx >= 0 && snippets.length < 3) {
-        final start = (idx - 20).clamp(0, content.length);
-        final end = (idx + query.length + 20).clamp(0, content.length);
-        snippets.add(_Snippet('...${content.substring(start, end)}...', idx));
-        idx = content.indexOf(query, idx + query.length);
+      for (final p in positions) {
+        if (_searchCancelled || gen != _searchGeneration) break;
+        if (snippets.length >= 3) break;
+        snippets.add(_buildSnippet(content, p, effectiveQuery.length));
       }
       return snippets.isNotEmpty ? [_Result(_chapters[i], i, snippets)] : <_Result>[];
     }
@@ -85,22 +215,33 @@ class _SearchContentScreenState extends State<SearchContentScreen> {
     final uncached = <int>[];
     for (var i = 0; i < _chapters.length; i++) {
       final content = _chapters[i].content ?? '';
-      if (content.isEmpty) { uncached.add(i); continue; }
+      if (content.isEmpty) {
+        uncached.add(i);
+        continue;
+      }
       results.addAll(matchIn(content, i));
     }
-    setState(() { _results = List.from(results); });
+    if (!mounted || gen != _searchGeneration) return;
+    setState(() => _results = List.from(results));
 
     // 2) 网络书：拉取未缓存章节继续搜（并发 4，命中即回存并刷新）
-    if (widget.book.origin != null && widget.book.origin != 'local' && uncached.isNotEmpty) {
+    if (widget.book.origin != null &&
+        widget.book.origin != 'local' &&
+        uncached.isNotEmpty) {
       final all = await _db.getAllSources();
       dynamic source;
-      for (final s in all) { if (s.bookSourceUrl == widget.book.origin) { source = s; break; } }
+      for (final s in all) {
+        if (s.bookSourceUrl == widget.book.origin) {
+          source = s;
+          break;
+        }
+      }
       if (source != null) {
-        var done = 0;
         const concurrency = 4;
-        int cursor = 0;
+        var cursor = 0;
         Future<void> worker() async {
           while (cursor < uncached.length && mounted) {
+            if (_searchCancelled || gen != _searchGeneration) return;
             final i = uncached[cursor++];
             final ch = _chapters[i];
             try {
@@ -109,19 +250,59 @@ class _SearchContentScreenState extends State<SearchContentScreen> {
                   chapter: ch.jsContext(widget.book.bookUrl));
               if (text != null && text.isNotEmpty) {
                 ch.content = text;
-                await _db.updateChapterContent(widget.book.name, widget.book.author, i, text);
+                await _db.updateChapterContent(
+                    widget.book.name, widget.book.author, i, text);
                 final hit = matchIn(text, i);
-                if (hit.isNotEmpty && mounted) setState(() => _results.addAll(hit));
+                if (hit.isNotEmpty && mounted && gen == _searchGeneration) {
+                  setState(() => _results.addAll(hit));
+                }
               }
             } catch (_) {}
-            done++;
-            if (mounted) setState(() => _progress = '正在搜索未缓存章节 $done/${uncached.length}');
+            if (mounted && gen == _searchGeneration) {
+              setState(() => _progress =
+                  '正在搜索未缓存章节 $cursor/${uncached.length}');
+            }
           }
         }
+
         await Future.wait(List.generate(concurrency, (_) => worker()));
       }
     }
-    if (mounted) setState(() { _searching = false; _progress = ''; });
+    if (mounted && gen == _searchGeneration) {
+      setState(() {
+        _searching = false;
+        _progress = '';
+      });
+    }
+  }
+
+  void _stopSearch() {
+    _searchCancelled = true;
+    _searchGeneration++;
+    if (mounted) {
+      setState(() {
+        _searching = false;
+        _progress = '';
+      });
+    }
+  }
+
+  Future<void> _showSnippetLengthDialog() async {
+    final picked = await showDialog<int>(
+      context: context,
+      builder: (c) => SimpleDialog(
+        title: const Text('片段长度（左右各取字符数）'),
+        children: [8, 20, 40, 80]
+            .map((n) => SimpleDialogOption(
+                  onPressed: () => Navigator.pop(c, n),
+                  child: Text('$n 字${n == _snippetLength ? '（当前）' : ''}'),
+                ))
+            .toList(),
+      ),
+    );
+    if (picked == null) return;
+    setState(() => _snippetLength = picked);
+    await _setOption('searchContentSnippetLength', picked);
   }
 
   @override
@@ -137,18 +318,86 @@ class _SearchContentScreenState extends State<SearchContentScreen> {
           onSubmitted: _search,
         ),
         actions: [
-          IconButton(icon: const Icon(Icons.search_outlined), tooltip: '搜索', onPressed: () => _search(_controller.text)),
+          IconButton(
+            icon: const Icon(Icons.search_outlined),
+            tooltip: '搜索',
+            onPressed: () => _search(_controller.text),
+          ),
+          PopupMenuButton<String>(
+            tooltip: '搜索选项',
+            onSelected: (key) async {
+              switch (key) {
+                case 'regex':
+                  setState(() => _regex = !_regex);
+                  await _setOption('searchContentRegex', _regex);
+                  break;
+                case 'replace':
+                  setState(() => _useReplace = !_useReplace);
+                  await _setOption('searchContentReplace', _useReplace);
+                  break;
+                case 'converter':
+                  final next = (_converter + 1) % 3;
+                  setState(() => _converter = next);
+                  await _setOption('searchContentConverter', next);
+                  break;
+                case 'snippet':
+                  await _showSnippetLengthDialog();
+                  break;
+                case 'stop':
+                  _stopSearch();
+                  break;
+              }
+            },
+            itemBuilder: (c) => [
+              PopupMenuItem(
+                value: 'regex',
+                child: Row(children: [
+                  Icon(_regex ? Icons.check_box : Icons.check_box_outline_blank, size: 18),
+                  const SizedBox(width: AppSpacing.s),
+                  const Text('正则搜索'),
+                ]),
+              ),
+              PopupMenuItem(
+                value: 'replace',
+                child: Row(children: [
+                  Icon(_useReplace ? Icons.check_box : Icons.check_box_outline_blank, size: 18),
+                  const SizedBox(width: AppSpacing.s),
+                  const Text('应用替换规则'),
+                ]),
+              ),
+              PopupMenuItem(
+                value: 'converter',
+                child: Text('简繁：${const ['不转换', '转简体', '转繁体'][_converter]}'),
+              ),
+              PopupMenuItem(value: 'snippet', child: Text('片段长度：$_snippetLength 字')),
+              if (_searching)
+                const PopupMenuItem(value: 'stop', child: Text('停止搜索')),
+            ],
+          ),
         ],
       ),
       body: _searching && _results.isEmpty
-        ? Center(child: Column(mainAxisSize: MainAxisSize.min, children: [const CircularProgressIndicator(), const SizedBox(height: AppSpacing.m), Text(_progress.isEmpty ? '搜索中...' : _progress)]))
-        : _results.isNotEmpty
-          ? Column(children: [
-              if (_searching) LinearProgressIndicator(minHeight: 2, backgroundColor: cs.surfaceContainerHighest),
-              if (_progress.isNotEmpty) Padding(padding: const EdgeInsets.all(AppSpacing.xs), child: Text(_progress, style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant))),
-              Expanded(child: _buildResultList()),
-            ])
-          : _buildEmpty(),
+          ? Center(child: Column(mainAxisSize: MainAxisSize.min, children: [
+              const CircularProgressIndicator(),
+              const SizedBox(height: AppSpacing.m),
+              Text(_progress.isEmpty ? '搜索中...' : _progress),
+              const SizedBox(height: AppSpacing.s),
+              TextButton(onPressed: _stopSearch, child: const Text('停止搜索')),
+            ]))
+          : _results.isNotEmpty
+            ? Column(children: [
+                if (_searching)
+                  LinearProgressIndicator(
+                      minHeight: 2, backgroundColor: cs.surfaceContainerHighest),
+                if (_progress.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.all(AppSpacing.xs),
+                    child: Text(_progress,
+                        style: TextStyle(fontSize: 11, color: cs.onSurfaceVariant)),
+                  ),
+                Expanded(child: _buildResultList()),
+              ])
+            : _buildEmpty(),
     );
   }
 
@@ -160,14 +409,21 @@ class _SearchContentScreenState extends State<SearchContentScreen> {
         return ExpansionTile(
           leading: const Icon(Icons.bookmark_outline),
           title: Text(r.chapter.title, maxLines: 1, overflow: TextOverflow.ellipsis),
-          subtitle: Text('${r.snippets.length} 处匹配', style: const TextStyle(fontSize: 11)),
-          children: r.snippets.map((s) => ListTile(
-            dense: true,
-            contentPadding: const EdgeInsets.only(left: 56, right: AppSpacing.l),
-            title: Text(s.text, style: const TextStyle(fontSize: 13), maxLines: 2, overflow: TextOverflow.ellipsis),
-            // 跳转时带上章内偏移，阅读页可精确定位到所在页
-            onTap: () => Navigator.pop(context, ContentSearchHit(r.chapterIndex, s.pos)),
-          )).toList(),
+          subtitle: Text('${r.snippets.length} 处匹配',
+              style: const TextStyle(fontSize: 11)),
+          children: r.snippets
+              .map((s) => ListTile(
+                    dense: true,
+                    contentPadding:
+                        const EdgeInsets.only(left: 56, right: AppSpacing.l),
+                    title: Text(s.text,
+                        style: const TextStyle(fontSize: 13),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis),
+                    onTap: () =>
+                        Navigator.pop(context, ContentSearchHit(r.chapterIndex, s.pos)),
+                  ))
+              .toList(),
         );
       },
     );
@@ -176,12 +432,17 @@ class _SearchContentScreenState extends State<SearchContentScreen> {
   Widget _buildEmpty() {
     if (_controller.text.isEmpty && _history.isNotEmpty) {
       return ListView(children: [
-        const Padding(padding: EdgeInsets.all(AppSpacing.l), child: Text('搜索历史', style: TextStyle(fontWeight: FontWeight.bold))),
+        const Padding(
+            padding: EdgeInsets.all(AppSpacing.l),
+            child: Text('搜索历史', style: TextStyle(fontWeight: FontWeight.bold))),
         ..._history.map((h) => ListTile(
-          leading: const Icon(Icons.history, size: 20),
-          title: Text(h),
-          onTap: () { _controller.text = h; _search(h); },
-        )),
+              leading: const Icon(Icons.history, size: 20),
+              title: Text(h),
+              onTap: () {
+                _controller.text = h;
+                _search(h);
+              },
+            )),
       ]);
     }
     return const AppEmptyState(

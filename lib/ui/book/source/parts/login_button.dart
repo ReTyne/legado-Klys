@@ -11,16 +11,21 @@ class _LoginButton extends StatelessWidget {
   const _LoginButton({
     required this.label,
     required this.onPressed,
+    this.onLongPressed,
     this.busy = false,
   });
   final String label;
   final VoidCallback onPressed;
+  final VoidCallback? onLongPressed;
   final bool busy;
 
   @override
-  Widget build(BuildContext context) => FilletButton(
-        label: label,
-        onPressed: onPressed,
-        enabled: !busy,
+  Widget build(BuildContext context) => GestureDetector(
+        onLongPress: onLongPressed,
+        child: FilletButton(
+          label: label,
+          onPressed: onPressed,
+          enabled: !busy,
+        ),
       );
 }

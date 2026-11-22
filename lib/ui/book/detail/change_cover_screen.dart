@@ -2,14 +2,16 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:legado_md3/data/model/book.dart';
 import 'package:legado_md3/data/model/search_book.dart';
+import 'package:legado_md3/data/entities/search_book_table.dart';
 import 'package:legado_md3/data/local/app_database.dart';
 import 'package:legado_md3/di/book_provider.dart';
 import 'package:legado_md3/help/source/source_engine.dart';
 import 'package:legado_md3/ui/widgets/app_widgets.dart';
 
 /// 换封面：
-/// 支持自定义 URL、预设封面，以及「按书名从已启用书源搜索封面」的网格选择
-/// （feature_gap §4-5）。书源搜索复用 BookSourceEngine.search，不引新依赖。
+/// 支持自定义 URL，以及「按书名从已启用书源搜索封面」的网格选择。
+/// 搜索结果按书名/作者校验并落库缓存，二次进入可直接展示已缓存封面；
+/// 搜索按钮为「搜索 / 停止 / 继续」三态，可随时中断并发检索。
 class ChangeCoverScreen extends StatefulWidget {
   final Book book;
   const ChangeCoverScreen({super.key, required this.book});
@@ -22,32 +24,94 @@ class _ChangeCoverScreenState extends State<ChangeCoverScreen> {
   final DatabaseService _db = DatabaseService();
   final TextEditingController _urlController = TextEditingController();
   String? _previewUrl;
-  List<String> _sourceCovers = [];
-  bool _coverSearching = false;
+  final List<String> _sourceCovers = [];
   bool _coverSearched = false;
+  /// 0=搜索 1=停止 2=继续
+  int _coverSearchState = 0;
+  bool _coverCancelled = false;
+  int _coverGeneration = 0;
 
   @override
   void initState() {
     super.initState();
-    // 优先显示已设置的自定义封面，否则用书源封面
     final cur = widget.book.customCoverUrl ?? widget.book.coverUrl ?? '';
     _urlController.text = cur;
     _previewUrl = cur.isEmpty ? null : cur;
+    _loadCachedCovers();
   }
 
   @override
   void dispose() {
+    _coverCancelled = true;
+    _coverGeneration++;
     _urlController.dispose();
     super.dispose();
   }
 
-  void _setUrl(String? url) {
-    _urlController.text = url ?? '';
-    setState(() => _previewUrl = (url != null && url.isNotEmpty) ? url : null);
+  /// 只接受 http(s) 图片，排除占位图服务返回的随机假图与内联 data URI。
+  bool _isValidCoverUrl(String url) {
+    final u = url.trim().toLowerCase();
+    if (!u.startsWith('http://') && !u.startsWith('https://')) return false;
+    const fakeHosts = <String>[
+      'picsum.photos',
+      'placehold.co',
+      'via.placeholder.com',
+      'placeholder.com',
+      'dummyimage.com',
+      'fakeimg.pl',
+    ];
+    for (final host in fakeHosts) {
+      if (u.contains(host)) return false;
+    }
+    return true;
   }
 
-  /// 并发在已启用书源中按书名检索，收集去重后的 coverUrl（当前书源优先）。
-  Future<List<String>> _searchCovers() async {
+  /// 封面结果必须与当前书的书名一致；来源省略作者时按书名匹配即可。
+  bool _matchesBook(SearchBook b) {
+    if (b.name.trim() != widget.book.name.trim()) return false;
+    final author = b.author.trim();
+    return author.isEmpty || author == widget.book.author.trim();
+  }
+
+  Future<void> _cacheCover(SearchBook b) async {
+    try {
+      await _db.insertSearchBook(SearchBookTable(
+        bookUrl: b.bookUrl ??
+            '${widget.book.name}|${b.author}|${b.origin ?? ''}',
+        name: b.name,
+        author: b.author,
+        origin: b.origin ?? '',
+        originName: b.originName,
+        coverUrl: b.coverUrl,
+        intro: b.intro,
+        latestChapterTitle: b.lastChapter,
+        tocUrl: b.noteUrl ?? '',
+        originOrder: b.originOrder ?? 0,
+      ));
+    } catch (_) {}
+  }
+
+  Future<void> _loadCachedCovers() async {
+    try {
+      final cached = await _db.getSearchBooks(
+          name: widget.book.name, author: widget.book.author);
+      final urls = <String>{};
+      for (final s in cached) {
+        final url = s.coverUrl ?? '';
+        if (_isValidCoverUrl(url)) urls.add(url);
+      }
+      if (!mounted) return;
+      setState(() {
+        _sourceCovers
+          ..clear()
+          ..addAll(urls);
+        _coverSearched = urls.isNotEmpty;
+      });
+    } catch (_) {}
+  }
+
+  /// 并发在已启用书源中按书名检索封面，校验后去重、落库缓存（当前源优先）。
+  Future<List<String>> _searchCovers(int gen) async {
     try {
       final sources = await _db.getAllSources(enabled: true);
       sources.sort((a, b) {
@@ -58,52 +122,69 @@ class _ChangeCoverScreenState extends State<ChangeCoverScreen> {
       final use = sources.take(8).toList();
       final engine = BookSourceEngine();
       final covers = <String>{};
-      await Future.wait(use.map((s) async {
+      await Future.wait(use.map((source) async {
         try {
-          final list = await engine.search(s, widget.book.name).timeout(
+          final list = await engine.search(source, widget.book.name).timeout(
                 const Duration(seconds: 10),
                 onTimeout: () => <SearchBook>[],
               );
+          if (_coverCancelled || gen != _coverGeneration) return;
           for (final b in list) {
+            if (_coverCancelled || gen != _coverGeneration) return;
             final url = b.coverUrl ?? '';
-            if (url.isNotEmpty) covers.add(url);
+            if (!_isValidCoverUrl(url) || !_matchesBook(b)) continue;
+            covers.add(url);
+            await _cacheCover(b);
           }
         } catch (_) {}
       }));
+      // 合入已缓存封面，保证「继续搜索」不会丢失先前结果。
+      final cached = await _db.getSearchBooks(
+          name: widget.book.name, author: widget.book.author);
+      for (final s in cached) {
+        final url = s.coverUrl ?? '';
+        if (_isValidCoverUrl(url)) covers.add(url);
+      }
       return covers.toList();
     } catch (_) {
       return <String>[];
     }
   }
 
-  Future<void> _searchSourceCovers() async {
-    if (_coverSearching) return;
-    setState(() => _coverSearching = true);
+  Future<void> _startOrStopCoverSearch() async {
+    if (_coverSearchState == 1) {
+      // 停止：置取消标记，让在途 worker 提前收工，并切到「继续」态。
+      _coverCancelled = true;
+      _coverGeneration++;
+      if (mounted) setState(() => _coverSearchState = 2);
+      return;
+    }
+    _coverGeneration++;
+    final gen = _coverGeneration;
+    _coverCancelled = false;
+    if (mounted) setState(() => _coverSearchState = 1);
     try {
-      final covers = await runWithBusyDialog<List<String>>(
-        context,
-        message: '正在从书源搜索封面...',
-        task: _searchCovers(),
-      );
-      if (!mounted) return;
+      final covers = await _searchCovers(gen);
+      if (!mounted || gen != _coverGeneration) return;
       setState(() {
-        _sourceCovers = covers;
+        _sourceCovers
+          ..clear()
+          ..addAll(covers);
         _coverSearched = true;
+        _coverSearchState = 2;
       });
     } catch (_) {
-      if (mounted) {
-        setState(() {
-          _sourceCovers = [];
-          _coverSearched = true;
-        });
-      }
-    } finally {
-      if (mounted) setState(() => _coverSearching = false);
+      if (!mounted || gen != _coverGeneration) return;
+      setState(() {
+        _sourceCovers.clear();
+        _coverSearched = true;
+        _coverSearchState = 2;
+      });
     }
   }
 
   Future<void> _saveCover() async {
-    // 就地修改，避免重建 Book 丢失阅读进度/目录地址/分组等字段
+    // 就地修改，避免重建 Book 丢失阅读进度/目录地址/分组等字段。
     final url = _urlController.text.trim();
     widget.book.customCoverUrl = url.isEmpty ? null : url;
     await _db.updateBook(widget.book);
@@ -114,6 +195,11 @@ class _ChangeCoverScreenState extends State<ChangeCoverScreen> {
       );
       Navigator.pop(context, true);
     }
+  }
+
+  void _setUrl(String? url) {
+    _urlController.text = url ?? '';
+    setState(() => _previewUrl = (url != null && url.isNotEmpty) ? url : null);
   }
 
   @override
@@ -164,7 +250,6 @@ class _ChangeCoverScreenState extends State<ChangeCoverScreen> {
             ),
           ]),
           const SizedBox(height: AppSpacing.l),
-          // 封面来自书源搜索结果（§4-5）
           const AppSectionHeader('从书源搜索封面'),
           Row(
             children: [
@@ -173,12 +258,28 @@ class _ChangeCoverScreenState extends State<ChangeCoverScreen> {
                     style: TextStyle(fontSize: 12, color: cs.onSurfaceVariant)),
               ),
               FilledButton.icon(
-                onPressed: _coverSearching ? null : _searchSourceCovers,
-                icon: const Icon(Icons.image_search_outlined, size: 18),
-                label: const Text('搜索'),
+                onPressed: _startOrStopCoverSearch,
+                icon: Icon(
+                  _coverSearchState == 1
+                      ? Icons.stop
+                      : _coverSearchState == 2
+                          ? Icons.refresh
+                          : Icons.image_search_outlined,
+                  size: 18,
+                ),
+                label: Text(_coverSearchState == 1
+                    ? '停止'
+                    : _coverSearchState == 2
+                        ? '继续搜索'
+                        : '搜索'),
               ),
             ],
           ),
+          if (_coverSearchState == 1)
+            const Padding(
+              padding: EdgeInsets.only(top: AppSpacing.s),
+              child: LinearProgressIndicator(minHeight: 2),
+            ),
           const SizedBox(height: AppSpacing.m),
           if (_coverSearched && _sourceCovers.isEmpty)
             const AppEmptyState(
@@ -200,22 +301,12 @@ class _ChangeCoverScreenState extends State<ChangeCoverScreen> {
               itemBuilder: (_, i) => _buildCoverChoice(_sourceCovers[i]),
             ),
           const SizedBox(height: AppSpacing.l),
-          const AppSectionHeader('预设封面'),
-          Wrap(spacing: 8, runSpacing: 8, children: [
-            _buildPresetCover('https://picsum.photos/seed/book1/300/400'),
-            _buildPresetCover('https://picsum.photos/seed/book2/300/400'),
-            _buildPresetCover('https://picsum.photos/seed/book3/300/400'),
-            _buildPresetCover('https://picsum.photos/seed/book4/300/400'),
-          ]),
-          const SizedBox(height: AppSpacing.l),
         ],
       ),
     );
   }
 
-  Widget _buildCoverChoice(String url) => _buildPresetCover(url);
-
-  Widget _buildPresetCover(String url) {
+  Widget _buildCoverChoice(String url) {
     final cs = Theme.of(context).colorScheme;
     return GestureDetector(
       onTap: () => _setUrl(url),

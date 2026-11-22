@@ -11,6 +11,7 @@
     <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS"/>
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MEDIA_PLAYBACK"/>
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC"/>
     <uses-permission android:name="android.permission.WAKE_LOCK"/>
     <uses-permission android:name="android.permission.REQUEST_INSTALL_PACKAGES"/>
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
@@ -179,6 +180,13 @@
             android:enabled="true"
             android:exported="false"
             android:foregroundServiceType="mediaPlayback" />
+        <!-- Web 服务前台保活：Dart shelf HTTP/WebSocket 服务在应用进程内运行，
+             本服务仅提供前台通知与进程保活，不承载网络栈 -->
+        <service
+            android:name=".WebService"
+            android:enabled="true"
+            android:exported="false"
+            android:foregroundServiceType="dataSync" />
         <!-- Web 服务快捷开关磁贴 -->
         <service
             android:name=".WebTileService"

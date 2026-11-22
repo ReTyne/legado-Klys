@@ -1,3 +1,10 @@
+int? _bmInt(dynamic v) {
+  if (v == null) return null;
+  if (v is int) return v;
+  if (v is num) return v.toInt();
+  return int.tryParse(v.toString().trim());
+}
+
 class Bookmark {
   int? id;
   String bookName;
@@ -6,6 +13,9 @@ class Bookmark {
   String chapterTitle;
   int pageIndex;
   String? content;
+
+  /// 书签所在位置的原文片段，供跨端备份互通。
+  String? bookText;
   int createTime;
 
   Bookmark({
@@ -16,6 +26,7 @@ class Bookmark {
     required this.chapterTitle,
     this.pageIndex = 0,
     this.content,
+    this.bookText,
     int? createTime,
   }) : createTime = createTime ?? DateTime.now().millisecondsSinceEpoch;
 
@@ -27,17 +38,19 @@ class Bookmark {
         'chapterTitle': chapterTitle,
         'pageIndex': pageIndex,
         'content': content,
+        'bookText': bookText,
         'createTime': createTime,
       };
 
   factory Bookmark.fromMap(Map<String, dynamic> map) => Bookmark(
-        id: map['id'] as int?,
-        bookName: map['bookName'] as String,
-        bookAuthor: map['bookAuthor'] as String,
-        chapterIndex: map['chapterIndex'] as int,
-        chapterTitle: map['chapterTitle'] as String,
-        pageIndex: map['pageIndex'] as int? ?? 0,
-        content: map['content'] as String?,
-        createTime: map['createTime'] as int,
+        id: _bmInt(map['id']),
+        bookName: (map['bookName'] ?? map['book_title'] ?? '').toString(),
+        bookAuthor: (map['bookAuthor'] ?? map['author'] ?? '').toString(),
+        chapterIndex: _bmInt(map['chapterIndex'] ?? map['chapterPos']) ?? 0,
+        chapterTitle: (map['chapterTitle'] ?? map['chapterName'] ?? '').toString(),
+        pageIndex: _bmInt(map['pageIndex'] ?? map['pagePos']) ?? 0,
+        content: map['content']?.toString(),
+        bookText: map['bookText']?.toString(),
+        createTime: _bmInt(map['createTime'] ?? map['time']),
       );
 }

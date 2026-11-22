@@ -1,6 +1,7 @@
 import 'dart:convert';
 
 import 'package:enough_convert/enough_convert.dart';
+import 'package:legado_md3/utils/url_edge.dart';
 
 /// + +
 /// 的 JS 扩展函数语义。
@@ -120,7 +121,10 @@ class JsTextUtils {
   /// 2. `div/p/br/hr/hN/article/dd/dl` 等块级标签转换为换行；
   /// 3. 规范化 `<img>`，只保留 `src`（含 `data-src` 等懒加载）；
   /// 4. 段落首行缩进两个全角空格、去首尾空白。
-  static String htmlFormat(String? html) {
+  ///
+  /// 传入 [baseUrl] 或 [redirectUrl] 时，图片的相对 src 会被绝对化；
+  /// src 中 `,` 之后的花括号规则参数原样保留。
+  static String htmlFormat(String? html, {String? baseUrl, String? redirectUrl}) {
     if (html == null) return '';
     var s = html;
     s = s.replaceAll(RegExp(r'(&nbsp;)+'), ' ');
@@ -137,7 +141,8 @@ class JsTextUtils {
     // 先把 img 占位保护起来，再去掉其它标签
     final images = <String>[];
     s = s.replaceAllMapped(RegExp(r'<img[^>]*>', caseSensitive: false), (m) {
-      images.add(_normalizeImg(m.group(0)!));
+      images.add(_normalizeImg(m.group(0)!,
+          baseUrl: baseUrl, redirectUrl: redirectUrl));
       return '\u0000IMG${images.length - 1}\u0000';
     });
     // 去掉剩余所有非 img 标签（img 已被占位）
@@ -156,13 +161,14 @@ class JsTextUtils {
 
   /// 从 `<img ...>` 中提取 src（支持 `src` / `data-src` / `data-original` /
   /// `data-srcset`），输出规范化的 `<img src="...">`。
-  static String _normalizeImg(String tag) {
-    // 1) 带 {..} 书源规则参数的 src；2) data-(src|original|srcset) 懒加载；
+  static String _normalizeImg(String tag, {String? baseUrl, String? redirectUrl}) {
+    // 1) 带 {..} 书源规则参数的 src（规则可含一层嵌套花括号，如 {{$.x}}）；
+    // 2) data-(src|original|srcset) 懒加载；
     // 3) 普通 src（要求属性名前是空白，避免把 data-src 误当 src）；
- // 4) 任意 data-* 属性兜底。把懒加载属性排在普通 src 之前，
+    // 4) 任意 data-* 属性兜底。把懒加载属性排在普通 src 之前，
     // 这样 `<img src="占位.gif" data-src="真图.jpg">` 取到的是真图。
     final patterns = [
-      RegExp(r'''\ssrc\s*=\s*["']([^"'>]*\{[^{}]+\}[^"'>]*)["']''',
+      RegExp(r'''\ssrc\s*=\s*["']([^"'>]*\{(?:[^{}]|\{[^}>]+\})+\}[^"'>]*)["']''',
           caseSensitive: false),
       RegExp(r'''\sdata-(?:src|original|srcset)\s*=\s*["']([^"'>]+)["']''',
           caseSensitive: false),
@@ -172,9 +178,25 @@ class JsTextUtils {
     ];
     for (final re in patterns) {
       final m = re.firstMatch(tag);
-      if (m != null) return '<img src="${m.group(1)}">';
+      if (m != null) {
+        return _buildImgTag(m.group(1)!, baseUrl, redirectUrl);
+      }
     }
     return tag;
+  }
+
+  /// 归一化图片地址：把紧邻花括号规则前的 `,` 及其后内容作为规则参数保留，
+  /// 其余部分按 [baseUrl]/[redirectUrl] 绝对化后写入 `src`。
+  static String _buildImgTag(String rawSrc, String? baseUrl, String? redirectUrl) {
+    var url = rawSrc;
+    var param = '';
+    final m = RegExp(r'\s*,\s*(?=\{)').firstMatch(rawSrc);
+    if (m != null) {
+      param = ',${rawSrc.substring(m.end)}';
+      url = rawSrc.substring(0, m.start);
+    }
+    final absolute = getAbsoluteURL(baseUrl, url, redirectUrl: redirectUrl);
+    return '<img src="$absolute$param">';
   }
 
   /// Java `charset(name)` 的别名归一化：去掉大小写、连字符、下划线差异。

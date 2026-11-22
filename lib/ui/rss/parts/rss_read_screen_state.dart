@@ -238,7 +238,14 @@ class _RssReadScreenState extends State<RssReadScreen> {
     try {
       await _initRecordSettings();
       String? body;
-      if (widget.source != null && _hasContentRule) {
+      final singleUrl = widget.source?.singleUrl ?? false;
+      if (singleUrl &&
+          widget.source != null &&
+          _article.link.startsWith('http')) {
+        // singleUrl：跳过正文规则，直接加载文章链接页面
+        body = await RssService().fetchRaw(_article.link,
+            header: widget.source?.header);
+      } else if (widget.source != null && _hasContentRule) {
         body = await RssService()
             .fetchArticleContent(widget.source!, _article);
         _article.content = body;
@@ -248,7 +255,8 @@ class _RssReadScreenState extends State<RssReadScreen> {
       final trimmed = (body ?? '').trim();
       // 配了 style/injectJs/preloadJs 时即使正文不是典型 HTML 也走 WebView，
       // 否则自定义 CSS/脚本无处生效
-      final html = _looksLikeHtml(trimmed) ||
+      final html = singleUrl ||
+          _looksLikeHtml(trimmed) ||
           (_hasWebAssets && trimmed.isNotEmpty);
       if (mounted) {
         setState(() {
@@ -402,6 +410,10 @@ class _RssReadScreenState extends State<RssReadScreen> {
                                 preloadJs: widget.source?.preloadJs,
                                 shouldOverrideUrlLoading:
                                     widget.source?.shouldOverrideUrlLoading,
+                                enableJs: widget.source?.enableJs ?? true,
+                                loadWithBaseUrl:
+                                    widget.source?.loadWithBaseUrl ?? true,
+                                cacheFirst: widget.source?.cacheFirst ?? false,
                               )
                             : _TextBody(
                                 article: _article,

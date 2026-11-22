@@ -91,6 +91,7 @@ class DeepLinkService {
       }
       switch (uri.scheme) {
         case 'legado':
+        case 'yuedu':
           await _handleLegadoUri(uri);
         case 'share':
           await _handleShareUri(uri);

@@ -16,6 +16,9 @@ class _HtmlBody extends StatelessWidget {
     this.injectJs,
     this.preloadJs,
     this.shouldOverrideUrlLoading,
+    this.enableJs = true,
+    this.loadWithBaseUrl = true,
+    this.cacheFirst = false,
   });
   final String html;
   final String baseUrl;
@@ -23,6 +26,9 @@ class _HtmlBody extends StatelessWidget {
   final String? injectJs;
   final String? preloadJs;
   final String? shouldOverrideUrlLoading;
+  final bool enableJs;
+  final bool loadWithBaseUrl;
+  final bool cacheFirst;
 
   /// 去掉 @js: / <js></js> 包裹，返回纯 JS
   String _jsBody(String rule) {
@@ -37,7 +43,7 @@ class _HtmlBody extends StatelessWidget {
 
   String _document() {
     final css = (style ?? '').trim();
-    final js = (injectJs ?? '').trim();
+    final js = enableJs ? (injectJs ?? '').trim() : '';
     final lower = html.toLowerCase();
     if (lower.contains('<html') || lower.contains('<!doctype')) {
       // 完整文档：保持原样，仅把自定义 CSS/脚本插入对应位置
@@ -78,18 +84,25 @@ class _HtmlBody extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final preload = (preloadJs ?? '').trim();
-    final overrideRule = (shouldOverrideUrlLoading ?? '').trim();
+    final preload = enableJs ? (preloadJs ?? '').trim() : '';
+    final overrideRule = enableJs ? (shouldOverrideUrlLoading ?? '').trim() : '';
     return iw.InAppWebView(
       initialData: iw.InAppWebViewInitialData(
         data: _document(),
         mimeType: 'text/html',
         encoding: 'utf-8',
-        baseUrl: baseUrl.isNotEmpty ? iw.WebUri(baseUrl) : null,
+        // loadWithBaseUrl 关闭时不设置 baseUrl，相对链接不再按文章地址解析
+        baseUrl: loadWithBaseUrl && baseUrl.isNotEmpty
+            ? iw.WebUri(baseUrl)
+            : null,
       ),
       initialSettings: iw.InAppWebViewSettings(
-        javaScriptEnabled: true,
+        // 禁用 JS 时同时停用注入脚本与拦截脚本
+        javaScriptEnabled: enableJs,
         useShouldInterceptRequest: true,
+        cacheMode: cacheFirst
+            ? iw.CacheMode.LOAD_CACHE_ELSE_NETWORK
+            : iw.CacheMode.LOAD_DEFAULT,
         mixedContentMode: iw.MixedContentMode.MIXED_CONTENT_ALWAYS_ALLOW,
         supportZoom: true,
       ),

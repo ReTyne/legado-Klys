@@ -125,6 +125,13 @@ class _MangaImageState extends State<_MangaImage> {
         child: img,
       );
     }
+    // 5 通道色彩滤镜：R/G/B/A 独立削减量，叠加在预设滤镜之上
+    if (widget.colorConfig.hasColorAdjust) {
+      img = ColorFiltered(
+        colorFilter: ColorFilter.matrix(widget.colorConfig.matrix),
+        child: img,
+      );
+    }
     // manga_noCrossFade / manga_pageAnim：图片淡入
     if (widget.fadeIn) {
       img = TweenAnimationBuilder<double>(

@@ -2,7 +2,6 @@ import 'package:legado_md3/data/model/book.dart';
 
 class SearchBook extends Book {
   String? searchUrl;
-  int? originOrder;
   bool? addToShelf;
 
   /// 同名同作者合并后的全部来源（origin 列表）
@@ -21,7 +20,7 @@ class SearchBook extends Book {
     super.bookUrl,
     super.wordCount,
     this.searchUrl,
-    this.originOrder,
+    super.originOrder,
     this.addToShelf = false,
   });
 

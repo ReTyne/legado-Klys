@@ -436,6 +436,13 @@ const String legadoBridgeJsPart07 =
     if (s.indexOf("NO_WRAP") >= 0 || s === "2") f |= 2;
     return f;
   }
+  // 第二参为字符串且不是 flag 名/数字时视为字符集（如 java.base64Decode(str, "GBK")）。
+  function __b64Charset(flags) {
+    if (typeof flags !== "string") return "";
+    var s = flags.trim();
+    if (!s || /^\d+$/.test(s) || /URL|NO_WRAP|DEFAULT/i.test(s)) return "";
+    return s;
+  }
   function __b64ApplyFlags(out, flags) {
     if (__b64Flags(flags) & 8) {
       return out.replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
@@ -546,6 +553,11 @@ const String legadoBridgeJsPart07 =
     base64Decode: function (str, flags) {
       var s = String(str == null ? "" : str);
       if (__b64Flags(flags) & 8) s = s.replace(/-/g, "+").replace(/_/g, "/");
+      var cs = __b64Charset(flags);
+      if (cs) {
+        // 按指定字符集解码字节（GBK / GB2312 / ISO-8859-1 ...）。
+        try { return java.bytesToStr(__b64ToBytes(s), cs); } catch (e) {}
+      }
       try { return __unb64Unicode(s); } catch (e) {
         try { return atob(s); } catch (e2) { return ""; }
       }

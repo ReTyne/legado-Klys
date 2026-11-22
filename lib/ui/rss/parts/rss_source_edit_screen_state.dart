@@ -14,7 +14,22 @@ class _RssSourceEditScreenState extends State<RssSourceEditScreen>
   /// 字符串规则补全。
   bool _ruleCompleteEnabled = false;
 
+  // 源级高级开关（模型中已有字段，编辑页需可读写）
+  bool _singleUrl = false;
+  bool _preload = false;
+  bool _enabledCookieJar = true;
+  bool _enableJs = true;
+  bool _loadWithBaseUrl = true;
+  bool _cacheFirst = false;
+  bool _showWebLog = true;
+  int _sourceType = 0;
+  int _articleStyle = 0;
+
   static const List<String> _tabs = ['基本', '起始', '列表', 'WebView'];
+  static const List<String> _sourceTypeNames = ['网页/图文', '图片', '视频'];
+  static const List<String> _layoutNames = [
+    '标准列表', '紧凑列表', '双列网格', '瀑布流', '大图卡片'
+  ];
 
   static const _quickTokens = [
     '@text', '@html', '@href', '@src', 'class.', 'id.', 'tag.', '\$.', '{{}}', '<js></js>', '@js:', '@Regex:',
@@ -40,7 +55,7 @@ class _RssSourceEditScreenState extends State<RssSourceEditScreen>
     ],
     'start': [
       _F('startHtml', 'startHtml', '起始 URL/HTML 处理'),
-      _F('startStyle', 'articleStyle', '列表样式（JSON 字段 articleStyle）'),
+      _F('startStyle', '起始样式(startStyle)', '起始页 HTML 样式，与列表布局 articleStyle 不同'),
       _F('startJs', 'startJs', '起始 JS 脚本'),
       _F('preloadJs', 'preloadJs', '预加载 JS'),
     ],
@@ -72,6 +87,15 @@ class _RssSourceEditScreenState extends State<RssSourceEditScreen>
     final s = widget.source;
     _tabController = TabController(length: 4, vsync: this);
     _enabled = s?.enabled ?? true;
+    _singleUrl = s?.singleUrl ?? false;
+    _preload = s?.preload ?? false;
+    _enabledCookieJar = s?.enabledCookieJar ?? true;
+    _enableJs = s?.enableJs ?? true;
+    _loadWithBaseUrl = s?.loadWithBaseUrl ?? true;
+    _cacheFirst = s?.cacheFirst ?? false;
+    _showWebLog = s?.showWebLog ?? true;
+    _sourceType = s?.sourceType ?? 0;
+    _articleStyle = s?.articleStyle ?? 0;
     String v(String? val) => val ?? '';
     _tc('sourceName', s?.sourceName ?? '');
     _tc('sourceUrl', s?.sourceUrl ?? '');
@@ -165,6 +189,15 @@ class _RssSourceEditScreenState extends State<RssSourceEditScreen>
       customOrder: widget.source?.customOrder,
       lastUpdateTime: DateTime.now().millisecondsSinceEpoch,
       unreadCount: widget.source?.unreadCount ?? 0,
+      singleUrl: _singleUrl,
+      preload: _preload,
+      enabledCookieJar: _enabledCookieJar,
+      enableJs: _enableJs,
+      loadWithBaseUrl: _loadWithBaseUrl,
+      cacheFirst: _cacheFirst,
+      showWebLog: _showWebLog,
+      sourceType: _sourceType,
+      articleStyle: _articleStyle,
     );
   }
 
@@ -302,6 +335,15 @@ class _RssSourceEditScreenState extends State<RssSourceEditScreen>
           if (pair.value != null) _c[pair.key]!.text = pair.value!;
         }
         _enabled = s.enabled ?? true;
+        _singleUrl = s.singleUrl;
+        _preload = s.preload;
+        _enabledCookieJar = s.enabledCookieJar;
+        _enableJs = s.enableJs;
+        _loadWithBaseUrl = s.loadWithBaseUrl;
+        _cacheFirst = s.cacheFirst;
+        _showWebLog = s.showWebLog;
+        _sourceType = s.sourceType;
+        _articleStyle = s.articleStyle ?? 0;
         _dirty = true;
       });
       _toast('已粘贴 RSS 源');
@@ -492,6 +534,20 @@ class _RssSourceEditScreenState extends State<RssSourceEditScreen>
     }
   }
 
+  Widget _switchTile(IconData icon, String title, String? subtitle, bool value,
+          ValueChanged<bool> onChanged) =>
+      SwitchListTile(
+        secondary: Icon(icon),
+        title: Text(title),
+        subtitle: subtitle == null ? null : Text(subtitle,
+            style: const TextStyle(fontSize: 11)),
+        value: value,
+        onChanged: (v) {
+          onChanged(v);
+          setState(() => _dirty = true);
+        },
+      );
+
   Widget _tabBody(String group) => ListView(
         padding: const EdgeInsets.only(bottom: 28),
         children: [
@@ -506,6 +562,69 @@ class _RssSourceEditScreenState extends State<RssSourceEditScreen>
                 _dirty = true;
               }),
             ),
+            _switchTile(Icons.public, '单链接模式(singleUrl)',
+                '开启后直接按文章链接读取，不走列表翻页', _singleUrl,
+                (v) => _singleUrl = v),
+            _switchTile(Icons.play_arrow, '预加载(preload)',
+                '列表滚动到底部前提前加载下一页', _preload, (v) => _preload = v),
+            _switchTile(Icons.cookie_outlined, '启用 CookieJar',
+                '跨请求保留会话 Cookie', _enabledCookieJar,
+                (v) => _enabledCookieJar = v),
+            const SizedBox(height: AppSpacing.s),
+            Padding(
+              padding:
+                  const EdgeInsets.symmetric(horizontal: AppSpacing.m),
+              child: DropdownButtonFormField<int>(
+                value: _sourceType,
+                decoration: const InputDecoration(
+                  labelText: '源类型(type)',
+                  border: OutlineInputBorder(),
+                  isDense: true,
+                ),
+                items: List.generate(
+                  _sourceTypeNames.length,
+                  (i) => DropdownMenuItem(value: i, child: Text(_sourceTypeNames[i])),
+                ),
+                onChanged: (v) {
+                  _sourceType = v ?? 0;
+                  setState(() => _dirty = true);
+                },
+              ),
+            ),
+            const SizedBox(height: AppSpacing.s),
+            Padding(
+              padding:
+                  const EdgeInsets.symmetric(horizontal: AppSpacing.m),
+              child: DropdownButtonFormField<int>(
+                value: _articleStyle,
+                decoration: const InputDecoration(
+                  labelText: '列表布局(articleStyle)',
+                  border: OutlineInputBorder(),
+                  isDense: true,
+                ),
+                items: List.generate(
+                  _layoutNames.length,
+                  (i) => DropdownMenuItem(value: i, child: Text(_layoutNames[i])),
+                ),
+                onChanged: (v) {
+                  _articleStyle = v ?? 0;
+                  setState(() => _dirty = true);
+                },
+              ),
+            ),
+          ],
+          if (group == 'webview') ...[
+            _sectionTitle('WebView 开关'),
+            _switchTile(Icons.javascript_outlined, '启用 JavaScript(enableJs)',
+                '关闭后正文中的脚本不会执行', _enableJs, (v) => _enableJs = v),
+            _switchTile(Icons.link, '使用源地址作 BaseUrl',
+                '相对链接/图片按源地址解析', _loadWithBaseUrl,
+                (v) => _loadWithBaseUrl = v),
+            _switchTile(Icons.storage_outlined, '缓存优先(cacheFirst)',
+                '优先加载缓存内容，适合更新频繁的源', _cacheFirst,
+                (v) => _cacheFirst = v),
+            _switchTile(Icons.terminal, '显示网页日志(showWebLog)',
+                '在日志中输出 console 信息', _showWebLog, (v) => _showWebLog = v),
           ],
           _sectionTitle(group == 'base'
               ? '请求与高级'

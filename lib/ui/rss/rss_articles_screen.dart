@@ -6,6 +6,7 @@ import 'package:legado_md3/data/model/rss_source.dart';
 import 'package:legado_md3/data/model/rss_article.dart';
 import 'package:legado_md3/data/model/rss_read_record.dart';
 import 'package:legado_md3/help/http/rss_service.dart';
+import 'package:legado_md3/help/source/rule_pipeline.dart';
 import 'package:legado_md3/ui/rss/rss_read_screen.dart';
 import 'package:legado_md3/ui/rss/rss_search_sheet.dart';
 import 'package:legado_md3/ui/rss/rss_source_edit_screen.dart';
@@ -37,6 +38,11 @@ class _RssArticlesScreenState extends State<RssArticlesScreen> {
   String? _error;
   bool _sortDesc = true;
   bool _recordEnabled = true;
+
+  // 列表翻页：ruleNextPage 求出的下一页地址
+  String? _nextUrl;
+  bool _hasMore = false;
+  bool _loadingMore = false;
 
   /// 文章列表布局 0..4（ RssSource.articleStyle 与
   /// RssSortViewModel.switchLayout 的五档循环），按源持久化。
@@ -115,24 +121,58 @@ class _RssArticlesScreenState extends State<RssArticlesScreen> {
     return sorted;
   }
 
+  /// 按 link 复用库中已有记录（保留 id / 已读 / 收藏状态），避免重复抓取
+  /// 反复插入新行，并让列表真正由数据库记录驱动（打开文章可正确标记已读）。
+  Future<List<RssArticle>> _persistAndRead(List<RssArticle> fetched,
+      {String? category}) async {
+    List<RssArticle> existing;
+    try {
+      existing = await _db.getRssArticles(source.sourceUrl);
+    } catch (_) {
+      existing = const [];
+    }
+    final byLink = <String, RssArticle>{};
+    for (final e in existing) {
+      if (e.link.isNotEmpty) byLink[e.link] = e;
+    }
+    final toSave = <RssArticle>[];
+    for (final a in fetched) {
+      final old = byLink[a.link];
+      if (old != null) {
+        a.id = old.id;
+        a.read = old.read;
+        a.favorite = old.favorite;
+        a.starred = old.starred;
+        a.content = a.content ?? old.content;
+      }
+      if (category != null && category.isNotEmpty) a.category = category;
+      toSave.add(a);
+    }
+    await _db.saveRssArticles(toSave);
+    return toSave;
+  }
+
   Future<void> _load() async {
     setState(() {
       _loading = true;
       _error = null;
     });
     try {
-      final list = _category == null
+      final fetched = _category == null
           ? await _service.fetchRss(source)
           : await _service.fetchCategory(source, _category!);
-      for (final a in list) {
-        await _db.saveRssArticles([a]);
-      }
+      final list = await _persistAndRead(fetched,
+          category: _category?.name);
       if (mounted) {
         setState(() {
           _articles = _sorted(list);
           _loading = false;
         });
       }
+      // 计算下一页地址（ruleNextPage）；无规则或解析失败视为没有更多
+      final pageUrl = _category?.rawUrl ?? source.sourceUrl;
+      _nextUrl = await _computeNextUrl(pageUrl);
+      if (mounted) setState(() => _hasMore = _nextUrl != null);
     } catch (e) {
       if (mounted) {
         setState(() {
@@ -140,6 +180,60 @@ class _RssArticlesScreenState extends State<RssArticlesScreen> {
           _loading = false;
         });
       }
+    }
+  }
+
+  /// 用 ruleNextPage 从给定页面的 HTML 中解析下一页绝对地址。
+  Future<String?> _computeNextUrl(String pageUrl) async {
+    final rule = (source.ruleNextPage ?? '').trim();
+    if (rule.isEmpty) return null;
+    String html = '';
+    if (pageUrl.startsWith('http')) {
+      html = await _service.fetchRaw(pageUrl, header: source.header);
+    }
+    if (html.isEmpty && (source.startHtml ?? '').trim().isNotEmpty) {
+      html = source.startHtml!;
+    }
+    if (html.isEmpty) return null;
+    try {
+      final pipeline = RulePipeline(baseUrl: pageUrl);
+      for (final raw in pipeline.extractListFromRaw(html, rule)) {
+        final u = raw.trim();
+        if (u.isEmpty) continue;
+        if (u.startsWith('http')) return u;
+        return Uri.parse(pageUrl).resolve(u).toString();
+      }
+    } catch (_) {}
+    return null;
+  }
+
+  /// 加载下一页：按 ruleNextPage 得到的地址抓取、去重、落库并追加。
+  Future<void> _loadMore() async {
+    if (_loadingMore || _nextUrl == null) return;
+    final pageUrl = _nextUrl!;
+    setState(() => _loadingMore = true);
+    try {
+      final list =
+          await _service.fetchCategory(source, RssCategory('下一页', pageUrl));
+      final seen = _articles.map((e) => e.link).toSet();
+      final added = list.where((e) => !seen.contains(e.link)).toList();
+      final persisted = await _persistAndRead(added,
+          category: _category?.name);
+      if (mounted) {
+        setState(() {
+          _articles = _sorted([..._articles, ...persisted]);
+        });
+      }
+      _nextUrl = await _computeNextUrl(pageUrl);
+      if (mounted) setState(() => _hasMore = _nextUrl != null);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('加载更多失败: $e')),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _loadingMore = false);
     }
   }
 
@@ -236,13 +330,26 @@ class _RssArticlesScreenState extends State<RssArticlesScreen> {
     }
   }
 
-  /// menu_search：在当前源已加载的文章内按关键词检索并可直接打开。
+  /// menu_search：在当前源已加载的文章内按关键词检索；源配置了 searchUrl 时
+  /// 额外提供网络搜索（{{key}}/{{page}} 模板），走真实的分类抓取规则。
   Future<void> _searchArticles() async {
+    final searchUrl = (source.searchUrl ?? '').trim();
     await showRssArticleSearchSheet(
       context,
       articles: _articles,
       onOpen: _openArticle,
+      networkSearch: searchUrl.isEmpty ? null : _networkSearch,
     );
+  }
+
+  /// 按 searchUrl 模板发起网络检索并把结果落库，供打开续读使用。
+  Future<List<RssArticle>> _networkSearch(String key, int page) async {
+    var url = source.searchUrl!.trim();
+    url = url
+        .replaceAll('{{key}}', Uri.encodeComponent(key))
+        .replaceAll('{{page}}', '$page');
+    final list = await _service.fetchCategory(source, RssCategory('搜索', url));
+    return _persistAndRead(list, category: '搜索');
   }
 
   /// menu_refresh_sort：重新解析分类并重新拉取文章（清掉旧排序缓存）。
@@ -511,6 +618,18 @@ class _RssArticlesScreenState extends State<RssArticlesScreen> {
                 : Icons.view_list_outlined),
             onPressed: _switchLayout,
           ),
+          if (_hasMore)
+            IconButton(
+              tooltip: '加载更多',
+              icon: _loadingMore
+                  ? const SizedBox(
+                      width: 18,
+                      height: 18,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.expand_more),
+              onPressed: _loadingMore ? null : _loadMore,
+            ),
           IconButton(
             tooltip: '刷新',
             icon: const Icon(Icons.refresh),
@@ -612,16 +731,30 @@ class _RssArticlesScreenState extends State<RssArticlesScreen> {
           ),
         ],
       ),
-      body: _loading
-          ? const AppLoadingIndicator()
-          : _error != null
-              ? AppErrorState(message: _error!, onRetry: _load)
-              : _articles.isEmpty
-                  ? _empty()
-                  : RefreshIndicator(
-                      onRefresh: _load,
-                      child: _buildBody(),
-                    ),
+      body: NotificationListener<ScrollNotification>(
+        // preload：列表滚动接近底部时提前拉取下一页（对全部布局生效）
+        onNotification: (n) {
+          if (source.preload &&
+              n is ScrollUpdateNotification &&
+              _hasMore &&
+              !_loadingMore &&
+              n.metrics.maxScrollExtent > 0 &&
+              n.metrics.pixels >= n.metrics.maxScrollExtent - 300) {
+            _loadMore();
+          }
+          return false;
+        },
+        child: _loading
+            ? const AppLoadingIndicator()
+            : _error != null
+                ? AppErrorState(message: _error!, onRetry: _load)
+                : _articles.isEmpty
+                    ? _empty()
+                    : RefreshIndicator(
+                        onRefresh: _load,
+                        child: _buildBody(),
+                      ),
+      ),
     );
   }
 

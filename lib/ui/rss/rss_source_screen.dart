@@ -38,6 +38,15 @@ class _RssSourceScreenState extends State<RssSourceScreen> {
   Future<void> _load() async {
     final sources = await _db.getRssSources();
     if (!mounted) return;
+    // customOrder 非空时按手工顺序展示（置顶/置底），否则保留 DAO 顺序
+    sources.sort((a, b) {
+      final oa = a.customOrder;
+      final ob = b.customOrder;
+      if (oa == null && ob == null) return 0;
+      if (oa == null) return 1;
+      if (ob == null) return -1;
+      return oa.compareTo(ob);
+    });
     setState(() {
       _sources = sources;
       _loading = false;
@@ -111,8 +120,32 @@ class _RssSourceScreenState extends State<RssSourceScreen> {
     }
   }
 
+  /// 置顶/置底：移动该项后把当前顺序写回 customOrder（与 E 端 upOrder 一致）。
+  Future<void> _reorder(RssSource source, {required bool toTop}) async {
+    final list = List<RssSource>.of(_sources);
+    list.removeWhere((s) => s.id == source.id);
+    if (toTop) {
+      list.insert(0, source);
+    } else {
+      list.add(source);
+    }
+    for (var i = 0; i < list.length; i++) {
+      list[i].customOrder = i;
+      await _db.updateRssSource(list[i]);
+    }
+    await _load();
+  }
+
   void _showSourceMenu(RssSource source) {
     showAppMenuSheet(context, title: source.sourceName, items: [
+      AppMenuSheetItem(
+          title: '置顶',
+          icon: Icons.vertical_align_top,
+          onTap: () => _reorder(source, toTop: true)),
+      AppMenuSheetItem(
+          title: '置底',
+          icon: Icons.vertical_align_bottom,
+          onTap: () => _reorder(source, toTop: false)),
       AppMenuSheetItem(
           title: '编辑',
           icon: Icons.edit_outlined,

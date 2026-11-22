@@ -601,19 +601,54 @@ class _SourceEditScreenState extends State<SourceEditScreen> with SingleTickerPr
       _toast('剪贴板为空');
       return;
     }
+    _loadFromJsonText(text, '粘贴');
+  }
+
+  /// 把书源 JSON 文本载入编辑表单：兼容单个对象、数组（取第一个）与
+  /// {data/bookSources/...:[...]} 包装格式。复制粘贴与二维码导入共用。
+  void _loadFromJsonText(String text, String actionLabel) {
     try {
-      final dynamic json = jsonDecode(text);
-      // 兼容单个对象与数组（取第一个）
+      dynamic json = jsonDecode(text);
+      if (json is Map && !json.containsKey('bookSourceUrl')) {
+        for (final key in ['data', 'bookSources', 'sources', 'result', 'list']) {
+          if (json[key] is List) {
+            json = json[key];
+            break;
+          }
+        }
+      }
       final Map<String, dynamic> map = json is List
           ? (json.first as Map<String, dynamic>)
           : json as Map<String, dynamic>;
       final source = BookSource.fromJson(map);
       _loadFromSource(source);
       setState(() {});
-      _toast('已粘贴书源');
+      _toast('已$actionLabel书源：${source.bookSourceName}');
     } catch (e) {
-      _toast('粘贴失败：剪贴板不是合法书源 JSON');
+      _toast('$actionLabel失败：内容不是合法书源 JSON');
     }
+  }
+
+  /// 扫描二维码把书源载入当前编辑表单（二维码内容为书源 JSON）。
+  Future<void> _importFromQr() async {
+    final code = await Navigator.push<String>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => const QrScannerScreen(title: '扫码导入书源到编辑'),
+      ),
+    );
+    if (code == null || code.trim().isEmpty) return;
+    _loadFromJsonText(code.trim(), '扫码导入');
+  }
+
+  /// 生成当前编辑书源的二维码供其它设备扫码导入。
+  void _shareQr() {
+    if (!_validate()) return;
+    final source = _collect();
+    Navigator.push(
+      context,
+      MaterialPageRoute(builder: (_) => QrShareScreen(source: source)),
+    );
   }
 
   void _shareSource() {
@@ -655,7 +690,19 @@ class _SourceEditScreenState extends State<SourceEditScreen> with SingleTickerPr
         AppMenuSheetItem(title: '设置书源变量', icon: Icons.code_outlined, onTap: _setVariable),
         AppMenuSheetItem(title: '复制书源', icon: Icons.content_copy_outlined, onTap: _copySource),
         AppMenuSheetItem(title: '粘贴书源', icon: Icons.content_paste_outlined, onTap: _pasteSource),
+        AppMenuSheetItem(
+          title: '二维码导入',
+          icon: Icons.qr_code_scanner_outlined,
+          subtitle: '扫描书源二维码载入编辑表单',
+          onTap: _importFromQr,
+        ),
         AppMenuSheetItem(title: '分享书源', icon: Icons.ios_share_outlined, onTap: _shareSource),
+        AppMenuSheetItem(
+          title: '二维码分享',
+          icon: Icons.qr_code_2_outlined,
+          subtitle: '生成当前书源的二维码',
+          onTap: _shareQr,
+        ),
         AppMenuSheetItem(
           title: '生成分享口令',
           icon: Icons.key_outlined,

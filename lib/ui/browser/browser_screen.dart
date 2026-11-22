@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -15,7 +16,8 @@ import 'package:legado_md3/help/device/native_bridge.dart';
 import 'package:legado_md3/help/source/source_engine.dart';
 import 'package:legado_md3/help/storage/import_book_service.dart';
 
-import 'package:legado_md3/ui/theme/app_design.dart';
+import 'package:legado_md3/ui/widgets/app_widgets.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 part 'parts/browser_tab.dart';
 part 'parts/sniff_result.dart';
 part 'parts/browser_screen_state.dart';
@@ -35,12 +37,17 @@ class BrowserScreen extends StatefulWidget {
 
   /// 书源传入的自定义页面内容：非空时直接渲染它，不加载 url。
   final String? initialHtml;
+
+  /// 打开页面时透传的请求头（含 User-Agent）。留空时会按当前 url 尝试从
+  /// 已启用书源的 header 规则解析，使书源登录/验证页携带正确的头信息。
+  final Map<String, String>? headers;
   const BrowserScreen({
     super.key,
     required this.url,
     this.title,
     this.captureHtmlOnExit = false,
     this.initialHtml,
+    this.headers,
   });
 
   @override

@@ -43,6 +43,7 @@ void main() {
         ruleLink: inferred.fields['bookUrl'],
         ruleDescription: inferred.fields['intro'],
         ruleNextPage: '@css:a.next@href',
+        enableJs: false,
       );
 
       final rss = RssService();

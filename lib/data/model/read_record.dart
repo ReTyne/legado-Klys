@@ -1,3 +1,10 @@
+int? _rrInt(dynamic v) {
+  if (v == null) return null;
+  if (v is int) return v;
+  if (v is num) return v.toInt();
+  return int.tryParse(v.toString().trim());
+}
+
 class ReadRecord {
   int? id;
   String bookName;
@@ -7,16 +14,47 @@ class ReadRecord {
   int? chapterIndex;
   int? pagePos;
 
-  ReadRecord({this.id, required this.bookName, required this.author, this.duration = 0, required this.date, this.chapterIndex, this.pagePos});
+  /// 跨设备阅读进度字段。
+  String? deviceId;
+  int? readTime;
+  int? lastRead;
+
+  ReadRecord({
+    this.id,
+    required this.bookName,
+    required this.author,
+    this.duration = 0,
+    required this.date,
+    this.chapterIndex,
+    this.pagePos,
+    this.deviceId,
+    this.readTime,
+    this.lastRead,
+  });
 
   Map<String, dynamic> toMap() => {
-    'id': id, 'bookName': bookName, 'author': author,
-    'duration': duration, 'date': date, 'chapterIndex': chapterIndex, 'pagePos': pagePos,
+    'id': id,
+    'bookName': bookName,
+    'author': author,
+    'duration': duration,
+    'date': date,
+    'chapterIndex': chapterIndex,
+    'pagePos': pagePos,
+    'deviceId': deviceId,
+    'readTime': readTime,
+    'lastRead': lastRead,
   };
 
   factory ReadRecord.fromMap(Map<String, dynamic> map) => ReadRecord(
-    id: map['id'], bookName: map['bookName'] ?? '', author: map['author'] ?? '',
-    duration: map['duration'] ?? 0, date: map['date'] ?? 0,
-    chapterIndex: map['chapterIndex'], pagePos: map['pagePos'],
+    id: _rrInt(map['id']),
+    bookName: (map['bookName'] ?? '').toString(),
+    author: (map['author'] ?? '').toString(),
+    duration: _rrInt(map['duration']) ?? 0,
+    date: _rrInt(map['date'] ?? map['readTime']) ?? 0,
+    chapterIndex: _rrInt(map['chapterIndex']),
+    pagePos: _rrInt(map['pagePos'] ?? map['durPos']),
+    deviceId: map['deviceId']?.toString(),
+    readTime: _rrInt(map['readTime']),
+    lastRead: _rrInt(map['lastRead']),
   );
 }

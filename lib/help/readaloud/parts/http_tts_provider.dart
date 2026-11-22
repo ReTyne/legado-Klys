@@ -3,6 +3,18 @@
 part of '../cloud_tts_providers.dart';
 
 
+/// 替换 legado HTTP TTS 的 url/headers/body 占位符。
+/// `{{speakSpeed}}` 为整数（1.0 倍 = 10），语速由朗读服务透传。
+String substituteHttpTts(String template, String text, double rate) {
+  final speed = (rate * 10).round().toString();
+  final encoded = Uri.encodeComponent(text);
+  return template
+      .replaceAll('{{speakSpeed}}', speed)
+      .replaceAll('{{speakText}}', encoded)
+      .replaceAll('{{text}}', encoded)
+      .replaceAll('\${text}', encoded);
+}
+
 /// 自定义 HTTP TTS 适配器（把 `http_tts` 表的 [HttpTTS] 配置接入统一朗读链路）。
 ///
 /// legado 书源的 httpTTS 约定：url / headers / body 里可含占位符
@@ -24,11 +36,11 @@ class HttpTtsProvider extends CloudTtsProvider {
   @override
   String get name => _cfg.name;
 
-  Map<String, String> _headers(String text) {
+  Map<String, String> _headers(String text, double rate) {
     final raw = _cfg.headers;
     if (raw == null || raw.trim().isEmpty) return <String, String>{};
     try {
-      final decoded = jsonDecode(_substitute(raw, text));
+      final decoded = jsonDecode(_substitute(raw, text, rate));
       if (decoded is Map) {
         return decoded.map((k, v) => MapEntry(k.toString(), v.toString()));
       }
@@ -36,11 +48,8 @@ class HttpTtsProvider extends CloudTtsProvider {
     return <String, String>{};
   }
 
-  String _substitute(String template, String text) => template
-      .replaceAll('{{text}}', Uri.encodeComponent(text))
-      .replaceAll('{{speakText}}', Uri.encodeComponent(text))
-      .replaceAll('{{speakSpeed}}', '1')
-      .replaceAll('\${text}', Uri.encodeComponent(text));
+  String _substitute(String template, String text, double rate) =>
+      substituteHttpTts(template, text, rate);
 
   @override
   Future<String?> synthesize(String text, {String? voice, double? rate, double? pitch}) async {
@@ -50,12 +59,13 @@ class HttpTtsProvider extends CloudTtsProvider {
         receiveTimeout: const Duration(seconds: 30),
         responseType: ResponseType.bytes,
       ));
-      final url = _substitute(_cfg.url, text);
+      final speedRate = rate ?? 1.0;
+      final url = _substitute(_cfg.url, text, speedRate);
       final method = (_cfg.method ?? 'GET').toUpperCase();
-      final headers = _headers(text);
+      final headers = _headers(text, speedRate);
       final Response<dynamic> resp;
       if (method == 'POST') {
-        var body = _substitute(_cfg.body ?? '', text);
+        var body = _substitute(_cfg.body ?? '', text, speedRate);
         dynamic data = body;
         final jsonHeader = headers.entries.any((e) =>
             e.key.toLowerCase() == 'content-type' &&

@@ -313,6 +313,8 @@ class _DirectLinkJsSource implements JsSource {
   @override
   String? get header => null;
   @override
+  String? get loginUi => null;
+  @override
   bool get enabledCookieJar => false;
   @override
   String get jsGroup => '';

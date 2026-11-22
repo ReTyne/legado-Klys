@@ -8,11 +8,14 @@ class _DanmakuText extends StatefulWidget {
   final _DanmakuItem item;
   final double opacity;
   final double fontSize;
+  /// 播放倍速联动的滚动系数，越小滚动越快（1.0 为原速）。
+  final double speedFactor;
   const _DanmakuText({
     super.key,
     required this.item,
     required this.opacity,
     required this.fontSize,
+    this.speedFactor = 1.0,
   });
 
   @override

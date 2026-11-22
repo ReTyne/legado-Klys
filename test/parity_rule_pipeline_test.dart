@@ -309,7 +309,7 @@ void main() {
       expect(encodeParams({'q': 'a b', 'n': 7}), 'q=a+b&n=7');
       expect(encodeParams({'q': 'a b'}, charset: 'escape'), 'q=a%20b');
       expect(
-          encodeParams({'q': '你好'}, charset: 'escape'), 'q=%E4%BD%A0%E5%A5%BD');
+          encodeParams({'q': '你好'}, charset: 'escape'), 'q=%u4F60%u597D');
       expect(encodeParams({'q': 'a%20b'}), 'q=a%20b');
     });
 

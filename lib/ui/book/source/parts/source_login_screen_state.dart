@@ -30,6 +30,16 @@ class _SourceLoginScreenState extends State<SourceLoginScreen> {
   final Map<String, bool> _switchValues = {};
   // select 下拉控件的选中值（字段名 -> 选项 value）
   final Map<String, String> _selectValues = {};
+  // toggle 多状态控件的当前字符（字段名 -> chars 中的一项）
+  final Map<String, String> _toggleValues = {};
+  // viewName 为表达式时求值后的显示文本（字段名 -> 文本）
+  final Map<String, String> _dynamicLabels = {};
+  // 已解析过动态标签的条目签名，避免表单重建时重复求值
+  String? _resolvedLabelsKey;
+  // 输入框/下拉 action 的防抖定时器（字段名 -> Timer）
+  final Map<String, Timer?> _actionTimers = {};
+  // 多状态 toggle 的显示值通知器，供控件局部刷新
+  final Map<String, ValueNotifier<String>> _toggleNotifiers = {};
   final List<_LoginItem> _loginItems = [];
   final List<String> _logs = [];
   bool _busy = false;
@@ -54,6 +64,7 @@ class _SourceLoginScreenState extends State<SourceLoginScreen> {
         for (final e in _controllers.entries) e.key: e.value.text,
         for (final e in _switchValues.entries) e.key: e.value.toString(),
         for (final e in _selectValues.entries) e.key: e.value.toString(),
+        for (final e in _toggleValues.entries) e.key: e.value,
       };
 
   bool get _hasUnsavedChanges {
@@ -109,6 +120,11 @@ class _SourceLoginScreenState extends State<SourceLoginScreen> {
     _controllers.clear();
     _switchValues.clear();
     _selectValues.clear();
+    _toggleValues.clear();
+    for (final t in _actionTimers.values) {
+      t?.cancel();
+    }
+    _actionTimers.clear();
     final items = _loginItemsOriginal.isNotEmpty
         ? List<dynamic>.from(_loginItemsOriginal)
         : _fallbackLoginUi;
@@ -311,6 +327,15 @@ class _SourceLoginScreenState extends State<SourceLoginScreen> {
     _controllers.clear();
     _switchValues.clear();
     _selectValues.clear();
+    _toggleValues.clear();
+    for (final t in _actionTimers.values) {
+      t?.cancel();
+    }
+    _actionTimers.clear();
+    for (final n in _toggleNotifiers.values) {
+      n.dispose();
+    }
+    _toggleNotifiers.clear();
   }
 
   /// 单个登录 UI 条目（保留书源 loginUi 的原始顺序，仅按类型分组渲染）。
@@ -330,6 +355,175 @@ class _SourceLoginScreenState extends State<SourceLoginScreen> {
   static double _flexBasisPercentOf(Map<String, dynamic> raw) =>
       flexBasisPercentOf(raw['style']);
 
+  /// 显示名：动态求值结果优先，其次是单引号字面量 viewName，最后回退 name。
+  String _labelOf(Map<String, dynamic> item, String name) {
+    final dyn = _dynamicLabels[name];
+    if (dyn != null && dyn.isNotEmpty) return dyn;
+    final viewName = item['viewName']?.toString() ?? '';
+    if (viewName.length >= 2 &&
+        viewName.startsWith("'") &&
+        viewName.endsWith("'")) {
+      return viewName.substring(1, viewName.length - 1);
+    }
+    if (viewName.isNotEmpty) return viewName;
+    return name;
+  }
+
+  /// toggle 的候选字符：字符串数组、"名称::值"、逗号分隔字符串均可。
+  List<String> _parseToggleChars(dynamic raw) {
+    final out = <String>[];
+    void add(String s) {
+      final t = s.trim();
+      if (t.isEmpty || out.contains(t)) return;
+      out.add(t);
+    }
+
+    if (raw is List) {
+      for (final e in raw) {
+        if (e == null) continue;
+        if (e is String) {
+          final parts = e.split('::');
+          add(parts.length > 1 ? parts.last : e);
+        } else if (e is Map) {
+          add((e['value'] ?? e['name'] ?? '').toString());
+        }
+      }
+    } else if (raw is String) {
+      for (final part in raw.split(RegExp(r'[,，\r\n]+'))) {
+        add(part);
+      }
+    }
+    return out;
+  }
+
+  void _addBoolSwitch(Map<String, dynamic> item, String name, String label,
+      String action) {
+    final name0 = name.isEmpty ? '开关' : name;
+    final def = item['default'];
+    final defBool = def == true || def == 'true' || def == '1' || def == 1;
+    final draft = _draftForm[name0];
+    final value = draft != null
+        ? (draft == 'true' || draft == '1')
+        : (_switchValues[name0] ?? defBool);
+    _switchValues[name0] = value;
+    _draftForm[name0] = value.toString();
+    _loginItems.add(_mkInput(
+      item,
+      SwitchListTile(
+        title: Text(label.isNotEmpty ? label : name0),
+        value: value,
+        contentPadding: EdgeInsets.zero,
+        onChanged: (v) {
+          setState(() {
+            _switchValues[name0] = v;
+            _draftForm[name0] = v.toString();
+          });
+          if (action.isNotEmpty) {
+            _runAction(action, name: name0, quiet: true);
+          }
+        },
+      ),
+    ));
+  }
+
+  /// 多状态切换：点按在 chars 间循环，长按传 isLongClick=true。
+  void _addToggleCycle(Map<String, dynamic> item, String name, String label,
+      List<String> chars, String action) {
+    final name0 = name.isEmpty ? '切换' : name;
+    final def = item['default']?.toString();
+    final draft = _draftForm[name0];
+    final current = (draft != null && chars.contains(draft))
+        ? draft
+        : (def != null && chars.contains(def) ? def : chars.first);
+    _toggleValues[name0] = current;
+    _draftForm[name0] = current;
+    final notifier =
+        _toggleNotifiers.putIfAbsent(name0, () => ValueNotifier<String>(current));
+    notifier.value = current;
+    final right = item['style'] is Map &&
+        item['style']['layout_justifySelf'] == 'right';
+
+    void cycle(bool longClick) {
+      final idx = chars.indexOf(_toggleValues[name0] ?? current);
+      final next = chars[(idx + 1) % chars.length];
+      _toggleValues[name0] = next;
+      _draftForm[name0] = next;
+      notifier.value = next;
+      if (action.isNotEmpty) {
+        _runAction(action, name: name0, isLongClick: longClick, quiet: true);
+      }
+    }
+
+    _loginItems.add(_mkInput(
+      item,
+      ValueListenableBuilder<String>(
+        valueListenable: notifier,
+        builder: (_, cur, __) => Padding(
+          padding: const EdgeInsets.only(bottom: AppSpacing.s),
+          child: FilledButton.tonal(
+            onPressed: () => cycle(false),
+            onLongPress: () => cycle(true),
+            child: Text(right ? '$label $cur' : '$cur $label'),
+          ),
+        ),
+      ),
+    ));
+  }
+
+  void _addSelect(Map<String, dynamic> item, String name, String label,
+      String action) {
+    final name0 = name.isEmpty ? '请选择' : name;
+    final options = _parseSelectOptions(item['options'] ?? item['chars']);
+    if (options.isEmpty) return;
+    final draft = _draftForm[name0];
+    final def = item['default']?.toString();
+    final defValue = (def != null && options.any((o) => o['value'] == def))
+        ? def
+        : null;
+    final valid = options.any((o) => o['value'] == draft);
+    final current = valid
+        ? draft!
+        : (defValue ?? _selectValues[name0] ?? options.first['value']!);
+    _selectValues[name0] = current;
+    _draftForm[name0] = current;
+    _loginItems.add(_mkInput(
+      item,
+      DropdownButtonFormField<String>(
+        value: current,
+        isExpanded: true,
+        decoration: InputDecoration(
+          labelText: label.isNotEmpty ? label : name0,
+          border: const OutlineInputBorder(),
+          prefixIcon: const Icon(Icons.arrow_drop_down_circle_outlined),
+        ),
+        items: options
+            .map((o) => DropdownMenuItem(
+                  value: o['value'],
+                  child: Text(o['name'] ?? o['value'] ?? ''),
+                ))
+            .toList(),
+        onChanged: (v) {
+          if (v == null) return;
+          setState(() {
+            _selectValues[name0] = v;
+            _draftForm[name0] = v;
+          });
+          if (action.isNotEmpty) {
+            _runAction(action, name: name0, quiet: true);
+          }
+        },
+      ),
+    ));
+  }
+
+  /// 输入类控件配置了 action 时，停止输入 600ms 后触发一次。
+  void _scheduleFieldAction(String name, String action) {
+    _actionTimers[name]?.cancel();
+    _actionTimers[name] = Timer(const Duration(milliseconds: 600), () {
+      if (mounted) _runAction(action, name: name, quiet: true);
+    });
+  }
+
   /// 依据 loginUi 条目构建有序列表（顺序与书源完全一致）。
   void _buildFields(List<dynamic> items) {
     _loginItemsOriginal
@@ -339,87 +533,30 @@ class _SourceLoginScreenState extends State<SourceLoginScreen> {
       if (raw is! Map) continue;
       final item = Map<String, dynamic>.from(raw);
       final name = item['name']?.toString() ?? '';
-      // 控件类型同时接受 toggle 与 switch 两种写法；标题回退到 viewName。
       final type = item['type']?.toString() ?? 'text';
-      final label =
-          name.isNotEmpty ? name : (item['viewName']?.toString() ?? '');
+      final label = _labelOf(item, name);
+      final action = item['action']?.toString() ?? '';
       if (type == 'button') {
         _loginItems.add(_mkButton(item));
       } else if (type == 'switch' || type == 'toggle') {
-        final name0 = name.isEmpty ? '开关' : name;
-        final def = item['default'];
-        final defBool = def == true || def == 'true' || def == '1' || def == 1;
-        final draft = _draftForm[name0];
-        final value = draft != null
-            ? (draft == 'true' || draft == '1')
-            : (_switchValues[name0] ?? defBool);
-        _switchValues[name0] = value;
-        _draftForm[name0] = value.toString();
-        _loginItems.add(_mkInput(
-          item,
-          SwitchListTile(
-            title: Text(label.isNotEmpty ? label : name0),
-            value: value,
-            contentPadding: EdgeInsets.zero,
-            onChanged: (v) => setState(() {
-              _switchValues[name0] = v;
-              _draftForm[name0] = v.toString();
-            }),
-          ),
-        ));
-      } else if (type == 'select') {
-        final name0 = name.isEmpty ? '请选择' : name;
-        // 下拉选项同时接受 options 与 chars 两种写法；默认值取 default 字段。
-        final options = _parseSelectOptions(item['options'] ?? item['chars']);
-        if (options.isNotEmpty) {
-          final draft = _draftForm[name0];
-          final def = item['default']?.toString();
-          // 默认值必须在选项里存在才生效；否则回退到已选值或首项。
-          final defValue =
-              (def != null && options.any((o) => o['value'] == def))
-                  ? def
-                  : null;
-          final valid = options.any((o) => o['value'] == draft);
-          final current = valid
-              ? draft!
-              : (defValue ?? _selectValues[name0] ?? options.first['value']!);
-          _selectValues[name0] = current;
-          _draftForm[name0] = current;
-          _loginItems.add(_mkInput(
-            item,
-            DropdownButtonFormField<String>(
-              value: current,
-              isExpanded: true,
-              decoration: InputDecoration(
-                labelText: label.isNotEmpty ? label : name0,
-                border: const OutlineInputBorder(),
-                prefixIcon: const Icon(Icons.arrow_drop_down_circle_outlined),
-              ),
-              items: options
-                  .map((o) => DropdownMenuItem(
-                        value: o['value'],
-                        child: Text(o['name'] ?? o['value'] ?? ''),
-                      ))
-                  .toList(),
-              onChanged: (v) {
-                if (v != null) {
-                  setState(() {
-                    _selectValues[name0] = v;
-                    _draftForm[name0] = v;
-                  });
-                }
-              },
-            ),
-          ));
+        final chars = _parseToggleChars(item['chars'] ?? item['options']);
+        if (type == 'toggle' && chars.isNotEmpty) {
+          _addToggleCycle(item, name, label, chars, action);
+        } else {
+          _addBoolSwitch(item, name, label, action);
         }
+      } else if (type == 'select') {
+        _addSelect(item, name, label, action);
       } else if (type == 'text' || type == 'password' || type.isEmpty) {
-        // 文本/密码框默认值取 default 字段，标题回退到 viewName。
         final c = TextEditingController(
             text: _draftForm[name] ?? item['default']?.toString() ?? '');
         _draftForm[name] = c.text;
         c.addListener(() {
           _draftForm[name] = c.text;
         });
+        if (action.isNotEmpty) {
+          c.addListener(() => _scheduleFieldAction(name, action));
+        }
         _controllers[name] = c;
         _allControllers.add(c);
         _loginItems.add(_mkInput(
@@ -437,6 +574,57 @@ class _SourceLoginScreenState extends State<SourceLoginScreen> {
           ),
         ));
       }
+    }
+    _finalizeDynamicLabels();
+  }
+
+  /// viewName 以 @js:/<js> 开头时求值得到真实显示文本；
+  /// 签名不变时只求值一次，避免表单重建反复执行脚本。
+  void _finalizeDynamicLabels() {
+    final key = _loginItemsOriginal
+        .map((e) => e is Map
+            ? '${e['name']}|${e['viewName']}'
+            : '')
+        .join('\n');
+    if (_resolvedLabelsKey == key) return;
+    _resolvedLabelsKey = key;
+    _resolveDynamicLabels(List<dynamic>.from(_loginItemsOriginal)).then((_) {
+      if (mounted) setState(_rebuildFields);
+    });
+  }
+
+  Future<void> _resolveDynamicLabels(List<dynamic> items) async {
+    final pending = <Map<String, dynamic>>[];
+    for (final raw in items) {
+      if (raw is! Map) continue;
+      final m = Map<String, dynamic>.from(raw);
+      final name = m['name']?.toString() ?? '';
+      final v = m['viewName']?.toString() ?? '';
+      if (name.isEmpty || v.isEmpty) continue;
+      if (v.startsWith('@js:') || v.startsWith('<js>')) pending.add(m);
+    }
+    if (pending.isEmpty) return;
+    try {
+      final rt = await JsRuntimeManager.instance.forSource(source);
+      for (final m in pending) {
+        final name = m['name']!.toString();
+        final raw = m['viewName']!.toString();
+        final code = raw.startsWith('@js:')
+            ? raw.substring(4)
+            : raw.substring(4, raw.length > 9 ? raw.length - 5 : raw.length);
+        final res = await rt.eval(JsEvalRequest(
+          source: source,
+          script: code,
+          result: _form,
+          baseUrl: source.bookSourceUrl.startsWith('http')
+              ? source.bookSourceUrl
+              : '',
+        ));
+        final val = res.stringValue ?? res.value?.toString() ?? '';
+        if (val.isNotEmpty) _dynamicLabels[name] = val;
+      }
+    } catch (e) {
+      _appendLog('动态标签求值失败：$e');
     }
   }
 
@@ -524,6 +712,10 @@ class _SourceLoginScreenState extends State<SourceLoginScreen> {
                   busy: _busy,
                   onPressed: () =>
                       _runAction(it.raw['action']?.toString() ?? ''),
+                  onLongPressed: () => _runAction(
+                    it.raw['action']?.toString() ?? '',
+                    isLongClick: true,
+                  ),
                 ))
             .toList(),
       ),
@@ -567,6 +759,7 @@ class _SourceLoginScreenState extends State<SourceLoginScreen> {
     _controllers.forEach((k, c) => m[k] = c.text);
     m.addAll(_switchValues);
     m.addAll(_selectValues);
+    m.addAll(_toggleValues);
     return m;
   }
 
@@ -847,25 +1040,47 @@ class _SourceLoginScreenState extends State<SourceLoginScreen> {
     );
   }
 
-  Future<void> _runAction(String action) async {
+  Future<void> _runAction(
+    String action, {
+    bool isLongClick = false,
+    String? name,
+    bool quiet = false,
+  }) async {
     final act = action.trim();
     if (act.isEmpty) return;
-    // 只记录本次动作产生的网络请求，避免把上一次的失败带进诊断
-    SourceNetworkLog.instance.clear();
-    setState(() => _busy = true);
-    _appendLog('执行: $act');
+    // action 为绝对地址时用外部浏览器打开，不按 JS 求值。
+    if (act.startsWith('http://') || act.startsWith('https://')) {
+      final uri = Uri.tryParse(act);
+      if (uri != null && await canLaunchUrl(uri)) {
+        await launchUrl(uri, mode: LaunchMode.externalApplication);
+      } else if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('无法打开链接：$act')));
+      }
+      return;
+    }
+    final suffix = isLongClick ? '（长按）' : '';
+    if (quiet) {
+      _appendLog('控件 ${name ?? ''} 触发: $act$suffix');
+    } else {
+      // 只记录本次动作产生的网络请求，避免把上一次的失败带进诊断
+      SourceNetworkLog.instance.clear();
+      setState(() => _busy = true);
+      _appendLog('执行: $act$suffix');
+    }
     for (final e in SourceNetworkLog.instance.scriptErrors) {
       _appendLog('脚本加载: $e');
     }
     try {
       final rt = await JsRuntimeManager.instance.forSource(source);
-      // 登录按钮以表单对象作为 result
+      // 登录按钮以表单对象作为 result，长按标志透传给书源脚本
       final res = await rt.eval(JsEvalRequest(
         source: source,
         script: act,
         result: _form,
         baseUrl:
             source.bookSourceUrl.startsWith('http') ? source.bookSourceUrl : '',
+        isLongClick: isLongClick,
       ));
       for (final t in res.toasts) {
         _appendLog(t);
@@ -879,7 +1094,7 @@ class _SourceLoginScreenState extends State<SourceLoginScreen> {
       // 把底层真实网络失败写进运行日志：书源常把所有异常都伪装成
       // "HTTP 502"，这里额外给出请求 URL 与原始错误，便于判断是服务端
       // 故障还是本机网络问题。
-      final netFail = SourceNetworkLog.instance.lastFailure;
+      final netFail = quiet ? null : SourceNetworkLog.instance.lastFailure;
       if (netFail != null) {
         _appendLog(
             '网络失败: ${netFail.method} ${netFail.statusLabel} ${netFail.url}');
@@ -889,7 +1104,7 @@ class _SourceLoginScreenState extends State<SourceLoginScreen> {
       await _db.updateSource(source);
       // 登录动作可能改变登录状态，重新检测 loginCheckJs
       await _checkLoginStatus();
-      if (mounted) {
+      if (!quiet && mounted) {
         final lastToast = res.toasts.isNotEmpty ? res.toasts.last : null;
         final serverDown = netFail != null && (netFail.statusCode ?? 0) >= 500;
         final hint = serverDown
@@ -903,7 +1118,7 @@ class _SourceLoginScreenState extends State<SourceLoginScreen> {
     } catch (e) {
       _appendLog('运行失败: $e');
     } finally {
-      if (mounted) setState(() => _busy = false);
+      if (!quiet && mounted) setState(() => _busy = false);
     }
   }
 
@@ -964,6 +1179,12 @@ class _SourceLoginScreenState extends State<SourceLoginScreen> {
   void dispose() {
     for (final c in _allControllers) {
       c.dispose();
+    }
+    for (final t in _actionTimers.values) {
+      t?.cancel();
+    }
+    for (final n in _toggleNotifiers.values) {
+      n.dispose();
     }
     super.dispose();
   }

@@ -94,8 +94,10 @@ class NativeBridge {
     });
     handler(_brightness, (call) {
       if (call.method == 'onBrightnessChanged') {
-        final v = call.arguments is num ? (call.arguments as num).toDouble() : null;
-        systemBrightness.value = v;
+        final args = call.arguments;
+        final raw = args is Map ? args['value'] : args;
+        final v = raw is num ? raw.toDouble() : null;
+        if (v != null) systemBrightness.value = (v / 255.0).clamp(0.0, 1.0);
       }
     });
     handler(_pip, (call) {
@@ -113,7 +115,8 @@ class NativeBridge {
     handler(_network, (call) {
       if (call.method == 'onNetworkChanged' && call.arguments is Map) {
         final m = call.arguments as Map<dynamic, dynamic>;
-        if (m['wifi'] is bool) isWifiNotifier.value = m['wifi'] as bool;
+        final wifi = m['isWifi'] ?? m['wifi'];
+        if (wifi is bool) isWifiNotifier.value = wifi;
         if (!networkEvents.isClosed) networkEvents.add(m);
       }
     });

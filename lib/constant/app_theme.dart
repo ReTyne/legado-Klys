@@ -53,7 +53,9 @@ class AppTheme extends ChangeNotifier {
 
   Future<void> load() async {
     final prefs = await SharedPreferences.getInstance();
-    _themeMode = ThemeMode.values[prefs.getInt(_keyThemeMode) ?? 0];
+    final modeIndex = (prefs.getInt(_keyThemeMode) ?? 0)
+        .clamp(0, ThemeMode.values.length - 1);
+    _themeMode = ThemeMode.values[modeIndex];
     _seedColor = Color(prefs.getInt(_keySeedColor) ?? 0xFF3F5A72);
     _dynamicColor = prefs.getBool(_keyDynamicColor) ?? true;
     _fontScale = (prefs.getDouble(_keyFontScale) ?? 1.0).clamp(0.5, 3.0);
@@ -164,6 +166,10 @@ class AppTheme extends ChangeNotifier {
     final base = ColorScheme.fromSeed(
       seedColor: _seedColor,
       brightness: brightness,
+      // 开启动态取色时采用贴近种子色的调色变体，关闭时回到默认变体；
+      // 平台未提供系统取色通道时按预设变体降级，开关仍有可见差异。
+      dynamicSchemeVariant:
+          _dynamicColor ? DynamicSchemeVariant.fidelity : DynamicSchemeVariant.tonalSpot,
       // 墨水屏模式提高对比度
       contrastLevel: _eink ? 0.5 : 0.0,
     );

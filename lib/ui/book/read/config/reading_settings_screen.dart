@@ -628,6 +628,87 @@ class _ReadingSettingsScreenState extends State<ReadingSettingsScreen>
           trailing: const Icon(Icons.chevron_right),
           onTap: () => _showFooterSlotsPicker(),
         ),
+        const AppSectionHeader('页眉三槽位'),
+        ListTile(
+          title: const Text('页眉模式'),
+          subtitle: const Text('经典：仅章节名 / 三槽位：左中右可配置', style: TextStyle(fontSize: 11)),
+          trailing: DropdownButton<int>(
+            value: config.headerMode == 1 ? 1 : 0,
+            items: const [
+              DropdownMenuItem(value: 0, child: Text('经典')),
+              DropdownMenuItem(value: 1, child: Text('三槽位')),
+            ],
+            onChanged: (v) => rp.updateConfig((c) => c.headerMode = v ?? 0),
+          ),
+        ),
+        if (config.headerMode == 1)
+          ListTile(
+            leading: const Icon(Icons.view_column),
+            title: const Text('页眉槽位'),
+            subtitle: Text('左:${footerSlotLabels[_safeHeaderSlots(config)[0]]}  中:${footerSlotLabels[_safeHeaderSlots(config)[1]]}  右:${footerSlotLabels[_safeHeaderSlots(config)[2]]}'),
+            trailing: const Icon(Icons.chevron_right),
+            onTap: () => _showHeaderSlotsPicker(),
+          ),
+        ListTile(
+          title: const Text('页眉文字色 / 分隔线色'),
+          subtitle: const Text('三槽位页眉生效', style: TextStyle(fontSize: 11)),
+          trailing: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              GestureDetector(
+                onTap: () => _showColorPicker(
+                    (color) => rp.updateConfig((c) => c.tipColor = color.value)),
+                child: Container(width: 20, height: 20, color: Color(config.tipColor)),
+              ),
+              const SizedBox(width: AppSpacing.s),
+              GestureDetector(
+                onTap: () => _showColorPicker((color) =>
+                    rp.updateConfig((c) => c.tipDividerColor = color.value)),
+                child: Container(width: 20, height: 20, color: Color(config.tipDividerColor)),
+              ),
+            ],
+          ),
+        ),
+        ListTile(
+          title: const Text('页眉标题字号'),
+          trailing: DropdownButton<int>(
+            value: config.titleSize.clamp(9, 24).toInt(),
+            items: List.generate(16, (i) => DropdownMenuItem(value: i + 9, child: Text('${i + 9}'))),
+            onChanged: (v) => rp.updateConfig((c) => c.titleSize = v ?? 12),
+          ),
+        ),
+        ListTile(
+          title: const Text('页眉上 / 下间距'),
+          trailing: Row(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              DropdownButton<int>(
+                value: const [0, 2, 4, 8].contains(config.titleTopSpacing) ? config.titleTopSpacing : 0,
+                items: const [
+                  DropdownMenuItem(value: 0, child: Text('上0')),
+                  DropdownMenuItem(value: 2, child: Text('上2')),
+                  DropdownMenuItem(value: 4, child: Text('上4')),
+                  DropdownMenuItem(value: 8, child: Text('上8')),
+                ],
+                onChanged: (v) => rp.updateConfig((c) => c.titleTopSpacing = v ?? 0),
+              ),
+              const SizedBox(width: AppSpacing.xs),
+              DropdownButton<int>(
+                value: const [0, 2, 4, 8].contains(config.titleBottomSpacing) ? config.titleBottomSpacing : 0,
+                items: const [
+                  DropdownMenuItem(value: 0, child: Text('下0')),
+                  DropdownMenuItem(value: 2, child: Text('下2')),
+                  DropdownMenuItem(value: 4, child: Text('下4')),
+                  DropdownMenuItem(value: 8, child: Text('下8')),
+                ],
+                onChanged: (v) => rp.updateConfig((c) => c.titleBottomSpacing = v ?? 0),
+              ),
+            ],
+          ),
+        ),
+        SwitchListTile(dense: true, title: const Text('中文禁则排版'), subtitle: const Text('Flutter 文本排版默认遵循 CJK 禁则', style: TextStyle(fontSize: 11)), value: config.useZhLayout, onChanged: (v) => rp.updateConfig((c) => c.useZhLayout = v)),
+        SwitchListTile(dense: true, title: const Text('正文两端对齐'), value: config.textFullJustify, onChanged: (v) => rp.updateConfig((c) => c.textFullJustify = v)),
+        SwitchListTile(dense: true, title: const Text('末行两端对齐'), subtitle: const Text('平台无对应排版 API，暂作配置保留', style: TextStyle(fontSize: 11)), value: config.textBottomJustify, onChanged: (v) => rp.updateConfig((c) => c.textBottomJustify = v)),
         SwitchListTile(dense: true, title: const Text('头部加粗'), value: config.headerBold, onChanged: (v) => rp.updateConfig((c) => c.headerBold = v)),
         SwitchListTile(dense: true, title: const Text('底部加粗'), value: config.footerBold, onChanged: (v) => rp.updateConfig((c) => c.footerBold = v)),
         // 第十轮：自动换源 + 6 个朗读进阶项恢复 UI，全部在阅读页有真实消费分支
@@ -747,11 +828,60 @@ class _ReadingSettingsScreenState extends State<ReadingSettingsScreen>
       },
     );
   }
+
+  /// 页眉三槽位选择弹窗：左 / 中 / 右各自从内容枚举中选择
+  void _showHeaderSlotsPicker() {
+    showDialog(
+      context: context,
+      builder: (ctx) {
+        final slots = _safeHeaderSlots(ctx.watch<ReadProvider>().config);
+        return AlertDialog(
+          title: const Text('页眉槽位'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: List.generate(3, (i) {
+              final label = i == 0 ? '左槽' : i == 1 ? '中槽' : '右槽';
+              return ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: SizedBox(width: 48, child: Text(label)),
+                trailing: DropdownButton<FooterSlot>(
+                  value: slots[i],
+                  items: footerSlotLabels.entries
+                      .map((e) => DropdownMenuItem(value: e.key, child: Text(e.value)))
+                      .toList(),
+                  onChanged: (v) {
+                    if (v == null) return;
+                    ctx.read<ReadProvider>().updateConfig((c) {
+                      final next = _safeHeaderSlots(c);
+                      next[i] = v;
+                      c.headerSlots = next;
+                    });
+                  },
+                ),
+              );
+            }),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx), child: const Text('完成')),
+          ],
+        );
+      },
+    );
+  }
 }
 
 /// 读取页脚三槽位配置；长度不足时补空白槽，保证一定返回 3 个元素
 List<FooterSlot> _safeFooterSlots(ReadConfig config) {
   final list = List<FooterSlot>.of(config.footerSlots ?? defaultFooterSlots);
+  while (list.length < 3) {
+    list.add(FooterSlot.none);
+  }
+  return list.sublist(0, 3);
+}
+
+/// 读取页眉三槽位配置；长度不足时补空白槽，保证一定返回 3 个元素
+List<FooterSlot> _safeHeaderSlots(ReadConfig config) {
+  final list = List<FooterSlot>.of(config.headerSlots ?? defaultHeaderSlots);
   while (list.length < 3) {
     list.add(FooterSlot.none);
   }

@@ -1,5 +1,12 @@
 import 'book_source.dart';
 
+int? _bspInt(dynamic v) {
+  if (v == null) return null;
+  if (v is int) return v;
+  if (v is num) return v.toInt();
+  return int.tryParse(v.toString().trim());
+}
+
 /// 书源投影实体。
 ///
 /// 只承载书源管理列表需要的列，配合投影查询避免整行读取。
@@ -13,6 +20,12 @@ class BookSourcePart {
   final bool enabled;
   final bool enabledExplore;
   final int customOrder;
+
+  /// 书源管理列表用到的运行状态字段。
+  final int lastUpdateTime;
+  final int respondTime;
+  final int weight;
+  final bool eventListener;
 
   /// 计算列：是否配置了登录地址 / 发现地址。
   final bool hasLoginUrl;
@@ -30,6 +43,10 @@ class BookSourcePart {
     this.enabled = true,
     this.enabledExplore = true,
     this.customOrder = 0,
+    this.lastUpdateTime = 0,
+    this.respondTime = 180000,
+    this.weight = 0,
+    this.eventListener = false,
     this.hasLoginUrl = false,
     this.hasExploreUrl = false,
     this.loginUrl,
@@ -43,16 +60,18 @@ class BookSourcePart {
       bookSourceUrl: map['bookSourceUrl']?.toString() ?? '',
       bookSourceName: map['bookSourceName']?.toString() ?? '',
       bookSourceGroup: map['bookSourceGroup']?.toString(),
-      bookSourceType: map['bookSourceType'] is int
-          ? map['bookSourceType'] as int
-          : int.tryParse(map['bookSourceType']?.toString() ?? '0') ?? 0,
+      bookSourceType: _bspInt(map['bookSourceType']) ?? 0,
       enabled: map.containsKey('enabled') ? _flag(map['enabled']) : true,
       enabledExplore: map.containsKey('enabledExplore')
           ? _flag(map['enabledExplore'])
           : true,
-      customOrder: map['customOrder'] is int
-          ? map['customOrder'] as int
-          : int.tryParse(map['customOrder']?.toString() ?? '0') ?? 0,
+      customOrder: _bspInt(map['customOrder']) ?? 0,
+      lastUpdateTime: _bspInt(map['lastUpdateTime']) ?? 0,
+      respondTime: _bspInt(map['respondTime']) ?? 180000,
+      weight: _bspInt(map['weight']) ?? 0,
+      eventListener: map.containsKey('eventListener')
+          ? _flag(map['eventListener'])
+          : false,
       hasLoginUrl: _computedFlag(map, 'hasLoginUrl', loginUrl),
       hasExploreUrl: _computedFlag(map, 'hasExploreUrl', exploreUrl),
       loginUrl: loginUrl,
@@ -69,6 +88,10 @@ class BookSourcePart {
         enabled: enabled,
         enabledExplore: enabledExplore,
         customOrder: customOrder,
+        lastUpdateTime: lastUpdateTime,
+        respondTime: respondTime,
+        weight: weight,
+        eventListener: eventListener,
         loginUrl: loginUrl,
         exploreUrl: exploreUrl,
       );

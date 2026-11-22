@@ -151,8 +151,7 @@ class AppPrefs {
   /// 默认书籍保存目录（本地书籍导入/落盘位置）
   static String get defaultBookTreeUri => _defaultBookTreeUri;
   /// 系统文本处理菜单入口开关。
-  /// 说明：Flutter 版暂无 Android Intent.ACTION_PROCESS_TEXT 注册能力，
-  /// 该值仅持久化保存，待原生层支持后消费。
+  /// 原生已通过 legado/process_text 通道提供初始文本与事件流，由 NativeBridge 消费。
   static bool get processText => _processText;
   /// 图片缓存大小（MB），默认 50
   static int get bitmapCacheSize => _bitmapCacheSize;

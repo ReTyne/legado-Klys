@@ -7,14 +7,24 @@ class _DanmakuTextState extends State<_DanmakuText>
     with SingleTickerProviderStateMixin {
   late final AnimationController _ac;
 
+  Duration get _duration =>
+      Duration(milliseconds: (6000 / widget.speedFactor).round());
+
   @override
   void initState() {
     super.initState();
-    _ac = AnimationController(vsync: this, duration: const Duration(seconds: 6))
-      ..forward();
+    _ac = AnimationController(vsync: this, duration: _duration)..forward();
     _ac.addStatusListener((s) {
       if (s == AnimationStatus.completed && mounted) setState(() {});
     });
+  }
+
+  @override
+  void didUpdateWidget(covariant _DanmakuText oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.speedFactor != widget.speedFactor) {
+      _ac.duration = _duration;
+    }
   }
 
   @override

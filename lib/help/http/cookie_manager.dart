@@ -1,13 +1,20 @@
+import 'dart:async';
 import 'dart:convert';
 
 import 'package:legado_md3/utils/cookie_util.dart' as cu;
+import 'package:shared_preferences/shared_preferences.dart';
 
 /// Cookie 管理器（进程内单例）：以 eTLD+1 为域键，区分会话 / 持久两层，
 /// 解析 Set-Cookie 属性并按 path / domain / secure 规则筛选请求 Cookie 头。
 class CookieManager {
   static final CookieManager _instance = CookieManager._();
   factory CookieManager() => _instance;
-  CookieManager._();
+  CookieManager._() {
+    _loaded = _loadPersisted();
+  }
+
+  /// 持久层在 SharedPreferences 中的存储键（JSON 序列化）。
+  static const String persistentPrefsKey = 'cookie_manager.persistent.v1';
 
   /// 每个域键的 Cookie 头字节上限，超限淘汰插入最早的条目。
   static const int maxCookieBytes = 4096;
@@ -15,10 +22,11 @@ class CookieManager {
   // 域键 -> (name -> cookie)
   // 会话层：无 expires / max-age，仅内存、进程内有效。
   final Map<String, Map<String, _Cookie>> _session = {};
-  // 持久层：带 expires / max-age。
+  // 持久层：带 expires / max-age，落盘到 SharedPreferences。
   final Map<String, Map<String, _Cookie>> _persistent = {};
 
   int _seq = 0;
+  Future<void>? _loaded;
 
   // ===================================================================
   // 既有公开 API（保持签名与语义）
@@ -75,6 +83,7 @@ class CookieManager {
     _session.clear();
     _persistent.clear();
     _seq = 0;
+    _schedulePersist();
   }
 
   /// 移除某主机对应的 cookie；[host] 可为完整 URL 或纯主机名。
@@ -84,6 +93,15 @@ class CookieManager {
     final key = cu.getSubDomain(host.contains('://') ? host : 'http://$host');
     _session.remove(key);
     _persistent.remove(key);
+    _schedulePersist();
+  }
+
+  /// 按名称移除指定 URL 域键下的单个 cookie（会话层与持久层同时清理）。
+  void removeCookie(String url, String key) {
+    final domainKey = _domainKey(url);
+    _session[domainKey]?.remove(key);
+    _persistent[domainKey]?.remove(key);
+    _schedulePersist();
   }
 
   // ===================================================================
@@ -132,6 +150,21 @@ class CookieManager {
   /// 仅清空会话层（持久层保留）。
   void clearSession() => _session.clear();
 
+  /// 等待持久化 Cookie 加载完成（应用启动或测试可显式调用）。
+  Future<void> ready() => _loaded ?? Future<void>.value();
+
+  /// 从 SharedPreferences 重新载入持久层（覆盖当前内存中的持久 Cookie）。
+  Future<void> reload() async {
+    _persistent.clear();
+    await _loadPersisted();
+  }
+
+  /// 将持久层立即刷写到 SharedPreferences（测试或关键节点可显式调用）。
+  Future<void> flush() async {
+    await ready();
+    await _writePersisted();
+  }
+
   // ===================================================================
   // 内部存储
   // ===================================================================
@@ -164,6 +197,7 @@ class CookieManager {
     // 同名 cookie 不跨层分裂
     other[key]?.remove(c.name);
     _enforceLimit(key);
+    if (persistent) _schedulePersist();
   }
 
   /// eTLD+1 域键；带 domain 属性且作用域合法时以该 domain 归一。
@@ -213,6 +247,90 @@ class CookieManager {
       if (oldest == null || oldestJar == null) break;
       oldestJar.remove(oldest.name);
     }
+  }
+  // ===================================================================
+  // 持久层序列化（SharedPreferences）
+  // ===================================================================
+
+  void _schedulePersist() {
+    // 后台落盘；失败静默忽略，不影响请求主流程。
+    unawaited(flush());
+  }
+
+  Future<void> _loadPersisted() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getString(persistentPrefsKey);
+      if (raw == null || raw.isEmpty) return;
+      final decoded = jsonDecode(raw);
+      if (decoded is! Map) return;
+      decoded.forEach((key, value) {
+        if (value is! List) return;
+        final jar = <String, _Cookie>{};
+        for (final item in value) {
+          final c = _cookieFromJson(item);
+          if (c != null) jar[c.name] = c;
+        }
+        if (jar.isNotEmpty) _persistent[key.toString()] = jar;
+      });
+      for (final jar in _persistent.values) {
+        for (final c in jar.values) {
+          if (c.order >= _seq) _seq = c.order + 1;
+        }
+      }
+    } catch (_) {
+      // 坏数据宽松处理：保持内存现状，不清空。
+    }
+  }
+
+  Future<void> _writePersisted() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final map = <String, dynamic>{};
+      _persistent.forEach((key, jar) {
+        if (jar.isEmpty) return;
+        map[key] = jar.values.map(_cookieToJson).toList();
+      });
+      await prefs.setString(persistentPrefsKey, jsonEncode(map));
+    } catch (_) {}
+  }
+
+  static Map<String, dynamic> _cookieToJson(_Cookie c) => <String, dynamic>{
+        'name': c.name,
+        'value': c.value,
+        'path': c.path,
+        'host': c.host,
+        'expires': c.expires?.millisecondsSinceEpoch,
+        'maxAge': c.maxAge,
+        'secure': c.secure,
+        'httpOnly': c.httpOnly,
+        'createdAt': c.createdAt.millisecondsSinceEpoch,
+        'order': c.order,
+      };
+
+  static _Cookie? _cookieFromJson(dynamic v) {
+    if (v is! Map) return null;
+    try {
+      return _Cookie(
+        v['name'] as String,
+        v['value'] as String,
+        path: (v['path'] as String?) ?? '/',
+        host: v['host'] as String?,
+        expires: _dtFromMillis(v['expires']),
+        maxAge: (v['maxAge'] as num?)?.toInt(),
+        secure: (v['secure'] as bool?) ?? false,
+        httpOnly: (v['httpOnly'] as bool?) ?? false,
+        createdAt: _dtFromMillis(v['createdAt']) ?? DateTime.now().toUtc(),
+        order: (v['order'] as num?)?.toInt() ?? 0,
+      );
+    } catch (_) {
+      return null;
+    }
+  }
+
+  static DateTime? _dtFromMillis(dynamic v) {
+    if (v is! num) return null;
+    return DateTime.fromMillisecondsSinceEpoch(v.toInt(), isUtc: true);
   }
 }
 

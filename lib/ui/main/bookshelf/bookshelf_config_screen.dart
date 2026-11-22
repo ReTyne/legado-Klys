@@ -17,7 +17,7 @@ class _BookshelfConfigScreenState extends State<BookshelfConfigScreen> {
   int _groupStyle = 0; // 0: 折叠 1: 平铺
   bool _hideEmptyGroups = false;
   // 排序
-  int _sortType = 0; // 0: 最近阅读 1: 书名 2: 作者 3: 添加时间 4: 手动
+  int _sortType = 0; // 0: 最近阅读 1: 书名 2: 作者 3: 添加时间 4: 手动 5: 综合
   bool _sortAscending = false;
   // 布局: 0详细列表 1紧凑列表 2三列网格 3四列紧凑网格 4大封面
   // 默认「网格」，与 BookProvider.defaultBookshelfLayout 一致
@@ -47,7 +47,7 @@ class _BookshelfConfigScreenState extends State<BookshelfConfigScreen> {
   bool _showTabMenu = true;
   int _updateLimit = 0;
 
-  static const _sortNames = ['最近阅读', '书名', '作者', '添加时间', '手动排序'];
+  static const _sortNames = ['最近阅读', '书名', '作者', '添加时间', '手动排序', '综合排序'];
   static const _groupStyleNames = ['折叠分组(顶部标签)', '平铺分组(分区展示)'];
   static const _layoutNames = ['详细列表', '紧凑列表', '三列网格', '紧凑网格', '大封面'];
 

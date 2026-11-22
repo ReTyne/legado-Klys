@@ -696,7 +696,13 @@ const String legadoBridgeJsPart08 =
       var ivb = __aesIv(iv);
       var mode = t.toUpperCase();
       var useCbc = mode.indexOf("CBC") >= 0;
+      // ECB/CBC + PKCS5/PKCS7 之外的模式（PCBC/CFB/OFB/CTR、NoPadding）
+      // 由原生 SymmetricCrypto 处理，避免纯 JS 版静默按 ECB 运算。
+      var nativeOnly = !__aesFastPath(t);
       function encryptBytes(data) {
+        if (nativeOnly) {
+          return __nativeCrypto("encrypt", t, kb, ivb, __symArgBytes(data));
+        }
         var text = (typeof data === "string") ? data : String(data);
         var dataBytes = __utf8ToBytes(text);
         var pad = 16 - (dataBytes.length % 16);
@@ -709,6 +715,9 @@ const String legadoBridgeJsPart08 =
         return new aesjs.ModeOfOperation.ecb(kb).encrypt(padded);
       }
       function decryptBytes(bytes) {
+        if (nativeOnly) {
+          return __nativeCrypto("decryptBytes", t, kb, ivb, __symCipherBytes(bytes));
+        }
         var data = (bytes instanceof Uint8Array) ? bytes : Uint8Array.from(bytes || []);
         var dec;
         if (useCbc) {
@@ -743,34 +752,50 @@ const String legadoBridgeJsPart08 =
     },
 
     // 非对称加密：createAsymmetricCrypto(transformation, usePublicKey)
-    // 返回 {setPublicKey, setPrivateKey, encrypt, encryptBase64, encryptHex, decrypt, decryptStr}。
-    // usePublicKey 决定加密时采用公钥还是私钥。
+    // encrypt/decrypt 返回字节数组，usePub 逐次指定（缺省沿用构造期值）；
+    // transformation（含 OAEP 等）透传给原生门面，由 op=asym 分派。
     createAsymmetricCrypto: function (transformation, usePublicKey) {
+      var t = String(transformation || "RSA");
       var pubKey = "", priKey = "";
-      var usePub = (usePublicKey === undefined) ? true : !!usePublicKey;
+      var defaultUsePub = (usePublicKey === undefined) ? true : !!usePublicKey;
+      function call(sub, data, usePub) {
+        var payload = {
+          op: "asym", sub: sub, transformation: t,
+          publicKey: pubKey, privateKey: priKey,
+          data: String(data == null ? "" : data),
+          usePublicKey: !!usePub
+        };
+        return String(__doXhr("legado://crypto", { method: "POST", body: payload }, null, null) || "");
+      }
+      function toBytes(b64) {
+        try { return Array.from(__b64ToBytes(b64)); } catch (e) { return []; }
+      }
       return {
         setPublicKey: function (key) { pubKey = __normalizePem(key); return this; },
         setPrivateKey: function (key) { priKey = __normalizePem(key); return this; },
-        encrypt: function (data) {
-          try {
-            var crypt = new JSEncrypt();
-            crypt.setPublicKey(usePub ? pubKey : priKey);
-            return crypt.encrypt(String(data == null ? "" : data)) || "";
-          } catch (e) { return ""; }
+        encrypt: function (data, usePub) {
+          return toBytes(call("encryptBytes", data,
+            usePub === undefined ? defaultUsePub : !!usePub));
         },
-        encryptBase64: function (data) { return this.encrypt(data); },
-        encryptHex: function (data) {
-          var b64 = this.encrypt(data);
-          try { return __bytesToHex(__b64ToBytes(b64)); } catch (e) { return ""; }
+        encryptBase64: function (data, usePub) {
+          return call("encryptBase64", data,
+            usePub === undefined ? defaultUsePub : !!usePub);
         },
-        decrypt: function (data) {
-          try {
-            var crypt = new JSEncrypt();
-            crypt.setPrivateKey(priKey);
-            return crypt.decrypt(String(data == null ? "" : data)) || "";
-          } catch (e) { return ""; }
+        encryptHex: function (data, usePub) {
+          return call("encryptHex", data,
+            usePub === undefined ? defaultUsePub : !!usePub);
         },
-        decryptStr: function (data) { return this.decrypt(data); }
+        decrypt: function (data, usePub) {
+          return toBytes(call("decryptBytes", data,
+            usePub === undefined ? false : !!usePub));
+        },
+        decryptByteArray: function (data, usePub) { return this.decrypt(data, usePub); },
+        decryptStr: function (data, usePub) {
+          return __bytesToUtf8(Uint8Array.from(this.decrypt(data, usePub)));
+        },
+        // 兼容把加解密结果当字符串使用的旧写法
+        encryptToString: function (data, usePub) { return this.encryptBase64(data, usePub); },
+        decryptToString: function (data, usePub) { return this.decryptStr(data, usePub); }
       };
     },
 
@@ -997,7 +1022,7 @@ const String legadoBridgeJsPart08 =
 
     // java.lang / java.net 常见静态调用
     lang: {
-      Thread: { sleep: function () {} },
+      Thread: { sleep: __pkgSleep },
       System: { currentTimeMillis: function () { return Date.now(); }, nanoTime: function () { return Date.now() * 1000000; } },
       String: function (v) { return String(v); },
       Integer: { parseInt: function (v) { return parseInt(v, 10); } }

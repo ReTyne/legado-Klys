@@ -74,24 +74,28 @@ void main() {
   });
 
   test('事件常量数量与取值', () {
-    expect(SourceEventCallback.allEvents.length, 16);
-    expect(SourceEventCallback.allEvents.toSet().length, 16);
+    expect(SourceEventCallback.allEvents.length, 20);
+    expect(SourceEventCallback.allEvents.toSet().length, 20);
     expect(SourceEventCallback.clickAuthor, 'clickAuthor');
     expect(SourceEventCallback.clickBookName, 'clickBookName');
     expect(SourceEventCallback.clickBookLabel, 'clickBookLabel');
     expect(SourceEventCallback.clickButton, 'clickCustomButton');
-    expect(SourceEventCallback.share, 'share');
-    expect(SourceEventCallback.clearCache, 'clearCache');
-    expect(SourceEventCallback.copyBookUrl, 'copyBookUrl');
-    expect(SourceEventCallback.copyTocUrl, 'copyTocUrl');
-    expect(SourceEventCallback.copyPlayUrl, 'copyPlayUrl');
+    expect(SourceEventCallback.longClickAuthor, 'longClickAuthor');
+    expect(SourceEventCallback.longClickBookName, 'longClickBookName');
+    expect(SourceEventCallback.longClickCustomButton, 'longClickCustomButton');
+    expect(SourceEventCallback.longClickBookLabel, 'longClickBookLabel');
+    expect(SourceEventCallback.share, 'clickShareBook');
+    expect(SourceEventCallback.clearCache, 'clickClearCache');
+    expect(SourceEventCallback.copyBookUrl, 'clickCopyBookUrl');
+    expect(SourceEventCallback.copyTocUrl, 'clickCopyTocUrl');
+    expect(SourceEventCallback.copyPlayUrl, 'clickCopyPlayUrl');
     expect(SourceEventCallback.addBookshelf, 'addBookShelf');
     expect(SourceEventCallback.removeBookshelf, 'delBookShelf');
     expect(SourceEventCallback.saveRead, 'saveRead');
     expect(SourceEventCallback.startRead, 'startRead');
     expect(SourceEventCallback.endRead, 'endRead');
-    expect(SourceEventCallback.startRefreshBookshelf, 'startRefreshBookShelf');
-    expect(SourceEventCallback.endRefreshBookshelf, 'endRefreshBookShelf');
+    expect(SourceEventCallback.startRefreshBookshelf, 'startShelfRefresh');
+    expect(SourceEventCallback.endRefreshBookshelf, 'endShelfRefresh');
   });
 
   test('未开启 eventListener 时直接放行且不创建运行时', () async {

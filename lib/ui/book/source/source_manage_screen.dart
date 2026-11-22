@@ -14,6 +14,7 @@ import 'package:legado_md3/help/source/check_source_service.dart';
 import 'package:legado_md3/help/source/url_guard.dart';
 import 'package:legado_md3/help/storage/shibboleth.dart';
 import 'package:legado_md3/ui/book/import/online_import_screen.dart';
+import 'package:legado_md3/ui/book/search/search_screen.dart';
 import 'package:legado_md3/ui/book/source/source_debug_screen.dart';
 import 'package:legado_md3/ui/book/source/source_edit_screen.dart';
 import 'package:legado_md3/ui/book/source/source_login_screen.dart';
@@ -181,6 +182,9 @@ class _SourceManageScreenState extends State<SourceManageScreen> {
       case 'enabled_explore':
         result = result.where((s) => s.enabledExplore).toList();
         break;
+      case 'disabled_explore':
+        result = result.where((s) => !s.enabledExplore).toList();
+        break;
     }
     if (_selectedGroup != null) {
       result =
@@ -246,6 +250,8 @@ class _SourceManageScreenState extends State<SourceManageScreen> {
         return '未启用';
       case 'enabled_explore':
         return '已启用发现';
+      case 'disabled_explore':
+        return '未启用发现';
       default:
         return key;
     }
@@ -260,6 +266,16 @@ class _SourceManageScreenState extends State<SourceManageScreen> {
   void _showSourceLogin(BookSource source) {
     Navigator.of(context).push(MaterialPageRoute(
       builder: (_) => SourceLoginScreen(source: source),
+    ));
+  }
+
+  /// 仅在该书源内搜索：把「名称::URL」作为 scope 传给搜索页。
+  void _showSourceSearch(BookSource source) {
+    final name = source.bookSourceName.replaceAll(':', '');
+    Navigator.of(context).push(MaterialPageRoute(
+      builder: (_) => SearchScreen(
+        searchScope: '$name::${source.bookSourceUrl}',
+      ),
     ));
   }
 
@@ -1109,6 +1125,23 @@ class _SourceManageScreenState extends State<SourceManageScreen> {
           _selectedIds.addAll(inverted);
         });
         return;
+      case 'select_interval':
+        // 选中当前列表中首个与末个已选项之间的全部书源（含两端）。
+        final positions = <int>[];
+        for (var i = 0; i < _filteredSources.length; i++) {
+          if (_selectedIds.contains(_filteredSources[i].bookSourceUrl)) {
+            positions.add(i);
+          }
+        }
+        if (positions.isEmpty) return;
+        final min = positions.reduce((a, b) => a < b ? a : b);
+        final max = positions.reduce((a, b) => a > b ? a : b);
+        setState(() {
+          for (var i = min; i <= max; i++) {
+            _selectedIds.add(_filteredSources[i].bookSourceUrl);
+          }
+        });
+        return;
     }
     await _loadSources();
     setState(() {
@@ -1235,6 +1268,7 @@ class _SourceManageScreenState extends State<SourceManageScreen> {
                     PopupMenuItem(value: 'add_group', child: Text('添加分组')),
                     PopupMenuItem(value: 'remove_group', child: Text('移除分组')),
                     PopupMenuItem(value: 'check', child: Text('校验选中')),
+                    PopupMenuItem(value: 'select_interval', child: Text('选中区间')),
                     PopupMenuItem(value: 'invert', child: Text('反选')),
                   ],
                 ),
@@ -1307,6 +1341,7 @@ class _SourceManageScreenState extends State<SourceManageScreen> {
                       case 'filter_enabled':
                       case 'filter_disabled':
                       case 'filter_enabled_explore':
+                      case 'filter_disabled_explore':
                         setState(() => _specialFilter = value.substring(7));
                         break;
                       case 'filter_clear':
@@ -1326,6 +1361,8 @@ class _SourceManageScreenState extends State<SourceManageScreen> {
                     PopupMenuItem(value: 'filter_disabled', child: Text('未启用')),
                     PopupMenuItem(
                         value: 'filter_enabled_explore', child: Text('已启用发现')),
+                    PopupMenuItem(
+                        value: 'filter_disabled_explore', child: Text('未启用发现')),
                     PopupMenuItem(value: 'filter_clear', child: Text('清除过滤')),
                     PopupMenuDivider(),
                     PopupMenuItem(value: 'enable_all', child: Text('全部启用')),
@@ -1831,6 +1868,12 @@ class _SourceManageScreenState extends State<SourceManageScreen> {
           title: '登录',
           icon: Icons.login_outlined,
           onTap: () => _showSourceLogin(source),
+        ),
+        AppMenuSheetItem(
+          title: '搜索',
+          icon: Icons.search_outlined,
+          subtitle: '仅在该书源内搜索书籍',
+          onTap: () => _showSourceSearch(source),
         ),
         AppMenuSheetItem(
           title: source.enabledExplore ? '禁用发现' : '启用发现',

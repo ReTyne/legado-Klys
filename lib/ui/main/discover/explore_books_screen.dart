@@ -4,7 +4,7 @@ import 'package:legado_md3/data/model/book_source.dart';
 import 'package:legado_md3/data/model/search_book.dart';
 import 'package:legado_md3/help/source/source_engine.dart';
 import 'package:legado_md3/di/book_provider.dart';
-import 'package:legado_md3/ui/book/reader_router.dart';
+import 'package:legado_md3/ui/book/detail/book_detail_screen.dart';
 import 'package:legado_md3/ui/widgets/app_widgets.dart';
 
 /// 发现书籍列表页：给定书源与发现 URL，拉取并分页展示书籍。
@@ -256,17 +256,17 @@ class _ExploreBooksScreenState extends State<ExploreBooksScreen> {
                                   },
                                   child: const Text('加入'),
                                 ),
-                                onTap: () async {
-                                  await context
-                                      .read<BookProvider>()
-                                      .addBook(book.toBook());
-                                  if (mounted && context.mounted) {
-                                    Navigator.push(
-                                        context,
-                                        MaterialPageRoute(
-                                            builder: (_) =>
-                                                readerForBook(book.toBook())));
-                                  }
+                                onTap: () {
+                                  // 点击进详情；是否加入书架由详情或「加入」按钮决定，
+                                  // 避免误触直接改书架并打开阅读器。
+                                  final detailBook = book.toBook();
+                                  Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (_) =>
+                                          BookDetailScreen(book: detailBook),
+                                    ),
+                                  );
                                 },
                               );
                             },

@@ -2,6 +2,9 @@
 /// 作为同一库的 part，私有成员互引保持可用。
 part of '../audio_playback_controller.dart';
 
+/// 片头/片尾按书持久化的键：书名 + 作者区分不同有声书。
+String audioSkipKey(String prefix, String bookName, String author) =>
+    '${prefix}_${bookName}_$author';
 
 /// 有声书播放引擎（无 UI）。
 ///
@@ -23,6 +26,7 @@ class AudioPlaybackController {
   static const String _prefRate = 'audio_play_rate';
   static const String _prefSkipStart = 'audio_skip_start';
   static const String _prefSkipEnd = 'audio_skip_end';
+  static const String _prefSleepEnd = 'audio_sleep_end_ms';
 
   /// 音频扩展名（用于判断文本里是否直接是媒体地址）
   static final RegExp _audioExt = RegExp(
@@ -81,6 +85,10 @@ class AudioPlaybackController {
   bool _isPlaying = false;
   bool _stopAfterCurrent = false;
 
+  /// 定时关闭结束时刻；定时器由控制器持有，退出页面后台播放仍生效。
+  DateTime? _sleepEnd;
+  Timer? _sleepTimer;
+
   /// 是否保留后台会话（页面按用户选择退出后为 true）
   bool _background = false;
 
@@ -119,6 +127,29 @@ class AudioPlaybackController {
 
   String positionKey(int idx) => 'audio_position_${_book?.name}_$idx';
 
+  /// 片头片尾按书保存；没有本书记录时沿用旧版全局值作为默认值。
+  String get _skipStartKey {
+    final b = _book;
+    return b == null
+        ? _prefSkipStart
+        : audioSkipKey('audio_skip_start', b.name, b.author);
+  }
+
+  String get _skipEndKey {
+    final b = _book;
+    return b == null
+        ? _prefSkipEnd
+        : audioSkipKey('audio_skip_end', b.name, b.author);
+  }
+
+  /// 剩余定时时间（null 表示未设定），供 UI 显示倒计时。
+  Duration? get sleepRemaining {
+    final end = _sleepEnd;
+    if (end == null) return null;
+    final left = end.difference(DateTime.now());
+    return left.isNegative ? Duration.zero : left;
+  }
+
   // ==================== 会话生命周期 ====================
 
   /// 播放页进入：创建或恢复会话。
@@ -154,6 +185,7 @@ class AudioPlaybackController {
     _bindPlayer(player);
     _initActions();
     await _loadPrefs();
+    await _restoreSleepTimer();
     try {
       // 音频焦点改由 AudioNotifyService 统一管理（失去焦点 / 拔耳机时暂停），
       // 这里关掉 audioplayers 自带的焦点请求，避免两份请求互相打架
@@ -497,8 +529,50 @@ class AudioPlaybackController {
     _skipStart = start;
     _skipEnd = end;
     _skipEndDone = false;
-    await _persistInt(_prefSkipStart, start);
-    await _persistInt(_prefSkipEnd, end);
+    await _persistInt(_skipStartKey, start);
+    await _persistInt(_skipEndKey, end);
+  }
+
+  /// 设定 N 分钟后停止播放（<=0 取消）。结束时刻持久化，退出页面
+  /// 继续后台播放时仍由本控制器计时，到点暂停并保留断点。
+  Future<void> setSleepTimer(int minutes) async {
+    _sleepTimer?.cancel();
+    _sleepTimer = null;
+    _sleepEnd = null;
+    if (minutes <= 0) {
+      await _persistInt(_prefSleepEnd, 0);
+      return;
+    }
+    final end = DateTime.now().add(Duration(minutes: minutes));
+    _armSleepUntil(end);
+    await _persistInt(_prefSleepEnd, end.millisecondsSinceEpoch);
+  }
+
+  void _armSleepUntil(DateTime end) {
+    _sleepEnd = end;
+    _sleepTimer = Timer.periodic(const Duration(seconds: 1), (t) {
+      if (DateTime.now().isBefore(end)) return;
+      t.cancel();
+      _sleepTimer = null;
+      _sleepEnd = null;
+      unawaited(_persistInt(_prefSleepEnd, 0));
+      unawaited(pause());
+      _messageCtrl.add('定时时间到，已暂停播放');
+    });
+  }
+
+  Future<void> cancelSleepTimer() => setSleepTimer(0);
+
+  Future<void> _restoreSleepTimer() async {
+    try {
+      final endMs =
+          (await SharedPreferences.getInstance()).getInt(_prefSleepEnd) ?? 0;
+      if (endMs > DateTime.now().millisecondsSinceEpoch) {
+        _armSleepUntil(DateTime.fromMillisecondsSinceEpoch(endMs));
+      } else if (endMs > 0) {
+        await _persistInt(_prefSleepEnd, 0);
+      }
+    } catch (_) {}
   }
 
   void setStopAfterCurrent(bool v) {
@@ -609,8 +683,8 @@ class AudioPlaybackController {
           ? AudioPlayMode.values[m]
           : AudioPlayMode.sequence;
       _rate = p.getDouble(_prefRate) ?? 1.0;
-      _skipStart = p.getInt(_prefSkipStart) ?? 0;
-      _skipEnd = p.getInt(_prefSkipEnd) ?? 0;
+      _skipStart = p.getInt(_skipStartKey) ?? p.getInt(_prefSkipStart) ?? 0;
+      _skipEnd = p.getInt(_skipEndKey) ?? p.getInt(_prefSkipEnd) ?? 0;
     } catch (_) {}
   }
 

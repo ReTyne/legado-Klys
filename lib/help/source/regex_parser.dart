@@ -9,7 +9,7 @@ class RegexParser {
     final re = RegExp(pattern, multiLine: true, dotAll: true);
     final m = re.firstMatch(input);
     if (m == null) return null;
-    if (group < m.groupCount) return m.group(group);
+    if (group <= m.groupCount) return m.group(group);
     return m.group(0);
   }
 
@@ -67,8 +67,8 @@ class RegexParser {
 
   /// 链式正则求值。
   ///
-  /// [rules] 为顺序执行的若干正则：中间段把每个全匹配文本用换行拼接，
-  /// 作为下一段的输入内容；末段对最终内容再次匹配，返回每个匹配的
+  /// [rules] 为顺序执行的若干正则：中间段把每个全匹配文本直接拼接
+  ///（不插入分隔符），作为下一段的输入内容；末段对最终内容再次匹配，返回每个匹配的
   /// 分组数组 `[group0, group1, …]`（group0 为全匹配）。
   /// 规则为空或输入为空时返回空结果。
   static List<List<String>> matchChain(List<String> rules, String content) {
@@ -77,8 +77,11 @@ class RegexParser {
     for (var i = 0; i < rules.length - 1; i++) {
       if (rules[i].isEmpty) continue;
       final re = RegExp(rules[i], multiLine: true, dotAll: true);
-      final hits = re.allMatches(current).map((m) => m.group(0) ?? '').toList();
-      current = hits.join('\n');
+      final sb = StringBuffer();
+      for (final m in re.allMatches(current)) {
+        sb.write(m.group(0) ?? '');
+      }
+      current = sb.toString();
     }
     final last = rules.last;
     if (last.isEmpty) return <List<String>>[];

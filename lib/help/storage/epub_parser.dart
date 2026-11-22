@@ -1,12 +1,35 @@
 import 'dart:convert';
 import 'dart:io';
 import 'package:archive/archive.dart';
+import 'package:legado_md3/help/http/http_response_decoder.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:legado_md3/data/model/book.dart';
 import 'package:legado_md3/data/model/book_chapter.dart';
 
 /// EPUB书籍解析器
 class EpubParser {
+  /// 将 EPUB 内 XML/XHTML 字节解码为字符串。
+  /// 按 UTF-8（EPUB 规范默认编码）解码，先去除 BOM，并兼容 UTF-16 BOM。
+  static String _decodeXml(List<int> raw) {
+    final cleaned = HttpResponseDecoder.removeBom(raw);
+    if (cleaned.charset == 'utf-16le') {
+      return _decodeUtf16(cleaned.bytes, littleEndian: true);
+    }
+    if (cleaned.charset == 'utf-16be') {
+      return _decodeUtf16(cleaned.bytes, littleEndian: false);
+    }
+    return utf8.decode(cleaned.bytes, allowMalformed: true);
+  }
+
+  static String _decodeUtf16(List<int> bytes, {required bool littleEndian}) {
+    final codes = <int>[];
+    for (var i = 0; i + 1 < bytes.length; i += 2) {
+      codes.add(littleEndian
+          ? (bytes[i] & 0xff) | ((bytes[i + 1] & 0xff) << 8)
+          : ((bytes[i] & 0xff) << 8) | (bytes[i + 1] & 0xff));
+    }
+    return String.fromCharCodes(codes);
+  }
   /// 解析EPUB文件
   static Future<Book?> parse(String filePath) async {
     try {
@@ -28,7 +51,7 @@ class EpubParser {
       if (opfPath == null) return null;
 
       final opfFile = archive.files.firstWhere((f) => f.name == opfPath);
-      final opfContent = String.fromCharCodes(opfFile.content as List<int>);
+      final opfContent = _decodeXml(opfFile.content as List<int>);
 
       // 解析书名和作者
       final titleMatch = RegExp(r'<dc:title>([^<]+)</dc:title>').firstMatch(opfContent);
@@ -65,7 +88,7 @@ class EpubParser {
       // 1) EPUB2: toc.ncx
       final ncx = archive.files.where((f) => f.name.endsWith('toc.ncx')).toList();
       if (ncx.isNotEmpty) {
-        final tocContent = String.fromCharCodes(ncx.first.content as List<int>);
+        final tocContent = _decodeXml(ncx.first.content as List<int>);
         final navPoints = RegExp(r'<navPoint[^>]*>.*?<text>([^<]+)</text>.*?<content src="([^"]+)"', dotAll: true).allMatches(tocContent);
         for (final match in navPoints) {
           chapters.add(BookChapter(
@@ -81,7 +104,7 @@ class EpubParser {
       if (chapters.isEmpty) {
         final nav = archive.files.where((f) => f.name.endsWith('nav.xhtml') || f.name.endsWith('nav.html') || f.name.endsWith('nav.xht')).toList();
         if (nav.isNotEmpty) {
-          final navContent = String.fromCharCodes(nav.first.content as List<int>);
+          final navContent = _decodeXml(nav.first.content as List<int>);
           // 取 epub:type="toc" 区域内的链接（若无则取全部 nav 链接）
           final tocRegion = RegExp(r'<nav[^>]*epub:type="toc"[^>]*>(.*?)</nav>', dotAll: true).firstMatch(navContent)?.group(1) ?? navContent;
           final links = RegExp(r'<a[^>]+href="([^"]+)"[^>]*>(.*?)</a>', dotAll: true).allMatches(tocRegion);

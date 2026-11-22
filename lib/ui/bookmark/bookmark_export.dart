@@ -26,10 +26,10 @@ Future<File> exportBookmarks(
       buffer.writeln('#### ${b.chapterTitle}');
       buffer.writeln();
       buffer.writeln('###### 原文');
-      buffer.writeln(' ${b.content ?? ''}');
+      buffer.writeln(' ${b.bookText ?? ''}');
       buffer.writeln();
       buffer.writeln('###### 摘要');
-      buffer.writeln(' ');
+      buffer.writeln(' ${b.content ?? ''}');
       buffer.writeln();
     }
     content = buffer.toString();

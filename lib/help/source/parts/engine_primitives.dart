@@ -678,3 +678,7 @@ String buildPreUpdateJsPrelude() =>
 /// preUpdateJs 结果是否请求重取详情。
 bool preUpdateRequestsReGetBook(String? result) =>
     result != null && result.contains(kReGetBookMarker);
+
+/// preUpdateJs 结果是否请求刷新目录地址。
+bool preUpdateRequestsRefreshTocUrl(String? result) =>
+    result != null && result.contains(kRefreshTocUrlMarker);

@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 import 'dart:convert';
+import 'dart:io';
 import 'package:dio/dio.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:share_plus/share_plus.dart';
@@ -116,6 +118,10 @@ class _SubscribeScreenState extends State<SubscribeScreen> {
           icon: Icons.cloud_outlined,
           onTap: _importNetwork),
       AppMenuSheetItem(
+          title: '本地文件导入',
+          icon: Icons.folder_open_outlined,
+          onTap: _importLocal),
+      AppMenuSheetItem(
           title: '剪贴板导入',
           icon: Icons.content_paste,
           onTap: () async {
@@ -124,6 +130,46 @@ class _SubscribeScreenState extends State<SubscribeScreen> {
             _parseAndSave(t);
           }),
     ]);
+  }
+
+  /// 从本地 json/txt 文件导入订阅源，复用同一解析与网址拦截流程。
+  Future<void> _importLocal() async {
+    final r = await FilePicker.platform.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: ['json', 'txt'],
+    );
+    if (r == null || r.files.isEmpty || r.files.first.path == null) return;
+    try {
+      final raw = await File(r.files.first.path!).readAsString();
+      await _parseAndSave(raw);
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('读取文件失败: $e')));
+      }
+    }
+  }
+
+  /// 导出当前订阅源为 JSON 并分享，跨端备份使用原版字段名。
+  Future<void> _exportSources() async {
+    if (_sources.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('没有可导出的订阅源')),
+      );
+      return;
+    }
+    try {
+      final file = File('${Directory.systemTemp.path}/rss_sources.json');
+      await file.writeAsString(const JsonEncoder.withIndent('  ').convert(
+        _sources.map((s) => s.toJson()).toList(),
+      ));
+      await Share.shareXFiles([XFile(file.path)], text: '订阅源导出');
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('导出失败: $e')));
+      }
+    }
   }
 
   Future<void> _importNetwork() async {
@@ -399,6 +445,12 @@ class _SubscribeScreenState extends State<SubscribeScreen> {
         label: '导入订阅源',
         icon: Icons.file_download_outlined,
         onTap: _showImportMenu,
+      ),
+      EOverflowItem(
+        id: 'k_export',
+        label: '导出订阅源',
+        icon: Icons.file_upload_outlined,
+        onTap: _exportSources,
       ),
       EOverflowItem(
         id: 'k_source_manage',

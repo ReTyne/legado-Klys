@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'package:dio/dio.dart';
@@ -10,23 +11,81 @@ class WebDavService {
   final Dio _dio = Dio();
   String? _baseUrl;
 
+  /// PROPFIND 请求体：显式声明所需属性，避免严格服务端拒绝无正文的 PROPFIND。
+  static const String propfindBody =
+      '<?xml version="1.0" encoding="utf-8"?>'
+      '<d:propfind xmlns:d="DAV:"><d:prop>'
+      '<d:displayname/><d:getcontentlength/><d:getlastmodified/><d:resourcetype/>'
+      '</d:prop></d:propfind>';
+
+  /// 归一化 baseUrl：davs:// → https://，dav:// → http://（大小写不敏感）。
+  static String normalizeBaseUrl(String url) {
+    var u = url.trim();
+    final m = RegExp(r'^(davs?):\/\/', caseSensitive: false).firstMatch(u);
+    if (m != null) {
+      final scheme = m.group(1)!.toLowerCase() == 'davs' ? 'https' : 'http';
+      u = '$scheme://${u.substring(m.group(0)!.length)}';
+    }
+    return u.endsWith('/') ? u : '$u/';
+  }
+
   /// 配置WebDAV
   void configure({required String baseUrl, String? username, String? password}) {
-    _baseUrl = baseUrl.endsWith('/') ? baseUrl : '$baseUrl/';
+    _baseUrl = normalizeBaseUrl(baseUrl);
     _dio.options.headers = {
       if (username != null && password != null)
         'Authorization': 'Basic ${base64Encode(utf8.encode('$username:$password'))}',
     };
   }
 
+  /// 带指数退避的请求包装：网络异常或 5xx 时最多重试 [retries] 次。
+  Future<Response<dynamic>> _requestWithRetry(
+    String url, {
+    required String method,
+    Map<String, String>? headers,
+    dynamic data,
+    ResponseType? responseType,
+    int retries = 2,
+  }) async {
+    final options =
+        Options(method: method, headers: headers, responseType: responseType);
+    Object? lastError;
+    for (var attempt = 0; attempt <= retries; attempt++) {
+      try {
+        final response = await _dio.request(url, data: data, options: options);
+        final code = response.statusCode ?? 0;
+        if (code >= 500 && attempt < retries) {
+          lastError = StateError('HTTP $code');
+        } else {
+          return response;
+        }
+      } catch (e) {
+        lastError = e;
+      }
+      if (attempt < retries) {
+        await Future<void>.delayed(Duration(milliseconds: 100 * (1 << attempt)));
+      }
+    }
+    throw lastError ?? StateError('请求失败');
+  }
+
+  /// PROPFIND 统一入口：携带 XML 请求体与 Depth 头。
+  Future<Response<dynamic>> _propfind(String url, String depth) =>
+      _requestWithRetry(
+        url,
+        method: 'PROPFIND',
+        headers: <String, String>{
+          'Depth': depth,
+          'Content-Type': 'application/xml; charset=utf-8',
+        },
+        data: propfindBody,
+      );
+
   /// 测试连接
   Future<bool> testConnection() async {
     try {
       if (_baseUrl == null) return false;
-      final response = await _dio.request(
-        _baseUrl!,
-        options: Options(method: 'PROPFIND', headers: {'Depth': '0'}),
-      );
+      final response = await _propfind(_baseUrl!, '0');
       return response.statusCode == 207;
     } catch (e) {
       return false;
@@ -51,7 +110,7 @@ class WebDavService {
       try {
         await _dio.request('$_baseUrl$d', options: Options(method: 'MKCOL'));
       } catch (_) {}
-      final response = await _dio.put(url, data: data);
+      final response = await _requestWithRetry(url, method: 'PUT', data: data);
       return response.statusCode == 200 ||
           response.statusCode == 201 ||
           response.statusCode == 204;
@@ -65,7 +124,11 @@ class WebDavService {
     try {
       if (_baseUrl == null) return null;
       final url = '${_baseUrl}legado_backup/$fileName';
-      final response = await _dio.get(url, options: Options(responseType: ResponseType.bytes));
+      final response = await _requestWithRetry(
+        url,
+        method: 'GET',
+        responseType: ResponseType.bytes,
+      );
       return response.data as List<int>;
     } catch (e) {
       return null;
@@ -77,14 +140,11 @@ class WebDavService {
     try {
       if (_baseUrl == null) return [];
       final url = '${_baseUrl}legado_backup/';
-      final response = await _dio.request(
-        url,
-        options: Options(method: 'PROPFIND', headers: {'Depth': '1'}),
-      );
+      final response = await _propfind(url, '1');
       // 解析XML响应提取文件名
       final body = response.data.toString();
       final files = <String>[];
-      final regex = RegExp(r'<d:href>([^<]+)</d:href>');
+      final regex = RegExp(r'<[a-zA-Z]*:?href>([^<]+)</[a-zA-Z]*:?href>');
       for (final match in regex.allMatches(body)) {
         final href = match.group(1)!;
         if (href.endsWith('.json') || href.endsWith('.bak') || href.endsWith('.zip')) {
@@ -97,12 +157,31 @@ class WebDavService {
     }
   }
 
+  /// 按修改时间选出指定目录中最新的备份文件名；无修改时间时取首个备份文件。
+  Future<String?> latestBackup({String dir = 'legado_backup'}) async {
+    final entries = await listDir(dir);
+    final files = entries
+        .where((e) => !e.isDir &&
+            (e.name.endsWith('.json') ||
+                e.name.endsWith('.bak') ||
+                e.name.endsWith('.zip')))
+        .toList();
+    if (files.isEmpty) return null;
+    files.sort((a, b) {
+      final at = a.lastModified?.millisecondsSinceEpoch ?? 0;
+      final bt = b.lastModified?.millisecondsSinceEpoch ?? 0;
+      return bt.compareTo(at);
+    });
+    return files.first.name;
+  }
+
   /// 删除备份
   Future<bool> deleteBackup(String fileName) async {
     try {
       if (_baseUrl == null) return false;
       final url = '${_baseUrl}legado_backup/$fileName';
-      final response = await _dio.delete(url);
+      final response =
+          await _requestWithRetry(url, method: 'DELETE');
       return response.statusCode == 200 || response.statusCode == 204;
     } catch (e) {
       return false;
@@ -118,32 +197,73 @@ class WebDavService {
       if (!d.endsWith('/')) d = '$d/';
       if (d.startsWith('/')) d = d.substring(1);
       final url = '$_baseUrl$d';
-      final response = await _dio.request(
-        url,
-        options: Options(method: 'PROPFIND', headers: {'Depth': '1'}),
-      );
-      final body = response.data.toString();
-      final entries = <WebDavEntry>[];
-      // 按 <D:response> 块解析，提取 href 与是否集合
-      final respRegex = RegExp(r'<[a-zA-Z]*:?response>(.*?)<[a-zA-Z]*:\/response>', dotAll: true);
-      final hrefRegex = RegExp(r'<[a-zA-Z]*:?href>([^<]+)</[a-zA-Z]*:?href>');
-      final dirRegex = RegExp(r'<[a-zA-Z]*:?collection\s*/?>');
-      for (final m in respRegex.allMatches(body)) {
-        final block = m.group(1)!;
-        final hrefM = hrefRegex.firstMatch(block);
-        if (hrefM == null) continue;
-        var href = Uri.decodeComponent(hrefM.group(1)!);
-        // 去掉开头的主机路径，只保留相对当前目录的名字
-        final name = href.split('/').where((s) => s.isNotEmpty).last;
-        final currentName = d.split('/').where((s) => s.isNotEmpty).last;
-        if (name == currentName) continue; // 跳过自身目录
-        final isDir = dirRegex.hasMatch(block);
-        entries.add(WebDavEntry(name, isDir, href));
-      }
-      return entries;
+      final response = await _propfind(url, '1');
+      final pathParts = d.split('/').where((s) => s.isNotEmpty).toList();
+      final currentName = pathParts.isEmpty ? '' : pathParts.last;
+      return parsePropfindResponse(response.data.toString(),
+          currentDirName: currentName);
     } catch (e) {
       return [];
     }
+  }
+
+  /// 解析 PROPFIND 多状态响应为目录条目，宽松处理缺失属性与坏百分号编码。
+  ///
+  /// [currentDirName] 为当前目录名，命中时跳过自身条目。
+  static List<WebDavEntry> parsePropfindResponse(
+    String body, {
+    String currentDirName = '',
+  }) {
+    final entries = <WebDavEntry>[];
+    // 按 response 块解析，提取 href 与是否集合及可选属性
+    final respRegex = RegExp(
+        r'<[a-zA-Z]*:?response\b[^>]*>(.*?)</[a-zA-Z]*:?response\s*>',
+        dotAll: true,
+        caseSensitive: false);
+    final hrefRegex =
+        RegExp(r'<[a-zA-Z]*:?href[^>]*>([^<]+)</[a-zA-Z]*:?href\s*>',
+            caseSensitive: false);
+    final dirRegex = RegExp(r'<[a-zA-Z]*:?collection\b[^>]*\/?>',
+        caseSensitive: false);
+    final sizeRegex = RegExp(
+        r'<[a-zA-Z]*:?getcontentlength[^>]*>([^<]*)</[a-zA-Z]*:?getcontentlength\s*>',
+        caseSensitive: false);
+    final modifiedRegex = RegExp(
+        r'<[a-zA-Z]*:?getlastmodified[^>]*>([^<]*)</[a-zA-Z]*:?getlastmodified\s*>',
+        caseSensitive: false);
+    final displayRegex = RegExp(
+        r'<[a-zA-Z]*:?displayname[^>]*>([^<]*)</[a-zA-Z]*:?displayname\s*>',
+        caseSensitive: false);
+    for (final m in respRegex.allMatches(body)) {
+      final block = m.group(1)!;
+      final hrefM = hrefRegex.firstMatch(block);
+      if (hrefM == null) continue;
+      String href = hrefM.group(1)!;
+      try {
+        href = Uri.decodeComponent(href);
+      } catch (_) {
+        // 非法百分号编码保持原样
+      }
+      // 去掉开头的主机路径，只保留相对当前目录的名字
+      final parts = href.split('/').where((s) => s.isNotEmpty).toList();
+      if (parts.isEmpty) continue;
+      final name = parts.last;
+      if (name == currentDirName) continue; // 跳过自身目录
+      final isDir = dirRegex.hasMatch(block);
+      final size = int.tryParse(sizeRegex.firstMatch(block)?.group(1)?.trim() ?? '');
+      final lastModified = _parseHttpDate(
+          modifiedRegex.firstMatch(block)?.group(1) ?? '');
+      final displayName = displayRegex.firstMatch(block)?.group(1)?.trim();
+      entries.add(WebDavEntry(
+        name,
+        isDir,
+        href,
+        size: size,
+        lastModified: lastModified,
+        displayName: displayName,
+      ));
+    }
+    return entries;
   }
 
   /// 从指定目录下载文件
@@ -154,7 +274,11 @@ class WebDavService {
       if (d.isNotEmpty && !d.endsWith('/')) d = '$d/';
       if (d.startsWith('/')) d = d.substring(1);
       final url = '$_baseUrl$d$fileName';
-      final response = await _dio.get(url, options: Options(responseType: ResponseType.bytes));
+      final response = await _requestWithRetry(
+        url,
+        method: 'GET',
+        responseType: ResponseType.bytes,
+      );
       return response.data as List<int>;
     } catch (e) {
       return null;
@@ -178,7 +302,8 @@ class WebDavService {
       try {
         await _dio.request('$_baseUrl$d', options: Options(method: 'MKCOL'));
       } catch (_) {}
-      final response = await _dio.put('$_baseUrl$d$name', data: await file.readAsBytes());
+      final response = await _requestWithRetry('$_baseUrl$d$name',
+          method: 'PUT', data: await file.readAsBytes());
       return response.statusCode == 200 ||
           response.statusCode == 201 ||
           response.statusCode == 204;
@@ -298,10 +423,36 @@ class WebDavService {
   }
 }
 
+/// 解析 WebDAV 的 getlastmodified：兼容 ISO 8601 与 HTTP-date（RFC 1123）。
+DateTime? _parseHttpDate(String raw) {
+  final s = raw.trim();
+  if (s.isEmpty) return null;
+  final iso = DateTime.tryParse(s);
+  if (iso != null) return iso;
+  try {
+    return HttpDate.parse(s);
+  } catch (_) {
+    return null;
+  }
+}
+
 /// WebDAV 目录条目
 class WebDavEntry {
   final String name;
   final bool isDir;
   final String href;
-  WebDavEntry(this.name, this.isDir, this.href);
+
+  /// 可选元信息：由 PROPFIND 的 getcontentlength / getlastmodified / displayname 解析。
+  final int? size;
+  final DateTime? lastModified;
+  final String? displayName;
+
+  WebDavEntry(
+    this.name,
+    this.isDir,
+    this.href, {
+    this.size,
+    this.lastModified,
+    this.displayName,
+  });
 }

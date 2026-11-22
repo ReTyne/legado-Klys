@@ -17,24 +17,32 @@ class SourceEventCallback {
   static const String clickBookName = 'clickBookName';
   static const String clickBookLabel = 'clickBookLabel';
   static const String clickButton = 'clickCustomButton';
-  static const String share = 'share';
-  static const String clearCache = 'clearCache';
-  static const String copyBookUrl = 'copyBookUrl';
-  static const String copyTocUrl = 'copyTocUrl';
-  static const String copyPlayUrl = 'copyPlayUrl';
+  static const String longClickAuthor = 'longClickAuthor';
+  static const String longClickBookName = 'longClickBookName';
+  static const String longClickCustomButton = 'longClickCustomButton';
+  static const String longClickBookLabel = 'longClickBookLabel';
+  static const String share = 'clickShareBook';
+  static const String clearCache = 'clickClearCache';
+  static const String copyBookUrl = 'clickCopyBookUrl';
+  static const String copyTocUrl = 'clickCopyTocUrl';
+  static const String copyPlayUrl = 'clickCopyPlayUrl';
   static const String addBookshelf = 'addBookShelf';
   static const String removeBookshelf = 'delBookShelf';
   static const String saveRead = 'saveRead';
   static const String startRead = 'startRead';
   static const String endRead = 'endRead';
-  static const String startRefreshBookshelf = 'startRefreshBookShelf';
-  static const String endRefreshBookshelf = 'endRefreshBookShelf';
+  static const String startRefreshBookshelf = 'startShelfRefresh';
+  static const String endRefreshBookshelf = 'endShelfRefresh';
 
   static const List<String> allEvents = <String>[
     clickAuthor,
     clickBookName,
     clickBookLabel,
     clickButton,
+    longClickAuthor,
+    longClickBookName,
+    longClickCustomButton,
+    longClickBookLabel,
     share,
     clearCache,
     copyBookUrl,

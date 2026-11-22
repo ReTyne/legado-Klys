@@ -69,9 +69,8 @@ class _AudioPlayerScreenState extends State<AudioPlayerScreen> {
   List<LrcLine> _lyrics = [];
   int _lyricIndex = -1;
 
-  // 定时关闭
-  Timer? _sleepTimer;
-  DateTime? _sleepEnd;
+  /// 仅用于刷新倒计时显示；真正的到点暂停由控制器在后台执行。
+  Timer? _sleepTick;
 
   static String _fmt(Duration d) {
     String two(int n) => n.toString().padLeft(2, '0');
@@ -88,7 +87,20 @@ class _AudioPlayerScreenState extends State<AudioPlayerScreen> {
     // 朗读/有声播放时 BGM 自动降音量（duck）
     unawaited(BgmService.instance.load());
     BgmService.instance.bindReadAloudProbe(() => _audio.isPlaying);
+    if (_audio.sleepRemaining != null) _startSleepTick();
     _load();
+  }
+
+  void _startSleepTick() {
+    _sleepTick?.cancel();
+    _sleepTick = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (!mounted) return;
+      if (_audio.sleepRemaining == null) {
+        _sleepTick?.cancel();
+        return;
+      }
+      setState(() {});
+    });
   }
 
   void _bindStreams() {
@@ -247,34 +259,16 @@ class _AudioPlayerScreenState extends State<AudioPlayerScreen> {
   }
 
   void _startSleep(int minutes) {
-    _cancelSleep();
-    if (minutes <= 0) {
-      if (mounted) setState(() {});
-      return;
-    }
-    final end = DateTime.now().add(Duration(minutes: minutes));
-    _sleepEnd = end;
-    _sleepTimer = Timer.periodic(const Duration(seconds: 1), (t) {
-      if (!mounted) {
-        t.cancel();
-        return;
-      }
-      if (DateTime.now().isAfter(end)) {
-        _sleepEnd = null;
-        t.cancel();
-        unawaited(_audio.pause());
-        if (mounted) setState(() {});
-      } else {
-        setState(() {});
-      }
-    });
-    setState(() {});
+    unawaited(_audio.setSleepTimer(minutes));
+    _startSleepTick();
+    if (mounted) setState(() {});
   }
 
   void _cancelSleep() {
-    _sleepTimer?.cancel();
-    _sleepTimer = null;
-    _sleepEnd = null;
+    unawaited(_audio.cancelSleepTimer());
+    _sleepTick?.cancel();
+    _sleepTick = null;
+    if (mounted) setState(() {});
   }
 
   void _setStopAfterCurrent(bool v) {
@@ -319,7 +313,7 @@ class _AudioPlayerScreenState extends State<AudioPlayerScreen> {
               unawaited(_showCustomSleepDialog());
             },
           ),
-          if (_sleepEnd != null || _stopAfterCurrent)
+          if (_audio.sleepRemaining != null || _stopAfterCurrent)
             ListTile(
               leading: const Icon(Icons.timer_off),
               title: const Text('取消定时'),
@@ -361,13 +355,8 @@ class _AudioPlayerScreenState extends State<AudioPlayerScreen> {
     _startSleep(value.clamp(1, 600));
   }
 
-  /// 剩余定时时间（无定时返回 null）
-  Duration? get _sleepRemaining {
-    final end = _sleepEnd;
-    if (end == null) return null;
-    final left = end.difference(DateTime.now());
-    return left.isNegative ? Duration.zero : left;
-  }
+  /// 剩余定时时间（无定时返回 null），实际状态由控制器持有
+  Duration? get _sleepRemaining => _audio.sleepRemaining;
 
   // ==================== 片头片尾 / 歌词 / 章节 ====================
 
@@ -621,7 +610,7 @@ class _AudioPlayerScreenState extends State<AudioPlayerScreen> {
       unawaited(s.cancel());
     }
     BgmService.instance.bindReadAloudProbe(null);
-    _sleepTimer?.cancel();
+    _sleepTick?.cancel();
     // 后台播放：保留会话并交给 Android 前台服务 + 媒体通知栏
     unawaited(_audio.detach(
         backgroundPlay: _backgroundPlay && _audio.isPlaying));

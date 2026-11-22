@@ -253,9 +253,10 @@ class _Transformation {
     }
     algorithm = alg;
     mode = parts.length > 1 ? parts[1].trim() : 'ECB';
-    // GCM 需要 GHASH 认证标签，当前纯 Dart 实现不提供，明确拒绝而非静默降级
+    // GCM 需要 GHASH 认证标签，纯 Dart 实现未提供；当前依赖集不含
+    // pointycastle/encrypt，明确拒绝而不是静默降级为无认证模式。
     if (mode == 'GCM') {
-      throw ArgumentError('分组模式 GCM 暂不支持：需要 GHASH 与认证标签实现');
+      throw ArgumentError('分组模式 GCM 暂不支持：需要 GHASH 与认证标签，需引入密码学依赖后启用');
     }
     if (!const {'ECB', 'CBC', 'PCBC', 'CFB', 'OFB', 'CTR'}.contains(mode)) {
       throw ArgumentError('不支持的分组模式: ${parts[1]}');

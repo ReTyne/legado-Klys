@@ -105,9 +105,32 @@ String encodeParams(Map<String, dynamic> params, {String charset = 'utf-8'}) {
 
 const Set<int> _unreserved = <int>{0x2A, 0x2D, 0x2E, 0x5F};
 
+/// JS escape 语义：按 UTF-16 码元编码。
+///
+/// ASCII 字母数字与保留字符原样输出；其余 0x00-0xFF 码元输出两位 `%XX`；
+/// 大于 0xFF 的码元输出 `%uXXXX`。增补平面字符由两个代理项码元组成，
+/// 自然得到两个连续的 `%uXXXX`。
+String _escapeParam(String s) {
+  final sb = StringBuffer();
+  for (var i = 0; i < s.length; i++) {
+    final c = s.codeUnitAt(i);
+    if (_isAsciiLetterOrDigit(c) || _unreserved.contains(c)) {
+      sb.writeCharCode(c);
+    } else if (c < 0x100) {
+      sb.write('%');
+      sb.write(c.toRadixString(16).toUpperCase().padLeft(2, '0'));
+    } else {
+      sb.write('%u');
+      sb.write(c.toRadixString(16).toUpperCase().padLeft(4, '0'));
+    }
+  }
+  return sb.toString();
+}
+
 String _encodeParam(String s, bool escape) {
   // 已编码（或仅含 unreserved 字符）时无需再编码。
   if (encodedForm(s)) return s;
+  if (escape) return _escapeParam(s);
   final bytes = utf8.encode(s);
   final sb = StringBuffer();
   for (final b in bytes) {

@@ -34,6 +34,10 @@ class _MangaReaderScreenState extends State<MangaReaderScreen> {
   bool _reverseVolumeKey = false; // manga_reverseVolumeKey
   bool _aiTranslate = false;   // manga_translate_enabled
   List<MangaTextRegion> _translateRegions = const [];
+  // 画面增强：5 通道色彩滤镜 + 页脚信息栏（独立配置，实时预览）
+  MangaColorFilterConfig _colorFilterCfg = const MangaColorFilterConfig();
+  MangaFooterConfig _footerCfg = const MangaFooterConfig();
+  double? _previousWindowBrightness;
 
   // ==================== 运行状态 ====================
   // 每章图片 URL 缓存：key 为章节下标，value 为图片地址列表（null/缺失表示尚未加载）
@@ -59,17 +63,60 @@ class _MangaReaderScreenState extends State<MangaReaderScreen> {
   void initState() {
     super.initState();
     _currentChapter = widget.initialChapter;
+    MangaColorFilterConfig.notifier.addListener(_onColorFilterChanged);
+    MangaFooterConfig.notifier.addListener(_onFooterChanged);
+    _loadViewConfigs();
     _loadFilters();
     _loadChapters();
   }
 
   @override
   void dispose() {
+    MangaColorFilterConfig.notifier.removeListener(_onColorFilterChanged);
+    MangaFooterConfig.notifier.removeListener(_onFooterChanged);
+    _restoreWindowBrightness();
     _autoScrollTimer?.cancel();
     _scrollController.dispose();
     _pageController.dispose();
     unawaited(_syncProgress());
     super.dispose();
+  }
+
+  /// 读取并应用画面增强配置，亮度需先记录原值以便退出时还原。
+  Future<void> _loadViewConfigs() async {
+    try {
+      final prev = await NativeBridge.instance.getWindowBrightness();
+      // -1 表示平台不支持读取窗口亮度，不记录、也不在退出时还原
+      if (prev >= 0) _previousWindowBrightness = prev;
+    } catch (_) {}
+    await MangaColorFilterConfig.refresh();
+    await MangaFooterConfig.refresh();
+    if (!mounted) return;
+    _onColorFilterChanged();
+  }
+
+  void _onColorFilterChanged() {
+    final cfg = MangaColorFilterConfig.notifier.value;
+    if (mounted) setState(() => _colorFilterCfg = cfg);
+    final brightness = cfg.windowBrightness;
+    if (brightness != null) {
+      unawaited(NativeBridge.instance.setWindowBrightness(brightness));
+    } else if (_previousWindowBrightness != null) {
+      unawaited(
+          NativeBridge.instance.setWindowBrightness(_previousWindowBrightness!));
+    }
+  }
+
+  void _onFooterChanged() {
+    final cfg = MangaFooterConfig.notifier.value;
+    if (mounted) setState(() => _footerCfg = cfg);
+  }
+
+  void _restoreWindowBrightness() {
+    final prev = _previousWindowBrightness;
+    if (prev != null) {
+      unawaited(NativeBridge.instance.setWindowBrightness(prev));
+    }
   }
 
   /// 读取漫画配置（对应 manga_config_screen 的各项开关）
@@ -333,8 +380,54 @@ class _MangaReaderScreenState extends State<MangaReaderScreen> {
           child: Stack(
             children: [
               _buildContent(),
+              if (!_showMenu) _buildFooter(),
               if (_showMenu) _buildMenu(),
             ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// 页脚信息栏：章节名 / 页码 / 章节号 / 阅读进度，按配置显隐与对齐。
+  Widget _buildFooter() {
+    if (_footerCfg.hideFooter || _chapters.isEmpty) return const SizedBox.shrink();
+    final images = _imageUrls[_currentChapter];
+    if (images == null || images.isEmpty) return const SizedBox.shrink();
+    final text = _footerCfg.buildInfo(
+      chapterName: _chapters[_currentChapter].title,
+      chapterPos: _imageIndex.clamp(0, images.length - 1),
+      imageCount: images.length,
+      chapterIndex: _currentChapter,
+      chapterSize: _chapters.length,
+    );
+    if (text.isEmpty) return const SizedBox.shrink();
+    return Positioned(
+      left: 0,
+      right: 0,
+      bottom: 0,
+      child: IgnorePointer(
+        child: SafeArea(
+          top: false,
+          child: Container(
+            width: double.infinity,
+            padding: const EdgeInsets.fromLTRB(16, 22, 16, 10),
+            decoration: BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [Colors.transparent, Colors.black.withOpacity(0.65)],
+              ),
+            ),
+            alignment: _footerCfg.footerOrientation == 1
+                ? Alignment.center
+                : Alignment.centerLeft,
+            child: Text(
+              text,
+              style: const TextStyle(color: Colors.white70, fontSize: 12),
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+            ),
           ),
         ),
       ),
@@ -448,6 +541,7 @@ class _MangaReaderScreenState extends State<MangaReaderScreen> {
       noScale: _noScale,
       threshold: _threshold,
       colorFilter: _colorFilter,
+      colorConfig: _colorFilterCfg,
       scaleMax: _scaleMax.toDouble(),
       fadeIn: !_noCrossFade && _pageAnim != 2,
     );
@@ -523,6 +617,16 @@ class _MangaReaderScreenState extends State<MangaReaderScreen> {
                             : Icons.translate_outlined,
                         'AI 翻译',
                         () => unawaited(_toggleAiTranslate())),
+                  ],
+                ),
+                const SizedBox(height: AppSpacing.s),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                  children: [
+                    _buildMenuButton(Icons.filter_alt_outlined, '色彩滤镜',
+                        () => unawaited(showMangaColorFilterSheet(context))),
+                    _buildMenuButton(Icons.info_outline, '页脚设置',
+                        () => unawaited(showMangaFooterSheet(context))),
                   ],
                 ),
                 const SizedBox(height: AppSpacing.s),

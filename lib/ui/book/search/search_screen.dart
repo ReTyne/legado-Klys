@@ -1,3 +1,5 @@
+import 'dart:convert';
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
@@ -16,6 +18,19 @@ import 'package:legado_md3/help/source/search_scope.dart';
 import 'package:legado_md3/help/source/source_engine.dart';
 import 'package:legado_md3/ui/book/detail/book_detail_screen.dart';
 import 'package:legado_md3/ui/widgets/app_widgets.dart';
+
+/// 搜索关键词的使用统计：usage 为累计搜索次数，lastUse 为最近一次使用时间。
+class _HistoryStat {
+  int usage;
+  int lastUse;
+  _HistoryStat(this.usage, this.lastUse);
+
+  Map<String, dynamic> toJson() => {'usage': usage, 'lastUse': lastUse};
+  factory _HistoryStat.fromJson(Map<String, dynamic> m) => _HistoryStat(
+        (m['usage'] as num?)?.toInt() ?? 1,
+        (m['lastUse'] as num?)?.toInt() ?? 0,
+      );
+}
 
 class SearchScreen extends StatefulWidget {
   /// 外部入口预设关键词（书源 JS java.searchBook(key) 跳转时携带，进入即搜索）
@@ -40,6 +55,11 @@ class _SearchScreenState extends State<SearchScreen>
   final BookSourceEngine _engine = BookSourceEngine();
   List<SearchBook> _results = [];
   List<String> _searchHistory = [];
+  /// 关键词使用次数/最近使用时间，支撑「按热度排序」与单条删除。
+  final Map<String, _HistoryStat> _historyStats = {};
+  bool _historyByHeat = false;
+  /// 书架键集合（书名-作者 / 书名 / 书址），供结果角标判定「已在书架」。
+  final Set<String> _shelfKeys = {};
   bool _isSearching = false;
   /// 搜索取消标记：用户点「停止」后置位，并发池据此提前收工
   bool _searchCancelled = false;
@@ -84,10 +104,16 @@ class _SearchScreenState extends State<SearchScreen>
     _searchFocus.addListener(() {
       if (mounted) setState(() {});
     });
-    _loadHistory();
-    _loadScope();
-    _loadPrecision();
-    _initFromIntent();
+    _initStateAsync();
+  }
+
+  /// 先落历史/书架键/偏好再处理外部关键词，避免自动搜索与历史写入相互覆盖。
+  Future<void> _initStateAsync() async {
+    await _loadHistory();
+    await _loadShelfKeys();
+    await _loadScope();
+    await _loadPrecision();
+    await _initFromIntent();
   }
 
   @override
@@ -169,22 +195,117 @@ class _SearchScreenState extends State<SearchScreen>
 
   Future<void> _loadHistory() async {
     final prefs = await SharedPreferences.getInstance();
-    setState(() => _searchHistory = prefs.getStringList('search_history') ?? []);
+    final words = prefs.getStringList('search_history') ?? <String>[];
+    final stats = <String, _HistoryStat>{};
+    final raw = prefs.getString('search_history_stats');
+    if (raw != null && raw.isNotEmpty) {
+      try {
+        final decoded = jsonDecode(raw) as Map<String, dynamic>;
+        decoded.forEach((k, v) {
+          if (v is Map<String, dynamic>) stats[k] = _HistoryStat.fromJson(v);
+        });
+      } catch (_) {}
+    }
+    // 旧版本只有词表没有统计：按当前顺序补一个递减的初始热度，保证首次
+    // 切到「按热度」也有稳定、可解释的顺序。
+    final now = DateTime.now().millisecondsSinceEpoch;
+    for (var i = 0; i < words.length; i++) {
+      stats.putIfAbsent(words[i], () => _HistoryStat(words.length - i, now - i));
+    }
+    if (!mounted) return;
+    setState(() {
+      _searchHistory = words;
+      _historyStats
+        ..clear()
+        ..addAll(stats);
+      _historyByHeat = prefs.getInt('search_history_sort') == 1;
+    });
+  }
+
+  /// 展示顺序：按热度时 usage 降序、同热度按最近使用降序；否则保持时间倒序。
+  List<String> get _displayHistory {
+    if (!_historyByHeat) return _searchHistory;
+    final words = List<String>.from(_searchHistory);
+    words.sort((a, b) {
+      final sa = _historyStats[a];
+      final sb = _historyStats[b];
+      final usage = (sb?.usage ?? 0).compareTo(sa?.usage ?? 0);
+      if (usage != 0) return usage;
+      return (sb?.lastUse ?? 0).compareTo(sa?.lastUse ?? 0);
+    });
+    return words;
+  }
+
+  Future<void> _persistHistory() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setStringList('search_history', _searchHistory);
+    await prefs.setString(
+      'search_history_stats',
+      jsonEncode(_historyStats.map((k, v) => MapEntry(k, v.toJson()))),
+    );
   }
 
   Future<void> _saveHistory(String keyword) async {
-    final prefs = await SharedPreferences.getInstance();
+    final now = DateTime.now().millisecondsSinceEpoch;
+    final stat = _historyStats[keyword];
+    if (stat == null) {
+      _historyStats[keyword] = _HistoryStat(1, now);
+    } else {
+      stat.usage += 1;
+      stat.lastUse = now;
+    }
     _searchHistory.remove(keyword);
     _searchHistory.insert(0, keyword);
     if (_searchHistory.length > 20) _searchHistory = _searchHistory.sublist(0, 20);
-    await prefs.setStringList('search_history', _searchHistory);
+    await _persistHistory();
     setState(() {});
+  }
+
+  Future<void> _deleteHistory(String keyword) async {
+    _searchHistory.remove(keyword);
+    _historyStats.remove(keyword);
+    await _persistHistory();
+    setState(() {});
+  }
+
+  Future<void> _setHistorySort(bool byHeat) async {
+    setState(() => _historyByHeat = byHeat);
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt('search_history_sort', byHeat ? 1 : 0);
   }
 
   Future<void> _clearHistory() async {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove('search_history');
+    await prefs.remove('search_history_stats');
+    _historyStats.clear();
     setState(() => _searchHistory = []);
+  }
+
+  /// 载入书架键：书名-作者 / 书名 / 书址三形态，与 E 的 isInBookshelf 一致。
+  Future<void> _loadShelfKeys() async {
+    try {
+      final books = await _db.getAllBooks();
+      final keys = <String>{};
+      for (final b in books) {
+        keys.add('${b.name}-${b.author}');
+        keys.add(b.name);
+        if (b.bookUrl != null && b.bookUrl!.isNotEmpty) keys.add(b.bookUrl!);
+      }
+      if (mounted) {
+        setState(() => _shelfKeys
+          ..clear()
+          ..addAll(keys));
+      }
+    } catch (_) {}
+  }
+
+  bool _isInShelf(SearchBook book) {
+    final key = book.author.trim().isEmpty
+        ? book.name
+        : '${book.name}-${book.author}';
+    return _shelfKeys.contains(key) ||
+        (book.bookUrl != null && _shelfKeys.contains(book.bookUrl));
   }
 
   ///  - 非空 key：开启新一轮搜索（新 searchId、清结果、page=1、hasMore=true）；
@@ -420,6 +541,12 @@ class _SearchScreenState extends State<SearchScreen>
     );
     await _db.insertBook(newBook);
     await provider.loadBooks();
+    if (mounted) {
+      setState(() => _shelfKeys
+        ..add('${book.name}-${book.author}')
+        ..add(book.name)
+        ..add(book.bookUrl ?? ''));
+    }
     // 加入书架提示（oc_showAddShelfTip）
     if (mounted) {
       final showTip = (await SharedPreferences.getInstance()).getBool('oc_showAddShelfTip') ?? true;
@@ -692,14 +819,37 @@ class _SearchScreenState extends State<SearchScreen>
             mainAxisAlignment: MainAxisAlignment.spaceBetween,
             children: [
               const Text('搜索历史', style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
-              TextButton(onPressed: _clearHistory, child: const Text('清空')),
+              Row(children: [
+                TextButton.icon(
+                  style: const ButtonStyle(visualDensity: VisualDensity.compact),
+                  icon: Icon(_historyByHeat ? Icons.local_fire_department : Icons.schedule, size: 14),
+                  label: Text(_historyByHeat ? '按热度' : '按时间', style: const TextStyle(fontSize: 12)),
+                  onPressed: () => _setHistorySort(!_historyByHeat),
+                ),
+                TextButton(onPressed: _clearHistory, child: const Text('清空')),
+              ]),
             ],
           ),
           const SizedBox(height: AppSpacing.s),
           Wrap(
             spacing: 8,
             runSpacing: 8,
-            children: _searchHistory.map((kw) => ActionChip(label: Text(kw), onPressed: () => _search(kw))).toList(),
+            children: _displayHistory.map((kw) => GestureDetector(
+              // 长按删除单条历史
+              onLongPress: () async {
+                final ok = await showAppConfirmDialog(
+                  context,
+                  title: '删除搜索历史',
+                  content: '删除「$kw」这条搜索历史？',
+                  confirmText: '删除',
+                );
+                if (ok) await _deleteHistory(kw);
+              },
+              child: ActionChip(
+                label: Text(kw),
+                onPressed: () => _search(kw),
+              ),
+            )).toList(),
           ),
           const SizedBox(height: AppSpacing.xl),
         ],
@@ -880,18 +1030,28 @@ class _SearchScreenState extends State<SearchScreen>
                 Positioned(
                   top: 2,
                   right: 2,
-                  child: Material(
-                    color: cs.surfaceContainerHighest.withOpacity(0.82),
-                    shape: const CircleBorder(),
-                    child: InkWell(
-                      borderRadius: AppRadius.lAll,
-                      onTap: () => _addToShelf(book),
-                      child: const Padding(
-                        padding: EdgeInsets.all(3),
-                        child: Icon(Icons.add, size: 16),
-                      ),
-                    ),
-                  ),
+                  child: _isInShelf(book)
+                      // 已在书架：显示角标而非加号，避免重复入库。
+                      ? Material(
+                          color: cs.primaryContainer.withOpacity(0.92),
+                          shape: const CircleBorder(),
+                          child: Padding(
+                            padding: const EdgeInsets.all(3),
+                            child: Icon(Icons.check, size: 16, color: cs.onPrimaryContainer),
+                          ),
+                        )
+                      : Material(
+                          color: cs.surfaceContainerHighest.withOpacity(0.82),
+                          shape: const CircleBorder(),
+                          child: InkWell(
+                            borderRadius: AppRadius.lAll,
+                            onTap: () => _addToShelf(book),
+                            child: const Padding(
+                              padding: EdgeInsets.all(3),
+                              child: Icon(Icons.add, size: 16),
+                            ),
+                          ),
+                        ),
                 ),
               ],
             ),
@@ -974,11 +1134,12 @@ class _SearchScreenState extends State<SearchScreen>
           icon: Icons.info_outline,
           onTap: () => _openDetail(book),
         ),
-        AppMenuSheetItem(
-          title: '加入书架',
-          icon: Icons.add_outlined,
-          onTap: () => _addToShelf(book),
-        ),
+        if (!_isInShelf(book))
+          AppMenuSheetItem(
+            title: '加入书架',
+            icon: Icons.add_outlined,
+            onTap: () => _addToShelf(book),
+          ),
         AppMenuSheetItem(
           title: '换源',
           icon: Icons.swap_horiz_outlined,

@@ -4,9 +4,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
-import 'package:package_info_plus/package_info_plus.dart';
 import 'package:url_launcher/url_launcher.dart';
-import 'package:legado_md3/common/app_name.dart';
 import 'package:legado_md3/constant/app_theme.dart';
 import 'package:legado_md3/constant/e_placement.dart';
 import 'package:legado_md3/data/local/app_database.dart';
@@ -15,6 +13,7 @@ import 'package:legado_md3/data/model/read_config.dart';
 import 'package:legado_md3/di/book_provider.dart';
 import 'package:legado_md3/help/web/web_service.dart';
 import 'package:legado_md3/help/web/web_tile_channel.dart';
+import 'package:legado_md3/ui/about/about_screen.dart';
 import 'package:legado_md3/ui/backup/backup_screen.dart';
 import 'package:legado_md3/ui/book/detail/book_detail_screen.dart';
 import 'package:legado_md3/ui/book/manga/manga_config_screen.dart';
@@ -105,6 +104,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool _fullScreenRead = false;
   bool _longPressSelect = true;
   int _autoNextPageSpeed = 5;
+  /// 朗读服务唤醒锁（readAloudWakeLock）：朗读期间保持 CPU 唤醒，锁屏后继续播放。
+  bool _readAloudWakeLock = false;
 
   // ===== 补齐项：界面 =====
   bool _confirmExit = false;
@@ -221,6 +222,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       _fullScreenRead = cfg.fullScreen;
       _longPressSelect = cfg.longPressSelect;
       _autoNextPageSpeed = cfg.autoNextPageSpeed;
+      _readAloudWakeLock = p.getBool('readAloudWakeLock') ?? false;
 
       // 界面
       _confirmExit = p.getBool('ui_confirmExit') ?? false;
@@ -666,6 +668,16 @@ class _SettingsScreenState extends State<SettingsScreen> {
               ]))));
             },
           ),
+          SwitchListTile(
+            secondary: const Icon(Icons.battery_charging_full_outlined),
+            title: const Text('朗读服务唤醒锁'),
+            subtitle: const Text('开启后朗读期间保持 CPU 唤醒，锁屏后继续播放（readAloudWakeLock，需平台唤醒锁能力）'),
+            value: _readAloudWakeLock,
+            onChanged: (v) => setState(() {
+              _readAloudWakeLock = v;
+              _saveSetting('readAloudWakeLock', v);
+            }),
+          ),
 
           // ===== 以下入口暂无对应能力，已从界面下架；页面文件与 import 保留，避免编译断裂 =====
           // 无独立「下载管理」任务界面，入口下架
@@ -707,7 +719,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
             leading: const Icon(Icons.info_outline),
             title: const Text('关于'),
             trailing: const Icon(Icons.chevron_right),
-            onTap: () => _showAboutDialog(),
+            onTap: () => Navigator.push(
+                context, MaterialPageRoute(builder: (_) => const AboutScreen())),
           ),
           const SizedBox(height: AppSpacing.xl),
     ];
@@ -1341,25 +1354,5 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
 
 
-  void _showAboutDialog() async {
-    final info = await PackageInfo.fromPlatform();
-    if (!mounted) return;
-    // pubspec 版本为规范三段式，展示层归一掉无意义的尾缀 .0（1.0.0 -> 1.0）
-    final version = info.version.replaceFirst(RegExp(r'\.0$'), '');
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: Text('关于$appDisplayName'),
-        content: Column(mainAxisSize: MainAxisSize.min, crossAxisAlignment: CrossAxisAlignment.start, children: [
-          Text('版本: $version'),
-          const SizedBox(height: AppSpacing.s),
-          const Text('基于 legado 的 Material Design 3 跨平台阅读应用'),
-          const SizedBox(height: AppSpacing.s),
-          const Text('支持Android和iOS'),
-        ]),
-        actions: [TextButton(onPressed: () => Navigator.pop(context), child: const Text('确定'))],
-      ),
-    );
-  }
 }
 

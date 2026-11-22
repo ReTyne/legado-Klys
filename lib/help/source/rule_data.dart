@@ -60,13 +60,42 @@ class RuleData {
     }
   }
 
-  /// 写入变量，默认写 ruleData 层；超长值同步写入外置大变量存储。
-  void putVariable(String key, String value, {String layer = 'ruleData'}) {
+  /// 写入变量，默认写 ruleData 层。短值与超长值互斥存放：短值只写分层表并从
+  /// 外置大变量存储移除，超长值只写外置存储并从所有分层移除。
+  /// [value] 为 null 或空串时删除该 key。
+  void putVariable(String key, String? value, {String layer = 'ruleData'}) {
     if (key.isEmpty) return;
-    if (value.length >= bigValueThreshold) {
-      _big[key] = value;
+    final allLayers = <Map<String, String>>[
+      _chapter,
+      _book,
+      ruleDataLayer,
+      _source,
+    ];
+    if (value == null) {
+      // 删除：从外置存储与所有分层移除。
+      _big.remove(key);
+      for (final m in allLayers) {
+        m.remove(key);
+      }
+      return;
     }
-    _layerMap(layer)[key] = value;
+    if (value.isEmpty) {
+      // 空值写入目标层；读取时按空跳过，实现向下一层回退。
+      _big.remove(key);
+      _layerMap(layer)[key] = '';
+      return;
+    }
+    if (value.length >= bigValueThreshold) {
+      // 长值：先从所有层移除，避免旧短值与新大值并存。
+      for (final m in allLayers) {
+        m.remove(key);
+      }
+      _big[key] = value;
+    } else {
+      // 短值：先清外置大变量，避免旧大值永久遮蔽新值。
+      _big.remove(key);
+      _layerMap(layer)[key] = value;
+    }
   }
 
   /// 按 chapter → book → ruleData → source 读取，返回第一个非空值。

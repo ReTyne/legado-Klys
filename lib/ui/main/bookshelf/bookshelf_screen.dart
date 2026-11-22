@@ -56,7 +56,7 @@ class _ViewCfg {
   bool coverShadow;
   int groupStyle; // 0:折叠(标签) 1:平铺(分区)
   bool hideEmptyGroups;
-  int sortType; // 0最近阅读 1书名 2作者 3添加时间 4手动
+  int sortType; // 0最近阅读 1书名 2作者 3添加时间 4手动 5综合
   bool sortAscending;
   bool showUnread;
   bool showUnreadNew;
@@ -138,7 +138,7 @@ class _ViewCfg {
   }
 
   /// 配置排序索引 -> 书架内部排序索引
-  /// 配置: 0最近阅读 1书名 2作者 3添加时间 4手动
-  /// 内部: 0智能/手动 1书名 2作者 3最近阅读 4添加时间 5字数
-  static const sortMap = [3, 1, 2, 4, 0];
+  /// 配置: 0最近阅读 1书名 2作者 3添加时间 4手动 5综合
+  /// 内部: 0智能/手动 1书名 2作者 3最近阅读 4添加时间 5字数 6综合
+  static const sortMap = [3, 1, 2, 4, 0, 6];
 }

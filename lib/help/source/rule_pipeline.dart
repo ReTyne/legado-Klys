@@ -25,12 +25,21 @@ enum RuleMode { auto, css, xpath, json, js, regex, defaultRule, webJs }
 ///   取出（支持 `&&`/`||` 组合，如 `@put:{token:<js>…}</js>}&&@get:{token}`）
 /// * 默认(JSoup)语法：`tag.div@class.box!0@text`、`children`、负索引/区间索引
 class RulePipeline {
-  RulePipeline({this.baseUrl = '', this.keyword, this.page});
+  RulePipeline({
+    this.baseUrl = '',
+    this.keyword,
+    this.page,
+    this.contextValueResolver,
+  });
 
   /// 当前书源地址，用于相对 URL 解析
   String baseUrl;
   String? keyword;
   int? page;
+
+  /// 可选上下文取值回调：`bookName` 映射书名、`title` 映射章节名，其余键
+  /// 可做分层回退。未注入时 `@get:` 仅查本地 [variables]，行为保持不变。
+  String? Function(String key)? contextValueResolver;
 
   // ============================== 变量（@put: / @get:） ==============================
 
@@ -164,10 +173,19 @@ class RulePipeline {
   }
 
   /// 读取 `@get:{key||default}`：变量非空取值，否则取 `||` 后的默认值。
+  /// `bookName`/`title` 属于上下文值，优先由 [contextValueResolver] 提供；
+  /// 其余键先查本地 [variables] 再回退到回调。
   String _readVariable(String inner) {
     final sep = inner.indexOf('||');
     final key = _unquote((sep < 0 ? inner : inner.substring(0, sep)).trim());
-    final v = variables[key];
+    String? v;
+    if (key == 'bookName' || key == 'title') {
+      v = contextValueResolver?.call(key);
+      if (v == null || v.isEmpty) v = variables[key];
+    } else {
+      v = variables[key];
+      if (v == null || v.isEmpty) v = contextValueResolver?.call(key);
+    }
     if (v != null && v.isNotEmpty) return v;
     if (sep < 0) return '';
     return _unquote(inner.substring(sep + 2).trim());
@@ -718,6 +736,19 @@ class RulePipeline {
     final elements = selector.isEmpty
         ? doc.querySelectorAll('*').where((e) => e.children.isEmpty).toList()
         : CssSelector.selectAll(doc, selector);
+    if (getter == 'html') {
+      // 整组匹配元素的 outerHtml 合并为单值（含元素自身标签、剔除 script/style）。
+      final joined = joinedHtmlAll(raw, rule);
+      return joined.isEmpty ? const <String>[] : <String>[joined];
+    }
+    // 属性取值去重（attr:前缀 / 裸属性名），保持出现顺序。
+    if (getter.startsWith('attr:')) {
+      return attributeValues(elements, getter.substring(5));
+    }
+    if (!const <String>{'text', 'textNodes', 'ownText', 'all', 'outerHtml'}
+        .contains(getter)) {
+      return attributeValues(elements, getter);
+    }
     return elements
         .map((e) => _getByGetter(e, getter))
         .where((s) => s.isNotEmpty)
@@ -962,8 +993,7 @@ class RulePipeline {
             .join('')
             .trim();
       case 'html':
-        el.querySelectorAll('script,style').forEach((e) => e.remove());
-        return el.innerHtml.trim();
+        return _stripScriptStyle(el.outerHtml.trim());
       case 'all':
       case 'outerHtml':
         return el.outerHtml.trim();

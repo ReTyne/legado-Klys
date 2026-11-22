@@ -76,17 +76,68 @@ class WebViewLegadoJs implements LegadoJs {
     await _ready.future.timeout(_ensureTimeout);
   }
 
+  /// 读取当前阅读/主题配置，生成注入 __state 的 JS 片段。
+  /// 直接读 SharedPreferences（与 ReadConfig / AppTheme 的持久化键一致），
+  /// 不在运行时层引入这两个模型，避免跨库循环依赖。
+  Future<String> _configSeed() async {
+    final prefs = await SharedPreferences.getInstance();
+    String readConfig = '{}';
+    try {
+      final raw = prefs.getString('read_config_json');
+      if (raw != null && raw.isNotEmpty) {
+        final decoded = jsonDecode(raw);
+        if (decoded is Map) readConfig = jsonEncode(decoded);
+      }
+    } catch (_) {}
+    final modeIndex = prefs.getInt('theme_mode') ?? 0;
+    final theme = <String, dynamic>{
+      'themeMode': modeIndex,
+      'seedColor': prefs.getInt('seed_color') ?? 0xFF3F5A72,
+      'fontFamily': prefs.getString('font_family') ?? '',
+      'fontScale': prefs.getDouble('fontScale') ?? 1.0,
+      'dynamicColor': prefs.getBool('dynamic_color') ?? true,
+      'amoled': prefs.getBool('theme_amoled') ?? false,
+      'eink': (prefs.getBool('lab_enabled') ?? false) &&
+          (prefs.getBool('lab_eink') ?? false),
+      'foregroundOpacity': prefs.getDouble('theme_foregroundOpacity') ?? 0.18,
+      'isDark': modeIndex == 2,
+    };
+    return '__state.readConfig = $readConfig; '
+        '__state.theme = ${jsonEncode(theme)}; '
+        '__state.themeMode = $modeIndex;';
+  }
+
   @override
   Future<void> loadSource(JsSource src) async {
     source = src;
     await _ensure();
-    if (_loadedSourceUrl == src.jsUrl) return;
     final c = _controller!;
+    final prefs = await SharedPreferences.getInstance();
+    // 书源调用 refreshJSLib() 时由 legado://loginui/refreshJSLib 写入标记；
+    // 命中则清标记、强制重注入 jsLib（同源早退不能阻断这次刷新）。
+    final invalidKey = 'jsLibInvalidated_${src.jsUrl}';
+    final forceReload = prefs.getBool(invalidKey) ?? false;
+    if (forceReload) {
+      await prefs.remove(invalidKey);
+      try {
+        await c.evaluateJavascript(source: '__state.meta.jsLib = "";');
+      } catch (_) {}
+    }
+    if (!forceReload && _loadedSourceUrl == src.jsUrl) return;
+    final configSeed = await _configSeed();
     final seed = '''
-      __state.meta = {url: ${_js(src.jsUrl)}, name: ${_js(src.jsName)}, httpUrl: ${_js(src.jsHttpUrl)}};
+      __state.meta = {
+        url: ${_js(src.jsUrl)}, name: ${_js(src.jsName)}, httpUrl: ${_js(src.jsHttpUrl)},
+        group: ${_js(src.jsGroup)}, comment: ${_js(src.jsComment)},
+        type: ${src.jsType}, concurrentRate: ${src.jsConcurrentRate},
+        enabledExplore: ${src.jsEnabledExplore}, header: ${_js(src.header ?? '')},
+        loginUrl: ${_js(src.loginUrl ?? '')}, loginUi: ${_js(src.loginUi ?? '')},
+        jsLib: ${_js(src.jsLib ?? '')}, bookUrlPattern: ${_js(src.jsBookUrlPattern)}
+      };
       __state.variable = ${_js(src.variable ?? '')};
       __state.variableComment = ${_js(src.variableComment ?? '')};
       __state.lastUpdateTime = ${src.lastUpdateTime ?? 0};
+      $configSeed
       globalThis.result = {}; globalThis.key = ''; globalThis.page = 1; globalThis.baseUrl = '';
       globalThis.sourceUrl = ${_js(src.jsUrl)};
       globalThis.sourceName = ${_js(src.jsName)};
@@ -822,8 +873,16 @@ class WebViewLegadoJs implements LegadoJs {
         case 'decrypt':
         case 'decryptStr':
           return _textResponse(crypto.decryptStr(data), 200);
+        case 'decryptBytes':
+          return _textResponse(
+              base64.encode(crypto.decrypt(data, usePublicKey: usePublicKey)),
+              200);
         case 'decryptHex':
           return _textResponse(crypto.decryptHex(data), 200);
+        case 'encryptBytes':
+          return _textResponse(
+              base64.encode(crypto.encrypt(data, usePublicKey: usePublicKey)),
+              200);
         case 'encryptHex':
           return _textResponse(
               crypto.encryptHex(data, usePublicKey: usePublicKey), 200);

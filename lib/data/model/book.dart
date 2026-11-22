@@ -2,6 +2,34 @@ import 'dart:convert';
 
 import 'package:legado_md3/constant/book_type.dart';
 
+int? _bookInt(dynamic v) {
+  if (v == null) return null;
+  if (v is int) return v;
+  if (v is num) return v.toInt();
+  return int.tryParse(v.toString().trim());
+}
+
+bool _bookBool(dynamic v, bool fallback) {
+  if (v == null) return fallback;
+  if (v is bool) return v;
+  if (v is num) return v != 0;
+  final s = v.toString().trim().toLowerCase();
+  if (s == 'true' || s == '1') return true;
+  if (s == 'false' || s == '0') return false;
+  return fallback;
+}
+
+String? _bookStr(dynamic v) => v?.toString();
+
+/// 字数可能是整数数字，也可能是 "12万字" 这类带单位的文本，取其中的整数部分。
+int? _bookWordCount(dynamic v) {
+  if (v == null) return null;
+  if (v is int) return v;
+  if (v is num) return v.toInt();
+  final match = RegExp(r'-?\d+').firstMatch(v.toString());
+  return match == null ? null : int.tryParse(match.group(0)!);
+}
+
 class Book {
   /// 书籍类型常量（与 BookSource.bookSourceType 对应）
   static const int typeText = 0; // 网络/文本
@@ -20,8 +48,10 @@ class Book {
   int durChapterIndex;
   int durChapterPos;
   int durChapterTime;
+  String? durChapterTitle;
   String? noteUrl;
   String? bookUrl;
+  String? tocUrl;
   String? origin;
   String? originName;
   String? tag;
@@ -31,8 +61,10 @@ class Book {
   int type; // 0: 网络/文本 1: 本地 2: 音频 3: 图片/漫画
   String? group;
   int? order;
+  int? originOrder;
   int? latestChapterTime;
   int? lastCheckTime;
+  int? lastCheckCount;
   String? infoHtml;
   String? tocHtml;
   String? variable;
@@ -41,6 +73,13 @@ class Book {
   String? fileName;
   String? customCoverUrl;
   String? bookComment;
+  String? customTag;
+  String? customIntro;
+  String? charset;
+  int? durVolumeIndex;
+  int? chapterInVolumeIndex;
+  int? totalChapterNum;
+  int? syncTime;
 
   /// 长章节拆分开关：
   /// 仅对本地 TXT 生效——正文超过 100KB 的章节自动按 ~10KB 在换行处拆成子章节，
@@ -58,8 +97,10 @@ class Book {
     this.durChapterIndex = 0,
     this.durChapterPos = 0,
     this.durChapterTime = 0,
+    this.durChapterTitle,
     this.noteUrl,
     this.bookUrl,
+    this.tocUrl,
     this.origin,
     this.originName,
     this.tag,
@@ -69,8 +110,10 @@ class Book {
     this.type = 0,
     this.group,
     this.order,
+    this.originOrder,
     this.latestChapterTime,
     this.lastCheckTime,
+    this.lastCheckCount,
     this.infoHtml,
     this.tocHtml,
     this.variable,
@@ -79,6 +122,13 @@ class Book {
     this.fileName,
     this.customCoverUrl,
     this.bookComment,
+    this.customTag,
+    this.customIntro,
+    this.charset,
+    this.durVolumeIndex,
+    this.chapterInVolumeIndex,
+    this.totalChapterNum,
+    this.syncTime,
     this.splitLongChapter = true,
   });
 
@@ -93,9 +143,9 @@ class Book {
     'intro': intro ?? '',
     'kind': kind ?? '',
     'lastChapter': lastChapter ?? '',
-    'tocUrl': noteUrl ?? bookUrl ?? '',
+    'tocUrl': tocUrl ?? noteUrl ?? bookUrl ?? '',
     'durChapterIndex': durChapterIndex,
-    'durChapterTitle': '',
+    'durChapterTitle': durChapterTitle ?? '',
     'origin': origin ?? originName ?? '',
     'originName': originName ?? '',
     'variable': variable,
@@ -112,8 +162,10 @@ class Book {
     'durChapterIndex': durChapterIndex,
     'durChapterPos': durChapterPos,
     'durChapterTime': durChapterTime,
+    'durChapterTitle': durChapterTitle,
     'noteUrl': noteUrl,
     'bookUrl': bookUrl,
+    'tocUrl': tocUrl,
     'origin': origin,
     'originName': originName,
     'tag': tag,
@@ -123,8 +175,10 @@ class Book {
     'type': type,
     'group_name': group,
     'order_num': order,
+    'originOrder': originOrder,
     'latestChapterTime': latestChapterTime,
     'lastCheckTime': lastCheckTime,
+    'lastCheckCount': lastCheckCount,
     'infoHtml': infoHtml,
     'tocHtml': tocHtml,
     'variable': variable,
@@ -133,68 +187,97 @@ class Book {
     'fileName': fileName,
     'customCoverUrl': customCoverUrl,
     'bookComment': bookComment,
+    'customTag': customTag,
+    'customIntro': customIntro,
+    'charset': charset,
+    'durVolumeIndex': durVolumeIndex,
+    'chapterInVolumeIndex': chapterInVolumeIndex,
+    'totalChapterNum': totalChapterNum,
+    'syncTime': syncTime,
     'splitLongChapter': splitLongChapter ? 1 : 0,
   };
 
+  /// 判断一份数据是否来自跨端备份：这些键由备份写入，本地库不产生。
+  static bool _isUpstreamMap(Map<String, dynamic> map) {
+    if (map['canUpdate'] is bool) return true;
+    if (map['wordCount'] is String) return true;
+    const keys = <String>[
+      'latestChapterTitle', 'tocUrl', 'originOrder', 'lastCheckCount',
+      'durChapterTitle', 'syncTime', 'customTag', 'customIntro', 'charset',
+      'totalChapterNum', 'durVolumeIndex', 'chapterInVolumeIndex',
+    ];
+    return keys.any(map.containsKey);
+  }
+
   factory Book.fromMap(Map<String, dynamic> map) {
-    // 备份导入边界（BackupService 恢复书籍时调用本方法，是「旧备份 type 重映射」
- // 的真实消费点）：/Android 备份的 type 是位标志（>=8），需转成
-    // 本项目顺序枚举落库；Flutter 自身备份的 type 为 0..4 顺序枚举，原样保留。
-    // 位标志中的 local 位叠加到 Book.local 布尔，避免类型信息丢失。
     final int rawType = _rawTypeInt(map['type']);
-    final bool isBitmap = BookType.isBitmapType(rawType);
+    final String? origin = _bookStr(map['origin']) ?? _bookStr(map['originName']);
+    // 跨端备份中的旧顺序类型需先还原成位标志，再与本地枚举互相转换。
+    final int effectiveType = (_isUpstreamMap(map) && rawType >= 0 && rawType <= 3)
+        ? BookType.remapLegacyType(rawType, origin: origin)
+        : rawType;
+    final bool isBitmap = BookType.isBitmapType(effectiveType);
     return Book(
-      name: map['name'] as String,
-      author: map['author'] as String,
-      coverUrl: map['coverUrl'] as String?,
-      intro: map['intro'] as String?,
-      kind: map['kind'] as String?,
-      lastChapter: map['lastChapter'] as String?,
-      lastChapterIndex: map['lastChapterIndex'] as int?,
-      durChapterIndex: map['durChapterIndex'] as int? ?? 0,
-      durChapterPos: map['durChapterPos'] as int? ?? 0,
-      durChapterTime: map['durChapterTime'] as int? ?? 0,
-      noteUrl: map['noteUrl'] as String?,
-      bookUrl: map['bookUrl'] as String?,
-      origin: map['origin'] as String?,
-      originName: map['originName'] as String?,
-      tag: map['tag'] as String?,
-      wordCount: map['wordCount'] as int?,
-      canUpdate: (map['canUpdate'] as int? ?? 1) == 1,
-      local: (map['local'] as int? ?? 0) == 1 ||
-          (isBitmap && BookType.hasFlag(rawType, BookType.local)),
-      type: isBitmap ? BookType.toFlutterEnum(rawType) : rawType,
-      group: map['group_name'] as String?,
-      order: map['order_num'] as int?,
-      latestChapterTime: map['latestChapterTime'] as int?,
-      lastCheckTime: map['lastCheckTime'] as int?,
-      infoHtml: map['infoHtml'] as String?,
-      tocHtml: map['tocHtml'] as String?,
-      variable: map['variable'] as String?,
-      customOrder: map['customOrder'] as int?,
-      allowUpdate: (map['allowUpdate'] as int? ?? 1) == 1,
-      fileName: map['fileName'] as String?,
-      customCoverUrl: map['customCoverUrl'] as String?,
-      bookComment: map['bookComment'] as String?,
-      // 旧库/旧备份无此列时默认开启
-      splitLongChapter: (map['splitLongChapter'] as int? ?? 1) == 1,
+      name: _bookStr(map['name']) ?? '',
+      author: _bookStr(map['author']) ?? '',
+      coverUrl: _bookStr(map['coverUrl']),
+      intro: _bookStr(map['intro']),
+      kind: _bookStr(map['kind']),
+      lastChapter: _bookStr(map['lastChapter'] ?? map['latestChapterTitle']),
+      lastChapterIndex: _bookInt(map['lastChapterIndex']),
+      durChapterIndex: _bookInt(map['durChapterIndex']) ?? 0,
+      durChapterPos: _bookInt(map['durChapterPos']) ?? 0,
+      durChapterTime: _bookInt(map['durChapterTime']) ?? 0,
+      durChapterTitle: _bookStr(map['durChapterTitle']),
+      noteUrl: _bookStr(map['noteUrl']) ?? _bookStr(map['tocUrl']),
+      bookUrl: _bookStr(map['bookUrl']),
+      tocUrl: _bookStr(map['tocUrl']),
+      origin: _bookStr(map['origin']),
+      originName: _bookStr(map['originName']),
+      tag: _bookStr(map['tag']),
+      wordCount: _bookWordCount(map['wordCount']),
+      canUpdate: _bookBool(map['canUpdate'], true),
+      local: _bookBool(map['local'], false) ||
+          (isBitmap && BookType.hasFlag(effectiveType, BookType.local)),
+      type: isBitmap ? BookType.toFlutterEnum(effectiveType) : effectiveType,
+      group: _bookStr(map['group_name'] ?? map['group']),
+      order: _bookInt(map['order_num'] ?? map['order']),
+      originOrder: _bookInt(map['originOrder']),
+      latestChapterTime: _bookInt(map['latestChapterTime']),
+      lastCheckTime: _bookInt(map['lastCheckTime']),
+      lastCheckCount: _bookInt(map['lastCheckCount']),
+      infoHtml: _bookStr(map['infoHtml']),
+      tocHtml: _bookStr(map['tocHtml']),
+      variable: _bookStr(map['variable']),
+      customOrder: _bookInt(map['customOrder']),
+      allowUpdate: _bookBool(map['allowUpdate'], true),
+      fileName: _bookStr(map['fileName']),
+      customCoverUrl: _bookStr(map['customCoverUrl']),
+      bookComment: _bookStr(map['bookComment']),
+      customTag: _bookStr(map['customTag']),
+      customIntro: _bookStr(map['customIntro']),
+      charset: _bookStr(map['charset']),
+      durVolumeIndex: _bookInt(map['durVolumeIndex']),
+      chapterInVolumeIndex: _bookInt(map['chapterInVolumeIndex']),
+      totalChapterNum: _bookInt(map['totalChapterNum']),
+      syncTime: _bookInt(map['syncTime']),
+      splitLongChapter: _bookBool(map['splitLongChapter'], true),
     );
   }
 
-  /// 兼容备份 JSON 中 type 为数字或字符串数字（旧版导出可能写成 "8"）。
+  /// 兼容备份 JSON 中 type 为数字或字符串数字。
   static int _rawTypeInt(dynamic v) {
     if (v is int) return v;
     if (v is num) return v.toInt();
     return int.tryParse(v?.toString() ?? '') ?? 0;
   }
 
- /// 跨端导出（Android 备份互通）：输出与 BookType 位标志一致的 Map。
-  /// `type` 由本项目顺序枚举转成位标志（[BookType.fromFlutterEnum]），
-  /// 并按 origin 前缀/`local` 补本地位。本项目自身备份仍用 [toMap]（顺序枚举），
-  /// 以免改变 reader_router / book_provider 依赖的 switch 语义。
+  /// 跨端导出：输出位标志 type 与备份字段别名，供其它端直接读取。
   Map<String, dynamic> toUpstreamMap() => <String, dynamic>{
         ...toMap(),
         'type': BookType.fromFlutterEnum(type, origin: origin, isLocal: local),
+        'latestChapterTitle': lastChapter,
+        'tocUrl': tocUrl ?? noteUrl ?? bookUrl,
       };
 
   Map<String, dynamic> toJson() => toMap();

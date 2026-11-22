@@ -178,6 +178,19 @@ class _SourceDebugScreenState extends State<SourceDebugScreen>
     _toast('已填入示例，可修改后点「开始调试」');
   }
 
+  /// 扫描二维码把书源 URL / 调试地址填入输入框（支持相机与相册识别）。
+  Future<void> _scanTarget() async {
+    if (_running || _stepRunning || _exploreRunning) return;
+    final code = await Navigator.push<String>(
+      context,
+      MaterialPageRoute(
+        builder: (_) => const QrScannerScreen(title: '扫码填入调试地址'),
+      ),
+    );
+    if (code == null || code.trim().isEmpty || !mounted) return;
+    _fillSample(code.trim());
+  }
+
   /// E 版帮助示例区（可点击 chip），背景与阅读 App 一致。
   Widget _buildHelpSection() {
     final cs = Theme.of(context).colorScheme;
@@ -2100,7 +2113,6 @@ class _SourceDebugScreenState extends State<SourceDebugScreen>
   }
 
   @override
-  @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
@@ -2111,6 +2123,8 @@ class _SourceDebugScreenState extends State<SourceDebugScreen>
             tooltip: '菜单',
             onSelected: _onMenuAction,
             itemBuilder: (_) => const [
+              PopupMenuItem(value: 'scan', child: Text('扫码填入调试地址')),
+              PopupMenuDivider(),
               PopupMenuItem(value: 'search_src', child: Text('搜索源码')),
               PopupMenuItem(value: 'book_src', child: Text('详情源码')),
               PopupMenuItem(value: 'toc_src', child: Text('目录源码')),
@@ -2345,6 +2359,9 @@ class _SourceDebugScreenState extends State<SourceDebugScreen>
   /// 菜单统一处理：E 版源码/刷新/帮助 + K 版导出/高级切换。
   void _onMenuAction(String action) {
     switch (action) {
+      case 'scan':
+        _scanTarget();
+        break;
       case 'search_src':
         _showSourceDialog('search', '搜索源码');
         break;
