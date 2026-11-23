@@ -4,7 +4,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:legado_md3/help/source/js/legado_bridge_js.dart';
 import 'package:legado_md3/help/source/js/offline_js_bridge.dart';
 
-const _root = '/workspace/legado-Klys/legado-Klys-main/';
+final _root = '${Directory.current.path}/';
 String _src(String rel) => File('$_root$rel').readAsStringSync();
 
 void main() {

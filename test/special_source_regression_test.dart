@@ -6,7 +6,7 @@ import 'package:legado_md3/help/source/js/legado_bridge_js.dart';
 /// 特殊书源链路回归：登录态持久化、设置结果回传、发现分类刷新。
 /// 这些能力跨 JS 桥 / 引擎 / 页面三层，用源码契约锁住关键实现点。
 String _src(String rel) =>
-    File('/workspace/legado-Klys/legado-Klys-main/$rel').readAsStringSync();
+    File('${Directory.current.path}/$rel').readAsStringSync();
 
 void main() {
   const bridge = LegadoBridgeJs.code;

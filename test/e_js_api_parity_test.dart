@@ -11,7 +11,7 @@ const _optionalApiSource = '/workspace/legado-E/legado-E-main/'
     'app/src/main/java/io/legado/app/help/JsExtensions.kt';
 
 String _src(String rel) =>
-    File('/workspace/legado-Klys/legado-Klys-main/$rel').readAsStringSync();
+    File('${Directory.current.path}/$rel').readAsStringSync();
 
 /// 提取 JS 桥中暴露在对象字面量上的键（name: function / name: (..) =>）。
 Set<String> _bridgeKeys(String code) {

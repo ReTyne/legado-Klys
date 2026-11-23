@@ -7,7 +7,7 @@ import 'package:legado_md3/help/source/js/legado_bridge_js.dart';
 ///
 /// 断言直接面向注入脚本（LegadoBridgeJs.code）与各 Dart 实现文件的源码文本，
 /// 覆盖新增方法、参数重载、场景注入、协议分派与响应头回灌等落地能力。
-const _root = '/workspace/legado-Klys/legado-Klys-main';
+final _root = Directory.current.path;
 
 String _src(String rel) => File('$_root/$rel').readAsStringSync();
 
