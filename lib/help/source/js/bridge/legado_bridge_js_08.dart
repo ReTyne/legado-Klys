@@ -1158,7 +1158,13 @@ const String legadoBridgeJsPart08 =
       "webViewGetOverrideUrl"]),
     web: __sceneCore.concat(["request", "upConfig"]),
     url: __sceneCore.concat(["getUserAgent", "getHeaderMap"]),
-    login: __sceneCore.concat(["upLoginData", "upUiData", "reUiView", "addBook"]),
+    login: __sceneCore.concat(["upLoginData", "upUiData", "reUiView", "addBook",
+      "getLoginInfoMap", "getLoginInfo", "putLoginInfo", "setLoginInfo",
+      "removeLoginInfo", "getLoginHeader", "putLoginHeader", "removeLoginHeader",
+      "getLoginJs", "getHeaderMap", "startBrowser", "startBrowserAwait",
+      "showBrowser", "reLoginView", "getVerificationCode", "toast", "longToast",
+      "refreshBookInfo", "refreshBookToc", "refreshContent", "refreshExplore",
+      "copyText", "clearTtsCache", "getCookie", "setCookie"]),
     rss: __sceneCore.concat(["getString", "getStringList"]),
     replace: __sceneCore.concat(["replaceFont", "queryTTF"])
   };

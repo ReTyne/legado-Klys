@@ -43,7 +43,7 @@ class _HtmlBody extends StatelessWidget {
 
   String _document() {
     final css = (style ?? '').trim();
-    final js = enableJs ? (injectJs ?? '').trim() : '';
+    final js = enableJs ? _jsBody(injectJs ?? '') : '';
     final lower = html.toLowerCase();
     if (lower.contains('<html') || lower.contains('<!doctype')) {
       // 完整文档：保持原样，仅把自定义 CSS/脚本插入对应位置
@@ -84,8 +84,8 @@ class _HtmlBody extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final preload = enableJs ? (preloadJs ?? '').trim() : '';
-    final overrideRule = enableJs ? (shouldOverrideUrlLoading ?? '').trim() : '';
+    final preload = enableJs ? _jsBody(preloadJs ?? '') : '';
+    final overrideRule = enableJs ? _jsBody(shouldOverrideUrlLoading ?? '') : '';
     return iw.InAppWebView(
       initialData: iw.InAppWebViewInitialData(
         data: _document(),
@@ -126,7 +126,7 @@ class _HtmlBody extends StatelessWidget {
               try {
                 final res = await controller.evaluateJavascript(
                   source:
-                      '(function(){try{return (function(url){${_jsBody(overrideRule)}})(${jsonEncode(url)});}catch(e){return true;}})()',
+                      '(function(){try{return (function(url){$overrideRule})(${jsonEncode(url)});}catch(e){return true;}})()',
                 );
                 if (res == false) {
                   await launchUrl(Uri.parse(url),

@@ -107,7 +107,6 @@ class _SourceManageScreenState extends State<SourceManageScreen> {
   final CheckSourceService _checkService = CheckSourceService();
   List<BookSource> _sources = [];
   bool _isLoading = true;
-  final String _searchQuery = '';
   String? _selectedGroup;
   // 特殊分组过滤
   // （need_login / 未分组 / 已启用 / 未启用 / 已启用发现）
@@ -190,17 +189,6 @@ class _SourceManageScreenState extends State<SourceManageScreen> {
       result =
           result.where((s) => s.bookSourceGroup == _selectedGroup).toList();
     }
-    if (_searchQuery.isNotEmpty) {
-      result = result
-          .where((s) =>
-              s.bookSourceName
-                  .toLowerCase()
-                  .contains(_searchQuery.toLowerCase()) ||
-              s.bookSourceUrl
-                  .toLowerCase()
-                  .contains(_searchQuery.toLowerCase()))
-          .toList();
-    }
     // 排序
     result = List.from(result);
     switch (_sortBy) {
@@ -236,6 +224,53 @@ class _SourceManageScreenState extends State<SourceManageScreen> {
         break;
     }
     return result;
+  }
+
+  /// 书源所属域名（按域名分组与分组头显示用）。
+  String _domainOf(BookSource s) {
+    final host = Uri.tryParse(s.bookSourceUrl)?.host.toLowerCase() ?? '';
+    return host.isEmpty ? '其它' : host;
+  }
+
+  /// 按域名分组后的展示项：每个域名一个标题项，随后是该域名的书源项。
+  /// 仅在 [_groupByDomain] 开启时使用；分组模式下禁用拖拽排序。
+  List<({String? header, BookSource? source})> get _domainGroupedItems {
+    final sorted = List<BookSource>.from(_filteredSources)
+      ..sort((a, b) => _domainOf(a).compareTo(_domainOf(b)));
+    final items = <({String? header, BookSource? source})>[];
+    String? last;
+    for (final s in sorted) {
+      final d = _domainOf(s);
+      if (d != last) {
+        items.add((header: d, source: null));
+        last = d;
+      }
+      items.add((header: null, source: s));
+    }
+    return items;
+  }
+
+  /// 按域名分组的书源列表：域名标题 + 该域名下的书源卡片。
+  /// 分组模式下不提供拖拽（与分组结构不兼容）。
+  Widget _buildDomainGroupedList() {
+    final items = _domainGroupedItems;
+    return ListView.separated(
+      padding: const EdgeInsets.all(AppSpacing.l),
+      itemCount: items.length,
+      separatorBuilder: (_, __) => const SizedBox(height: AppSpacing.s),
+      itemBuilder: (context, index) {
+        final item = items[index];
+        if (item.header != null) {
+          return Padding(
+            padding: const EdgeInsets.only(top: AppSpacing.s),
+            child: AppSectionHeader(item.header!),
+          );
+        }
+        final source = item.source!;
+        final srcIndex = _filteredSources.indexOf(source);
+        return _buildSourceCard(source, srcIndex < 0 ? index : srcIndex, false);
+      },
+    );
   }
 
   String _specialFilterLabel(String key) {
@@ -292,7 +327,7 @@ class _SourceManageScreenState extends State<SourceManageScreen> {
       _sortBy == 0 &&
       _specialFilter == null &&
       _selectedGroup == null &&
-      _searchQuery.isEmpty &&
+      !_groupByDomain &&
       !_selectMode;
 
   Future<void> _onReorder(int oldIndex, int newIndex) async {
@@ -1407,23 +1442,27 @@ class _SourceManageScreenState extends State<SourceManageScreen> {
                 ? const AppLoadingIndicator()
                 : _filteredSources.isEmpty
                     ? _buildEmptyState()
-                    : _dragEnabled
-                        ? ReorderableListView.builder(
-                            buildDefaultDragHandles: false,
-                            padding: const EdgeInsets.all(AppSpacing.l),
-                            itemCount: _filteredSources.length,
-                            onReorder: _onReorder,
-                            itemBuilder: (context, index) => _buildSourceCard(
-                                _filteredSources[index], index, true),
-                          )
-                        : ListView.separated(
-                            padding: const EdgeInsets.all(AppSpacing.l),
-                            itemCount: _filteredSources.length,
-                            separatorBuilder: (_, __) =>
-                                const SizedBox(height: AppSpacing.s),
-                            itemBuilder: (context, index) => _buildSourceCard(
-                                _filteredSources[index], index, false),
-                          ),
+                    : _groupByDomain
+                        ? _buildDomainGroupedList()
+                        : _dragEnabled
+                            ? ReorderableListView.builder(
+                                buildDefaultDragHandles: false,
+                                padding: const EdgeInsets.all(AppSpacing.l),
+                                itemCount: _filteredSources.length,
+                                onReorder: _onReorder,
+                                itemBuilder: (context, index) =>
+                                    _buildSourceCard(
+                                        _filteredSources[index], index, true),
+                              )
+                            : ListView.separated(
+                                padding: const EdgeInsets.all(AppSpacing.l),
+                                itemCount: _filteredSources.length,
+                                separatorBuilder: (_, __) =>
+                                    const SizedBox(height: AppSpacing.s),
+                                itemBuilder: (context, index) =>
+                                    _buildSourceCard(
+                                        _filteredSources[index], index, false),
+                              ),
           ),
         ],
       ),

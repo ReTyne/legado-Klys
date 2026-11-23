@@ -106,7 +106,10 @@ class SourceEventCallback {
     final ctxBook = book ?? (extraBook is Map<String, dynamic> ? extraBook : null);
     final ctxChapter =
         chapter ?? (extraChapter is Map<String, dynamic> ? extraChapter : null);
-    final script = 'var event = ${jsonEncode(event)};\n${source.callBackJs}';
+    // callBackJs 允许以 @js:/<js> 包裹，拼接前剥离前缀，
+    // 否则顶层 @ 触发 SyntaxError，事件回调脚本整体失效。
+    final callbackBody = stripJsRulePrefix(source.callBackJs);
+    final script = 'var event = ${jsonEncode(event)};\n$callbackBody';
 
     try {
       final evaluation = () async {

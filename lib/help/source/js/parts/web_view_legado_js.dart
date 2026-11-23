@@ -217,7 +217,8 @@ class WebViewLegadoJs implements LegadoJs {
               .map((ck) => '${ck.name}=${ck.value}')
               .join('; ');
           if (cookieStr.isNotEmpty) {
-            CookieManager().saveFromResponse(url, [cookieStr]);
+            // 网页登录返回的 cookieStr 是多键串，逐 pair 写入内存 CookieJar。
+            CookieManager().replaceCookie(url, cookieStr);
             final host = Uri.tryParse(url)?.host ?? '';
             if (_persistCookie && host.isNotEmpty) {
               await _db.saveCookie(host, cookieStr);
@@ -1973,9 +1974,17 @@ class WebViewLegadoJs implements LegadoJs {
         }
       } catch (_) {}
     }
+    // loginInfo 有值则写入；显式清空（退出登录）时移除，避免旧凭据残留，
+    // 与 loginHeader 的清理语义保持一致。
     final newLogin = env['loginInfo']?.toString() ?? '';
-    if (newLogin.isNotEmpty && newLogin != loginInfo) {
-      await prefs.setString('loginInfo_$srcUrl', newLogin);
+    if (env.containsKey('loginInfo')) {
+      if (newLogin.isNotEmpty) {
+        if (newLogin != loginInfo) {
+          await prefs.setString('loginInfo_$srcUrl', newLogin);
+        }
+      } else {
+        await prefs.remove('loginInfo_$srcUrl');
+      }
     }
     final newLoginHeader = env['loginHeader']?.toString() ?? '';
     if (newLoginHeader.isNotEmpty) {
@@ -2079,7 +2088,9 @@ class WebViewLegadoJs implements LegadoJs {
       final v = entry.value.toString();
       if (v.isEmpty) continue;
       final url = h.startsWith('http') ? h : 'https://$h/';
-      CookieManager().saveFromResponse(url, [v]);
+      // v 是完整 Cookie 头串（k1=v1; k2=v2），逐 pair 写入，
+      // 不能用 saveFromResponse（它按单条 Set-Cookie 解析，只取首项）。
+      CookieManager().replaceCookie(url, v);
       if (_persistCookie) {
         try {
           await _db.saveCookie(h, v);

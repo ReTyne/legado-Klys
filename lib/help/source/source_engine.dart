@@ -2063,7 +2063,7 @@ class BookSourceEngine {
       final coverDecode = source.coverDecodeJs?.trim() ?? '';
       if (coverDecode.isNotEmpty && coverUrl.isNotEmpty) {
         try {
-          final decoded = await _evalJs(source, coverDecode,
+          final decoded = await _evalJs(source, stripJsRulePrefix(coverDecode),
               result: coverUrl, baseUrl: bookUrl, book: seed);
           if (decoded != null && decoded.isNotEmpty) {
             coverUrl = _resolveUrl(decoded, source.bookSourceUrl);
@@ -2159,6 +2159,12 @@ class BookSourceEngine {
       if (v == null) return null;
       if (suffix.isEmpty) return v;
       return _fieldFromMixed(v, suffix) ?? v;
+    }
+    // @js: 前缀的内容规则：走完整 JS 运行时（含 java API），
+    // 不能降级到迷你求值器，否则复杂脚本（java.ajax 等）静默失败。
+    if (r.toLowerCase().startsWith('@js:')) {
+      return _evalJs(source, r.substring(4).trim(),
+          result: content, baseUrl: baseUrl, book: book, chapter: chapter);
     }
     return _pipeline.extractStringFromRaw(content, r, unescape: true);
   }
@@ -2612,8 +2618,9 @@ class BookSourceEngine {
       }
 
       // callBackJs：正文获取完成后的回调 JS（注入 src/title/content 等变量）
-      final callBack = rule['callBackJs']?.toString() ?? '';
-      if (callBack.trim().isNotEmpty) {
+      final callBackRaw = rule['callBackJs']?.toString() ?? '';
+      if (callBackRaw.trim().isNotEmpty) {
+        final callBack = stripJsRulePrefix(callBackRaw);
         try {
           await _evalJs(source, callBack,
               result: text,
@@ -2666,7 +2673,7 @@ class BookSourceEngine {
     final decodedMap = <String, String>{};
     for (final url in imgUrls) {
       try {
-        final decoded = await _evalJs(source, decodeJs,
+        final decoded = await _evalJs(source, stripJsRulePrefix(decodeJs),
             result: url, baseUrl: baseUrl, book: book, chapter: chapter);
         if (decoded != null && decoded.isNotEmpty) {
           decodedMap[url] = _resolveUrl(decoded, baseUrl);
