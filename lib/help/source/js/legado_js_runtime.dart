@@ -98,3 +98,16 @@ class JsEvalRequest {
   /// 场景标识：rule/url/login/rss/webview/replace，用于切换 java 可见方法子集。
   final String? scene;
 }
+
+/// 剥离书源脚本字段的规则前缀，返回可直接执行的纯 JS。
+/// loginUrl / loginUi 等字段允许以 `@js:` 或 `<js>...</js>` 包裹，
+/// 直接用 `@js:` 原文执行会因 `@` 触发 SyntaxError，导致其中定义的函数全部失效。
+String stripJsRulePrefix(String raw) {
+  final s = raw.trim();
+  if (s.startsWith('@js:')) return s.substring(4);
+  if (s.startsWith('<js>')) {
+    final end = s.lastIndexOf('</js>');
+    return end > 4 ? s.substring(4, end) : s.substring(4);
+  }
+  return s;
+}

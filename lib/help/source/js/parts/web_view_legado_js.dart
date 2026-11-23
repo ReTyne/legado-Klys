@@ -179,13 +179,18 @@ class WebViewLegadoJs implements LegadoJs {
         SourceNetworkLog.instance.addScriptError('jsLib 加载失败: $e');
       }
     }
-    final login = (src.loginUrl ?? '').trim();
-    if (login.isNotEmpty) {
-      try {
-        await c.evaluateJavascript(source: login);
-      } catch (e) {
-        debugPrint('loginUrl 初始化失败: $e');
-        SourceNetworkLog.instance.addScriptError('loginUrl（登录脚本）加载失败: $e');
+    final loginRaw = (src.loginUrl ?? '').trim();
+    if (loginRaw.isNotEmpty) {
+      // loginUrl 允许以 @js: / <js> 包裹，剥离前缀后再注入，否则
+      // 顶层 `@` 触发 SyntaxError，导致其中定义的登录函数全部失效。
+      final login = stripJsRulePrefix(loginRaw);
+      if (login.isNotEmpty) {
+        try {
+          await c.evaluateJavascript(source: login);
+        } catch (e) {
+          debugPrint('loginUrl 初始化失败: $e');
+          SourceNetworkLog.instance.addScriptError('loginUrl（登录脚本）加载失败: $e');
+        }
       }
     }
     _loadedSourceUrl = src.jsUrl;

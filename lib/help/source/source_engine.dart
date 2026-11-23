@@ -1931,8 +1931,9 @@ class BookSourceEngine {
 
   /// 检查登录状态（执行 loginCheckJs，返回非空表示已登录）
   Future<bool> checkLogin(BookSource source) async {
-    final js = source.loginCheckJs?.trim() ?? '';
-    if (js.isEmpty) return false;
+    final jsRaw = source.loginCheckJs?.trim() ?? '';
+    if (jsRaw.isEmpty) return false;
+    final js = stripJsRulePrefix(jsRaw);
     _applySourceFlags(source);
     try {
       final result = await _evalJs(source, js, baseUrl: source.bookSourceUrl);
@@ -1964,7 +1965,8 @@ class BookSourceEngine {
   /// 求值失败不抛异常，降级为基于响应体的判定并写日志。
   Future<LoginCheckOutcome> evaluateLoginCheck(
       BookSource source, String body) async {
-    final js = source.loginCheckJs?.trim() ?? '';
+    final jsRaw = source.loginCheckJs?.trim() ?? '';
+    final js = jsRaw.isEmpty ? '' : stripJsRulePrefix(jsRaw);
     String? r;
     if (js.isNotEmpty) {
       try {

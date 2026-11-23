@@ -548,6 +548,19 @@ const String legadoBridgeJsPart07 =
       return cookie.getCookie(url);
     },
 
+    // 登录态管理：书源登录脚本惯用 java.getLoginInfoMap()/putLoginInfo()
+    // 等写法（对应 E 版 sourceLoginJsExtensions），这里委托到 source 对象
+    // 上已有的实现，避免登录函数因 java 上缺方法而静默失败。
+    getLoginInfoMap: function () { return source.getLoginInfoMap(); },
+    getLoginInfo: function () { return source.getLoginInfo(); },
+    putLoginInfo: function (v) { return source.putLoginInfo(v); },
+    setLoginInfo: function (v) { return source.setLoginInfo(v); },
+    removeLoginInfo: function () { return source.removeLoginInfo(); },
+    getLoginHeader: function () { return source.getLoginHeader(); },
+    putLoginHeader: function (h) { return source.putLoginHeader(h); },
+    removeLoginHeader: function () { return source.removeLoginHeader(); },
+    getLoginJs: function () { return source.getLoginJs(); },
+
     // 编码
     base64Encode: function (str, flags) { return __b64ApplyFlags(__b64Unicode(str), flags); },
     base64Decode: function (str, flags) {

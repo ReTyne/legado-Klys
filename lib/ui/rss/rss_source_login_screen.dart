@@ -109,9 +109,13 @@ class _RssSourceLoginScreenState extends State<RssSourceLoginScreen> {
     _appendLog('执行: $act');
     try {
       final rt = await JsRuntimeManager.instance.forSource(source);
+      // 登录函数定义在 loginUrl 的 @js: 脚本里，按钮 action 只调用它们。
+      // 拼接剥离前缀后的 loginJS，确保函数定义与 action 同处一个执行环境。
+      final loginJs = stripJsRulePrefix((source.loginUrl ?? '').trim());
+      final script = loginJs.isEmpty ? act : '$loginJs\n$act';
       final res = await rt.eval(JsEvalRequest(
         source: source,
-        script: act,
+        script: script,
         result: _form,
         baseUrl: source.jsHttpUrl,
       ));

@@ -1073,10 +1073,15 @@ class _SourceLoginScreenState extends State<SourceLoginScreen> {
     }
     try {
       final rt = await JsRuntimeManager.instance.forSource(source);
+      // 登录函数定义在 loginUrl 的 @js: 脚本里，而按钮 action 只调用这些函数。
+      // 与登录脚本求值保持同一执行环境：把剥离前缀后的 loginJS 拼在 action 前，
+      // 确保每次点击时函数定义都随 action 一起生效，不依赖全局作用域是否持久。
+      final loginJs = stripJsRulePrefix((source.loginUrl ?? '').trim());
+      final script = loginJs.isEmpty ? act : '$loginJs\n$act';
       // 登录按钮以表单对象作为 result，长按标志透传给书源脚本
       final res = await rt.eval(JsEvalRequest(
         source: source,
-        script: act,
+        script: script,
         result: _form,
         baseUrl:
             source.bookSourceUrl.startsWith('http') ? source.bookSourceUrl : '',

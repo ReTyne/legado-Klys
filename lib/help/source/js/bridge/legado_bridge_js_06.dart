@@ -504,7 +504,11 @@ const String legadoBridgeJsPart06 = r'''    var b = bytes.slice();
           var expr = ui.indexOf("@js:") === 0
             ? ui.substring(4)
             : ui.substring(4, ui.lastIndexOf("<"));
-          var prelude = (__state.meta.jsLib || "") + "\n" + (__state.meta.loginUrl || "") + "\n";
+          // loginUrl 允许以 @js:/<js> 包裹，必须用剥离前缀后的纯 JS 做前导，
+          // 否则原文里的 @ 触发 SyntaxError，动态 loginUi 求值失败且函数不可见。
+          var loginJs = "";
+          try { loginJs = source.getLoginJs() || ""; } catch (e) {}
+          var prelude = (__state.meta.jsLib || "") + "\n" + loginJs + "\n";
           try {
             ui = String(eval(prelude + expr));
           } catch (e) {
