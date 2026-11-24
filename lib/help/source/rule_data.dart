@@ -168,6 +168,14 @@ class RuleData {
     _boundMap?.clear();
   }
 
+  /// 仅清空书籍 / 章节级变量（换书时调用），保留书源级 [_source] 层。
+  /// 绑定的 pipeline 变量表由引擎按书源级键集合单独筛选清理。
+  void clearBookScope() {
+    _chapter.clear();
+    _book.clear();
+    _big.clear();
+  }
+
   // ==================== 供引擎 / JS 桥接线的静态接口 ====================
 
   /// 把当前会话存储与某个 [RulePipeline] 的变量表共享（同一 Map 引用）。

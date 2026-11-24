@@ -546,6 +546,11 @@ class RulePipeline {
         return XpathSelector.selectNodes(scope, _stripXPathPrefix(core))
             .whereType<dom.Element>()
             .toList();
+      case RuleMode.regex:
+        // `:正则` 列表规则：把正则的每个匹配包装成一个虚拟元素，
+        // 各捕获组以 `$0/$1/...` 属性挂载，供字段规则 `$1`/`$2` 读取；
+        // 元素 text 为全匹配（group 0），保证无捕获引用时仍能回退取值。
+        return _regexElements(scope, core);
       case RuleMode.defaultRule:
       case RuleMode.auto:
         return _defaultElements(scope, core);
@@ -554,6 +559,36 @@ class RulePipeline {
         return _defaultElements(scope, core);
     }
   }
+
+  /// `:正则`（含 `&&` 链式）列表规则 → 虚拟元素列表。
+  ///
+  /// E 版 `AnalyzeByRegex.getElements` 对每个匹配返回完整捕获组数组
+  /// `[group0, group1, …]`，字段规则再以 `$N` 取第 N 组。这里把每个匹配
+  /// 转成一个 `dom.Element`：text 置为 group0，属性 `__capture0..N` 存各组，
+  /// 同时提供 `$0..N` 别名属性，使下游 `fieldFromElement` 对 `$N` 规则的
+  /// 普通属性取值路径直接命中。
+  List<dom.Element> _regexElements(dom.Node scope, String rule) {
+    var pattern = rule.startsWith(':') ? rule.substring(1) : rule;
+    final groupsList = RegexParser.matchChain(_splitTop(pattern, const ['&&']),
+        _nodeRawText(scope));
+    final out = <dom.Element>[];
+    for (final groups in groupsList) {
+      if (groups.isEmpty) continue;
+      final el = dom.Element.tag('legado-regex-item');
+      el.text = groups.first;
+      for (var i = 0; i < groups.length; i++) {
+        el.attributes['\$$i'] = groups[i];
+      }
+      out.add(el);
+    }
+    return out;
+  }
+
+  /// 取节点对应的原始文本供列表正则匹配：
+  /// Document 用 outerHtml（正则列表常匹配 `<a href>` 等标签属性），
+  /// 元素节点同样用 outerHtml 以保留属性。
+  String _nodeRawText(dom.Node scope) =>
+      scope is dom.Document ? (scope.outerHtml) : (scope as dom.Element).outerHtml;
 
   /// 相对单个 HTML 元素取字段值。
   /// 多个命中以换行拼接

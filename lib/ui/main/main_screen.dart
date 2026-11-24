@@ -1,8 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:legado_md3/data/local/app_database.dart';
+import 'package:legado_md3/data/model/book_source.dart';
+import 'package:legado_md3/help/source/explore_refresh.dart';
 import 'package:legado_md3/help/storage/import_book_service.dart';
 import 'package:legado_md3/help/storage/auto_update_service.dart';
+import 'package:legado_md3/ui/book/source/source_login_screen.dart';
 import 'package:provider/provider.dart';
 import 'package:legado_md3/di/book_provider.dart';
 import 'package:legado_md3/ui/main/bookshelf/bookshelf_screen.dart';
@@ -55,6 +59,7 @@ class _MainScreenState extends State<MainScreen> {
     super.initState();
     _pageController = PageController(initialPage: 0);
     MainScreenSwitch.requestTab = _onItemTapped;
+    reloginSignal.addListener(_onReloginSignal);
     _loadTabConfig();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       Provider.of<BookProvider>(context, listen: false).loadBooks();
@@ -111,8 +116,48 @@ class _MainScreenState extends State<MainScreen> {
     if (MainScreenSwitch.requestTab == _onItemTapped) {
       MainScreenSwitch.requestTab = null;
     }
+    reloginSignal.removeListener(_onReloginSignal);
     _pageController.dispose();
     super.dispose();
+  }
+
+  /// 书源脚本检测会话失效后发出重新登录信号：主界面常驻监听，
+  /// 提示用户并提供直达该书源登录页的入口，形成信号发出到 UI 消费的闭环。
+  void _onReloginSignal() {
+    final signal = reloginSignal.value;
+    if (signal.isEmpty) return;
+    final sourceUrl = reloginSourceOf(signal);
+    if (sourceUrl.isEmpty) return;
+    _handleRelogin(sourceUrl);
+  }
+
+  Future<void> _handleRelogin(String sourceUrl) async {
+    BookSource? target;
+    try {
+      final all = await DatabaseService().getAllSources();
+      for (final s in all) {
+        if (s.bookSourceUrl == sourceUrl) {
+          target = s;
+          break;
+        }
+      }
+    } catch (_) {}
+    if (!mounted) return;
+    final messenger = ScaffoldMessenger.of(context);
+    messenger.showSnackBar(SnackBar(
+      content: Text('书源登录已失效，请重新登录：${target?.bookSourceName ?? sourceUrl}'),
+      duration: const Duration(seconds: 8),
+      action: target == null
+          ? null
+          : SnackBarAction(
+              label: '去登录',
+              onPressed: () {
+                Navigator.of(context).push(MaterialPageRoute(
+                  builder: (_) => SourceLoginScreen(source: target!),
+                ));
+              },
+            ),
+    ));
   }
 
   /// 读取「发现/订阅页签显隐」「默认首页」「退出确认」配置并应用。

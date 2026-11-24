@@ -71,6 +71,14 @@ class BookSourceEngine {
   /// 当前会话所属书源（跨步骤变量保留的依据）。
   String? _sessionSourceUrl;
 
+  /// 当前会话所属书籍。同一书源不同书之间需隔离书级 `@put` 变量，
+  /// 避免上一本书的 token/中间值串到下一本。
+  String? _sessionBookUrl;
+
+  /// 书源级变量键集合（登录信息 / jsKv / rulePut 产生），可跨书共享。
+  /// 切书时只清理不在此集合内的书级 `@put` 临时变量。
+  final Set<String> _sourceScopedKeys = <String>{};
+
   /// 搜索结果按 bookUrl 去重开关（可配置）。
   bool dedupSearchByUrl = true;
 
@@ -114,17 +122,51 @@ class BookSourceEngine {
 
   /// 每次新的书籍操作入口调用：清空 @put:/@get: 变量表，并执行书源级
   /// rulePut（把跨步骤要用的值先存好，如登录 token）。
-  Future<void> _beginSourceSession(BookSource source) async {
+  ///
+  /// [bookUrl] 为可选的书籍标识：传入后，若与上一次的书籍不同，会清理
+  /// 上一本书写入的书级变量（不在 [_sourceScopedKeys] 中的键），从而避免
+  /// 同一书源不同书之间 `@put:` 变量串用；书源级变量与同书跨步骤变量保留。
+  Future<void> _beginSourceSession(BookSource source, {String? bookUrl}) async {
     final key = source.bookSourceUrl;
-    // 仅书源切换时清空，保留同一书源跨步骤（登录 -> 搜索 -> 详情）写入的变量
-    if (_sessionSourceUrl != key) {
+    final sourceChanged = _sessionSourceUrl != key;
+    if (sourceChanged) {
       _pipeline.clearVariables();
+      _sourceScopedKeys.clear();
       _currentRedirectUrl = null;
       _currentServerId = null;
       _sessionSourceUrl = key;
+      _sessionBookUrl = null;
     }
+    // 同一书源下换书：清掉上一本书的书级 @put 变量，保留书源级变量。
+    _clearStaleBookVariables(bookUrl);
     await _bridgeRuleData(source);
+    // 登录信息与 jsKv 属于书源级变量，登记为跨书共享。
+    _sourceScopedKeys
+      ..add('loginInfo')
+      ..add('loginHeader');
+    try {
+      final kvRaw = SharedPreferences.getInstance();
+      final prefs = await kvRaw;
+      final kv = prefs.getString('jsKv_$key');
+      if (kv != null && kv.isNotEmpty) {
+        final decoded = jsonDecode(kv);
+        if (decoded is Map) {
+          _sourceScopedKeys.addAll(decoded.keys.map((k) => k.toString()));
+        }
+      }
+    } catch (_) {}
     await _runSourcePutRule(source);
+  }
+
+  /// 换书时清理上一本书的书级 `@put` 变量，保留书源级变量。
+  /// 供 [getBookInfo]/[getToc]/[getContent] 等书籍入口调用。
+  void _clearStaleBookVariables(String? bookUrl) {
+    if (bookUrl == null || bookUrl.isEmpty || bookUrl == _sessionBookUrl) {
+      return;
+    }
+    _pipeline.variables.removeWhere((k, _) => !_sourceScopedKeys.contains(k));
+    RuleDataScope.current.clearBookScope();
+    _sessionBookUrl = bookUrl;
   }
 
   /// 变量桥接：把书源级登录信息与 java.put/get 变量（jsKv）灌入
@@ -197,7 +239,8 @@ class BookSourceEngine {
   /// 成功返回渲染结果（webJs 有非空返回值时优先取它，否则取整页 HTML），
   /// 失败/被开关关闭返回 null，由调用方降级为普通请求结果。
   Future<String?> _fetchWebJsRendered(
-      BookSource source, String url, String webJs) async {
+      BookSource source, String url, String webJs,
+      {String sourceRegex = ''}) async {
     if (!await _webViewFetchEnabled()) {
       _log('webJs：oc_webViewFetch 开关已关闭，跳过 WebView 渲染');
       return null;
@@ -218,6 +261,7 @@ class BookSourceEngine {
         headers: headers.isEmpty ? null : headers,
         userAgent: headers['User-Agent'],
         timeoutMs: 15000,
+        sourceRegex: sourceRegex,
       );
       if (rendered.isNotEmpty) {
         lastRawResponse = rendered;
@@ -2008,7 +2052,7 @@ class BookSourceEngine {
   Future<Book?> getBookInfo(BookSource source, String bookUrl,
       {String? presetName, String? presetAuthor}) async {
     _applySourceFlags(source);
-    await _beginSourceSession(source);
+    await _beginSourceSession(source, bookUrl: bookUrl);
     try {
       final rule = source.ruleBookInfo ?? {};
       var content = await _fetch(bookUrl, baseUrl: source.bookSourceUrl);
@@ -2180,6 +2224,7 @@ class BookSourceEngine {
     final seenChapterUrls = <String>{};
     var reverse = false;
     final seed = bookInfo ?? _bookSeed(bookUrl: tocUrl);
+    _clearStaleBookVariables(seed['bookUrl']?.toString());
     _activeBook = seed;
     _activeChapter = null;
     // nextTocUrl 分页上限（默认 100 页，防死循环）
@@ -2498,6 +2543,7 @@ class BookSourceEngine {
 
       final seed =
           bookInfo ?? _bookSeed(bookUrl: chapter?['bookUrl']?.toString());
+      _clearStaleBookVariables(seed['bookUrl']?.toString());
       if (chapter != null) seed['durChapterIndex'] = chapter['index'] ?? 0;
       final Map<String, dynamic> ch =
           chapter ?? {'index': 0, 'title': '', 'url': contentUrl};
@@ -2518,8 +2564,12 @@ class BookSourceEngine {
       // webJs：需要 WebView 渲染的页面 —— 先用无头 WebView 执行 JS 取渲染
       // 结果；失败（超时/异常/空结果/开关关闭）回退到普通请求的原始 HTML
       final webJs = rule['webJs']?.toString() ?? '';
+      // sourceRegex 按 E 版语义用于无头 WebView 的资源 URL 嗅探：
+      // WebView 加载资源时首个匹配该正则的 URL 即为正文资源地址。
+      final contentSourceRegex = rule['sourceRegex']?.toString() ?? '';
       if (webJs.trim().isNotEmpty) {
-        final rendered = await _fetchWebJsRendered(source, contentUrl, webJs);
+        final rendered = await _fetchWebJsRendered(source, contentUrl, webJs,
+            sourceRegex: contentSourceRegex);
         if (rendered != null && rendered.isNotEmpty) {
           raw = rendered;
           _log('webJs：无头 WebView 渲染成功，${raw.length} 字符');
@@ -2546,11 +2596,12 @@ class BookSourceEngine {
         }
       }
 
-      // sourceRegex：正则截取正文区域（先于选择器结果的二次过滤）
-      final srcRe = rule['sourceRegex']?.toString() ?? '';
-      if (srcRe.trim().isNotEmpty) {
+      // sourceRegex 兜底：仅在没有 webJs（即未走 WebView 资源嗅探）时，
+      // 才把 sourceRegex 当作正文文本的区域截取规则；有 webJs 时该字段
+      // 已交给无头 WebView 做资源 URL 嗅探，避免对嗅探结果二次截取出错。
+      if (webJs.trim().isEmpty && contentSourceRegex.trim().isNotEmpty) {
         try {
-          final m = RegExp(srcRe, dotAll: true).firstMatch(text);
+          final m = RegExp(contentSourceRegex, dotAll: true).firstMatch(text);
           if (m != null) {
             text = m.groupCount > 0 ? (m.group(1) ?? text) : m.group(0)!;
           }

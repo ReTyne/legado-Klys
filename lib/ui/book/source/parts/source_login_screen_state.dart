@@ -889,6 +889,21 @@ class _SourceLoginScreenState extends State<SourceLoginScreen> {
     try {
       final host = Uri.tryParse(key)?.host ?? '';
       if (host.isNotEmpty) CookieManager().removeHost(host);
+      // 同时清除 WebView 原生 CookieManager 中该书源的会话 Cookie，
+      // 否则登录页 WebView 仍带着旧凭据，重新进入即自动登录。
+      final webCookieManager = iw.CookieManager.instance();
+      final urls = <String>{key};
+      if (host.isNotEmpty) {
+        urls.add('https://$host');
+        urls.add('http://$host');
+      }
+      final loginUrl = stripJsRulePrefix((source.loginUrl ?? '').trim());
+      if (loginUrl.startsWith('http://') || loginUrl.startsWith('https://')) {
+        urls.add(loginUrl);
+      }
+      for (final u in urls) {
+        await webCookieManager.deleteCookies(url: iw.WebUri(u));
+      }
     } catch (_) {}
     await JsRuntimeManager.instance.invalidate(key);
     await _checkLoginStatus();
