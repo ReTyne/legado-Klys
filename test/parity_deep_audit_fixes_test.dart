@@ -147,5 +147,10 @@ void main() {
       final s = src('lib/ui/book/read/tts_player_screen.dart');
       expect(s, contains('BgmService.instance.bindReadAloudProbe'));
     });
+    test('MOBI HUFF/CDIC 阅读路径接上原生解码', () {
+      final s = src('lib/help/storage/local_book_parser.dart');
+      expect(s, contains('MobiHuffDecompressor.decompressFile(filePath)'));
+      expect(s, isNot(contains('当前平台暂不支持正文解压')));
+    });
   });
 }

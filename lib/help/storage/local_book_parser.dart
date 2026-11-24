@@ -7,6 +7,7 @@ import 'package:legado_md3/data/model/book_chapter.dart';
 import 'package:legado_md3/help/source/txt_parser.dart';
 import 'package:legado_md3/help/storage/umd_parser.dart';
 import 'epub_parser.dart';
+import 'package:legado_md3/ui/book/epub/local_book_import_helper.dart';
 
 /// 本地书籍解析器 - 支持TXT/EPUB/MOBI/PDF/UMD
 class LocalBookParser {
@@ -360,11 +361,15 @@ class LocalBookParser {
   static Future<String?> _readMobiChapter(String filePath) async {
     try {
       final bytes = await File(filePath).readAsBytes();
-      // 补齐 HUFF/CDIC 明确提示：
-      // compression=17480(0x4448 'DH') 为 Kindle 高压缩，正文解压暂不支持，
-      // 避免笼统报「文件结构无法识别」误导用户；元数据（EXTH）仍可正常提取。
+      // compression=17480(0x4448 'DH') 为 Kindle HUFF/CDIC 高压缩：
+      // 导入路径已通过 MobiHuffDecompressor 调原生 Huffman 解码，这里阅读正文
+      // 走同一解码器，避免导入成功却读不到正文的能力链断裂。
       if (_mobiCompression(bytes) == 17480) {
-        return '该 MOBI 使用 HUFF/CDIC 高压缩（Kindle），当前平台暂不支持正文解压；'
+        final decoded = await MobiHuffDecompressor.decompressFile(filePath);
+        if (decoded != null && decoded.trim().isNotEmpty) return decoded;
+        // 原生解码失败（文件损坏/结构异常/平台不可用）：给出明确边界提示，
+        // 避免笼统报「文件结构无法识别」误导用户。
+        return '该 MOBI 使用 HUFF/CDIC 高压缩（Kindle），正文解码失败；'
             '元数据已按 EXTH 提取，正文请转为 EPUB 或无压缩 MOBI 后重新导入。';
       }
       final text = _extractMobiText(bytes);
