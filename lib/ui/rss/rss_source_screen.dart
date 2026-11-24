@@ -68,17 +68,24 @@ class _RssSourceScreenState extends State<RssSourceScreen> {
           case '全部':
             return true;
           default:
-            return s.sourceGroup == _groupFilter;
+            // 一个源可属多个分组（英文逗号分隔），任一命中即显示。
+            return _splitGroups(s.sourceGroup).contains(_groupFilter);
         }
       }).toList();
     });
   }
 
+  /// 拆分逗号分隔的分组字符串（与 RSS 源编辑页约定一致）。
+  static List<String> _splitGroups(String? group) => (group ?? '')
+      .split(RegExp(r'[,，]'))
+      .map((e) => e.trim())
+      .where((e) => e.isNotEmpty)
+      .toList();
+
   List<String> get _groups {
     final set = <String>{};
     for (final s in _sources) {
-      final g = s.sourceGroup;
-      if (g != null && g.trim().isNotEmpty) set.add(g);
+      set.addAll(_splitGroups(s.sourceGroup));
     }
     final list = set.toList()..sort();
     return ['全部', '启用', '禁用', '未分组', ...list];
@@ -103,7 +110,8 @@ class _RssSourceScreenState extends State<RssSourceScreen> {
   Future<void> _toggleEnabled(RssSource source, bool value) async {
     source.enabled = value;
     await _db.updateRssSource(source);
-    setState(() {});
+    // 在「启用/禁用」过滤态下需重算可见列表，否则该行会滞留在旧列表里。
+    _applyFilter();
   }
 
   Future<void> _deleteSource(RssSource source) async {

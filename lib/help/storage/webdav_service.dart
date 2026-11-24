@@ -10,6 +10,9 @@ import 'package:legado_md3/data/model/read_record.dart';
 class WebDavService {
   final Dio _dio = Dio();
   String? _baseUrl;
+  /// 备份子目录：由设置页 webdav_dir 配置，上传/下载/列举/删除统一使用，
+  /// 默认保留历史值 legado_backup 以兼容既有远端备份。
+  String _backupDir = 'legado_backup';
 
   /// PROPFIND 请求体：显式声明所需属性，避免严格服务端拒绝无正文的 PROPFIND。
   static const String propfindBody =
@@ -30,12 +33,28 @@ class WebDavService {
   }
 
   /// 配置WebDAV
-  void configure({required String baseUrl, String? username, String? password}) {
+  void configure({
+    required String baseUrl,
+    String? username,
+    String? password,
+    String? dir,
+  }) {
     _baseUrl = normalizeBaseUrl(baseUrl);
+    if (dir != null && dir.trim().isNotEmpty) _backupDir = dir.trim();
     _dio.options.headers = {
       if (username != null && password != null)
         'Authorization': 'Basic ${base64Encode(utf8.encode('$username:$password'))}',
     };
+  }
+
+  /// 归一化备份目录：去掉首尾斜杠并补尾斜杠，供 URL 拼接。
+  String get _backupDirPath => _normalizeDir(_backupDir);
+
+  static String _normalizeDir(String dir) {
+    var d = dir.trim();
+    if (d.isEmpty) d = 'legado_backup';
+    if (d.startsWith('/')) d = d.substring(1);
+    return d.endsWith('/') ? d : '$d/';
   }
 
   /// 带指数退避的请求包装：网络异常或 5xx 时最多重试 [retries] 次。
@@ -97,14 +116,13 @@ class WebDavService {
   Future<bool> uploadBackup(
     String fileName,
     List<int> data, {
-    String dir = 'legado_backup',
+    String? dir,
   }) async {
     try {
       if (_baseUrl == null) return false;
-      var d = dir.trim();
-      if (d.isEmpty) d = 'legado_backup';
-      if (!d.endsWith('/')) d = '$d/';
-      if (d.startsWith('/')) d = d.substring(1);
+      final d = (dir == null || dir.trim().isEmpty)
+          ? _backupDirPath
+          : _normalizeDir(dir);
       final url = '$_baseUrl$d$fileName';
       // 确保目录存在（已存在时服务端返回 405，忽略）
       try {
@@ -123,7 +141,7 @@ class WebDavService {
   Future<List<int>?> downloadBackup(String fileName) async {
     try {
       if (_baseUrl == null) return null;
-      final url = '${_baseUrl}legado_backup/$fileName';
+      final url = '$_baseUrl$_backupDirPath$fileName';
       final response = await _requestWithRetry(
         url,
         method: 'GET',
@@ -139,7 +157,7 @@ class WebDavService {
   Future<List<String>> listBackups() async {
     try {
       if (_baseUrl == null) return [];
-      final url = '${_baseUrl}legado_backup/';
+      final url = '$_baseUrl$_backupDirPath';
       final response = await _propfind(url, '1');
       // 解析XML响应提取文件名
       final body = response.data.toString();
@@ -158,8 +176,8 @@ class WebDavService {
   }
 
   /// 按修改时间选出指定目录中最新的备份文件名；无修改时间时取首个备份文件。
-  Future<String?> latestBackup({String dir = 'legado_backup'}) async {
-    final entries = await listDir(dir);
+  Future<String?> latestBackup({String? dir}) async {
+    final entries = await listDir(dir ?? _backupDir.trim());
     final files = entries
         .where((e) => !e.isDir &&
             (e.name.endsWith('.json') ||
@@ -179,7 +197,7 @@ class WebDavService {
   Future<bool> deleteBackup(String fileName) async {
     try {
       if (_baseUrl == null) return false;
-      final url = '${_baseUrl}legado_backup/$fileName';
+      final url = '$_baseUrl$_backupDirPath$fileName';
       final response =
           await _requestWithRetry(url, method: 'DELETE');
       return response.statusCode == 200 || response.statusCode == 204;

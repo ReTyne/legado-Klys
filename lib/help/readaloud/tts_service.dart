@@ -314,7 +314,13 @@ class TtsService {
   /// 单段朗读（划词朗读）：朗读一段文本，结束后不自动续播下一章
   Future<void> speakOnce(String text) async {
     if (text.trim().isEmpty) return;
-    if (!_isInitialized) await init();
+    // 与连续朗读一致地解析用户所选引擎：HTTP/云引擎走云端合成，
+    // 否则才用系统 TTS。此前划词朗读恒走系统 TTS，忽略引擎选择。
+    if (!_cloudModeResolved) {
+      await resolveCloudEngine();
+      _cloudModeResolved = true;
+    }
+    if (!_isInitialized && !_cloudMode) await init();
     _onceGuard = true;
     _isPlaying = true;
     _isPaused = false;
@@ -322,6 +328,10 @@ class TtsService {
     unawaited(_syncWakeLock()); // 划词朗读开始：按偏好键申请唤醒锁
     final prepared = _prepareText(text);
     _currentText = prepared.isNotEmpty ? prepared : text;
+    if (_cloudMode && _cloudProvider != null) {
+      await _cloudSpeak(_currentText!);
+      return;
+    }
     try {
       await _ensureRateApplied();
       await _flutterTts.stop(); // 停掉上一段，避免连续 speak 叠音
@@ -490,8 +500,17 @@ class TtsService {
   Future<void> _playNextSegment() async {
     if (!_cloudSpeaking) return;
     if (_segIndex >= _segments.length) {
-      // 本章播完，下一章
+      // 本次云端合成的全部段落播完
       _isPlaying = false;
+      if (_onceGuard) {
+        // 划词朗读（单段）：结算后停止，不进入章节续播。
+        _onceGuard = false;
+        _cloudSpeaking = false;
+        _accumulate();
+        unawaited(_flushListening());
+        unawaited(_syncWakeLock());
+        return;
+      }
       if (_currentIndex < _chapters.length - 1) {
         _currentIndex++;
         _speakCurrent();

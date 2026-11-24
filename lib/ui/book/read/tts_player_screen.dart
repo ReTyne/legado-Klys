@@ -2,6 +2,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:legado_md3/data/model/book_chapter.dart';
 import 'package:legado_md3/help/readaloud/tts_service.dart';
+import 'package:legado_md3/help/bgm/bgm_service.dart';
 
 import 'package:legado_md3/ui/theme/app_design.dart';
 /// 朗读控制条（阅读页 TTS 控制页与 RSS 朗读迷你条共用）
@@ -128,6 +129,9 @@ class _TtsPlayerScreenState extends State<TtsPlayerScreen> {
       });
     });
     _loadLanguages();
+    // 朗读进行中自动压低 BGM 音量（duck）：把当前 TTS 播放态作为探测源交给
+    // BgmService 轮询，播放/暂停/停止时无需在每个状态切换点手动通知。
+    BgmService.instance.bindReadAloudProbe(() => widget.ttsService.isSpeaking);
     widget.ttsService.onComplete = () {
       if (mounted) setState(() => _isPlaying = false);
     };
@@ -429,6 +433,7 @@ class _TtsPlayerScreenState extends State<TtsPlayerScreen> {
   @override
   void dispose() {
     _sleepTimer?.cancel();
+    BgmService.instance.bindReadAloudProbe(null);
     widget.ttsService.onComplete = null;
     widget.ttsService.onSegmentStart = null;
     super.dispose();

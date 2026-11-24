@@ -203,7 +203,12 @@ class _BackupScreenState extends State<BackupScreen> {
   );
   WebDavService _webdav() {
     final s = WebDavService();
-    s.configure(baseUrl: _webdavUrl.text.trim(), username: _webdavUser.text.trim(), password: _webdavPass.text);
+    s.configure(
+      baseUrl: _webdavUrl.text.trim(),
+      username: _webdavUser.text.trim(),
+      password: _webdavPass.text,
+      dir: _webdavDir.text.trim(),
+    );
     return s;
   }
 

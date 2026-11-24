@@ -59,7 +59,7 @@ class AutoTaskService {
       var changed = false;
       for (final t in tasks) {
         if (t.enabled != 1) continue;
-        if (t.nextRunTime(from: now) > now + 60000) continue;
+        if (!isDue(t, now)) continue;
         final result = await runNow(t);
         _log('${t.name}: $result');
         t.lastRunTime = now;
@@ -101,6 +101,27 @@ class AutoTaskService {
       default:
         return '未知动作：${t.action}';
     }
+  }
+
+  /// 判断任务在 [now] 是否到期。与 [AutoTask.nextRunTime] 的「展示用」
+  /// 语义不同：展示会把已过期时间推到未来，而这里必须真实反映「该不该跑」。
+  ///
+  /// - 间隔任务：`lastRunTime` 为空，或距上次运行已不足一个间隔。
+  /// - 每日定点：已到达今天的计划时刻，且今天该时刻之后尚未运行过。
+  static bool isDue(AutoTask t, int now) {
+    final last = t.lastRunTime;
+    if (t.intervalMinutes > 0) {
+      final intervalMs = t.intervalMinutes * 60 * 1000;
+      // 从未运行过：立即执行一次（不等待一个完整间隔）。
+      if (last == null || last <= 0) return true;
+      return now - last >= intervalMs;
+    }
+    final local = DateTime.fromMillisecondsSinceEpoch(now);
+    final scheduled = DateTime(local.year, local.month, local.day, t.hour, t.minute)
+        .millisecondsSinceEpoch;
+    if (now < scheduled) return false;
+    // 今天计划时刻已过：仅当上次运行早于该时刻时才需要触发，避免同一天重复跑。
+    return last == null || last < scheduled;
   }
 
   /// 依据当前时间判断任务是否即将执行（供 UI 展示「下次运行」）。

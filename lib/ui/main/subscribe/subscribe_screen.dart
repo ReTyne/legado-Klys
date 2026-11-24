@@ -224,8 +224,10 @@ class _SubscribeScreenState extends State<SubscribeScreen> {
   List<String> get _rssGroups {
     final set = <String>{};
     for (final s in _sources) {
-      final g = s.sourceGroup?.trim();
-      if (g != null && g.isNotEmpty) set.add(g);
+      for (final g in (s.sourceGroup ?? '').split(RegExp(r'[,，]'))) {
+        final t = g.trim();
+        if (t.isNotEmpty) set.add(t);
+      }
     }
     final list = <String>['全部', ...(set.toList()..sort())];
     if (_groupFilter.isNotEmpty && !list.contains(_groupFilter)) {
@@ -469,7 +471,10 @@ class _SubscribeScreenState extends State<SubscribeScreen> {
     final filtered = _sources
         .where((s) =>
             (_groupFilter.isEmpty ||
-                (s.sourceGroup ?? '').trim() == _groupFilter) &&
+                (s.sourceGroup ?? '')
+                    .split(RegExp(r'[,，]'))
+                    .map((e) => e.trim())
+                    .contains(_groupFilter)) &&
             (q.isEmpty ||
                 s.sourceName.toLowerCase().contains(q) ||
                 (s.sourceGroup ?? '').toLowerCase().contains(q)))

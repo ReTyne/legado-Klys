@@ -619,8 +619,8 @@ class _DictSourceTabState extends State<_DictSourceTab> {
                             color: Theme.of(context).colorScheme.error),
                         onPressed: () => _delete(r),
                       ),
-                      const ReorderableDragStartListener(
-                          index: 0, child: Icon(Icons.drag_handle)),
+                      ReorderableDragStartListener(
+                          index: index, child: const Icon(Icons.drag_handle)),
                     ],
                   ),
                   onTap: () => _editRule(r),

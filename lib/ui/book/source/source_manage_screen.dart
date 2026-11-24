@@ -1886,10 +1886,10 @@ class _SourceManageScreenState extends State<SourceManageScreen> {
               MaterialPageRoute(builder: (_) => QrShareScreen(source: source))),
         ),
         AppMenuSheetItem(
-          title: source.customOrder > 0 ? '取消置顶' : '置顶',
+          title: source.customOrder < 0 ? '取消置顶' : '置顶',
           icon: Icons.push_pin_outlined,
           onTap: () {
-            source.customOrder = source.customOrder > 0 ? 0 : -1;
+            source.customOrder = source.customOrder < 0 ? 0 : -1;
             _db.updateSource(source);
             _loadSources();
           },

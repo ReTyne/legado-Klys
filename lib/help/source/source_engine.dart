@@ -1480,6 +1480,11 @@ class BookSourceEngine {
             page: page,
             book: book,
             chapter: chapter);
+      } else if (webJsScriptOf(selector)?.trim().isNotEmpty == true) {
+        // 列表元素字段上的 @webjs: 用元素 outerHtml 作输入做无头 WebView 求值，
+        // 与 _fieldFromJsonAsync / _evalRuleContent 的同名分支保持一致。
+        value = await _evalWebJs(source, el.outerHtml, webJsScriptOf(selector)!,
+            result: el.outerHtml, baseUrl: baseUrl);
       } else {
         value = _pipeline.fieldFromElement(el, selector);
       }

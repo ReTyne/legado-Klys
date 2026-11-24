@@ -89,7 +89,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   bool _showDiscovery = true;
   /// 显示「订阅/RSS」页（showRss）
   bool _showRss = true;
-  /// 默认首页页签（defaultHomePage：0书架 1发现 2订阅）
+  /// 默认首页页签（defaultHomePage：0书架 1发现 2订阅 3我的）
   int _defaultHomePage = 0;
   /// 新加入的书籍默认不更新
   bool _bookUpdateDisable = false;
@@ -127,7 +127,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   static const List<String> _pageAnimNames = ['覆盖', '仿真', '滑动', '滚动', '无动画', '上下'];
   static const List<String> _alignNames = ['左对齐', '居中', '两端对齐'];
-  static const List<String> _homePageNames = ['书架', '发现', '订阅'];
+  static const List<String> _homePageNames = ['书架', '发现', '订阅', '我的'];
 
   /// 导出文件名模板编辑：变量 {name} {author} {group}。
   Future<void> _showExportNameTplDialog() async {

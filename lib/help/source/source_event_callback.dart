@@ -8,8 +8,9 @@ import 'package:legado_md3/help/source/js/legado_js_runtime.dart';
 ///
 /// 书源声明 `eventListener` 且 `callBackJs` 非空时，交互/生命周期事件发生后
 /// 由该源自己的 JS 运行时执行脚本；脚本通过全局 `event`、`result`、`book`、
-/// `chapter` 拿到上下文。脚本返回真值允许默认行为继续，返回假值则拦截。
-/// 超时与异常只记日志，返回 true 放行主流程。
+/// `chapter` 拿到上下文。脚本返回真值表示「消费事件」、拦截默认操作，
+/// 返回假值则继续默认操作（与阅读规则帮助文档一致）。因此分发方法返回
+/// 「是否放行」：脚本真值取反。无回调/超时/异常一律返回 true 放行主流程。
 class SourceEventCallback {
   SourceEventCallback._();
 
@@ -135,7 +136,9 @@ class SourceEventCallback {
       for (final l in out.logs) {
         if (l.trim().isNotEmpty) debugPrint('[事件回调] $event: $l');
       }
-      return _jsTruthy(out.value);
+      // E 版语义：脚本返回 true 表示「消费事件」，默认操作不再执行；
+      // 返回假值则继续默认操作。本方法返回「是否放行默认操作」，故取反。
+      return !_jsTruthy(out.value);
     } catch (e) {
       debugPrint('[事件回调] $event 异常: $e');
       return true;

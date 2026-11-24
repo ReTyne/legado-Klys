@@ -133,9 +133,16 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
   }
 
   /// 变量持久化到 SharedPreferences
-  Future<void> _editVariable(String prefKey, String title) async {
-    final p = await SharedPreferences.getInstance();
-    final ctrl = TextEditingController(text: p.getString(prefKey) ?? '');
+  /// 编辑书源/书籍运行时变量。值写入 DB（书源 book_sources.variable /
+  /// 书籍 books.variable），与书源脚本 source.getVariable / book.getVariable
+  /// 读取的字段同源，避免此前写 SharedPreferences 却无人读取的假开关。
+  Future<void> _editVariable({required bool sourceScoped, required String title}) async {
+    final source = _detailSource;
+    if (source == null) return;
+    final initial = sourceScoped
+        ? (source.variable ?? '')
+        : (widget.book.variable ?? '');
+    final ctrl = TextEditingController(text: initial);
     if (!mounted) return;
     final v = await showDialog<String>(context: context, builder: (d) => AlertDialog(
       title: Text(title),
@@ -146,7 +153,14 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
       ],
     ));
     if (v == null) return;
-    await p.setString(prefKey, v);
+    if (sourceScoped) {
+      await _db.updateSourceVariable(source.bookSourceUrl, v);
+      // 同步内存态，使后续从本页发起的脚本拿到最新值。
+      source.variable = v;
+    } else {
+      widget.book.variable = v;
+      await _db.updateBook(widget.book);
+    }
     if (mounted) ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('变量已保存')));
   }
 
@@ -445,14 +459,14 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
               ListTile(
                 leading: const Icon(Icons.data_object),
                 title: const Text('设置源变量'),
-                onTap: () { Navigator.pop(context); _editVariable('sourceVar::${widget.book.origin}', '设置源变量'); },
+                onTap: () { Navigator.pop(context); _editVariable(sourceScoped: true, title: '设置源变量'); },
               ),
             // 6. 设置书籍变量
             if (_detailSource != null)
               ListTile(
                 leading: const Icon(Icons.data_object),
                 title: const Text('设置书籍变量'),
-                onTap: () { Navigator.pop(context); _editVariable('bookVar::${widget.book.bookUrl}', '设置书籍变量'); },
+                onTap: () { Navigator.pop(context); _editVariable(sourceScoped: false, title: '设置书籍变量'); },
               ),
             // 7. 复制书籍URL
             ListTile(
@@ -1058,6 +1072,7 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
       if (b.group?.isNotEmpty == true) groups.add(b.group!);
     }
     var selected = widget.book.group ?? '';
+    final newGroupCtrl = TextEditingController();
     if (!mounted) return;
     showDialog(
       context: context,
@@ -1086,6 +1101,7 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
               ),
               const SizedBox(height: AppSpacing.m),
               TextField(
+                controller: newGroupCtrl,
                 decoration: const InputDecoration(labelText: '新建分组', isDense: true),
                 onSubmitted: (v) => setS(() => selected = v.trim()),
               ),
@@ -1096,6 +1112,9 @@ class _BookDetailScreenState extends State<BookDetailScreen> {
           TextButton(onPressed: () => Navigator.pop(c), child: const Text('取消')),
           FilledButton(
             onPressed: () async {
+              // 输入框有内容时以它为准（用户可能直接点确定而未按提交键）
+              final typed = newGroupCtrl.text.trim();
+              if (typed.isNotEmpty) selected = typed;
               widget.book.group = selected.isEmpty ? null : selected;
               await _db.updateBook(widget.book);
               if (c.mounted) Navigator.pop(c);

@@ -37,9 +37,15 @@ class _BookshelfScreenState extends State<BookshelfScreen> {
   /// 更新失败标记集合（E: BookType.updateError），供封面角标与详情开关消费。
   Set<String> _updateErrorBooks = <String>{};
 
+  /// 书架配置页保存后递增，用于触发本页重读 bs_* 配置。
+  void _onConfigChanged() {
+    if (mounted) _reloadCfg();
+  }
+
   @override
   void initState() {
     super.initState();
+    bookshelfConfigRevision.addListener(_onConfigChanged);
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       final provider = Provider.of<BookProvider>(context, listen: false);
       try {
@@ -81,6 +87,7 @@ class _BookshelfScreenState extends State<BookshelfScreen> {
 
   @override
   void dispose() {
+    bookshelfConfigRevision.removeListener(_onConfigChanged);
     _searchDebounce?.cancel();
     _searchController.dispose();
     _scrollController.dispose();

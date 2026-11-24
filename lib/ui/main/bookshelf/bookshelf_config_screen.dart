@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:legado_md3/ui/widgets/app_widgets.dart';
+import 'package:legado_md3/ui/main/bookshelf/bookshelf_refresh.dart';
 import '../../../di/book_provider.dart';
 
 /// 书架配置页面 - BookshelfConfigSheet
@@ -107,6 +108,8 @@ class _BookshelfConfigScreenState extends State<BookshelfConfigScreen> {
     } else if (value is double) {
       await prefs.setDouble(key, value);
     }
+    // 通知常驻书架页重新读取 bs_* 配置，无需重启。
+    bookshelfConfigRevision.value++;
   }
 
   Widget _sectionTitle(String title) => AppSectionHeader(title);

@@ -123,7 +123,9 @@ void main() {
     expect(fake.calls, 0);
   });
 
-  test('脚本返回假值时拦截，并注入 event/book/chapter 上下文', () async {
+  test('脚本返回假值时放行，并注入 event/book/chapter 上下文', () async {
+    // E 版语义：回调返回 true 表示「消费事件」（拦截默认操作），
+    // 返回假值则继续默认操作。callBack* 返回「是否放行」，为脚本真值取反。
     final fake = _FakeRuntime(JsEvalResult(value: false));
     manager.factoryOverride = (_) => fake;
     final source = _source('falsy', callBackJs: 'false');
@@ -137,7 +139,7 @@ void main() {
       chapter: chapter,
     );
 
-    expect(allowed, isFalse);
+    expect(allowed, isTrue);
     expect(fake.calls, 1);
     expect(fake.last!.event, SourceEventCallback.addBookshelf);
     expect(fake.last!.book, same(book));
@@ -145,7 +147,7 @@ void main() {
     expect(fake.last!.script, contains('var event = "addBookShelf"'));
   });
 
-  test('脚本返回真值时放行', () async {
+  test('脚本返回真值时消费事件（拦截默认操作）', () async {
     final fake = _FakeRuntime(JsEvalResult(value: true));
     manager.factoryOverride = (_) => fake;
     final source = _source('truthy', callBackJs: 'true');
@@ -153,17 +155,17 @@ void main() {
     expect(
         await SourceEventCallback.callBackBtn(
             source, SourceEventCallback.clickBookName),
-        isTrue);
+        isFalse);
     expect(fake.calls, 1);
   });
 
-  test('JS 语义的假值类型均拦截', () async {
+  test('JS 语义的假值类型均放行', () async {
     for (final value in <dynamic>[null, false, 0, '']) {
       final tag = 'falsy_${value.toString().replaceAll(RegExp(r'\W'), '')}';
       manager.factoryOverride = (_) => _FakeRuntime(JsEvalResult(value: value));
       final source = _source(tag, callBackJs: 'false');
-      expect(await SourceEventCallback.callBackSource(source, 'any'), isFalse,
-          reason: '$value 应视为假值');
+      expect(await SourceEventCallback.callBackSource(source, 'any'), isTrue,
+          reason: '$value 应视为假值并放行');
     }
   });
 

@@ -27,6 +27,7 @@ import 'package:legado_md3/ui/book/detail/change_source_screen.dart';
 import 'package:legado_md3/ui/book/detail/change_cover_screen.dart';
 import 'package:legado_md3/ui/cache/cache_manage_screen.dart';
 import 'package:legado_md3/ui/main/bookshelf/bookshelf_manage_screen.dart';
+import 'package:legado_md3/ui/main/bookshelf/bookshelf_refresh.dart';
 import 'package:legado_md3/ui/main/bookshelf/group_manage_screen.dart';
 import 'package:legado_md3/ui/widgets/app_widgets.dart';
 import 'package:legado_md3/constant/e_placement.dart';
